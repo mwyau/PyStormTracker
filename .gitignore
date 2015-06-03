@@ -55,3 +55,9 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# IPython intermediate checkpoints
+.ipynb_checkpoints
+
+# netCDF files
+*.nc
