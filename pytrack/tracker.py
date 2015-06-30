@@ -1,52 +1,13 @@
-import math
 import numpy as np
 import numpy.ma as ma
 import Nio
+
+from detector import Center
 
 try:
     from Queue import PriorityQueue
 except ImportError:
     from queue import PriorityQueue
-
-class Center(object):
-
-    def __init__(self, time, lat, lon, var):
-        self.time =time
-        self.lat = lat
-        self.lon = lon
-        self.var = var
-
-def abs_dist(center1, center2):
-    """Haversine formula for calculating the great circle distance"""
-
-    R = 6367.
-    DEGTORAD = math.pi/180.
-
-    dlat = center2.lat - center1.lat
-    dlon = center2.lon - center1.lon
-
-    return R*2*math.asin(math.sqrt(math.sin(dlat/2*DEGTORAD)**2 + \
-            math.cos(center1.lat*DEGTORAD) * math.cos(center2.lat*DEGTORAD) * \
-            math.sin(dlon/2*DEGTORAD)**2))
-
-def lat_dist(center1, center2):
-
-    R = 6367.
-    DEGTORAD = math.pi/180.
-
-    dlat = center2.lat - center1.lat
-
-    return R*dlat*DEGTORAD
-
-def lon_dist(center1, center2):
-
-    R = 6367.
-    DEGTORAD = math.pi/180.
-
-    avglat = (center1.lat + center2.lat)/2
-    dlon = center2.lon - center1.lon
-
-    return R*dlon*DEGTORAD*math.cos(avglat*DEGTORAD)
 
 class Track(object):
 
@@ -71,7 +32,7 @@ class Tracks(object):
     def match_center(self, center, threshold=500.):
         q = PriorityQueue()
         for t in self.tail:
-            dist = abs_dist(center, self.tracks[t].centers[-1])
+            dist = Center.abs_dist(center, self.tracks[t].centers[-1])
             if dist < threshold:
                 q.put((dist, t))
         while not q.empty():
