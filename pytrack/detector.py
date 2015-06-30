@@ -1,7 +1,45 @@
+import math
 import numpy as np
 import numpy.ma as ma
 from scipy.ndimage.filters import generic_filter, laplace
 import Nio
+
+class Center(object):
+
+    R = 6367.
+    DEGTORAD = math.pi/180.
+
+    def __init__(self, time, lat, lon, var):
+        self.time =time
+        self.lat = lat
+        self.lon = lon
+        self.var = var
+
+    @classmethod
+    def abs_dist(cls, center1, center2):
+        """Haversine formula for calculating the great circle distance"""
+
+        dlat = center2.lat - center1.lat
+        dlon = center2.lon - center1.lon
+
+        return cls.R*2*math.asin(math.sqrt(math.sin(dlat/2*cls.DEGTORAD)**2 + \
+                math.cos(center1.lat*cls.DEGTORAD) * math.cos(center2.lat*cls.DEGTORAD) * \
+                math.sin(dlon/2*cls.DEGTORAD)**2))
+
+    @classmethod
+    def lat_dist(cls, center1, center2):
+
+        dlat = center2.lat - center1.lat
+
+        return cls.R*dlat*cls.DEGTORAD
+
+    @classmethod
+    def lon_dist(cls, center1, center2):
+
+        avglat = (center1.lat + center2.lat)/2
+        dlon = center2.lon - center1.lon
+
+        return cls.R*dlon*cls.DEGTORAD*math.cos(avglat*cls.DEGTORAD)
 
 def get_var_handle(filename, varname="slp"):
 
