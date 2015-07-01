@@ -53,36 +53,34 @@ def get_var_handle(filename, varname="slp"):
 
     return var, time, lat, lon
 
-def local_minima_filter_latlon(input, size, threshold=0.):
-
-    # Need to add error check: assert(size is an odd number)
+def _local_minima_func(buffer, size, threshold):
 
     half_size = size//2
 
-    def local_min_latlon(buffer, size, threshold=threshold):
-        search_window = buffer.reshape((size, size))
-        origin = (half_size, half_size)
-        if threshold == 0.:
-            return search_window[origin] == search_window.min()
-        elif search_window[origin] == search_window.min():
-            # At least 1/2 of values in buffer should be larger than threshold
-            return sorted(buffer)[size//2] - search_window[origin] > threshold
-        else:
-            return False
+    search_window = buffer.reshape((size, size))
+    origin = (half_size, half_size)
 
-    input_shape = input.shape
-    padded_shape = (input_shape[0]+half_size*2,input_shape[1])
+    if threshold == 0.:
+        return search_window[origin] == search_window.min()
+    elif search_window[origin] == search_window.min():
+        # At least 1/2 of values in buffer should be larger than threshold
+        return sorted(buffer)[size//2] - search_window[origin] > threshold
+    else:
+        return False
 
-    padded_input = ma.empty(padded_shape)
+def local_minima_filter_latlon(input, size, threshold=0.):
 
-    padded_input[:half_size,] = np.nan
-    padded_input[half_size:-half_size,] = input
-    padded_input[-half_size:,] = np.nan
+    assert size%2 == 1, "size must be an odd number"
+    half_size = size//2
 
-    padded_output = generic_filter(padded_input, local_min_latlon, size=size,
-            mode='wrap', extra_keywords={'size': size})
+    output = generic_filter(input, _local_minima_func, size=size, \
+            mode='wrap', extra_keywords={'size': size, 'threshold': threshold})
 
-    return padded_output[half_size:-half_size,]
+    # Mask the extreme latitudes
+    output[:half_size,:] = 0.
+    output[-half_size:,:] = 0.
+
+    return output
 
 def remove_dup_laplace_latlon(data, mask, size=5):
     laplacian = np.multiply(laplace(data, mode='wrap'), mask)
@@ -103,9 +101,9 @@ def detect_center_latlon(data, size=5, threshold=0.):
 
 if __name__ == "__main__":
     var, time, lat, lon = get_var_handle(filename="../slp.2012.nc")
-    centers = detect_center_latlon(var[0,:,:],threshold=200.)
+    centers = detect_center_latlon(var[0,:,:],threshold=10.)
     center_indices = centers.nonzero()
     print(np.transpose(center_indices))
-    print(time[:])
-    print(lat[:])
-    print(lon[:])
+    # print(time[:])
+    # print(lat[:])
+    # print(lon[:])
