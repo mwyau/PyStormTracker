@@ -77,12 +77,11 @@ class Center(object):
 
 class RectGrid(Grid):
 
-    def __init__(self, pathname, varname, tstart=None, tend=None, open_file=True):
+    def __init__(self, pathname, varname, trange=None, open_file=True):
 
         self.pathname = pathname
         self.varname = varname
-        self.tstart = tstart
-        self.tend = tend
+        self.trange = trange
 
         if open_file:
             self._open_file()
@@ -101,8 +100,8 @@ class RectGrid(Grid):
         self._time = f.variables['time']
         self._lat = f.variables['lat']
         self._lon = f.variables['lon']
-        if self.tstart is not None and self.tend is not None:
-            self.time = self._time[self.tstart:self.tend]
+        if self.trange:
+            self.time = self._time[self.trange[0]:self.trange[1]]
         else:
             self.time = self._time[:]
         self.lat = self._lat[:]
@@ -112,8 +111,8 @@ class RectGrid(Grid):
 
         if self._var is None:
             self._open_file()
-        if self.tstart is not None and self.tend is not None:
-            return self._var[self.tstart:self.tend,:,:]
+        if self.trange:
+            return self._var[self.trange[0]:self.trange[1],:,:]
         else:
             return self._var[:]
 
@@ -198,7 +197,7 @@ class RectGrid(Grid):
 
 if __name__ == "__main__":
 
-    grid = RectGrid(pathname="../slp.2012.nc", varname="slp", tstart=0, tend=1)
+    grid = RectGrid(pathname="../slp.2012.nc", varname="slp", trange=(0,1))
     centers = grid.detect()
 
     print(centers)
