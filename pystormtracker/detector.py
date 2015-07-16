@@ -1,8 +1,37 @@
 import math
 import numpy as np
 import numpy.ma as ma
+from abc import ABCMeta, abstractmethod
 from scipy.ndimage.filters import generic_filter, laplace
 import Nio
+
+class Grid(object):
+
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def get_var(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_time(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_lat(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_lon(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def split(self, num):
+        raise NotImplementedError
+
+    @abstractmethod
+    def detect(self):
+        raise NotImplementedError
 
 class Center(object):
 
@@ -14,6 +43,11 @@ class Center(object):
         self.lat = lat
         self.lon = lon
         self.var = var
+
+    def __str__(self):
+        return str(self.var)
+
+    __repr__ = __str__
 
     @classmethod
     def abs_dist(cls, center1, center2):
@@ -41,69 +75,130 @@ class Center(object):
 
         return cls.R*dlon*cls.DEGTORAD*math.cos(avglat*cls.DEGTORAD)
 
-def get_var_handle(filename, varname="slp"):
+class RectGrid(Grid):
 
-    f = Nio.open_file(filename)
+    def __init__(self, pathname, varname, tstart=None, tend=None, open_file=True):
 
-    # Dimension of var is lat, lon)
-    var = f.variables[varname]
-    time = f.variables['time']
-    lat = f.variables['lat']
-    lon = f.variables['lon']
+        self.pathname = pathname
+        self.varname = varname
+        self.tstart = tstart
+        self.tend = tend
 
-    return var, time, lat, lon
+        if open_file:
+            self._open_file()
+        else:
+            self._var = None
+            self._time = None
+            self._lat = None
+            self._lon = None
 
-def _local_minima_func(buffer, size, threshold):
+    def _open_file(self):
 
-    half_size = size//2
+        f = Nio.open_file(self.pathname)
 
-    search_window = buffer.reshape((size, size))
-    origin = (half_size, half_size)
+        # Dimension of var is time, lat, lon
+        self._var = f.variables[self.varname]
+        self._time = f.variables['time']
+        self._lat = f.variables['lat']
+        self._lon = f.variables['lon']
+        if self.tstart is not None and self.tend is not None:
+            self.time = self._time[self.tstart:self.tend]
+        else:
+            self.time = self._time[:]
+        self.lat = self._lat[:]
+        self.lon = self._lon[:]
 
-    if threshold == 0.:
-        return search_window[origin] == search_window.min()
-    elif search_window[origin] == search_window.min():
-        # At least 1/2 of values in buffer should be larger than threshold
-        return sorted(buffer)[size//2] - search_window[origin] > threshold
-    else:
-        return False
+    def get_var(self):
 
-def local_minima_filter_latlon(input, size, threshold=0.):
+        if self._var is None:
+            self._open_file()
+        if self.tstart is not None and self.tend is not None:
+            return self._var[self.tstart:self.tend,:,:]
+        else:
+            return self._var[:]
 
-    assert size%2 == 1, "size must be an odd number"
-    half_size = size//2
+    def get_time(self):
+        if self._time is None:
+            self._open_file()
+        else:
+            return self.time
 
-    output = generic_filter(input, _local_minima_func, size=size, \
-            mode='wrap', extra_keywords={'size': size, 'threshold': threshold})
+    def get_lat(self):
+        if self._lat is None:
+            self._open_file()
+        return self.lat
 
-    # Mask the extreme latitudes
-    output[:half_size,:] = 0.
-    output[-half_size:,:] = 0.
+    def get_lon(self):
+        if self._lon is None:
+            self._open_file()
+        return self.lon
 
-    return output
+    def _local_minima_func(self, buffer, size, threshold):
 
-def remove_dup_laplace_latlon(data, mask, size=5):
-    laplacian = np.multiply(laplace(data, mode='wrap'), mask)
+        half_size = size//2
 
-    def local_max_laplace(buffer, size):
+        search_window = buffer.reshape((size, size))
+        origin = (half_size, half_size)
+
+        if threshold == 0.:
+            return search_window[origin] == search_window.min()
+        elif search_window[origin] == search_window.min():
+            # # At least 1/2 of values in buffer should be larger than threshold
+            # At least 8 of values in buffer should be larger than threshold
+            return sorted(buffer)[8] - search_window[origin] > threshold
+        else:
+            return False
+
+    def _local_minima_filter(self, input, size, threshold=0.):
+
+        assert size%2 == 1, "size must be an odd number"
+        half_size = size//2
+
+        output = generic_filter(input, self._local_minima_func, size=size, \
+                mode='wrap', extra_keywords={'size': size, 'threshold': threshold})
+
+        # Mask the extreme latitudes
+        output[:half_size,:] = 0.
+        output[-half_size:,:] = 0.
+
+        return output
+
+    def _local_max_laplace(self, buffer, size):
         origin = (size*size)//2
         return buffer[origin] and buffer[origin] == buffer.max()
 
-    return generic_filter(laplacian, local_max_laplace, size=size, mode='wrap',
-            extra_keywords={'size': size})
+    def _remove_dup_laplace(self, data, mask, size=5):
+        laplacian = np.multiply(laplace(data, mode='wrap'), mask)
 
-def detect_center_latlon(data, size=5, threshold=0.):
+        return generic_filter(laplacian, self._local_max_laplace, size=size, mode='wrap',
+                extra_keywords={'size': size})
 
-    minima = local_minima_filter_latlon(data, size, threshold=threshold)
-    minima = remove_dup_laplace_latlon(data, minima, size=5)
+    def detect(self, size=5, threshold=0.):
 
-    return minima
+        time = self.get_time()
+        lat = self.get_lat()
+        lon = self.get_lon()
+
+        centers = []
+
+        for it, t in enumerate(time):
+
+            chart = self.get_var()[it,:,:]
+            minima = self._local_minima_filter(chart, size, threshold=threshold)
+            minima = self._remove_dup_laplace(chart, minima, size=5)
+
+            for i, j in np.transpose(minima.nonzero()):
+                c = Center(t, lat[i], lon[j], chart[i,j])
+                centers.append(c)
+
+        return centers
+
+    def split(self, num):
+        pass
 
 if __name__ == "__main__":
-    var, time, lat, lon = get_var_handle(filename="../slp.2012.nc")
-    centers = detect_center_latlon(var[0,:,:],threshold=10.)
-    center_indices = centers.nonzero()
-    print(np.transpose(center_indices))
-    # print(time[:])
-    # print(lat[:])
-    # print(lon[:])
+
+    grid = RectGrid(pathname="../slp.2012.nc", varname="slp", tstart=0, tend=1)
+    centers = grid.detect()
+
+    print(centers)
