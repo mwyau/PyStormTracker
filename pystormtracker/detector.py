@@ -193,7 +193,23 @@ class RectGrid(Grid):
         return centers
 
     def split(self, num):
-        pass
+
+        if not self._time:
+
+            f = Nio.open_file(self.pathname)
+            time_len = f.dimensions['time']
+            f.close()
+
+            chunk_size = time_len//num+1
+
+            tranges = [(i*chunk_size, min((i+1)*chunk_size, time_len)) \
+                    for i in range(num)]
+
+            return [RectGrid(self.pathname, self.varname, trange=it, \
+                    open_file=False) for it in tranges]
+
+        else:
+            raise RunTimeError("open_file must be False to allow splitting")
 
 if __name__ == "__main__":
 
