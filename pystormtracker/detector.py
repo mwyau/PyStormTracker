@@ -54,6 +54,9 @@ class Center(object):
     def abs_dist(self, center):
         """Haversine formula for calculating the great circle distance"""
 
+        if not isinstance(center, Center):
+            raise TypeError, "must be compared with a Center object"
+
         dlat = center.lat - self.lat
         dlon = center.lon - self.lon
 
@@ -63,11 +66,17 @@ class Center(object):
 
     def lat_dist(self, center):
 
+        if not isinstance(center, Center):
+            raise TypeError, "must be compared with a Center object"
+
         dlat = center.lat - self.lat
 
         return self.R*dlat*self.DEGTORAD
 
     def lon_dist(self, center):
+
+        if not isinstance(center, Center):
+            raise TypeError, "must be compared with a Center object"
 
         avglat = (self.lat + center.lat)/2
         dlon = center.lon - self.lon
@@ -175,6 +184,9 @@ class RectGrid(Grid):
         return self.lon
 
     def split(self, num):
+
+        if type(num) is not int:
+            raise TypeError, "number to split must be an integer"
 
         if self._open_file is False:
 
