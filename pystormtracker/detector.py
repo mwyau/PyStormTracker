@@ -51,31 +51,28 @@ class Center(object):
         return "[time="+str(self.time)+", lat="+str(self.lat)+", lon="+ \
                 str(self.lon)+ ", var="+str(self.var)+"]"
 
-    @classmethod
-    def abs_dist(cls, center1, center2):
+    def abs_dist(self, center):
         """Haversine formula for calculating the great circle distance"""
 
-        dlat = center2.lat - center1.lat
-        dlon = center2.lon - center1.lon
+        dlat = center.lat - self.lat
+        dlon = center.lon - self.lon
 
-        return cls.R*2*math.asin(math.sqrt(math.sin(dlat/2*cls.DEGTORAD)**2 + \
-                math.cos(center1.lat*cls.DEGTORAD) * math.cos(center2.lat*cls.DEGTORAD) * \
-                math.sin(dlon/2*cls.DEGTORAD)**2))
+        return self.R*2*math.asin(math.sqrt(math.sin(dlat/2*self.DEGTORAD)**2 + \
+                math.cos(self.lat*self.DEGTORAD) * math.cos(center.lat*self.DEGTORAD) * \
+                math.sin(dlon/2*self.DEGTORAD)**2))
 
-    @classmethod
-    def lat_dist(cls, center1, center2):
+    def lat_dist(self, center):
 
-        dlat = center2.lat - center1.lat
+        dlat = center.lat - self.lat
 
-        return cls.R*dlat*cls.DEGTORAD
+        return self.R*dlat*self.DEGTORAD
 
-    @classmethod
-    def lon_dist(cls, center1, center2):
+    def lon_dist(self, center):
 
-        avglat = (center1.lat + center2.lat)/2
-        dlon = center2.lon - center1.lon
+        avglat = (self.lat + center.lat)/2
+        dlon = center.lon - self.lon
 
-        return cls.R*dlon*cls.DEGTORAD*math.cos(avglat*cls.DEGTORAD)
+        return self.R*dlon*self.DEGTORAD*math.cos(avglat*self.DEGTORAD)
 
 class RectGrid(Grid):
 
