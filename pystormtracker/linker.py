@@ -134,6 +134,8 @@ if __name__ == "__main__":
     except ImportError:
         import pickle
 
+    print("Starting linker...")
+
     timer = timeit.default_timer()
     grid = RectGrid(pathname="../slp.2012.nc", varname="slp", trange=(0,124))
     centers = grid.detect()
@@ -148,6 +150,8 @@ if __name__ == "__main__":
 
     print("Linking time: " + str(timeit.default_timer()-timer))
 
-    print("Total number of tracks: "+str(len(tracks)))
+    num_tracks = len([t for t in tracks if len(t)>=8 and t[0].abs_dist(t[-1])>=1000.])
+
+    print("Number of long tracks: "+str(num_tracks))
 
     pickle.dump(tracks, open("tracks.pickle", "wb"))
