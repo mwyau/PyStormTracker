@@ -135,9 +135,9 @@ class RectGrid(Grid):
                         return None
                     if chart[0] > chart[1]:
                         raise IndexError, "chart[1] must be larger than chart[0]"
-                    if chart[0] <0 or chart[0] >= self.trange[1]-self.trange[0]:
+                    if chart[0] <0 or chart[0] > self.trange[1]-self.trange[0]:
                         raise IndexError, "chart[0] is out of bound of trange"
-                    if chart[1] <0 or chart[1] >= self.trange[1]-self.trange[0]:
+                    if chart[1] <0 or chart[1] > self.trange[1]-self.trange[0]:
                         raise IndexError, "chart[1] is out of bound of trange"
 
         self._init()
@@ -251,7 +251,7 @@ class RectGrid(Grid):
         return generic_filter(laplacian, self._local_max_laplace, size=size, mode='wrap',
                 extra_keywords={'size': size})
 
-    def detect(self, size=5, threshold=0.):
+    def detect(self, size=5, threshold=0., chart_buffer=400):
 
         """Returns a list of list of Center's"""
 
@@ -263,7 +263,11 @@ class RectGrid(Grid):
 
         for it, t in enumerate(time):
 
-            chart = self.get_var(chart=it)
+            ibuffer = it%chart_buffer
+            if ibuffer == 0:
+                var = self.get_var(chart=(it,min(it+chart_buffer,len(time))))
+            chart = var[ibuffer,:,:]
+
             minima = self._local_minima_filter(chart, size, threshold=threshold)
             minima = self._remove_dup_laplace(chart, minima, size=5)
 
