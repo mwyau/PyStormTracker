@@ -19,21 +19,23 @@ if __name__ == "__main__":
 
     argv = sys.argv[1:]
     try:
-        opts, args = getopt.getopt(argv,"hi:v:",["input=","var="])
+        opts, args = getopt.getopt(argv,"hi:v:o:",["input=","var=","output="])
     except getopt.GetoptError:
-        print("stormtracker.py -i <input file> -v <variable name>")
+        print("stormtracker.py -i <input file> -v <variable name> -o <output file>")
         sys.exit(2)
 
     for opt, arg in opts:
         if opt == '-h':
-            print("stormtracker.py -i <input file> -v <variable name>")
+            print("stormtracker.py -i <input file> -v <variable name> -o <output file>")
             sys.exit()
         elif opt in ("-i", "--input"):
-            pathname = arg
+            infile = arg
         elif opt in ("-v", "--var"):
-            varname = arg
+            var = arg
+        elif opt in ("-o", "--output"):
+            outfile = arg
 
-    trange = None
+    trange = (0,1460)
 
     if USE_MPI:
         comm = MPI.COMM_WORLD
@@ -48,7 +50,7 @@ if __name__ == "__main__":
     if USE_MPI:
 
         if rank == root:
-            grid = RectGrid(pathname=pathname, varname=varname, trange=trange)
+            grid = RectGrid(pathname=infile, varname=var, trange=trange)
             grid = grid.split(size)
         else:
             grid = None
@@ -56,7 +58,7 @@ if __name__ == "__main__":
         grid = comm.scatter(grid, root=root)
 
     else:
-        grid = RectGrid(pathname=pathname, varname=varname, trange=trange)
+        grid = RectGrid(pathname=infile, varname=var, trange=trange)
 
     centers = grid.detect()
 
@@ -85,4 +87,4 @@ if __name__ == "__main__":
         num_tracks = len([t for t in tracks if len(t)>=8 and t[0].abs_dist(t[-1])>=1000.])
         print("Number of long tracks: "+str(num_tracks))
 
-        pickle.dump(tracks, open("tracks.pickle", "wb"))
+        pickle.dump(tracks, open(outfile, "wb"))
