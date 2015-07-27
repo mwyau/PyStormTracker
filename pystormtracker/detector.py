@@ -258,7 +258,7 @@ class RectGrid(Grid):
         """Returns a list of list of Center's"""
 
         if self.trange is not None and self.trange[0]>=self.trange[1]:
-            return None
+            return []
 
         time = self.get_time()
         lat = self.get_lat()
