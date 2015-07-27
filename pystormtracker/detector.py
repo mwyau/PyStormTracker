@@ -199,10 +199,12 @@ class RectGrid(Grid):
                 f.close()
                 tstart = 0
 
-            chunk_size = time_len//num+1
+            chunk_size = time_len//num
+            remainder = time_len%num
 
-            tranges = [(tstart+min(i*chunk_size, time_len), tstart+ \
-                    min((i+1)*chunk_size, time_len)) for i in range(num)]
+            tranges = [(tstart+i*chunk_size+remainder*i//num, \
+                    tstart+(i+1)*chunk_size+remainder*(i+1)//num) \
+                    for i in range(num)]
 
             return [RectGrid(self.pathname, self.varname, trange=it) \
                     for it in tranges]
@@ -279,10 +281,8 @@ class RectGrid(Grid):
 
 if __name__ == "__main__":
 
-    grid = RectGrid(pathname="../slp.2012.nc", varname="slp", trange=(0,10))
-    centers = grid.detect()
+    grid = RectGrid(pathname="../slp.2012.nc", varname="slp")
+    grids = grid.split(128)
 
-    print(centers)
-
-    for c in centers:
-        print(c)
+    for g in grids:
+        print(g.trange)
