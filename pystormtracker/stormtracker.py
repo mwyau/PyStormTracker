@@ -17,6 +17,8 @@ if __name__ == "__main__":
     except ImportError:
         USE_MPI = False
 
+    trange=None
+
     argv = sys.argv[1:]
     try:
         opts, args = getopt.getopt(argv,"hi:v:o:n:",["input=","var=","output=","num="])
@@ -36,8 +38,6 @@ if __name__ == "__main__":
             outfile = arg
         elif opt in ("-n", "--num"):
             trange = (0, arg)
-        else:
-            trange = None
 
     timer = {}
 
