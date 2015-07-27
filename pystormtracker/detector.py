@@ -115,7 +115,7 @@ class RectGrid(Grid):
     def get_var(self, chart=None):
 
         if self.trange is not None:
-            if self.trange[0] == self.trange[1]:
+            if self.trange[0] >= self.trange[1]:
                 return None
 
         if chart is not None:
@@ -158,7 +158,7 @@ class RectGrid(Grid):
     def get_time(self):
 
         if self.trange is not None:
-            if self.trange[0] == self.trange[1]:
+            if self.trange[0] >= self.trange[1]:
                 return None
 
         self._init()
@@ -256,6 +256,9 @@ class RectGrid(Grid):
     def detect(self, size=5, threshold=0., chart_buffer=400):
 
         """Returns a list of list of Center's"""
+
+        if self.trange is not None and self.trange[0]>=self.trange[1]:
+            return None
 
         time = self.get_time()
         lat = self.get_lat()
