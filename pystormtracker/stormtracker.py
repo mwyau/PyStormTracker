@@ -19,14 +19,14 @@ if __name__ == "__main__":
 
     argv = sys.argv[1:]
     try:
-        opts, args = getopt.getopt(argv,"hi:v:o:",["input=","var=","output="])
+        opts, args = getopt.getopt(argv,"hi:v:o:n:",["input=","var=","output=","num="])
     except getopt.GetoptError:
         print("stormtracker.py -i <input file> -v <variable name> -o <output file>")
         sys.exit(2)
 
     for opt, arg in opts:
         if opt == '-h':
-            print("stormtracker.py -i <input file> -v <variable name> -o <output file>")
+            print("stormtracker.py -i <input file> -v <variable name> -o <output file> -n <number of time steps>")
             sys.exit()
         elif opt in ("-i", "--input"):
             infile = arg
@@ -34,8 +34,10 @@ if __name__ == "__main__":
             var = arg
         elif opt in ("-o", "--output"):
             outfile = arg
-
-    trange = (0,1460)
+        elif opt in ("-n", "--num"):
+            trange = (0, arg)
+        else:
+            trange = None
 
     timer = {}
 
