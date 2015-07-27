@@ -37,6 +37,8 @@ if __name__ == "__main__":
 
     trange = (0,1460)
 
+    timer = {}
+
     if USE_MPI:
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
@@ -44,8 +46,7 @@ if __name__ == "__main__":
         root = size-1
 
     if USE_MPI is False or rank == root:
-        print("Starting detector...")
-        timer = timeit.default_timer()
+        timer['detector'] = timeit.default_timer()
 
     if USE_MPI:
 
@@ -65,9 +66,8 @@ if __name__ == "__main__":
     if USE_MPI:
         comm.Barrier()
     if USE_MPI is False or rank == root:
-        print("Detection time: " + str(timeit.default_timer()-timer))
-        timer = timeit.default_timer()
-        print("Starting linker...")
+        timer['detector'] = timeit.default_timer()-timer['detector']
+        timer['linker'] = timeit.default_timer()
 
     tracks = Tracks()
 
@@ -78,12 +78,17 @@ if __name__ == "__main__":
 
         tracks = comm.gather(tracks, root=root)
         if rank == root:
+            timer['combiner'] = timeit.default_timer()
             for i in range(1,size):
                 tracks[0].extend_track(tracks[i])
             tracks = tracks[0]
+            timer['combiner'] = timeit.default_timer()-timer['combiner']
 
     if USE_MPI is False or rank == root:
-        print("Linking time: " + str(timeit.default_timer()-timer))
+        timer['linker'] = timeit.default_timer()-timer['linker']
+        print("Detector time: "+str(timer['detector']))
+        print("Linker time: "+str(timer['linker']))
+        print("Combiner time: "+str(timer['combiner']))
         num_tracks = len([t for t in tracks if len(t)>=8 and t[0].abs_dist(t[-1])>=1000.])
         print("Number of long tracks: "+str(num_tracks))
 
