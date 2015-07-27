@@ -78,8 +78,11 @@ if __name__ == "__main__":
 
     if USE_MPI:
 
+        if rank == root:
+            timer['gather'] = timeit.default_timer()
         tracks = comm.gather(tracks, root=root)
         if rank == root:
+            timer['gather'] = timeit.default_timer()-timer['gather']
             timer['combiner'] = timeit.default_timer()
             for i in range(1,size):
                 tracks[0].extend_track(tracks[i])
