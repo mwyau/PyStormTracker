@@ -37,7 +37,7 @@ if __name__ == "__main__":
         elif opt in ("-o", "--output"):
             outfile = arg
         elif opt in ("-n", "--num"):
-            trange = (0, arg)
+            trange = (0, int(arg))
 
     timer = {}
 
