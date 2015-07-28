@@ -78,16 +78,19 @@ if __name__ == "__main__":
 
     if USE_MPI:
 
-        if rank == root:
-            timer['gather'] = timeit.default_timer()
-        tracks = comm.gather(tracks, root=root)
-        if rank == root:
-            timer['gather'] = timeit.default_timer()-timer['gather']
-            timer['combiner'] = timeit.default_timer()
-            for i in range(1,size):
-                tracks[0].extend_track(tracks[i])
-            tracks = tracks[0]
-            timer['combiner'] = timeit.default_timer()-timer['combiner']
+        timer['combiner'] = timeit.default_timer()
+
+        nstripe = 2
+        while nstripe <= size:
+            if rank%nstripe == nstripe/2:
+                comm.send(tracks, dest = rank-nstripe/2, tag=nstripe)
+            elif rank%nstripe == 0:
+                if rank+nstripe/2 < size:
+                    tracks_recv = comm.recv(source=rank+nstripe/2, tag=nstripe)
+                    tracks.extend_track(tracks_recv)
+            nstripe = nstripe*2
+
+        timer['combiner'] = timeit.default_timer()-timer['combiner']
 
     if USE_MPI is False or rank == root:
         timer['linker'] = timeit.default_timer()-timer['linker']
