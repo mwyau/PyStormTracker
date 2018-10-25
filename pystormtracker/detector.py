@@ -101,13 +101,13 @@ class RectGrid(Grid):
 
         if self._open_file is False:
             self._open_file = True
-            f = Nio.open_file(self.pathname)
+            self.f = Nio.open_file(self.pathname)
 
             # Dimension of var is time, lat, lon
-            self._var = f.variables[self.varname]
-            self._time = f.variables['time']
-            self._lat = f.variables['lat']
-            self._lon = f.variables['lon']
+            self._var = self.f.variables[self.varname]
+            self._time = self.f.variables['time']
+            self._lat = self.f.variables['latitude']
+            self._lon = self.f.variables['longitude']
             self.time = None
             self.lat = None
             self.lon = None
@@ -212,7 +212,7 @@ class RectGrid(Grid):
         else:
             raise RuntimeError, "RectGrid must not be initialized before running split()"
 
-    def _local_minima_func(self, buffer, size, threshold):
+    def _local_extrema_func(self, buffer, size, threshold, minmaxmode):
 
         half_size = size//2
 
@@ -220,22 +220,28 @@ class RectGrid(Grid):
         origin = (half_size, half_size)
 
         if threshold == 0.:
-            return search_window[origin] == search_window.min()
+            if minmaxmode == 'min':
+                return search_window[origin] == search_window.min()
+            elif minmaxmode == 'max':
+                return search_window[origin] == search_window.max()
         elif search_window[origin] == search_window.min():
-            # At least 8 of values in buffer should be larger than threshold
-            return sorted(buffer)[8] - search_window[origin] > threshold
-        else:
-            return False
+            if minmaxmode == 'min':
+                # At least 8 of values in buffer should be larger than threshold
+                return sorted(buffer)[8] - search_window[origin] > threshold
+        elif search_window[origin] == search_window.max():
+            if minmaxmode == 'max':
+                return sorted(buffer)[0] - search_window[origin] < -1*threshold
+        return False
 
-    def _local_minima_filter(self, input, size, threshold=0.):
+    def _local_extrema_filter(self, input, size, threshold=0., minmaxmode='min'):
 
         if size%2 != 1:
             raise ValueError, "size must be an odd number"
 
         half_size = size//2
 
-        output = generic_filter(input, self._local_minima_func, size=size, \
-                mode='wrap', extra_keywords={'size': size, 'threshold': threshold})
+        output = generic_filter(input, self._local_extrema_func, size=size, \
+                mode='wrap', extra_keywords={'size': size, 'threshold': threshold, 'minmaxmode': minmaxmode})
 
         # Mask the extreme latitudes
         output[:half_size,:] = 0.
@@ -253,7 +259,7 @@ class RectGrid(Grid):
         return generic_filter(laplacian, self._local_max_laplace, size=size, mode='wrap',
                 extra_keywords={'size': size})
 
-    def detect(self, size=5, threshold=0., chart_buffer=400):
+    def detect(self, size=5, threshold=0., chart_buffer=400, minmaxmode='min'):
 
         """Returns a list of list of Center's"""
 
@@ -268,16 +274,18 @@ class RectGrid(Grid):
 
         for it, t in enumerate(time):
 
+            print "Working on it:", str(it)
+
             ibuffer = it%chart_buffer
             if ibuffer == 0:
                 var = self.get_var(chart=(it,min(it+chart_buffer,len(time))))
             chart = var[ibuffer,:,:]
 
-            minima = self._local_minima_filter(chart, size, threshold=threshold)
-            minima = self._remove_dup_laplace(chart, minima, size=5)
+            extrema = self._local_extrema_filter(chart, size, threshold=threshold, minmaxmode=minmaxmode)
+            extrema = self._remove_dup_laplace(chart, extrema, size=5)
 
             center_list = [Center(t, lat[i], lon[j], chart[i,j]) \
-                    for i, j in np.transpose(minima.nonzero())]
+                    for i, j in np.transpose(extrema.nonzero())]
             centers.append(center_list)
 
         return centers

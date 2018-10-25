@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     argv = sys.argv[1:]
     try:
-        opts, args = getopt.getopt(argv,"hi:v:o:n:",["input=","var=","output=","num="])
+        opts, args = getopt.getopt(argv,"hi:v:o:n:m:",["input=","var=","output=","num=","mode="])
     except getopt.GetoptError:
         print("stormtracker.py -i <input file> -v <variable name> -o <output file>")
         sys.exit(2)
@@ -38,6 +38,8 @@ if __name__ == "__main__":
             outfile = arg
         elif opt in ("-n", "--num"):
             trange = (0, int(arg))
+        elif opt in ("-m", "--mode"):
+            mode = arg
 
     timer = {}
 
@@ -63,7 +65,7 @@ if __name__ == "__main__":
     else:
         grid = RectGrid(pathname=infile, varname=var, trange=trange)
 
-    centers = grid.detect()
+    centers = grid.detect(minmaxmode=mode)
 
     if USE_MPI:
         comm.Barrier()
