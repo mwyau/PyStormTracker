@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pystormtracker"
+version = "0.1.0"
+description = "A Python tool for tracking storms."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    # Note: PyNIO is imported in the code but is largely deprecated and difficult to install via standard pip.
+    # When refactoring the code, consider migrating from PyNIO to modern alternatives like xarray and netCDF4.
+    # "PyNIO",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.4",
+    "mypy>=1.9.0",
+    "pytest>=8.1.1",
+    "pre-commit>=3.7.0",
+    "xarray>=2024.2.0",  # Recommended for modern replacement of PyNIO
+    "netCDF4>=1.6.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pystormtracker"]
+
+[tool.ruff]
+# Target latest stable Python (3.12 is the current latest stable, adjusting to py312)
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C4", # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade (automatically upgrades syntax to newer Python versions)
+    "PT", # flake8-pytest-style
+    "SIM",# flake8-simplify
+    "RUF",# Ruff-specific rules
+    "ANN",# flake8-annotations (to enforce type hinting)
+]
+ignore = [
+    "ANN101", # Missing type annotation for self in method
+    "ANN102", # Missing type annotation for cls in classmethod
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
