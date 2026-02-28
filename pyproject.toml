@@ -3,11 +3,26 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pystormtracker"
+name = "PyStormTracker"
 version = "0.1.0"
 description = "A Python tool for tracking storms."
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    { name = "Albert M. W. Yau", email = "mwyau@users.noreply.github.com" }
+]
+maintainers = [
+    { name = "Albert M. W. Yau", email = "mwyau@users.noreply.github.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.10.0",
@@ -15,6 +30,11 @@ dependencies = [
     # When refactoring the code, consider migrating from PyNIO to modern alternatives like xarray and netCDF4.
     # "PyNIO",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mwyau/PyStormTracker"
+Repository = "https://github.com/mwyau/PyStormTracker.git"
+Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -27,30 +47,19 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["pystormtracker"]
+packages = ["src/pystormtracker"]
 
 [tool.ruff]
-# Target latest stable Python (3.12 is the current latest stable, adjusting to py312)
 target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "C4", # flake8-comprehensions
-    "B",  # flake8-bugbear
-    "UP", # pyupgrade (automatically upgrades syntax to newer Python versions)
-    "PT", # flake8-pytest-style
-    "SIM",# flake8-simplify
-    "RUF",# Ruff-specific rules
-    "ANN",# flake8-annotations (to enforce type hinting)
+    "E", "W", "F", "I", "C4", "B", "UP", "PT", "SIM", "RUF", "ANN",
 ]
 ignore = [
-    "ANN101", # Missing type annotation for self in method
-    "ANN102", # Missing type annotation for cls in classmethod
+    "ANN101",
+    "ANN102",
 ]
 
 [tool.ruff.format]
