@@ -1,10 +1,14 @@
 Copyright (c) 2015, University Corporation for Atmospheric Research (UCAR)
+Copyright (c) 2026, Albert M. W. Yau
 All rights reserved.
 
 Developed by: Application Scalability and Performance Group
               University Corporation for Atmospheric Research -
               National Center for Atmospheric Research
-              https://www2.cisl.ucar.edu/tdd/asap
+              https://www.cisl.ucar.edu/capabilities/application-scalability-performance-asap
+
+Developed by: Albert M. W. Yau
+              https://github.com/mwyau/PyStormTracker
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the "Software"),
