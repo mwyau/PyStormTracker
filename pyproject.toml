@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "PyStormTracker"
+version = "0.1.0"
+description = "A Python tool for tracking storms."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Albert M. W. Yau", email = "mwyau@users.noreply.github.com" }
+]
+maintainers = [
+    { name = "Albert M. W. Yau", email = "mwyau@users.noreply.github.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    # Note: PyNIO is imported in the code but is largely deprecated and difficult to install via standard pip.
+    # When refactoring the code, consider migrating from PyNIO to modern alternatives like xarray and netCDF4.
+    # "PyNIO",
+]
+
+[project.urls]
+Homepage = "https://github.com/mwyau/PyStormTracker"
+Repository = "https://github.com/mwyau/PyStormTracker.git"
+Issues = "https://github.com/mwyau/PyStormTracker/issues"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.4",
+    "mypy>=1.9.0",
+    "pytest>=8.1.1",
+    "pre-commit>=3.7.0",
+    "xarray>=2024.2.0",  # Recommended for modern replacement of PyNIO
+    "netCDF4>=1.6.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pystormtracker"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "C4", "B", "UP", "PT", "SIM", "RUF", "ANN",
+]
+ignore = [
+    "ANN101",
+    "ANN102",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
