@@ -7,10 +7,9 @@ from typing import Literal
 from .detector import RectGrid
 from .linker import Tracks
 
-if __name__ == "__main__":
+def main() -> None:
     try:
         from mpi4py import MPI
-
         USE_MPI: bool = True
     except ImportError:
         USE_MPI = False
@@ -64,6 +63,7 @@ if __name__ == "__main__":
         timer["detector"] = timeit.default_timer()
 
     if USE_MPI:
+
         if rank == root:
             grid_obj = RectGrid(pathname=infile, varname=var, trange=trange)
             grids = grid_obj.split(size)
@@ -89,6 +89,7 @@ if __name__ == "__main__":
         tracks.append_center(c)
 
     if USE_MPI:
+
         timer["combiner"] = timeit.default_timer()
 
         nstripe = 2
@@ -116,3 +117,6 @@ if __name__ == "__main__":
 
         with open(outfile, "wb") as f:
             pickle.dump(tracks, f)
+
+if __name__ == "__main__":
+    main()
