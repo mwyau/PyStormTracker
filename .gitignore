@@ -65,3 +65,6 @@ target/
 # netCDF files
 *.nc
 !data/*.nc
+
+# CSV files
+*.csv
