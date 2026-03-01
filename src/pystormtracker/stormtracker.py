@@ -4,6 +4,8 @@ import sys
 import timeit
 from typing import Literal
 
+import netCDF4
+
 from .models import Tracks
 from .simple import SimpleDetector, SimpleLinker
 
@@ -35,7 +37,8 @@ def main() -> None:
     for opt, arg in opts:
         if opt == "-h":
             print(
-                "stormtracker.py -i <input file> -v <variable name> -o <output file> -n <number of time steps>"
+                "stormtracker.py -i <input file> -v <variable name> "
+                "-o <output file> -n <number of time steps>"
             )
             sys.exit()
         elif opt in ("-i", "--input"):
@@ -119,8 +122,14 @@ def main() -> None:
         with open(outfile, "wb") as f:
             pickle.dump(tracks, f)
 
+        # Export to CSV for comparison
         import csv
+
         import numpy as np
+
+        time_obj = grid.get_time_obj()
+        units = getattr(time_obj, "units", "")
+        calendar = getattr(time_obj, "calendar", "standard")
 
         csv_file = outfile.replace(".pickle", "") + ".csv"
         with open(csv_file, "w", newline="") as f:
@@ -128,12 +137,23 @@ def main() -> None:
             writer.writerow(["track_id", "time", "lat", "lon", "var"])
             for i, track in enumerate(tracks):
                 for center in track:
-                    # Convert masked values to '--'
+                    # Convert numeric time to user-friendly string
+                    try:
+                        dt = netCDF4.num2date(
+                            center.time, units=units, calendar=calendar
+                        )
+                        # dt can be a cftime.datetime or a standard datetime
+                        # both support strftime
+                        time_val = dt.strftime("%Y-%m-%d %H:%M:%S")  # type: ignore
+                    except Exception:
+                        time_val = str(center.time)
+
+                    # Convert masked values to '--' and format float to 4 decimal places
                     if center.var is None or np.ma.is_masked(center.var):
                         var_val = "--"
                     else:
-                        var_val = float(center.var)
-                    writer.writerow([i, center.time, center.lat, center.lon, var_val])
+                        var_val = f"{float(center.var):.4f}"
+                    writer.writerow([i, time_val, center.lat, center.lon, var_val])
 
 
 if __name__ == "__main__":

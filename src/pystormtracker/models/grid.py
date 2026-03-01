@@ -14,6 +14,10 @@ class Grid(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
+    def get_time_obj(self) -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_lat(self) -> Any:
         raise NotImplementedError
 
