@@ -9,12 +9,24 @@ SERIAL_OUT = "integration_serial.csv"
 DASK_OUT = "integration_dask.csv"
 MPI_OUT = "integration_mpi.csv"
 
-def run_command(cmd):
+# MS-MPI default path on Windows
+MSMPI_BIN = r"C:\Program Files\Microsoft MPI\Bin"
+
+def run_command(cmd, use_mpi=False):
     """Utility to run shell commands and check success."""
-    # Use the absolute path to the stormtracker script in the venv
     venv_bin = os.path.join(".venv", "Scripts", "stormtracker")
-    full_cmd = f"{venv_bin} {cmd}"
-    result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+    
+    # Ensure MS-MPI bin is in path for Windows
+    env = os.environ.copy()
+    if os.path.exists(MSMPI_BIN):
+        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
+    
+    if use_mpi:
+        full_cmd = f"mpiexec -n 2 {venv_bin} {cmd}"
+    else:
+        full_cmd = f"{venv_bin} {cmd}"
+        
+    result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True, env=env)
     assert result.returncode == 0, f"Command failed: {full_cmd}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     return result.stdout
 
@@ -29,28 +41,44 @@ def compare_csvs(file1, file2):
     # Check content (allowing small float differences)
     pd.testing.assert_frame_equal(df1, df2, check_dtype=False, atol=1e-4)
 
-@pytest.mark.skipif(not os.path.exists(TEST_NC), reason="Test data not found")
-def test_backends_integration():
-    """Integration test comparing Serial and Dask backends."""
+@pytest.fixture(scope="module", autouse=True)
+def shared_serial_output():
+    """Run serial once and share it across tests to save time."""
+    if not os.path.exists(TEST_NC):
+        pytest.skip("Test data not found")
     
-    # 1. Run Serial
     run_command(f"-i {TEST_NC} -v slp -o {SERIAL_OUT} -n 5 --backend serial")
-    
-    # 2. Run Dask
-    run_command(f"-i {TEST_NC} -v slp -o {DASK_OUT} -n 5 --backend dask --workers 2")
-    
-    # 3. Compare Serial vs Dask
-    compare_csvs(SERIAL_OUT, DASK_OUT)
-    
-    # Clean up
-    if os.path.exists(SERIAL_OUT): os.remove(SERIAL_OUT)
-    if os.path.exists(DASK_OUT): os.remove(DASK_OUT)
+    yield SERIAL_OUT
+    if os.path.exists(SERIAL_OUT):
+        os.remove(SERIAL_OUT)
 
-@pytest.mark.skip(reason="MPI requires MS-MPI and mpiexec to be installed")
-def test_mpi_integration():
-    """Integration test for MPI backend (skipped by default)."""
-    # This would be run as:
-    # mpiexec -n 2 .venv/Scripts/stormtracker -i data/slp.2012.nc -v slp -o integration_mpi.csv -n 5 --backend mpi
-    run_command(f"mpiexec -n 2 stormtracker -i {TEST_NC} -v slp -o {MPI_OUT} -n 5 --backend mpi")
+def test_dask_vs_serial(shared_serial_output):
+    """Integration test comparing Serial and Dask backends."""
+    run_command(f"-i {TEST_NC} -v slp -o {DASK_OUT} -n 5 --backend dask --workers 2")
+    compare_csvs(shared_serial_output, DASK_OUT)
+    if os.path.exists(DASK_OUT):
+        os.remove(DASK_OUT)
+
+def test_mpi_vs_serial(shared_serial_output):
+    """Integration test comparing Serial and MPI backends."""
+    # Check if mpiexec is actually available
+    env = os.environ.copy()
+    if os.path.exists(MSMPI_BIN):
+        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
+    
+    try:
+        subprocess.run("mpiexec -help", shell=True, capture_output=True, env=env)
+    except FileNotFoundError:
+        pytest.skip("mpiexec not found in path")
+
+    run_command(f"-i {TEST_NC} -v slp -o {MPI_OUT} -n 10 --backend mpi", use_mpi=True)
+    
+    # Note: We run 10 steps for MPI to test split logic, 
+    # so we need a fresh serial run for comparison if n is different.
+    SERIAL_10 = "integration_serial_10.csv"
+    run_command(f"-i {TEST_NC} -v slp -o {SERIAL_10} -n 10 --backend serial")
+    
+    compare_csvs(SERIAL_10, MPI_OUT)
     
     if os.path.exists(MPI_OUT): os.remove(MPI_OUT)
+    if os.path.exists(SERIAL_10): os.remove(SERIAL_10)
