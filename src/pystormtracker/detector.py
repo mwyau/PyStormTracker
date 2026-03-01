@@ -5,11 +5,7 @@ from typing import Any, Literal
 import numpy as np
 from scipy.ndimage.filters import generic_filter, laplace
 
-try:
-    import Nio
-except ImportError:
-    Nio = None
-
+import netCDF4
 
 class Grid(metaclass=ABCMeta):
     @abstractmethod
@@ -124,10 +120,8 @@ class RectGrid(Grid):
     def _init(self) -> None:
 
         if self._open_file is False:
-            if Nio is None:
-                raise ImportError("PyNIO is required to open files.")
             self._open_file = True
-            self.f = Nio.open_file(self.pathname)
+            self.f = netCDF4.Dataset(self.pathname, "r")
 
             # Dimension of var is time, lat, lon
             self._var = self.f.variables[self.varname]
@@ -224,10 +218,8 @@ class RectGrid(Grid):
                 time_len = self.trange[1] - self.trange[0]
                 tstart = self.trange[0]
             else:
-                if Nio is None:
-                    raise ImportError("PyNIO is required to open files.")
-                f = Nio.open_file(self.pathname)
-                time_len = f.dimensions["time"]
+                f = netCDF4.Dataset(self.pathname, "r")
+                time_len = f.dimensions["time"].size
                 f.close()
                 tstart = 0
 

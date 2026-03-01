@@ -26,9 +26,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    # Note: PyNIO is imported in the code but is largely deprecated and difficult to install via standard pip.
-    # When refactoring the code, consider migrating from PyNIO to modern alternatives like xarray and netCDF4.
-    # "PyNIO",
+    "netCDF4>=1.6.5",
 ]
 
 [project.urls]
@@ -42,7 +40,6 @@ dev = [
     "mypy>=1.9.0",
     "pytest>=8.1.1",
     "pre-commit>=3.7.0",
-    "xarray>=2024.2.0",  # Recommended for modern replacement of PyNIO
     "netCDF4>=1.6.5",
 ]
 
