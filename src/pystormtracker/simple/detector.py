@@ -37,7 +37,7 @@ class SimpleDetector(Grid):
             self._var = self.f.variables[self.varname]
             # Disable auto mask and scale as it may mask valid SLP values in some files
             self._var.set_auto_maskandscale(False)
-            
+
             self._time = self.f.variables["time"]
 
             if "latitude" in self.f.variables:
@@ -124,6 +124,10 @@ class SimpleDetector(Grid):
                 self.time = self._time[self.trange[0] : self.trange[1]]
         return self.time
 
+    def get_time_obj(self) -> Any:
+        self._init()
+        return self._time
+
     def get_lat(self) -> Any:
 
         self._init()
@@ -185,9 +189,9 @@ class SimpleDetector(Grid):
 
         search_window = buffer.reshape((size, size))
         origin = (half_size, half_size)
-        
+
         center_val = search_window[origin]
-        
+
         # If the center value is masked, it cannot be an extrema
         if np.ma.is_masked(center_val):
             return False
@@ -284,7 +288,7 @@ class SimpleDetector(Grid):
 
             if var is not None:
                 chart = var[ibuffer, :, :]
-                
+
                 # Fill masked values so they aren't detected as extrema
                 if minmaxmode == "min":
                     filled_chart = np.ma.filled(chart, fill_value=np.inf)
@@ -294,7 +298,7 @@ class SimpleDetector(Grid):
                 extrema = self._local_extrema_filter(
                     filled_chart, size, threshold=threshold, minmaxmode=minmaxmode
                 )
-                
+
                 # Ensure we don't detect centers on originally masked pixels
                 if np.ma.is_masked(chart):
                     extrema[chart.mask] = 0
