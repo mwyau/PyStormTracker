@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python tool for tracking storms."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,10 +26,13 @@ classifiers = [
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    # Note: PyNIO is imported in the code but is largely deprecated and difficult to install via standard pip.
-    # When refactoring the code, consider migrating from PyNIO to modern alternatives like xarray and netCDF4.
-    # "PyNIO",
+    "netCDF4>=1.6.5",
+    "dask>=2024.2.0",
+    "distributed>=2024.2.0",
 ]
+
+[project.scripts]
+stormtracker = "pystormtracker.stormtracker:main"
 
 [project.urls]
 Homepage = "https://github.com/mwyau/PyStormTracker"
@@ -42,8 +45,9 @@ dev = [
     "mypy>=1.9.0",
     "pytest>=8.1.1",
     "pre-commit>=3.7.0",
-    "xarray>=2024.2.0",  # Recommended for modern replacement of PyNIO
     "netCDF4>=1.6.5",
+    "mpi4py>=3.1.5",
+    "pandas>=2.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
