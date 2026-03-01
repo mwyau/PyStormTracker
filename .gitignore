@@ -64,3 +64,4 @@ target/
 
 # netCDF files
 *.nc
+!data/slp.2012.nc
