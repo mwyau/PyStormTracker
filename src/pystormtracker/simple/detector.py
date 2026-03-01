@@ -35,6 +35,9 @@ class SimpleDetector(Grid):
 
             # Dimension of var is time, lat, lon
             self._var = self.f.variables[self.varname]
+            # Disable auto mask and scale as it may mask valid SLP values in some files
+            self._var.set_auto_maskandscale(False)
+            
             self._time = self.f.variables["time"]
 
             if "latitude" in self.f.variables:
@@ -182,19 +185,25 @@ class SimpleDetector(Grid):
 
         search_window = buffer.reshape((size, size))
         origin = (half_size, half_size)
+        
+        center_val = search_window[origin]
+        
+        # If the center value is masked, it cannot be an extrema
+        if np.ma.is_masked(center_val):
+            return False
 
         if threshold == 0.0:
             if minmaxmode == "min":
-                return bool(search_window[origin] == search_window.min())
+                return bool(center_val == search_window.min())
             elif minmaxmode == "max":
-                return bool(search_window[origin] == search_window.max())
-        elif search_window[origin] == search_window.min():
+                return bool(center_val == search_window.max())
+        elif center_val == search_window.min():
             if minmaxmode == "min":
                 # At least 8 of values in buffer should be larger than threshold
-                return bool(sorted(buffer)[8] - search_window[origin] > threshold)
-        elif search_window[origin] == search_window.max():
+                return bool(sorted(buffer)[8] - center_val > threshold)
+        elif center_val == search_window.max():
             if minmaxmode == "max":
-                return bool(sorted(buffer)[0] - search_window[origin] < -1 * threshold)
+                return bool(sorted(buffer)[0] - center_val < -1 * threshold)
         return False
 
     def _local_extrema_filter(
@@ -267,25 +276,36 @@ class SimpleDetector(Grid):
 
         var: Any = None
 
+        num_steps = len(time)
         for it, t in enumerate(time):
-            print(f"Working on it: {it}")
-
             ibuffer = it % chart_buffer
             if ibuffer == 0:
-                var = self.get_var(chart=(it, min(it + chart_buffer, len(time))))
+                var = self.get_var(chart=(it, min(it + chart_buffer, num_steps)))
 
             if var is not None:
                 chart = var[ibuffer, :, :]
+                
+                # Fill masked values so they aren't detected as extrema
+                if minmaxmode == "min":
+                    filled_chart = np.ma.filled(chart, fill_value=np.inf)
+                else:
+                    filled_chart = np.ma.filled(chart, fill_value=-np.inf)
 
                 extrema = self._local_extrema_filter(
-                    chart, size, threshold=threshold, minmaxmode=minmaxmode
+                    filled_chart, size, threshold=threshold, minmaxmode=minmaxmode
                 )
-                extrema = self._remove_dup_laplace(chart, extrema, size=5)
+                
+                # Ensure we don't detect centers on originally masked pixels
+                if np.ma.is_masked(chart):
+                    extrema[chart.mask] = 0
+
+                extrema = self._remove_dup_laplace(filled_chart, extrema, size=5)
 
                 center_list = [
                     Center(t, float(lat[i]), float(lon[j]), chart[i, j])
                     for i, j in np.transpose(extrema.nonzero())
                 ]
+                print(f"Step {it + 1}/{num_steps}: Found {len(center_list)} centers")
                 centers.append(center_list)
 
         return centers
