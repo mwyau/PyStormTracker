@@ -1,103 +1,14 @@
-import math
-from abc import ABCMeta, abstractmethod
 from typing import Any, Literal
 
+import netCDF4
 import numpy as np
 from scipy.ndimage.filters import generic_filter, laplace
 
-import netCDF4
-
-class Grid(metaclass=ABCMeta):
-    @abstractmethod
-    def get_var(self, chart: int | tuple[int, int] | None = None) -> Any:
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_time(self) -> Any:
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_lat(self) -> Any:
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_lon(self) -> Any:
-        raise NotImplementedError
-
-    @abstractmethod
-    def split(self, num: int) -> list["Grid"]:
-        raise NotImplementedError
-
-    @abstractmethod
-    def detect(
-        self,
-        size: int = 5,
-        threshold: float = 0.0,
-        chart_buffer: int = 400,
-        minmaxmode: Literal["min", "max"] = "min",
-    ) -> list[list["Center"]]:
-        raise NotImplementedError
+from ..models.center import Center
+from ..models.grid import Grid
 
 
-class Center:
-    R: float = 6367.0
-    DEGTORAD: float = math.pi / 180.0
-
-    def __init__(self, time: Any, lat: float, lon: float, var: Any) -> None:
-        self.time = time
-        self.lat = lat
-        self.lon = lon
-        self.var = var
-
-    def __repr__(self) -> str:
-        return str(self.var)
-
-    def __str__(self) -> str:
-        return f"[time={self.time}, lat={self.lat}, lon={self.lon}, var={self.var}]"
-
-    def abs_dist(self, center: "Center") -> float:
-        """Haversine formula for calculating the great circle distance"""
-
-        if not isinstance(center, Center):
-            raise TypeError("must be compared with a Center object")
-
-        dlat = center.lat - self.lat
-        dlon = center.lon - self.lon
-
-        return (
-            self.R
-            * 2
-            * math.asin(
-                math.sqrt(
-                    math.sin(dlat / 2 * self.DEGTORAD) ** 2
-                    + math.cos(self.lat * self.DEGTORAD)
-                    * math.cos(center.lat * self.DEGTORAD)
-                    * math.sin(dlon / 2 * self.DEGTORAD) ** 2
-                )
-            )
-        )
-
-    def lat_dist(self, center: "Center") -> float:
-
-        if not isinstance(center, Center):
-            raise TypeError("must be compared with a Center object")
-
-        dlat = center.lat - self.lat
-
-        return self.R * dlat * self.DEGTORAD
-
-    def lon_dist(self, center: "Center") -> float:
-
-        if not isinstance(center, Center):
-            raise TypeError("must be compared with a Center object")
-
-        avglat = (self.lat + center.lat) / 2
-        dlon = center.lon - self.lon
-
-        return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
-
-
-class RectGrid(Grid):
+class SimpleDetector(Grid):
     def __init__(
         self, pathname: str, varname: str, trange: tuple[int, int] | None = None
     ) -> None:
@@ -118,7 +29,6 @@ class RectGrid(Grid):
         self.lon: Any = None
 
     def _init(self) -> None:
-
         if self._open_file is False:
             self._open_file = True
             self.f = netCDF4.Dataset(self.pathname, "r")
@@ -126,20 +36,24 @@ class RectGrid(Grid):
             # Dimension of var is time, lat, lon
             self._var = self.f.variables[self.varname]
             self._time = self.f.variables["time"]
-            
+
             if "latitude" in self.f.variables:
                 self._lat = self.f.variables["latitude"]
             elif "lat" in self.f.variables:
                 self._lat = self.f.variables["lat"]
             else:
-                raise KeyError("Neither 'latitude' nor 'lat' found in NetCDF variables.")
+                raise KeyError(
+                    "Neither 'latitude' nor 'lat' found in NetCDF variables."
+                )
 
             if "longitude" in self.f.variables:
                 self._lon = self.f.variables["longitude"]
             elif "lon" in self.f.variables:
                 self._lon = self.f.variables["lon"]
             else:
-                raise KeyError("Neither 'longitude' nor 'lon' found in NetCDF variables.")
+                raise KeyError(
+                    "Neither 'longitude' nor 'lon' found in NetCDF variables."
+                )
 
             self.time = None
             self.lat = None
@@ -247,11 +161,13 @@ class RectGrid(Grid):
                 for i in range(num)
             ]
 
-            return [RectGrid(self.pathname, self.varname, trange=it) for it in tranges]
+            return [
+                SimpleDetector(self.pathname, self.varname, trange=it) for it in tranges
+            ]
 
         else:
             raise RuntimeError(
-                "RectGrid must not be initialized before running split()"
+                "SimpleDetector must not be initialized before running split()"
             )
 
     def _local_extrema_func(
@@ -373,12 +289,3 @@ class RectGrid(Grid):
                 centers.append(center_list)
 
         return centers
-
-
-if __name__ == "__main__":
-    grid = RectGrid(pathname="../slp.2012.nc", varname="slp")
-    grids = grid.split(128)
-
-    for g in grids:
-        if isinstance(g, RectGrid):
-            print(g.trange)

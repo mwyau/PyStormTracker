@@ -4,12 +4,14 @@ import sys
 import timeit
 from typing import Literal
 
-from .detector import RectGrid
-from .linker import Tracks
+from .models import Tracks
+from .simple import SimpleDetector, SimpleLinker
+
 
 def main() -> None:
     try:
         from mpi4py import MPI
+
         USE_MPI: bool = True
     except ImportError:
         USE_MPI = False
@@ -63,17 +65,16 @@ def main() -> None:
         timer["detector"] = timeit.default_timer()
 
     if USE_MPI:
-
         if rank == root:
-            grid_obj = RectGrid(pathname=infile, varname=var, trange=trange)
+            grid_obj = SimpleDetector(pathname=infile, varname=var, trange=trange)
             grids = grid_obj.split(size)
         else:
-            grids = None  # type: ignore
+            grids = None
 
         grid = comm.scatter(grids, root=root)
 
     else:
-        grid = RectGrid(pathname=infile, varname=var, trange=trange)
+        grid = SimpleDetector(pathname=infile, varname=var, trange=trange)
 
     centers = grid.detect(minmaxmode=mode)
 
@@ -84,12 +85,12 @@ def main() -> None:
         timer["linker"] = timeit.default_timer()
 
     tracks = Tracks()
+    linker = SimpleLinker()
 
     for c in centers:
-        tracks.append_center(c)
+        linker.append_center(tracks, c)
 
     if USE_MPI:
-
         timer["combiner"] = timeit.default_timer()
 
         nstripe = 2
@@ -99,7 +100,7 @@ def main() -> None:
             elif rank % nstripe == 0:
                 if rank + nstripe // 2 < size:
                     tracks_recv = comm.recv(source=rank + nstripe // 2, tag=nstripe)
-                    tracks.extend_track(tracks_recv)
+                    linker.extend_track(tracks, tracks_recv)
             nstripe = nstripe * 2
 
         timer["combiner"] = timeit.default_timer() - timer["combiner"]
@@ -117,6 +118,7 @@ def main() -> None:
 
         with open(outfile, "wb") as f:
             pickle.dump(tracks, f)
+
 
 if __name__ == "__main__":
     main()
