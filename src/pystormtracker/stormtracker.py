@@ -119,6 +119,17 @@ def main() -> None:
         with open(outfile, "wb") as f:
             pickle.dump(tracks, f)
 
+        # Export to CSV for comparison
+        import csv
+
+        csv_file = outfile.replace(".pickle", "") + ".csv"
+        with open(csv_file, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["track_id", "time", "lat", "lon", "var"])
+            for i, track in enumerate(tracks):
+                for center in track:
+                    writer.writerow([i, center.time, center.lat, center.lon, center.var])
+
 
 if __name__ == "__main__":
     main()
