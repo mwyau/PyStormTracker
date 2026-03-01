@@ -1,10 +1,6 @@
 # PyStormTracker
 
-PyStormTracker is a Python-based tool for detecting and linking storm centers from NetCDF meteorological data (such as Sea Level Pressure or Vorticity). It supports high-performance parallel execution using **Dask** and **MPI**.
-
-Originally developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 Summer Internships in Parallel Computational Science (SIParCS)** program. The project implemented a task-parallel strategy using temporal decomposition and a tree reduction algorithm to link cyclone centers into trajectories across large climate datasets.
-
-> **Note:** The "Simple Tracker" implemented in this package is the one used in **Yau and Chang (2020)**.
+PyStormTracker provides the implementation of the "Simple Tracker" algorithm used for cyclone trajectory analysis in **Yau and Chang (2020)**. It was originally developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 Summer Internships in Parallel Computational Science (SIParCS)** program, utilizing a task-parallel strategy with temporal decomposition and a tree reduction algorithm to process large climate datasets.
 
 ## Features
 
@@ -87,7 +83,7 @@ If you use this software in your research, please cite the following:
 
 - **Yau, A. M. W., and E. K. M. Chang, 2020**: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *Journal of Climate*, **33**, 8413–8462, [https://doi.org/10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
 
-- **Yau, A. M. W., K. Paul, and J. Dennis, 2015**: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *NCAR SIParCS 2015 Poster*, [https://www.mwyau.com/pystormtracker.pdf](https://www.mwyau.com/pystormtracker.pdf).
+- **Yau, A. M. W., K. Paul, and J. Dennis, 2016**: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th AMS Annual Meeting*, New Orleans, LA. [Abstract](https://ams.confex.com/ams/96Annual/webprogram/Paper290042.html), [Poster PDF](https://www.mwyau.com/pystormtracker.pdf). Originally developed during NCAR SIParCS 2015.
 
 ## License
 
