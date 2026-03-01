@@ -1,10 +1,11 @@
+import csv
 import getopt
-import pickle
 import sys
 import timeit
 from typing import Literal
 
 import netCDF4
+import numpy as np
 
 from .models import Tracks
 from .simple import SimpleDetector, SimpleLinker
@@ -119,20 +120,14 @@ def main() -> None:
         )
         print("Number of long tracks: " + str(num_tracks))
 
-        with open(outfile, "wb") as f:
-            pickle.dump(tracks, f)
-
-        # Export to CSV for comparison
-        import csv
-
-        import numpy as np
-
         time_obj = grid.get_time_obj()
         units = getattr(time_obj, "units", "")
         calendar = getattr(time_obj, "calendar", "standard")
 
-        csv_file = outfile.replace(".pickle", "") + ".csv"
-        with open(csv_file, "w", newline="") as f:
+        if not outfile.endswith(".csv"):
+            outfile += ".csv"
+
+        with open(outfile, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["track_id", "time", "lat", "lon", "var"])
             for i, track in enumerate(tracks):
