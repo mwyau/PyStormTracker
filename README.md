@@ -13,6 +13,15 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
 - **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
 - **User-Friendly Output**: Results are exported directly to CSV with readable datetime strings and formatted numeric values.
 
+## Technical Methodology
+
+PyStormTracker treats meteorological fields as 2D images and leverages `scipy.ndimage` for robust feature detection:
+
+- **Local Extrema Detection**: Uses `generic_filter` with a sliding window (default 5x5) to identify local minima (cyclones) or maxima (anticyclones/vorticity).
+- **Intensity & Refinement**: Applies the **Laplacian operator** (`laplace`) to measure the "sharpness" of the field at each detected center point. This is used to resolve duplicates and ensure only the most physically intense point is kept when multiple adjacent pixels are flagged.
+- **Spherical Continuity**: Utilizes `mode='wrap'` for all filters to correctly handle periodic boundaries across the Prime Meridian, enabling seamless tracking across the entire globe.
+- **Heuristic Linking**: Implements a nearest-neighbor linking strategy to connect detected centers into trajectories across successive time steps.
+
 ## Installation
 
 ### Prerequisites
