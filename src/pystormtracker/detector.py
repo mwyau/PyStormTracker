@@ -126,8 +126,21 @@ class RectGrid(Grid):
             # Dimension of var is time, lat, lon
             self._var = self.f.variables[self.varname]
             self._time = self.f.variables["time"]
-            self._lat = self.f.variables["latitude"]
-            self._lon = self.f.variables["longitude"]
+            
+            if "latitude" in self.f.variables:
+                self._lat = self.f.variables["latitude"]
+            elif "lat" in self.f.variables:
+                self._lat = self.f.variables["lat"]
+            else:
+                raise KeyError("Neither 'latitude' nor 'lat' found in NetCDF variables.")
+
+            if "longitude" in self.f.variables:
+                self._lon = self.f.variables["longitude"]
+            elif "lon" in self.f.variables:
+                self._lon = self.f.variables["lon"]
+            else:
+                raise KeyError("Neither 'longitude' nor 'lon' found in NetCDF variables.")
+
             self.time = None
             self.lat = None
             self.lon = None
