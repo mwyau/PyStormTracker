@@ -46,6 +46,8 @@ dev = [
     "pytest>=8.1.1",
     "pre-commit>=3.7.0",
     "netCDF4>=1.6.5",
+    "mpi4py>=3.1.5",
+    "pandas>=2.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
