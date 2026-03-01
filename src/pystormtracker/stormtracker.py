@@ -1,4 +1,5 @@
 import csv
+import os
 import sys
 import timeit
 from argparse import ArgumentParser, Namespace
@@ -71,10 +72,17 @@ def _detect_mpi(
 
 
 def _detect_dask(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str, n_workers: int
+    infile: str,
+    varname: str,
+    trange: tuple[int, int] | None,
+    mode: str,
+    n_workers: int | None,
 ) -> tuple[list[list[Center]], Grid]:
     import dask
     from distributed import Client, LocalCluster
+
+    if n_workers is None or n_workers <= 0:
+        n_workers = os.cpu_count() or 4
 
     grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
     grids = grid_obj.split(n_workers)
@@ -125,8 +133,8 @@ def run_tracker(
     outfile: str,
     trange: tuple[int, int] | None = None,
     mode: Literal["min", "max"] = "min",
-    backend: Backend = "serial",
-    n_workers: int = 4,
+    backend: Backend = "dask",
+    n_workers: int | None = None,
 ) -> None:
     """Orchestrates the storm tracking process."""
     timer: dict[str, float] = {}
@@ -200,11 +208,15 @@ def parse_args() -> Namespace:
         "-b",
         "--backend",
         choices=["serial", "mpi", "dask"],
-        default="serial",
-        help="Parallel backend.",
+        default="dask",
+        help="Parallel backend. Default is 'dask'.",
     )
     parser.add_argument(
-        "-w", "--workers", type=int, default=4, help="Number of workers for Dask."
+        "-w",
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of workers for Dask. Defaults to number of CPU cores.",
     )
     return parser.parse_args()
 
