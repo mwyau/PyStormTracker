@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 import netCDF4
 import numpy as np
-from scipy.ndimage.filters import generic_filter, laplace
+from scipy.ndimage import generic_filter, laplace
 
 from ..models.center import Center
 from ..models.grid import Grid
