@@ -119,8 +119,8 @@ def main() -> None:
         with open(outfile, "wb") as f:
             pickle.dump(tracks, f)
 
-        # Export to CSV for comparison
         import csv
+        import numpy as np
 
         csv_file = outfile.replace(".pickle", "") + ".csv"
         with open(csv_file, "w", newline="") as f:
@@ -128,7 +128,12 @@ def main() -> None:
             writer.writerow(["track_id", "time", "lat", "lon", "var"])
             for i, track in enumerate(tracks):
                 for center in track:
-                    writer.writerow([i, center.time, center.lat, center.lon, center.var])
+                    # Convert masked values to '--'
+                    if center.var is None or np.ma.is_masked(center.var):
+                        var_val = "--"
+                    else:
+                        var_val = float(center.var)
+                    writer.writerow([i, center.time, center.lat, center.lon, var_val])
 
 
 if __name__ == "__main__":
