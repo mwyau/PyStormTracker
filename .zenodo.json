@@ -1,0 +1,34 @@
+{
+    "title": "PyStormTracker",
+    "description": "A Parallel Object-Oriented Cyclone Tracker in Python",
+    "creators": [
+        {
+            "name": "Yau, Albert M. W.",
+            "orcid": "00009-0000-7825-9627"
+        }
+    ],
+    "keywords": [
+        "cyclone tracking",
+        "climate variability",
+        "dask",
+        "mpi"
+    ],
+    "license": "BSD-3-Clause",
+    "upload_type": "software",
+    "version": "0.2.1",
+    "language": "python",
+    "code_repository": "https://github.com/mwyau/PyStormTracker",
+    "development_status": "active",
+    "related_identifiers": [
+        {
+            "identifier": "10.1175/JCLI-D-20-0393.1",
+            "relation": "isSupplementTo",
+            "scheme": "doi"
+        },
+        {
+            "identifier": "10.5281/zenodo.18868625",
+            "relation": "isDerivedFrom",
+            "scheme": "doi"
+        }
+    ]
+}
