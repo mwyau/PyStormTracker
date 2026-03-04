@@ -30,7 +30,13 @@ PyStormTracker treats meteorological fields as 2D images and leverages `scipy.nd
 - Python 3.10+
 - (Optional) MS-MPI or OpenMPI for MPI support.
 
-### Setup
+### From PyPI (Recommended)
+You can install the latest stable version of PyStormTracker directly from PyPI:
+```bash
+pip install PyStormTracker
+```
+
+### From Source
 1. Clone the repository:
    ```bash
    git clone https://github.com/mwyau/PyStormTracker.git
