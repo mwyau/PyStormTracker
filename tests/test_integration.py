@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 # Paths to test data and outputs
-TEST_NC = "data/slp.2012.nc"
+TEST_NC = "data/test/slp.2012.nc"
 SERIAL_OUT = "integration_serial.csv"
 DASK_OUT = "integration_dask.csv"
 MPI_OUT = "integration_mpi.csv"
