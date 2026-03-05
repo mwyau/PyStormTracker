@@ -4,8 +4,9 @@ authors:
   - family-names: Yau
     given-names: Albert M. W.
     email: albert@mwyau.com
+    orcid: "00009-0000-7825-9627"
 title: "PyStormTracker"
-version: 0.2.1
+version: 0.2.1.1
 doi: 10.5281/zenodo.18764813
 date-released: 2026-03-04
 url: "https://github.com/mwyau/PyStormTracker"
@@ -32,7 +33,7 @@ preferred-citation:
   year: 2020
   doi: 10.1175/JCLI-D-20-0393.1
 references:
-  - type: poster
+  - type: conference
     authors:
       - family-names: Yau
         given-names: Albert M. W.

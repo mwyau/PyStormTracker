@@ -1,6 +1,5 @@
 {
     "title": "PyStormTracker",
-    "description": "A Parallel Object-Oriented Cyclone Tracker in Python",
     "creators": [
         {
             "name": "Yau, Albert M. W.",
@@ -17,8 +16,6 @@
     "upload_type": "software",
     "version": "0.2.1",
     "language": "python",
-    "code_repository": "https://github.com/mwyau/PyStormTracker",
-    "development_status": "active",
     "related_identifiers": [
         {
             "identifier": "10.1175/JCLI-D-20-0393.1",
@@ -30,5 +27,8 @@
             "relation": "isDerivedFrom",
             "scheme": "doi"
         }
+    ],
+    "communities": [
+        {"identifier": "PyStormTracker"}
     ]
 }
