@@ -4,19 +4,21 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.2.0"
-description = "A Python tool for tracking storms."
+version = "0.2.1"
+description = "A Parallel Object-Oriented Cyclone Tracker in Python"
 readme = "README.md"
+license = {text = "BSD-3-Clause"}
 requires-python = ">=3.10"
 authors = [
-    { name = "Albert M. W. Yau", email = "mwyau@users.noreply.github.com" }
+    { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
 ]
 maintainers = [
-    { name = "Albert M. W. Yau", email = "mwyau@users.noreply.github.com" }
+    { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -52,6 +54,11 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pystormtracker"]
+
+[tool.hatch.build]
+exclude = [
+    "data/**/*.nc",
+]
 
 [tool.ruff]
 target-version = "py312"
