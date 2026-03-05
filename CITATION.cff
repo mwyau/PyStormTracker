@@ -1,22 +1,26 @@
 cff-version: 1.2.0
+title: PyStormTracker
 message: "If you use this software, please cite it as below."
+type: software
 authors:
   - family-names: Yau
     given-names: Albert M. W.
     email: albert@mwyau.com
-    orcid: "00009-0000-7825-9627"
-title: "PyStormTracker"
-version: 0.2.1.2
-doi: 10.5281/zenodo.18764813
-date-released: 2026-03-04
-url: "https://github.com/mwyau/PyStormTracker"
-repository-code: "https://github.com/mwyau/PyStormTracker"
-license: BSD-3-Clause
+    orcid: 'https://orcid.org/0009-0000-7825-9627'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.18764813
+repository-code: 'https://github.com/mwyau/PyStormTracker'
+url: 'https://github.com/mwyau/PyStormTracker'
+abstract: A Parallel Object-Oriented Cyclone Tracker in Python
 keywords:
   - cyclone tracking
   - climate variability
   - dask
   - mpi
+license: BSD-3-Clause
+version: 0.2.2
+date-released: '2026-03-04'
 preferred-citation:
   type: article
   authors:
@@ -24,8 +28,10 @@ preferred-citation:
       given-names: Albert M. W.
     - family-names: Chang
       given-names: Edmund K. M.
-  title: "Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity"
-  journal: "Journal of Climate"
+  title: >-
+    Finding Storm Track Activity Metrics That Are Highly Correlated with Weather
+    Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity
+  journal: Journal of Climate
   volume: 33
   issue: 23
   start: 10169
@@ -41,7 +47,7 @@ references:
         given-names: Kevin
       - family-names: Dennis
         given-names: John
-    title: "PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python"
-    collection-title: "96th American Meteorological Society Annual Meeting"
+    title: 'PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python'
+    collection-title: 96th American Meteorological Society Annual Meeting
     year: 2016
     doi: 10.5281/zenodo.18868625
