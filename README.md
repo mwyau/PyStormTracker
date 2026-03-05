@@ -30,7 +30,13 @@ PyStormTracker treats meteorological fields as 2D images and leverages `scipy.nd
 - Python 3.10+
 - (Optional) MS-MPI or OpenMPI for MPI support.
 
-### Setup
+### From PyPI (Recommended)
+You can install the latest stable version of PyStormTracker directly from PyPI:
+```bash
+pip install PyStormTracker
+```
+
+### From Source
 1. Clone the repository:
    ```bash
    git clone https://github.com/mwyau/PyStormTracker.git
@@ -47,7 +53,7 @@ PyStormTracker treats meteorological fields as 2D images and leverages `scipy.nd
 Once installed, you can use the `stormtracker` command directly:
 
 ```bash
-stormtracker -i data/slp.2012.nc -v slp -o my_tracks -n 120
+stormtracker -i data/test/slp.2012.nc -v slp -o my_tracks
 ```
 
 ### Command Line Arguments
@@ -92,9 +98,13 @@ pytest
 
 If you use this software in your research, please cite the following:
 
-- **Yau, A. M. W., and E. K. M. Chang, 2020**: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *Journal of Climate*, **33**, 8413–8462, [https://doi.org/10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
+- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, https://doi.org/10.1175/JCLI-D-20-0393.1.   
 
-- **Yau, A. M. W., K. Paul, and J. Dennis, 2016**: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th AMS Annual Meeting*, New Orleans, LA. [Abstract](https://ams.confex.com/ams/96Annual/webprogram/Paper290042.html), [Poster PDF](https://www.mwyau.com/pystormtracker.pdf). Originally developed during NCAR SIParCS 2015.
+- **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, https://doi.org/10.5281/zenodo.18764813.
+
+## References
+
+ - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
 
 ## License
 
