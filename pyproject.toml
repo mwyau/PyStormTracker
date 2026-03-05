@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.2.1.1"
+version = "0.2.1.2"
 description = "A Parallel Object-Oriented Cyclone Tracker in Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
