@@ -17,20 +17,20 @@ Backend = Literal["serial", "mpi", "dask"]
 def export_to_csv(
     tracks: Tracks, outfile: str, grid: Grid, decimal_places: int = 4
 ) -> None:
-    """Exports detected tracks to a user-friendly CSV file."""
+    """Exports detected tracks to a user-friendly text file."""
     time_obj = grid.get_time_obj()
     units = getattr(time_obj, "units", "")
     calendar = getattr(time_obj, "calendar", "standard")
 
-    if not outfile.endswith(".csv"):
-        outfile += ".csv"
+    if not any(outfile.endswith(ext) for ext in [".txt", ".csv"]):
+        outfile += ".txt"
 
     with open(outfile, "w", newline="") as f:
         # IMILAST Intercomparison Protocol format
-        f.write("99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1,Intensity2,Intensity3\n")
+        f.write("99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n")
         
         for i, track in enumerate(tracks, start=1):
-            f.write(f"90 {i:06d} {len(track):03d}\n")
+            f.write(f"90 {i} {len(track)}\n")
             for step, center in enumerate(track, start=1):
                 try:
                     dt = netCDF4.num2date(center.time, units=units, calendar=calendar)
@@ -56,8 +56,8 @@ def export_to_csv(
                     lon -= 360
 
                 f.write(
-                    f"00 {i:06d} {step:03d} {yyyymmddhh} {yyyy} {mm} {dd} {hh} "
-                    f"{lon:7.2f} {center.lat:6.2f} {var_val} -999.99 -999.99\n"
+                    f"00 {i} {step} {yyyymmddhh} {dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} "
+                    f"{lon:.2f} {center.lat:.2f} {var_val}\n"
                 )
 
 

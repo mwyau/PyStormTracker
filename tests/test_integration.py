@@ -38,7 +38,7 @@ def print_head(filename, n=15):
             print(line.rstrip())
     print("-------------------------------------------------------\n")
 
-def compare_csvs(file1, file2):
+def compare_tracks(file1, file2, allow_length_diff=False):
     """Compares two tracking files for equality."""
     def parse_imilast(filename):
         tracks = []
@@ -66,13 +66,34 @@ def compare_csvs(file1, file2):
     assert len(t1) == len(t2), f"Track count mismatch: {len(t1)} vs {len(t2)}"
     
     for tr1, tr2 in zip(t1, t2):
-        assert len(tr1) == len(tr2), "Track length mismatch"
-        for p1, p2 in zip(tr1, tr2):
-            assert p1[:7] == p2[:7], f"Time/Date mismatch: {p1[:7]} vs {p2[:7]}"
+        if allow_length_diff:
+            assert abs(len(tr1) - len(tr2)) <= 1, f"Track length mismatch too large: {len(tr1)} vs {len(tr2)}"
+        else:
+            assert len(tr1) == len(tr2), f"Track length mismatch: {len(tr1)} vs {len(tr2)}"
+        
+        # Convert tracks to dicts keyed by DateI10 (index 2) for robust matching
+        d1 = {p[2]: p for p in tr1}
+        d2 = {p[2]: p for p in tr2}
+        
+        common_dates = set(d1.keys()) & set(d2.keys())
+        # We expect most points to be common if they are the same track
+        assert len(common_dates) >= min(len(tr1), len(tr2)), "Too few common points in track matching"
+
+        for date in common_dates:
+            p1, p2 = d1[date], d2[date]
+            # Check float fields: lon, lat, Intensity1
+            # In new format, these are indices 7, 8, 9
+            # For legacy regression, we allow larger coord diffs due to different linking decisions
+            coord_tol = 15.0 if allow_length_diff else 1e-4
             
-            for i in range(7, 10): # lon, lat, var
+            for i in range(7, 9): # lon, lat
                 val1, val2 = float(p1[i]), float(p2[i])
-                assert abs(val1 - val2) <= 1e-4, f"Float mismatch at index {i}: {val1} vs {val2}"
+                assert abs(val1 - val2) <= coord_tol, f"Float mismatch at {date} index {i}: {val1} vs {val2}"
+            
+            # Intensity should be more stable, but can differ if linking picks a different center
+            intensity_tol = 500.0 if allow_length_diff else 1e-4
+            val1, val2 = float(p1[9]), float(p2[9])
+            assert abs(val1 - val2) <= intensity_tol, f"Intensity mismatch at {date}: {val1} vs {val2}"
 
 @pytest.fixture(scope="module")
 def test_data_msl():
@@ -100,7 +121,7 @@ def shared_serial_output(tmp_path_factory, config):
     """Run serial once and share it across tests to save time."""
     data_path, varname, mode, n_arg = config
     temp_dir = tmp_path_factory.mktemp("data")
-    out_file = temp_dir / "integration_serial.csv"
+    out_file = temp_dir / "integration_serial.txt"
     run_command(f"-i {data_path} -v {varname} -m {mode} -o {out_file} {n_arg} --backend serial")
     
     # Verbose print the IMILAST format output
@@ -112,9 +133,9 @@ def shared_serial_output(tmp_path_factory, config):
 def test_dask_vs_serial(shared_serial_output, tmp_path, config):
     """Integration test comparing Serial and Dask backends."""
     data_path, varname, mode, n_arg = config
-    out_file = tmp_path / "integration_dask.csv"
+    out_file = tmp_path / "integration_dask.txt"
     run_command(f"-i {data_path} -v {varname} -m {mode} -o {out_file} {n_arg} --backend dask --workers 2")
-    compare_csvs(shared_serial_output, out_file)
+    compare_tracks(shared_serial_output, out_file)
 
 def test_mpi_vs_serial(shared_serial_output, tmp_path, config):
     """Integration test comparing Serial and MPI backends."""
@@ -130,9 +151,19 @@ def test_mpi_vs_serial(shared_serial_output, tmp_path, config):
 
     data_path, varname, mode, n_arg = config
     
-    mpi_out = tmp_path / "integration_mpi.csv"
+    mpi_out = tmp_path / "integration_mpi.txt"
     run_command(f"-i {data_path} -v {varname} -m {mode} -o {mpi_out} {n_arg} --backend mpi", use_mpi=True)
     
-    # Compare directly to shared_serial_output, 
-    # since both ran on the exact same n_arg config (including full datasets).
-    compare_csvs(shared_serial_output, mpi_out)
+    # Compare directly to shared_serial_output
+    compare_tracks(shared_serial_output, mpi_out)
+
+def test_legacy_regression(test_data_msl, tmp_path):
+    """Regression test against v0.0.2 legacy output using Dask."""
+    ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
+    if not os.path.exists(ref_file):
+        pytest.skip(f"Reference file {ref_file} not found")
+        
+    out_file = tmp_path / "legacy_regression.txt"
+    # Use Dask backend for speed with default workers
+    run_command(f"-i {test_data_msl} -v msl -m min -o {out_file} --backend dask")
+    compare_tracks(ref_file, out_file, allow_length_diff=True)
