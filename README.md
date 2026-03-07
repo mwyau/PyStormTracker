@@ -91,7 +91,7 @@ mpiexec -n 4 stormtracker -i input.nc -v slp -o tracks -b mpi
 
 ## Testing
 
-Run the full test suite (unit and integration tests) using `pytest`:
+Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` from the [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) repository on the first run.
 
 ```bash
 pytest
@@ -108,6 +108,7 @@ If you use this software in your research, please cite the following:
 ## References
 
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
+ - **IMILAST**, 2012: IMILAST Intercomparison Protocol. https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
 
 ## License
 
