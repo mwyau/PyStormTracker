@@ -98,8 +98,21 @@ if __name__ == "__main__":
         timer['linker'] = timeit.default_timer()-timer['linker']
         print("Detector time: "+str(timer['detector']))
         print("Linker time: "+str(timer['linker']))
-        print("Combiner time: "+str(timer['combiner']))
-        num_tracks = len([t for t in tracks if len(t)>=8 and t[0].abs_dist(t[-1])>=1000.])
-        print("Number of long tracks: "+str(num_tracks))
+        if USE_MPI:
+            print("Combiner time: "+str(timer['combiner']))
+        
+        print("Total tracks found: " + str(len(tracks)))
+        print("Time range used: " + str(grid.trange if grid.trange else "Full (360 steps)"))
 
-        pickle.dump(tracks, open(outfile, "wb"))
+        from datetime import datetime
+        with open(outfile, "w") as f:
+            f.write("99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n")
+            for it, t in enumerate(tracks):
+                f.write("90 %d %d\n" % (it+1, len(t)))
+                for isub, c in enumerate(t):
+                    lon = c.lon - 360.0 if c.lon > 180.0 else c.lon
+                    dt = datetime.utcfromtimestamp(c.time)
+                    date_i10 = dt.strftime("%Y%m%d%H")
+                    # Coords: 2 decimal places, Intensity: 4 decimal places
+                    f.write("00 %d %d %s %d %02d %02d %02d %.2f %.2f %.4f\n" % \
+                        (it+1, isub+1, date_i10, dt.year, dt.month, dt.day, dt.hour, lon, c.lat, c.var))

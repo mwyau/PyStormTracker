@@ -105,9 +105,9 @@ class RectGrid(Grid):
 
             # Dimension of var is time, lat, lon
             self._var = self.f.variables[self.varname]
-            self._time = self.f.variables['time']
-            self._lat = self.f.variables['latitude']
-            self._lon = self.f.variables['longitude']
+            self._time = self.f.variables['time'] if 'time' in self.f.variables.keys() else self.f.variables['valid_time']
+            self._lat = self.f.variables['latitude'] if 'latitude' in self.f.variables.keys() else self.f.variables['lat']
+            self._lon = self.f.variables['longitude'] if 'longitude' in self.f.variables.keys() else self.f.variables['lon']
             self.time = None
             self.lat = None
             self.lon = None
@@ -195,7 +195,7 @@ class RectGrid(Grid):
                 tstart = self.trange[0]
             else:
                 f = Nio.open_file(self.pathname)
-                time_len = f.dimensions['time']
+                time_len = f.dimensions['time'] if 'time' in f.dimensions.keys() else f.dimensions['valid_time']
                 f.close()
                 tstart = 0
 
