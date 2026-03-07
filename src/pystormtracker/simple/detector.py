@@ -38,7 +38,8 @@ class SimpleDetector(Grid):
             # Disable auto mask and scale as it may mask valid SLP values in some files
             self._var.set_auto_maskandscale(False)
 
-            self._time = self.f.variables["time"]
+            time_var_name = "time" if "time" in self.f.variables else "valid_time"
+            self._time = self.f.variables[time_var_name]
 
             if "latitude" in self.f.variables:
                 self._lat = self.f.variables["latitude"]
@@ -97,18 +98,21 @@ class SimpleDetector(Grid):
 
         if isinstance(chart, int):
             if self.trange is None:
-                return self._var[chart, :, :]
+                data = self._var[chart, ...]
             else:
-                return self._var[self.trange[0] + chart, :, :]
+                data = self._var[self.trange[0] + chart, ...]
+            return data.reshape((data.shape[-2], data.shape[-1]))
         elif isinstance(chart, tuple):
             if self.trange is None:
-                return self._var[chart[0] : chart[1], :, :]
+                data = self._var[chart[0] : chart[1], ...]
             else:
-                return self._var[
-                    self.trange[0] + chart[0] : self.trange[0] + chart[1], :, :
+                data = self._var[
+                    self.trange[0] + chart[0] : self.trange[0] + chart[1], ...
                 ]
+            return data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
         else:
-            return self._var[:]
+            data = self._var[:]
+            return data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
 
     def get_time(self) -> Any:
 
@@ -153,7 +157,8 @@ class SimpleDetector(Grid):
                 tstart = self.trange[0]
             else:
                 f = netCDF4.Dataset(self.pathname, "r")
-                time_len = f.dimensions["time"].size
+                time_dim_name = "time" if "time" in f.dimensions else "valid_time"
+                time_len = f.dimensions[time_dim_name].size
                 f.close()
                 tstart = 0
 

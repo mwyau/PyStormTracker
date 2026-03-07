@@ -54,6 +54,10 @@ class SimpleLinker:
         return self.match_center(tracks1, centers)
 
     def append_center(self, tracks: Tracks, centers: list[Center]) -> None:
+        if not centers:
+            tracks.tail = []
+            return
+
         new_tail: list[int] = []
 
         matched_index = self.match_center(tracks, centers)
