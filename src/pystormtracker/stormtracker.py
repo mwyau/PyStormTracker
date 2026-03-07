@@ -26,22 +26,39 @@ def export_to_csv(
         outfile += ".csv"
 
     with open(outfile, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["track_id", "time", "lat", "lon", "var"])
-        for i, track in enumerate(tracks):
-            for center in track:
+        # IMILAST Intercomparison Protocol format
+        f.write("99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1,Intensity2,Intensity3\n")
+        
+        for i, track in enumerate(tracks, start=1):
+            f.write(f"90 {i:06d} {len(track):03d}\n")
+            for step, center in enumerate(track, start=1):
                 try:
                     dt = netCDF4.num2date(center.time, units=units, calendar=calendar)
-                    # dt can be a cftime.datetime or a standard datetime
-                    time_val = dt.strftime("%Y-%m-%d %H:%M:%S")  # type: ignore
+                    yyyy = f"{dt.year:04d}"
+                    mm = f"{dt.month:02d}"
+                    dd = f"{dt.day:02d}"
+                    hh = f"{dt.hour:02d}"
+                    yyyymmddhh = f"{yyyy}{mm}{dd}{hh}"
                 except Exception:
-                    time_val = str(center.time)
+                    yyyy = "0000"
+                    mm = "00"
+                    dd = "00"
+                    hh = "00"
+                    yyyymmddhh = "0000000000"
 
                 if center.var is None or np.ma.is_masked(center.var):
-                    var_val = "--"
+                    var_val = "-999.99"
                 else:
                     var_val = f"{float(center.var):.{decimal_places}f}"
-                writer.writerow([i, time_val, center.lat, center.lon, var_val])
+
+                lon = center.lon
+                if lon > 180:
+                    lon -= 360
+
+                f.write(
+                    f"00 {i:06d} {step:03d} {yyyymmddhh} {yyyy} {mm} {dd} {hh} "
+                    f"{lon:7.2f} {center.lat:6.2f} {var_val} -999.99 -999.99\n"
+                )
 
 
 def _detect_serial(
@@ -225,7 +242,7 @@ def main() -> None:
     args = parse_args()
     trange = (0, args.num) if args.num is not None else None
 
-    try:
+    if True:
         run_tracker(
             infile=args.input,
             varname=args.var,
@@ -235,9 +252,6 @@ def main() -> None:
             backend=args.backend,
             n_workers=args.workers,
         )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
