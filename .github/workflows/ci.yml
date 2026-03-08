@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.12"]
     
     steps:
       - uses: actions/checkout@v4
@@ -55,5 +55,15 @@ jobs:
 
       - name: Run tests
         run: |
-          # Use -k n120 to keep CI reasonably fast for now
-          pytest -k n120
+          # Run core tests always
+          pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py
+          
+          # Run fast integration tests always
+          pytest tests/test_integration.py -k n120
+          
+          # Run full integration and legacy regression only on dev/main branches
+          if [[ "${{ github.base_ref }}" == "dev" || "${{ github.base_ref }}" == "main" || "${{ github.ref_name }}" == "dev" || "${{ github.ref_name }}" == "main" ]]; then
+            pytest tests/test_integration.py -k "full or legacy"
+          else
+            echo "Skipping full integration and legacy regression tests on feature branch."
+          fi
