@@ -10,6 +10,10 @@
 
 ```
 
+## Resources
+
+- [IMILAST Intercomparison Protocol (PDF)](IntercomparisonProtocol.pdf)
+
 ## Indices and tables
 
 * {ref}`genindex`
