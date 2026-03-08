@@ -20,7 +20,7 @@ def test_simple_detector_init(mock_open: MagicMock) -> None:
     detector = SimpleDetector(pathname="test.nc", varname="slp")
     detector._ensure_open()
 
-    mock_open.assert_called_once_with(Path("test.nc"), mask_and_scale=False)
+    mock_open.assert_called_once_with(Path("test.nc"))
 
 
 @patch("xarray.open_dataset")

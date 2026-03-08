@@ -8,7 +8,7 @@ import xarray as xr
 from numpy.typing import NDArray
 from scipy.ndimage import generic_filter, laplace
 
-from ..models.center import Center
+from ..models.center import Center, DetectionResult
 from ..models.grid import Grid
 from ..models.time import TimeRange
 
@@ -39,10 +39,7 @@ class SimpleDetector:
         """Ensures the xarray dataset is open and basic variables are mapped."""
         if self._ds is None:
             # open_dataset is lazy by default
-            # engine="h5netcdf" is the modern standard for NetCDF4 files
-            self._ds = xr.open_dataset(
-                self.pathname, mask_and_scale=False, engine="h5netcdf"
-            )
+            self._ds = xr.open_dataset(self.pathname)
             self._data = self._ds[self.varname]
 
             # Identify coordinate names
@@ -232,7 +229,7 @@ class SimpleDetector:
         threshold: float = 0.0,
         time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> list[list[Center]]:
+    ) -> DetectionResult:
         time = self.get_time()
         lat, lon = self.lat, self.lon
         assert time is not None
@@ -256,10 +253,8 @@ class SimpleDetector:
                 filled_frame, size, threshold=threshold, minmaxmode=minmaxmode
             )
 
-            # Ensure we don't detect centers on originally masked pixels
-            if np.ma.is_masked(frame):
-                extrema[frame.mask] = 0  # type: ignore[attr-defined]
-            elif np.isnan(frame).any():
+            # Ensure we don't detect centers on NaN pixels
+            if np.isnan(frame).any():
                 extrema[np.isnan(frame)] = 0
 
             extrema = self._remove_dup_laplace(filled_frame, extrema, size=5)
