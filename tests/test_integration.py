@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -8,27 +9,15 @@ import pytest
 from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
 
-# MS-MPI default path on Windows
-MSMPI_BIN = r"C:\Program Files\Microsoft MPI\Bin"
-
 
 def run_command(cmd: str, use_mpi: bool = False) -> str:
     """Utility to run shell commands and check success."""
-    venv_bin = os.path.join(".venv", "Scripts", "stormtracker")
-    # Fallback to just stormtracker if not in venv
-    if not os.path.exists(venv_bin):
-        venv_bin = "stormtracker"
+    # Use current python executable to run the module for portability
+    base_cmd = f"{sys.executable} -m pystormtracker.stormtracker"
 
-    # Ensure MS-MPI bin is in path for Windows
-    env = os.environ.copy()
-    if os.path.exists(MSMPI_BIN):
-        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
+    full_cmd = f"mpiexec -n 2 {base_cmd} {cmd}" if use_mpi else f"{base_cmd} {cmd}"
 
-    full_cmd = f"mpiexec -n 2 {venv_bin} {cmd}" if use_mpi else f"{venv_bin} {cmd}"
-
-    result = subprocess.run(
-        full_cmd, shell=True, capture_output=True, text=True, env=env
-    )
+    result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
     assert result.returncode == 0, (
         f"Command failed: {full_cmd}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
@@ -135,13 +124,8 @@ def test_mpi_vs_serial(
     shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str, str]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
-    # Check if mpiexec is actually available
-    env = os.environ.copy()
-    if os.path.exists(MSMPI_BIN):
-        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
-
     try:
-        subprocess.run("mpiexec -help", shell=True, capture_output=True, env=env)
+        subprocess.run("mpiexec -help", shell=True, capture_output=True)
     except FileNotFoundError:
         pytest.skip("mpiexec not found in path")
 
