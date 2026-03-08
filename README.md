@@ -74,7 +74,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 | `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
-| `--workers" | `-w` | Number of Dask workers (defaults to CPU core count). |
+| `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
 
 ## Development
 
