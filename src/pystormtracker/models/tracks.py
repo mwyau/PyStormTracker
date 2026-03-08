@@ -1,6 +1,5 @@
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import netCDF4
 
@@ -12,9 +11,9 @@ class Tracks:
         self._tracks: list[list[Center]] = []
         self.head: list[int] = []
         self.tail: list[int] = []
-        self.tstart: Any | None = None
-        self.tend: Any | None = None
-        self.dt: Any | None = None
+        self.tstart: float | None = None
+        self.tend: float | None = None
+        self.dt: float | None = None
 
     def __getitem__(self, index: int) -> list[Center]:
         return self._tracks[index]
@@ -86,10 +85,10 @@ class Tracks:
                     try:
                         # Attempt to use netCDF4 if time looks like a numeric offset
                         # If it's already a DateI10 (from from_imilast), this may fail
-                        dt_any: Any = netCDF4.num2date(
+                        dt_any: object = netCDF4.num2date(
                             [center.time], units=time_units, calendar=calendar
                         )
-                        dt = dt_any[0]
+                        dt = dt_any[0]  # type: ignore[index]
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
                         yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
                     except Exception:

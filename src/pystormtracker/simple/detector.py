@@ -23,10 +23,11 @@ class SimpleDetector(Grid):
         self._lat: Any = None
         self._lon: Any = None
 
-        self.f: Any = None
-        self.time: Any = None
-        self.lat: Any = None
-        self.lon: Any = None
+        self.f: netCDF4.Dataset | None = None
+
+        self.time: np.ndarray | None = None
+        self.lat: np.ndarray | None = None
+        self.lon: np.ndarray | None = None
 
     def _init(self) -> None:
         if self._open_file is False:
@@ -101,7 +102,7 @@ class SimpleDetector(Grid):
                 data = self._var[chart, ...]
             else:
                 data = self._var[self.trange[0] + chart, ...]
-            return data.reshape((data.shape[-2], data.shape[-1]))  # type: ignore[no-any-return]
+            return np.asarray(data.reshape((data.shape[-2], data.shape[-1])))
         elif isinstance(chart, tuple):
             if self.trange is None:
                 data = self._var[chart[0] : chart[1], ...]
@@ -109,10 +110,14 @@ class SimpleDetector(Grid):
                 data = self._var[
                     self.trange[0] + chart[0] : self.trange[0] + chart[1], ...
                 ]
-            return data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))  # type: ignore[no-any-return]
+            return np.asarray(
+                data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
+            )
         else:
             data = self._var[:]
-            return data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))  # type: ignore[no-any-return]
+            return np.asarray(
+                data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
+            )
 
     def get_time(self) -> np.ndarray | None:
 
@@ -122,10 +127,10 @@ class SimpleDetector(Grid):
         self._init()
         if self.time is None:
             if self.trange is None:
-                self.time = self._time[:]
+                self.time = np.asarray(self._time[:])
             else:
-                self.time = self._time[self.trange[0] : self.trange[1]]
-        return self.time  # type: ignore[no-any-return]
+                self.time = np.asarray(self._time[self.trange[0] : self.trange[1]])
+        return self.time
 
     def get_time_obj(self) -> object | None:
         self._init()
@@ -135,15 +140,15 @@ class SimpleDetector(Grid):
 
         self._init()
         if self.lat is None:
-            self.lat = self._lat[:]
-        return self.lat  # type: ignore[no-any-return]
+            self.lat = np.asarray(self._lat[:])
+        return self.lat
 
     def get_lon(self) -> np.ndarray | None:
 
         self._init()
         if self.lon is None:
-            self.lon = self._lon[:]
-        return self.lon  # type: ignore[no-any-return]
+            self.lon = np.asarray(self._lon[:])
+        return self.lon
 
     def split(self, num: int) -> list["Grid"]:
 
@@ -219,7 +224,7 @@ class SimpleDetector(Grid):
         size: int,
         threshold: float = 0.0,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> np.ndarray | None:
+    ) -> np.ndarray:
 
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
@@ -250,7 +255,7 @@ class SimpleDetector(Grid):
 
     def _remove_dup_laplace(
         self, data: np.ndarray, mask: np.ndarray, size: int = 5
-    ) -> np.ndarray | None:
+    ) -> np.ndarray:
         laplacian = np.multiply(laplace(data, mode="wrap"), mask)
 
         return np.asarray(
@@ -285,7 +290,7 @@ class SimpleDetector(Grid):
 
         centers = []
 
-        var: Any = None
+        var: np.ndarray | None = None
 
         num_steps = len(time)
         for it, t in enumerate(time):
@@ -306,15 +311,11 @@ class SimpleDetector(Grid):
                     filled_chart, size, threshold=threshold, minmaxmode=minmaxmode
                 )
 
-                assert extrema is not None
-
                 # Ensure we don't detect centers on originally masked pixels
                 if np.ma.is_masked(chart):
-                    extrema[chart.mask] = 0
+                    extrema[chart.mask] = 0  # type: ignore[attr-defined]
 
                 extrema = self._remove_dup_laplace(filled_chart, extrema, size=5)
-
-                assert extrema is not None
 
                 center_list = [
                     Center(t, float(lat[i]), float(lon[j]), chart[i, j])
