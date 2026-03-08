@@ -1,6 +1,4 @@
-import csv
 import os
-import sys
 import timeit
 from argparse import ArgumentParser, Namespace
 from typing import Any, Literal
@@ -27,13 +25,19 @@ def export_to_csv(
 
     with open(outfile, "w", newline="") as f:
         # IMILAST Intercomparison Protocol format
-        f.write("99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n")
-        
+        f.write(
+            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n"
+        )
+
         for i, track in enumerate(tracks, start=1):
             f.write(f"90 {i} {len(track)}\n")
             for step, center in enumerate(track, start=1):
                 try:
-                    dt = netCDF4.num2date(center.time, units=units, calendar=calendar)
+                    # num2date returns an array-like if input is a list
+                    dt_any: Any = netCDF4.num2date(
+                        [center.time], units=units, calendar=calendar
+                    )
+                    dt = dt_any[0]
                     yyyy = f"{dt.year:04d}"
                     mm = f"{dt.month:02d}"
                     dd = f"{dt.day:02d}"
@@ -56,10 +60,10 @@ def export_to_csv(
                     lon -= 360
 
                 f.write(
-                    f"00 {i} {step} {yyyymmddhh} {dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} "
-                    f"{lon:.2f} {center.lat:.2f} {var_val}\n"
+                    f"00 {i} {step} {yyyymmddhh} {dt.year} {dt.month:02d} "
+                    f"{dt.day:02d} {dt.hour:02d} {lon:.2f} {center.lat:.2f} "
+                    f"{var_val}\n"
                 )
-
 
 def _detect_serial(
     infile: str, varname: str, trange: tuple[int, int] | None, mode: str
@@ -128,7 +132,7 @@ def _link_centers(centers: list[list[Center]]) -> Tracks:
     return tracks
 
 
-def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:
+def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:  # noqa: ANN401
     rank = comm.Get_rank()
     size = comm.Get_size()
     linker = SimpleLinker()

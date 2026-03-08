@@ -1,16 +1,17 @@
 import math
-from typing import Any
 
 
 class Center:
     R: float = 6367.0
     DEGTORAD: float = math.pi / 180.0
 
-    def __init__(self, time: Any, lat: float, lon: float, var: Any) -> None:
-        self.time = time
+    def __init__(
+        self, time: float | int, lat: float, lon: float, var: float | int
+    ) -> None:
+        self.time = float(time)
         self.lat = lat
         self.lon = lon
-        self.var = var
+        self.var = float(var)
 
     def __repr__(self) -> str:
         return str(self.var)
