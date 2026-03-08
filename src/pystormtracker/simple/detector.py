@@ -12,7 +12,7 @@ from ..models.grid import Grid
 from ..models.time import TimeRange
 
 
-class SimpleDetector(Grid):
+class SimpleDetector:
     """
     A meteorological feature detector that treats fields as 2D images.
     Uses lazy-loading to minimize memory and I/O overhead.
