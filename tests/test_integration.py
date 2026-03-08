@@ -4,7 +4,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -60,13 +59,13 @@ def compare_tracks(
 @pytest.fixture(scope="module")
 def test_data_msl() -> str:
     """Download MSL test data once per module."""
-    return cast(str, fetch_era5_msl())
+    return fetch_era5_msl()
 
 
 @pytest.fixture(scope="module")
 def test_data_vo() -> str:
     """Download VO test data once per module."""
-    return cast(str, fetch_era5_vo850())
+    return fetch_era5_vo850()
 
 
 @pytest.fixture(
