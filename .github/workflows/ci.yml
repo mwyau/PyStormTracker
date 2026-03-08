@@ -5,12 +5,21 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      python-versions: ${{ steps.versions.outputs.value }}
+    steps:
+      - id: versions
+        run: echo 'value=["3.11", "3.12", "3.13", "3.14"]' >> $GITHUB_OUTPUT
+
   ruff-lint:
     runs-on: ubuntu-latest
     steps:
@@ -57,10 +66,11 @@ jobs:
 
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }})
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -82,10 +92,11 @@ jobs:
 
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }})
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
