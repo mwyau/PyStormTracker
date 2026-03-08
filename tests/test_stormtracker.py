@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
-
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from pystormtracker.data import fetch_era5_msl
-from pystormtracker.stormtracker import run_tracker, parse_args, main
+from pystormtracker.stormtracker import main, parse_args, run_tracker
 
 
 @pytest.fixture
 def msl_data() -> str:
-    return fetch_era5_msl()
+    return str(fetch_era5_msl())
 
 
 def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
@@ -47,13 +46,20 @@ def test_run_tracker_dask(msl_data: str, tmp_path: Path) -> None:
 def test_parse_args() -> None:
     test_args = [
         "stormtracker",
-        "-i", "input.nc",
-        "-v", "msl",
-        "-o", "output.txt",
-        "-n", "10",
-        "-m", "max",
-        "-b", "serial",
-        "-w", "4"
+        "-i",
+        "input.nc",
+        "-v",
+        "msl",
+        "-o",
+        "output.txt",
+        "-n",
+        "10",
+        "-m",
+        "max",
+        "-b",
+        "serial",
+        "-w",
+        "4",
     ]
     with patch("sys.argv", test_args):
         args = parse_args()
@@ -70,14 +76,19 @@ def test_main(msl_data: str, tmp_path: Path) -> None:
     output_file = tmp_path / "main_output.txt"
     test_args = [
         "stormtracker",
-        "-i", msl_data,
-        "-v", "msl",
-        "-o", str(output_file),
-        "-n", "2",
-        "-b", "serial"
+        "-i",
+        msl_data,
+        "-v",
+        "msl",
+        "-o",
+        str(output_file),
+        "-n",
+        "2",
+        "-b",
+        "serial",
     ]
     with patch("sys.argv", test_args):
         main()
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0

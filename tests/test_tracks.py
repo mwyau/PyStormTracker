@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Track, Tracks
@@ -77,48 +76,49 @@ def test_track_methods() -> None:
     t0 = np.datetime64("2025-12-01T00:00:00")
     c1 = Center(t0, 0, 0, 0)
     c2 = Center(t0 + np.timedelta64(6, "h"), 1, 1, 1)
-    
+
     track = Track([c1])
     assert len(track) == 1
     assert track[0] == c1
-    
+
     # iter
     assert list(track) == [c1]
-    
+
     # append
     track.append(c2)
     assert len(track) == 2
     assert track[1] == c2
-    
+
     # extend
     track2 = Track([Center(t0 + np.timedelta64(12, "h"), 2, 2, 2)])
     track.extend(track2)
     assert len(track) == 3
     assert track[2].var == 2
-    
+
     # abs_dist (distance between last point of track and another center)
     c3 = Center(t0 + np.timedelta64(18, "h"), 0, 1, 0)
     # Haversine distance from track last point (2,2) to target center (0,1)
     dist = track.abs_dist(c3)
-    assert dist > 240 and dist < 260
+    assert dist > 240
+    assert dist < 260
 
 
 def test_tracks_sort() -> None:
     t0 = np.datetime64("2025-12-01T00:00:00")
     t1 = t0 + np.timedelta64(6, "h")
-    
+
     tr1 = Track([Center(t1, 0, 0, 0)])
     tr2 = Track([Center(t0, 10, 10, 0)])
     tr3 = Track([Center(t0, 5, 5, 0)])
-    
+
     tracks = Tracks()
     tracks.append(tr1)
     tracks.append(tr2)
     tracks.append(tr3)
-    
+
     tracks.sort()
-    
+
     # Should be sorted by time, then lat, then lon
-    assert tracks[0] == tr3 # t0, lat 5
-    assert tracks[1] == tr2 # t0, lat 10
-    assert tracks[2] == tr1 # t1, lat 0
+    assert tracks[0] == tr3  # t0, lat 5
+    assert tracks[1] == tr2  # t0, lat 10
+    assert tracks[2] == tr1  # t1, lat 0
