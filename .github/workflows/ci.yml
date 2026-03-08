@@ -73,7 +73,7 @@ jobs:
           pip install .[dev]
       - name: Run Unit Tests
         run: |
-          pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py
+          pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py -m ""
 
   integration-fast:
     runs-on: ubuntu-latest
