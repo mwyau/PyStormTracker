@@ -16,8 +16,10 @@ jobs:
       contents: read
       packages: write
     # Only run if CI was successful AND it was a push event to main or dev
+    # Added head_repository check to prevent checkout of untrusted code in trusted context
     if: >
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
       (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'dev')
 
