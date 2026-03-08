@@ -2,58 +2,44 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import xarray as xr
 
 from pystormtracker.simple.detector import SimpleDetector
 
 
-@patch("netCDF4.Dataset")
-def test_simple_detector_init(mock_dataset: MagicMock) -> None:
-    mock_f = MagicMock()
-    mock_dataset.return_value = mock_f
+@patch("xarray.open_dataset")
+def test_simple_detector_init(mock_open: MagicMock) -> None:
+    mock_ds = MagicMock(spec=xr.Dataset)
+    mock_open.return_value = mock_ds
 
-    mock_var = MagicMock()
-    mock_f.variables = {
-        "slp": mock_var,
-        "time": MagicMock(),
-        "lat": MagicMock(),
-        "lon": MagicMock(),
-    }
+    mock_data = MagicMock(spec=xr.DataArray)
+    mock_ds.__getitem__.return_value = mock_data
+    mock_ds.coords = ["time", "latitude", "longitude"]
+    mock_ds.variables = {"slp": mock_data}
 
     detector = SimpleDetector(pathname="test.nc", varname="slp")
     detector._ensure_open()
 
-    mock_dataset.assert_called_once_with(Path("test.nc"), "r")
-    mock_var.set_auto_maskandscale.assert_called_once_with(False)
+    mock_open.assert_called_once_with(Path("test.nc"))
 
 
-@patch("netCDF4.Dataset")
-def test_simple_detector_detect_mock(mock_dataset: MagicMock) -> None:
-    mock_f = MagicMock()
-    mock_dataset.return_value = mock_f
-
-    # Create mock data: a 5x5 grid with a single minimum in the center
-    # Use 7x7 to allow for filter size 5 and masking of extremes
+@patch("xarray.open_dataset")
+def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
+    # Create real xarray data for reliable behavior
     data = np.ones((1, 7, 7)) * 1000
     data[0, 3, 3] = 950  # Minimum at index 3,3
 
-    mock_var = MagicMock()
-    mock_var.__getitem__.side_effect = lambda x: data[x]
-    mock_var.set_auto_maskandscale = MagicMock()
+    times = np.array(["2025-12-01"], dtype="datetime64[ns]")
+    lats = np.arange(7, dtype=float)
+    lons = np.arange(7, dtype=float)
 
-    mock_time = np.array([0.0])
-    mock_lat = np.array([0, 1, 2, 3, 4, 5, 6])
-    mock_lon = np.array([0, 1, 2, 3, 4, 5, 6])
-
-    mock_f.variables = {
-        "slp": mock_var,
-        "time": mock_time,
-        "lat": mock_lat,
-        "lon": mock_lon,
-    }
+    ds = xr.Dataset(
+        data_vars={"slp": (("time", "latitude", "longitude"), data)},
+        coords={"time": times, "latitude": lats, "longitude": lons},
+    )
+    mock_open.return_value = ds
 
     detector = SimpleDetector(pathname="test.nc", varname="slp")
-    # Manually set attributes to skip _init if needed or let it run
-
     centers = detector.detect(size=5, threshold=0.0)
 
     assert len(centers) == 1

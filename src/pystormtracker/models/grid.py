@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Literal, Protocol, runtime_checkable
 
 import numpy as np
+from numpy.typing import NDArray
 
-from .center import Center
+from .center import DetectionResult
 
 
 @runtime_checkable
@@ -15,16 +16,14 @@ class Grid(Protocol):
     """
 
     def get_var(
-        self, chart: int | tuple[int, int] | None = None
-    ) -> np.ndarray | None: ...
+        self, frame: int | tuple[int, int] | None = None
+    ) -> NDArray[np.float64] | None: ...
 
-    def get_time(self) -> np.ndarray | None: ...
+    def get_time(self) -> NDArray[np.datetime64] | None: ...
 
-    def get_time_obj(self) -> object | None: ...
+    def get_lat(self) -> NDArray[np.float64] | None: ...
 
-    def get_lat(self) -> np.ndarray | None: ...
-
-    def get_lon(self) -> np.ndarray | None: ...
+    def get_lon(self) -> NDArray[np.float64] | None: ...
 
     def split(self, num: int) -> list[Grid]: ...
 
@@ -32,6 +31,6 @@ class Grid(Protocol):
         self,
         size: int,
         threshold: float,
-        chart_buffer: int,
+        time_chunk_size: int,
         minmaxmode: Literal["min", "max"],
-    ) -> list[list[Center]]: ...
+    ) -> DetectionResult: ...

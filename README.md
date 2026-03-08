@@ -58,7 +58,7 @@ pip install PyStormTracker
 Once installed, you can use the `stormtracker` command directly:
 
 ```bash
-stormtracker -i data/test/slp.2012.nc -v slp -o my_tracks
+stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 ```
 
 ### Command Line Arguments
@@ -66,7 +66,7 @@ stormtracker -i data/test/slp.2012.nc -v slp -o my_tracks
 | Argument | Short | Description |
 | :--- | :--- | :--- |
 | `--input` | `-i` | **Required.** Path to the input NetCDF file. |
-| `--var` | `-v` | **Required.** Variable name to track (e.g., `slp`, `vo`). |
+| `--var` | `-v` | **Required.** Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
 | `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
@@ -77,12 +77,12 @@ stormtracker -i data/test/slp.2012.nc -v slp -o my_tracks
 
 **Run with Dask (Auto-detected cores):**
 ```bash
-stormtracker -i input.nc -v slp -o tracks
+stormtracker -i input.nc -v msl -o tracks
 ```
 
 **Run with MPI (Distributed):**
 ```bash
-mpiexec -n 4 stormtracker -i input.nc -v slp -o tracks -b mpi
+mpiexec -n 4 stormtracker -i input.nc -v msl -o tracks -b mpi
 ```
 
 ## Project Structure
@@ -125,17 +125,22 @@ mypy src/
 
 ### Tiered Testing
 To keep development cycles fast, integration tests are tiered:
-- **Fast Tests**: Default local runs.
+- **Fast Tests**: Default local runs (skips slow tests).
 - **Slow Tests**: Full datasets and legacy regressions (marked with `@pytest.mark.slow`).
 
-**Run fast tests only:**
-```bash
-pytest -m "not slow"
-```
-
-**Run everything (CI behavior):**
+**Run fast tests only (Default):**
 ```bash
 pytest
+```
+
+**Run slow tests only:**
+```bash
+pytest --run-slow
+```
+
+**Run everything (including slow tests):**
+```bash
+pytest --run-all
 ```
 
 ## Citations
@@ -149,7 +154,8 @@ If you use this software in your research, please cite the following:
 ## References
 
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
- - **IMILAST**, 2012: IMILAST Intercomparison Protocol. https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
+ - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, https://doi.org/10.1175/BAMS-D-11-00154.1.
+ - **IMILAST Intercomparison Protocol**: https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
  - **IMILAST Data Download**: https://proclim.scnat.ch/en/activities/project_imilast/data_download
 
 ## License
