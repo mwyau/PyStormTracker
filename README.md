@@ -1,21 +1,21 @@
 # PyStormTracker
 
 [![CI](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml/badge.svg)](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml)
+[![Documentation Status](https://readthedocs.org/projects/pystormtracker/badge/?version=latest)](https://pystormtracker.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/github/mwyau/PyStormTracker/graph/badge.svg?token=JmTabGA3cq)](https://codecov.io/github/mwyau/PyStormTracker)
 [![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
 ![Python versions](https://img.shields.io/pypi/pyversions/PyStormTracker)
 ![License](https://img.shields.io/pypi/l/PyStormTracker)
-[![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 [![Docker](https://img.shields.io/badge/docker-xddd%2Fpystormtracker-blue?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
 [![GHCR](https://img.shields.io/badge/ghcr.io-XDDD%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/XDDD/packages/container/package/pystormtracker)
-[![Documentation Status](https://readthedocs.org/projects/pystormtracker/badge/?version=latest)](https://pystormtracker.readthedocs.io/en/latest/?badge=latest)
+[![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
 PyStormTracker provides the implementation of the "Simple Tracker" algorithm used for cyclone trajectory analysis in **Yau and Chang (2020)**. It was originally developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 Summer Internships in Parallel Computational Science (SIParCS)** program, utilizing a task-parallel strategy with temporal decomposition and a tree reduction algorithm to process large climate datasets.
 
 ## Features
 
 - **Modern Python Support**: Strictly targets **Python 3.11+** with comprehensive type hints and 100% strict `mypy` compliance.
-- **Xarray Integrated**: Fully migrated to `xarray` and `h5netcdf` for robust, high-performance coordinate-aware I/O and lazy data loading.
+- **Xarray Integrated**: Leverages \`xarray\` with optimized I/O, acceleration, and parallel extras for robust, high-performance coordinate-aware processing and lazy data loading.
 - **Parallel Backends**:
   - **Dask (Default)**: Automatically scales to all available CPU cores on local machines.
   - **MPI**: Supports distributed execution via `mpi4py`.
@@ -56,9 +56,10 @@ pip install PyStormTracker
    cd PyStormTracker
    ```
 
-2. Install the package in editable mode:
+2. Install with **uv** (Recommended):
    ```bash
-   pip install -e .
+   uv sync --extra dev
+   uv run pre-commit install --hook-type pre-push
    ```
 
 ## Usage
@@ -84,25 +85,27 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 ## Development
 
 ### Setup
-It is recommended to use a virtual environment or conda for development:
+Using **uv** is the recommended way to set up your environment:
 ```bash
-conda create -n pst python=3.11
-conda activate pst
-pip install -e .[dev]
+# Install dependencies and sync virtual environment
+uv sync --extra dev
+
+# Install pre-push hooks
+uv run pre-commit install --hook-type pre-push
 ```
 
 ### Quality Control
-Before submitting a pull request, please ensure all checks pass:
+Run automated checks using **uv run**:
 
 **Linting & Formatting:**
 ```bash
-ruff check . --fix
-ruff format .
+uv run ruff check . --fix
+uv run ruff format .
 ```
 
 **Type Checking:**
 ```bash
-mypy src/
+uv run mypy src/
 ```
 
 ### Tiered Testing
@@ -113,24 +116,24 @@ To keep development cycles fast, testing is tiered:
 
 **Run fast unit tests only (Default):**
 ```bash
-pytest
+uv run pytest
 ```
 
 **Run ONLY slow/integration tests:**
 ```bash
-pytest --run-slow
+uv run pytest --run-slow
 ```
 
 **Run everything:**
 ```bash
-pytest --run-all
+uv run pytest --run-all
 ```
 
 ## Citations
 
 If you use this software in your research, please cite the following:
 
-- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, https://doi.org/10.1175/JCLI-D-20-0393.1.   
+- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, https://doi.org/10.1175/JCLI-D-20-0393.1.
 
 - **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, https://doi.org/10.5281/zenodo.18764813.
 
