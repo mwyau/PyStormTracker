@@ -109,6 +109,7 @@ If you use this software in your research, please cite the following:
 
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
  - **IMILAST**, 2012: IMILAST Intercomparison Protocol. https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
+ - **IMILAST Data Download**: https://proclim.scnat.ch/en/activities/project_imilast/data_download
 
 ## License
 
