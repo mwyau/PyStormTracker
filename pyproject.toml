@@ -27,8 +27,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 dependencies = [
-    "numpy>=2.1.0",
-    "scipy>=1.14.0",
+    "numpy>=1.23.0",
+    "scipy>=1.9.0",
     "xarray[io,accel,parallel]>=2024.9.0",
 ]
 
