@@ -160,22 +160,27 @@ class SimpleDetector:
         threshold: float,
         minmaxmode: Literal["min", "max"],
     ) -> bool:
-        half_size = size // 2
-        search_window = buffer.reshape((size, size))
-        center_val = search_window[half_size, half_size]
+        center_val = buffer[(size * size) // 2]
 
-        if np.ma.is_masked(center_val) or np.isnan(center_val):
+        if np.isnan(center_val) or np.isinf(center_val):
             return False
 
-        if threshold == 0.0:
-            limit = search_window.min() if minmaxmode == "min" else search_window.max()
-            return bool(center_val == limit)
-
-        if minmaxmode == "min" and center_val == search_window.min():
-            return bool(np.sort(buffer)[8] - center_val > threshold)
-        if minmaxmode == "max" and center_val == search_window.max():
-            return bool(np.sort(buffer)[0] - center_val < -1 * threshold)
-        return False
+        if minmaxmode == "min":
+            if center_val == buffer.min():
+                if threshold == 0.0:
+                    return True
+                # Quick check: 9th smallest value must be > center + threshold
+                return bool(np.partition(buffer, 8)[8] - center_val > threshold)
+            return False
+        else:
+            if center_val == buffer.max():
+                if threshold == 0.0:
+                    return True
+                # Quick check: 9th largest value must be < center - threshold
+                # Partition at index 8 of negated buffer finds 9th largest
+                ninth_largest = -np.partition(-buffer, 8)[8]
+                return bool(ninth_largest - center_val < -1.0 * threshold)
+            return False
 
     def _local_extrema_filter(
         self,
@@ -220,7 +225,7 @@ class SimpleDetector:
         self,
         size: int = 5,
         threshold: float = 0.0,
-        chart_buffer: int = 400,
+        time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
     ) -> list[list[Center]]:
         time = self.get_time()
@@ -231,9 +236,9 @@ class SimpleDetector:
         num_steps = len(time)
 
         for it, t in enumerate(time):
-            ibuffer = it % chart_buffer
+            ibuffer = it % time_chunk_size
             if ibuffer == 0:
-                var = self.get_var(chart=(it, min(it + chart_buffer, num_steps)))
+                var = self.get_var(chart=(it, min(it + time_chunk_size, num_steps)))
 
             assert var is not None
             chart = var[ibuffer, :, :]
