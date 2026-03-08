@@ -71,7 +71,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 | `--input` | `-i` | **Required.** Path to the input NetCDF file. |
 | `--var` | `-v` | **Required.** Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
-| `--num" | `-n` | Number of time steps to process. |
+| `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
 | `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
