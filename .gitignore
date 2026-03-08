@@ -64,7 +64,10 @@ target/
 
 # netCDF files
 *.nc
-!data/test/*.nc
 
-# CSV files
-*.csv
+# TXT track files
+*.txt
+!data/test/tracks/*.txt
+
+# VSCode
+.vscode/

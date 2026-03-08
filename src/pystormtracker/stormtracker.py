@@ -1,47 +1,12 @@
-import csv
 import os
-import sys
 import timeit
 from argparse import ArgumentParser, Namespace
 from typing import Any, Literal
-
-import netCDF4
-import numpy as np
 
 from .models import Center, Grid, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
-
-
-def export_to_csv(
-    tracks: Tracks, outfile: str, grid: Grid, decimal_places: int = 4
-) -> None:
-    """Exports detected tracks to a user-friendly CSV file."""
-    time_obj = grid.get_time_obj()
-    units = getattr(time_obj, "units", "")
-    calendar = getattr(time_obj, "calendar", "standard")
-
-    if not outfile.endswith(".csv"):
-        outfile += ".csv"
-
-    with open(outfile, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["track_id", "time", "lat", "lon", "var"])
-        for i, track in enumerate(tracks):
-            for center in track:
-                try:
-                    dt = netCDF4.num2date(center.time, units=units, calendar=calendar)
-                    # dt can be a cftime.datetime or a standard datetime
-                    time_val = dt.strftime("%Y-%m-%d %H:%M:%S")  # type: ignore
-                except Exception:
-                    time_val = str(center.time)
-
-                if center.var is None or np.ma.is_masked(center.var):
-                    var_val = "--"
-                else:
-                    var_val = f"{float(center.var):.{decimal_places}f}"
-                writer.writerow([i, time_val, center.lat, center.lon, var_val])
 
 
 def _detect_serial(
@@ -87,13 +52,15 @@ def _detect_dask(
     grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
     grids = grid_obj.split(n_workers)
 
-    with LocalCluster(
-        n_workers=n_workers, threads_per_worker=1
-    ) as cluster, Client(cluster):  # type: ignore
+    with (
+        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,  # type: ignore[no-untyped-call]
+        Client(cluster),  # type: ignore[no-untyped-call]
+    ):
         delayed_results = [
-            dask.delayed(g.detect)(minmaxmode=mode) for g in grids  # type: ignore
+            dask.delayed(g.detect)(minmaxmode=mode)  # type: ignore[attr-defined]
+            for g in grids
         ]
-        results = dask.compute(*delayed_results)  # type: ignore
+        results = dask.compute(*delayed_results)  # type: ignore[attr-defined, no-untyped-call]
 
     # Flatten results from chunks
     flattened_results: list[list[Center]] = []
@@ -111,7 +78,7 @@ def _link_centers(centers: list[list[Center]]) -> Tracks:
     return tracks
 
 
-def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:
+def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:  # noqa: ANN401
     rank = comm.Get_rank()
     size = comm.Get_size()
     linker = SimpleLinker()
@@ -189,8 +156,17 @@ def run_tracker(
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
-        export_to_csv(tracks, outfile, grid)
-        final_outfile = outfile if outfile.endswith(".csv") else f"{outfile}.csv"
+        time_obj = grid.get_time_obj()
+        tracks.to_imilast(
+            outfile,
+            time_units=getattr(time_obj, "units", ""),
+            calendar=getattr(time_obj, "calendar", "standard"),
+        )
+        final_outfile = (
+            outfile
+            if any(outfile.endswith(e) for e in [".txt", ".imilast"])
+            else f"{outfile}.txt"
+        )
         print(f"Results exported to {final_outfile}")
 
 
@@ -199,7 +175,9 @@ def parse_args() -> Namespace:
     parser = ArgumentParser(description="PyStormTracker: A tool for tracking storms.")
     parser.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
     parser.add_argument("-v", "--var", required=True, help="Variable to track.")
-    parser.add_argument("-o", "--output", required=True, help="Output CSV file.")
+    parser.add_argument(
+        "-o", "--output", required=True, help="Output track file (.txt)."
+    )
     parser.add_argument("-n", "--num", type=int, help="Number of time steps.")
     parser.add_argument(
         "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
@@ -225,19 +203,15 @@ def main() -> None:
     args = parse_args()
     trange = (0, args.num) if args.num is not None else None
 
-    try:
-        run_tracker(
-            infile=args.input,
-            varname=args.var,
-            outfile=args.output,
-            trange=trange,
-            mode=args.mode,
-            backend=args.backend,
-            n_workers=args.workers,
-        )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_tracker(
+        infile=args.input,
+        varname=args.var,
+        outfile=args.output,
+        trange=trange,
+        mode=args.mode,
+        backend=args.backend,
+        n_workers=args.workers,
+    )
 
 
 if __name__ == "__main__":

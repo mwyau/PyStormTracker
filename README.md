@@ -16,7 +16,7 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
   - **MPI**: Supports distributed execution via `mpi4py`.
   - **Serial**: Standard sequential execution for smaller datasets or debugging.
 - **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
-- **User-Friendly Output**: Results are exported directly to CSV with readable datetime strings and formatted numeric values.
+- **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
 
 ## Technical Methodology
 
@@ -65,7 +65,7 @@ stormtracker -i data/test/slp.2012.nc -v slp -o my_tracks
 | :--- | :--- | :--- |
 | `--input` | `-i` | **Required.** Path to the input NetCDF file. |
 | `--var` | `-v` | **Required.** Variable name to track (e.g., `slp`, `vo`). |
-| `--output` | `-o` | **Required.** Path to the output CSV file (appends `.csv` if missing). |
+| `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
 | `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
@@ -91,7 +91,7 @@ mpiexec -n 4 stormtracker -i input.nc -v slp -o tracks -b mpi
 
 ## Testing
 
-Run the full test suite (unit and integration tests) using `pytest`:
+Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` from the [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) repository on the first run.
 
 ```bash
 pytest
@@ -108,6 +108,7 @@ If you use this software in your research, please cite the following:
 ## References
 
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
+ - **IMILAST**, 2012: IMILAST Intercomparison Protocol. https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
 
 ## License
 

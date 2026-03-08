@@ -1,28 +1,30 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, Literal
+from typing import Literal
+
+import numpy as np
 
 from .center import Center
 
 
 class Grid(metaclass=ABCMeta):
     @abstractmethod
-    def get_var(self, chart: int | tuple[int, int] | None = None) -> Any:
+    def get_var(self, chart: int | tuple[int, int] | None = None) -> np.ndarray | None:
         raise NotImplementedError
 
     @abstractmethod
-    def get_time(self) -> Any:
+    def get_time(self) -> np.ndarray | None:
         raise NotImplementedError
 
     @abstractmethod
-    def get_time_obj(self) -> Any:
+    def get_time_obj(self) -> object | None:
         raise NotImplementedError
 
     @abstractmethod
-    def get_lat(self) -> Any:
+    def get_lat(self) -> np.ndarray | None:
         raise NotImplementedError
 
     @abstractmethod
-    def get_lon(self) -> Any:
+    def get_lon(self) -> np.ndarray | None:
         raise NotImplementedError
 
     @abstractmethod
