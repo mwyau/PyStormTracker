@@ -71,6 +71,8 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
+        pytest.param(("msl", "min"), id="msl_min_short"),
+        pytest.param(("vo", "max"), id="vo_max_short"),
         pytest.param(("msl", "min"), id="msl_min_full"),
         pytest.param(("vo", "max"), id="vo_max_full"),
     ],

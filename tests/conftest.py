@@ -32,4 +32,4 @@ def pytest_collection_modifyitems(
                     pytest.mark.skip(reason="only integration tests requested")
                 )
         elif is_integration:
-            item.add_marker(pytest.mark.skip(reason="integration test skipped by default"))
+            item.add_marker(pytest.mark.skip(reason="integration test skipped"))
