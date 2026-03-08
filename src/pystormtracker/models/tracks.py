@@ -100,11 +100,11 @@ class Tracks:
                             f"{s_time[:4]}-{s_time[4:6]}-{s_time[6:8]} "
                             f"{s_time[8:10]}:00:00"
                         )
-                        time_val = np.datetime64(pd.to_datetime(dt_str))
+                        time_val = np.datetime64(pd.to_datetime(dt_str), "s")
                     else:
                         # Numeric epoch or other
                         time_val = np.datetime64(
-                            pd.to_datetime(float(s_time), unit="s")
+                            pd.to_datetime(float(s_time), unit="s"), "s"
                         )
                     current_track_centers.append(Center(time_val, lat, lon, var))
             if current_track_centers:
