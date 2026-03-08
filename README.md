@@ -1,19 +1,19 @@
 # PyStormTracker
 
-[![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
-[![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
-[![Docker Image Size](https://img.shields.io/docker/image-size/xddd/pystormtracker/latest?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
-[![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/mwyau/PyStormTracker/pkgs/container/pystormtracker)
 [![CI](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml/badge.svg)](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/mwyau/PyStormTracker/graph/badge.svg?token=JmTabGA3cq)](https://codecov.io/github/mwyau/PyStormTracker)
-![License](https://img.shields.io/pypi/l/PyStormTracker)
+[![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
 ![Python versions](https://img.shields.io/pypi/pyversions/PyStormTracker)
+![License](https://img.shields.io/pypi/l/PyStormTracker)
+[![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
+[![Docker](https://img.shields.io/badge/docker-xddd%2Fpystormtracker-blue?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
+[![GHCR](https://img.shields.io/badge/ghcr.io-XDDD%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/XDDD/packages/container/package/pystormtracker)
 
 PyStormTracker provides the implementation of the "Simple Tracker" algorithm used for cyclone trajectory analysis in **Yau and Chang (2020)**. It was originally developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 Summer Internships in Parallel Computational Science (SIParCS)** program, utilizing a task-parallel strategy with temporal decomposition and a tree reduction algorithm to process large climate datasets.
 
 ## Features
 
-- **Modern Python Support**: Strictly targets **Python 3.12+** with comprehensive type hints and 100% strict `mypy` compliance.
+- **Modern Python Support**: Strictly targets **Python 3.11+** with comprehensive type hints and 100% strict `mypy` compliance.
 - **Xarray Integrated**: Fully migrated to `xarray` and `h5netcdf` for robust, high-performance coordinate-aware I/O and lazy data loading.
 - **Parallel Backends**:
   - **Dask (Default)**: Automatically scales to all available CPU cores on local machines.
@@ -35,7 +35,7 @@ PyStormTracker treats meteorological fields as 2D images and leverages `scipy.nd
 ## Installation
 
 ### Prerequisites
-- Python 3.12+
+- Python 3.11+
 - (Optional) OpenMPI for MPI support.
 
 ### From PyPI (Recommended)
@@ -71,7 +71,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 | `--input` | `-i` | **Required.** Path to the input NetCDF file. |
 | `--var` | `-v` | **Required.** Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
-| `--num" | `-n` | Number of time steps to process. |
+| `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
 | `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
@@ -81,7 +81,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 ### Setup
 It is recommended to use a virtual environment or conda for development:
 ```bash
-conda create -n pst python=3.12
+conda create -n pst python=3.11
 conda activate pst
 pip install -e .[dev]
 ```
