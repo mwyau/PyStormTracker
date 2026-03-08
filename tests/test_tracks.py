@@ -63,10 +63,7 @@ def test_tracks_imilast_io(tmp_path: Path) -> None:
 
     assert len(t2) == 2
 
-    # Sort original tracks to match from_imilast sorting
-    t._tracks.sort(key=lambda tr: (tr[0].time, tr[0].lat, tr[0].lon))
-
-    # Check that we can compare them
+    # Check that we can compare them (compare handles sorting internally)
     t.compare(t2)
 
 
