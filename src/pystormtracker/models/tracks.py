@@ -105,13 +105,13 @@ class Tracks:
                             int(s_time[8:10]),
                             tzinfo=UTC,
                         )
-                        time_val = np.datetime64(dt, "s")
+                        time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                     else:
                         # Numeric epoch or other
                         try:
                             # Assume unix timestamp
                             dt = datetime.fromtimestamp(float(s_time), tz=UTC)
-                            time_val = np.datetime64(dt, "s")
+                            time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                         except ValueError:
                             # Fallback to direct numpy parsing if possible
                             time_val = np.datetime64(s_time, "s")
@@ -146,7 +146,7 @@ class Tracks:
                 for step, center in enumerate(track, start=1):
                     # Convert numpy.datetime64 to python datetime
                     try:
-                        t0 = np.datetime64("1970-01-01T00:00:00Z")
+                        t0 = np.datetime64("1970-01-01T00:00:00")
                         ts = (center.time - t0) / np.timedelta64(1, "s")
                         dt = datetime.fromtimestamp(float(ts), tz=UTC)
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
