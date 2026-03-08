@@ -15,7 +15,6 @@ def msl_data() -> str:
     return str(fetch_era5_msl())
 
 
-@pytest.mark.filterwarnings("ignore:Engine 'cfgrib' loading failed:RuntimeWarning")
 def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
     output_file = tmp_path / "test_tracks.txt"
     run_tracker(
@@ -30,7 +29,6 @@ def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
     assert output_file.stat().st_size > 0
 
 
-@pytest.mark.filterwarnings("ignore:Engine 'cfgrib' loading failed:RuntimeWarning")
 def test_run_tracker_dask(msl_data: str, tmp_path: Path) -> None:
     output_file = tmp_path / "test_tracks_dask.txt"
     run_tracker(
@@ -75,7 +73,6 @@ def test_parse_args() -> None:
         assert args.workers == 4
 
 
-@pytest.mark.filterwarnings("ignore:Engine 'cfgrib' loading failed:RuntimeWarning")
 def test_main(msl_data: str, tmp_path: Path) -> None:
     output_file = tmp_path / "main_output.txt"
     test_args = [
