@@ -4,14 +4,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import cast
 from unittest.mock import patch
 
 import pytest
 
-from .data_utils import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.stormtracker import main
+
+from .data_utils import fetch_era5_msl, fetch_era5_vo850
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
@@ -60,13 +60,13 @@ def compare_tracks(
 @pytest.fixture(scope="module")
 def test_data_msl() -> str:
     """Download MSL test data once per module."""
-    return cast(str, fetch_era5_msl())
+    return fetch_era5_msl()
 
 
 @pytest.fixture(scope="module")
 def test_data_vo() -> str:
     """Download VO test data once per module."""
-    return cast(str, fetch_era5_vo850())
+    return fetch_era5_vo850()
 
 
 @pytest.fixture(
