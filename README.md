@@ -45,8 +45,15 @@ Full documentation, including API references and advanced usage examples, is ava
 
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
+
+For use as a CLI tool:
 ```bash
-pip install PyStormTracker
+uv tool install PyStormTracker
+```
+
+For use as a library in your project:
+```bash
+uv add PyStormTracker
 ```
 
 ### From Source

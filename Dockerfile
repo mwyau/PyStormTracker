@@ -14,11 +14,14 @@ WORKDIR /app
 # Create data directory for mounting
 RUN mkdir /data && chmod 777 /data
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 # Copy the project files
 COPY . .
 
-# Install the package and its dependencies
-RUN pip install --no-cache-dir .
+# Install the package and its dependencies using uv
+RUN uv pip install --system --no-cache .
 
 # Add a non-root user for security
 RUN useradd -m pst
