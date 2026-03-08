@@ -1,41 +1,40 @@
+from __future__ import annotations
+
 import timeit
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-import dask
-from distributed import Client, LocalCluster
+if TYPE_CHECKING:
+    from mpi4py import MPI
 
-from .models import Center, Grid, TimeRange, Tracks
+from .models import DetectionResult, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
 
 
 def _detect_serial(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str
-) -> tuple[list[list[Center]], Grid]:
-    time_range = (
-        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
-    )
+    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+) -> tuple[DetectionResult, Grid]:
     grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
-    return grid.detect(minmaxmode=mode), grid  # type: ignore
+    return (
+        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
+        grid,
+    )
 
 
 def _detect_mpi(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str
-) -> tuple[list[list[Center]], Grid, Any]:
+    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+) -> tuple[DetectionResult, Grid, MPI.Intracomm]:
     from mpi4py import MPI
 
-    comm = MPI.COMM_WORLD
+    comm: MPI.Intracomm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
     root = 0
 
     if rank == root:
-        time_range = (
-            TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
-        )
         grid_obj = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range
         )
@@ -43,47 +42,55 @@ def _detect_mpi(
     else:
         grids = None
 
-    grid = comm.scatter(grids, root=root)
-    return grid.detect(minmaxmode=mode), grid, comm
+    grid: Grid = comm.scatter(grids, root=root)
+    return (
+        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
+        grid,
+        comm,
+    )
 
 
 def _detect_dask(
     infile: str,
     varname: str,
-    trange: tuple[int, int] | None,
-    mode: str,
+    time_range: TimeRange | None,
+    mode: Literal["min", "max"],
     n_workers: int | None,
-) -> tuple[list[list[Center]], Grid]:
+) -> tuple[DetectionResult, Grid]:
     import os
+
+    from dask.base import compute
+    from dask.delayed import delayed
+    from distributed import Client, LocalCluster
 
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
-    time_range = (
-        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
-    )
     grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     grids = grid_obj.split(n_workers)
 
     with (
-        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,  # type: ignore[no-untyped-call]
-        Client(cluster),  # type: ignore[no-untyped-call]
+        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,
+        Client(cluster),
     ):
         delayed_results = [
-            dask.delayed(g.detect)(minmaxmode=mode)  # type: ignore[attr-defined]
+            delayed(g.detect)(
+                size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode
+            )
             for g in grids
         ]
-        results = dask.compute(*delayed_results)  # type: ignore[attr-defined, no-untyped-call]
+        # compute returns a tuple, we convert to list[DetectionResult]
+        results = list(compute(*delayed_results))
 
     # Flatten results from chunks
-    flattened_results: list[list[Center]] = []
+    flattened_results: DetectionResult = []
     for chunk in results:
         flattened_results.extend(chunk)
 
     return flattened_results, grid_obj
 
 
-def _link_centers(centers: list[list[Center]]) -> Tracks:
+def _link_centers(centers: DetectionResult) -> Tracks:
     tracks = Tracks()
     linker = SimpleLinker()
     for step_centers in centers:
@@ -91,17 +98,17 @@ def _link_centers(centers: list[list[Center]]) -> Tracks:
     return tracks
 
 
-def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:  # noqa: ANN401
+def _combine_mpi_tracks(tracks: Tracks, comm: MPI.Intracomm) -> Tracks:
+    linker = SimpleLinker()
     rank = comm.Get_rank()
     size = comm.Get_size()
-    linker = SimpleLinker()
 
     nstripe = 2
     while nstripe <= size:
         if rank % nstripe == nstripe // 2:
             comm.send(tracks, dest=rank - nstripe // 2, tag=nstripe)
         elif rank % nstripe == 0 and rank + nstripe // 2 < size:
-            tracks_recv = comm.recv(source=rank + nstripe // 2, tag=nstripe)
+            tracks_recv: Tracks = comm.recv(source=rank + nstripe // 2, tag=nstripe)
             linker.extend_track(tracks, tracks_recv)
         nstripe *= 2
     return tracks
@@ -111,7 +118,7 @@ def run_tracker(
     infile: str,
     varname: str,
     outfile: str,
-    trange: tuple[int, int] | None = None,
+    time_range: TimeRange | None = None,
     mode: Literal["min", "max"] = "min",
     backend: Backend = "dask",
     n_workers: int | None = None,
@@ -131,15 +138,15 @@ def run_tracker(
         timer["detector"] = timeit.default_timer()
 
     # Detection Phase
-    comm = None
+    comm: MPI.Intracomm | None = None
     if use_mpi:
-        centers, grid, comm = _detect_mpi(infile, varname, trange, mode)
+        centers, _grid, comm = _detect_mpi(infile, varname, time_range, mode)
     elif use_dask:
-        centers, grid = _detect_dask(infile, varname, trange, mode, n_workers)
+        centers, _grid = _detect_dask(infile, varname, time_range, mode, n_workers)
     else:
-        centers, grid = _detect_serial(infile, varname, trange, mode)
+        centers, _grid = _detect_serial(infile, varname, time_range, mode)
 
-    if use_mpi and comm is not None and hasattr(comm, "Barrier"):
+    if use_mpi and comm is not None:
         comm.Barrier()
 
     if rank == 0:
@@ -150,7 +157,7 @@ def run_tracker(
     tracks = _link_centers(centers)
 
     # Consolidation Phase
-    if use_mpi and comm is not None and hasattr(comm, "Barrier"):
+    if use_mpi and comm is not None:
         timer["combiner"] = timeit.default_timer()
         tracks = _combine_mpi_tracks(tracks, comm)
         timer["combiner"] = timeit.default_timer() - timer["combiner"]
@@ -169,13 +176,9 @@ def run_tracker(
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
-        time_obj = grid.get_time_obj()
-        tracks.to_imilast(
-            outfile,
-            time_units=getattr(time_obj, "units", ""),
-            calendar=getattr(time_obj, "calendar", "standard"),
-        )
+        tracks.to_imilast(outfile)
         out_path = Path(outfile)
+
         final_outfile = (
             out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
         )
@@ -213,13 +216,24 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     args = parse_args()
-    trange = (0, args.num) if args.num is not None else None
+    time_range: TimeRange | None = None
+
+    if args.num is not None:
+        # Determine actual times for the first n steps
+        grid_preview = SimpleDetector(pathname=args.input, varname=args.var)
+        times = grid_preview.get_time()
+        assert times is not None
+        num = min(args.num, len(times))
+        time_range = TimeRange(
+            start=times[0],
+            end=times[num - 1],
+        )
 
     run_tracker(
         infile=args.input,
         varname=args.var,
         outfile=args.output,
-        trange=trange,
+        time_range=time_range,
         mode=args.mode,
         backend=args.backend,
         n_workers=args.workers,

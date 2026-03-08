@@ -3,12 +3,14 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 
 @dataclass
 class Center:
     """Represents a detected storm center at a specific time and location."""
 
-    time: float
+    time: np.datetime64
     lat: float
     lon: float
     var: float
@@ -52,3 +54,6 @@ class Center:
         avglat = (self.lat + center.lat) / 2
         dlon = center.lon - self.lon
         return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
+
+
+type DetectionResult = list[list[Center]]

@@ -1,15 +1,16 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
-from pystormtracker.stormtracker import parse_args, run_tracker
+from pystormtracker.stormtracker import main
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
@@ -22,17 +23,7 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
 
     # Direct function call for Serial/Dask backends
     with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
-        args = parse_args()
-        trange = (0, args.num) if args.num is not None else None
-        run_tracker(
-            infile=args.input,
-            varname=args.var,
-            outfile=args.output,
-            trange=trange,
-            mode=args.mode,
-            backend=args.backend,
-            n_workers=args.workers,
-        )
+        main()
 
 
 def print_head(filename: Path | str, n: int = 15) -> None:
@@ -80,29 +71,28 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
-        pytest.param(("msl", "min", "-n 60"), id="msl_min_fast"),
-        pytest.param(("vo", "max", "-n 60"), id="vo_max_fast"),
-        pytest.param(("msl", "min", ""), marks=pytest.mark.slow, id="msl_min_full"),
-        pytest.param(("vo", "max", ""), marks=pytest.mark.slow, id="vo_max_full"),
+        pytest.param(("msl", "min"), id="msl_min_full"),
+        pytest.param(("vo", "max"), id="vo_max_full"),
     ],
 )
 def config(
-    request: Any,  # noqa: ANN401
+    request: pytest.FixtureRequest,
     test_data_msl: str,
     test_data_vo: str,
-) -> tuple[str, str, str, str]:
-    varname, mode, n_arg = request.param
+) -> tuple[str, str, str]:
+    param: tuple[str, str] = request.param
+    varname, mode = param
     data_path = test_data_msl if varname == "msl" else test_data_vo
-    return data_path, varname, mode, n_arg
+    return data_path, varname, mode
 
 
 @pytest.fixture(scope="module")
 def shared_serial_output(
-    tmp_path_factory: Any,  # noqa: ANN401
-    config: tuple[str, str, str, str],
+    tmp_path_factory: pytest.TempPathFactory,
+    config: tuple[str, str, str],
 ) -> Path:
     """Run serial once and share it across tests to save time."""
-    data_path, varname, mode, n_arg = config
+    data_path, varname, mode = config
     temp_dir: Path = tmp_path_factory.mktemp("data")
     out_file = temp_dir / "integration_serial.txt"
 
@@ -118,23 +108,22 @@ def shared_serial_output(
         "--backend",
         "serial",
     ]
-    if n_arg:
-        args.extend(n_arg.split())
 
     run_command_direct(args)
 
     # Verbose print the IMILAST format output
-    print(f"\nConfiguration: Variable={varname}, Mode={mode}, Args={n_arg}")
+    print(f"\nConfiguration: Variable={varname}, Mode={mode}")
     print_head(out_file, n=15)
 
     return Path(out_file)
 
 
+@pytest.mark.slow
 def test_dask_vs_serial(
-    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str, str]
+    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
 ) -> None:
     """Integration test comparing Serial and Dask backends."""
-    data_path, varname, mode, n_arg = config
+    data_path, varname, mode = config
     out_file = tmp_path / "integration_dask.txt"
 
     args = [
@@ -151,15 +140,14 @@ def test_dask_vs_serial(
         "--workers",
         "2",
     ]
-    if n_arg:
-        args.extend(n_arg.split())
 
     run_command_direct(args)
     compare_tracks(shared_serial_output, out_file)
 
 
+@pytest.mark.slow
 def test_mpi_vs_serial(
-    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str, str]
+    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
     try:
@@ -167,7 +155,7 @@ def test_mpi_vs_serial(
     except FileNotFoundError:
         pytest.skip("mpiexec not found in path")
 
-    data_path, varname, mode, n_arg = config
+    data_path, varname, mode = config
     mpi_out = tmp_path / "integration_mpi.txt"
 
     args = [
@@ -182,35 +170,28 @@ def test_mpi_vs_serial(
         "--backend",
         "mpi",
     ]
-    if n_arg:
-        args.extend(n_arg.split())
 
     run_command_direct(args, use_mpi=True)
     compare_tracks(shared_serial_output, mpi_out)
 
 
-@pytest.mark.slow
-def test_legacy_regression(test_data_msl: str, tmp_path: Path) -> None:
-    """Regression test against v0.0.2 legacy output using Dask."""
+def test_legacy_regression(
+    shared_serial_output: Path, config: tuple[str, str, str]
+) -> None:
+    """Regression test against v0.0.2 legacy output."""
+    _, varname, _ = config
+    # Only compare if we are running the full msl dataset
+    if varname != "msl":
+        pytest.skip("Legacy regression only applies to full msl dataset")
+
     ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference file {ref_file} not found")
 
-    out_file = tmp_path / "legacy_regression.txt"
-    args = [
-        "-i",
-        test_data_msl,
-        "-v",
-        "msl",
-        "-m",
-        "min",
-        "-o",
-        str(out_file),
-        "--backend",
-        "dask",
-    ]
-    run_command_direct(args)
-
     compare_tracks(
-        ref_file, out_file, length_diff_tol=1, coord_tol=15.0, intensity_tol=500.0
+        ref_file,
+        shared_serial_output,
+        length_diff_tol=1,
+        coord_tol=15.0,
+        intensity_tol=500.0,
     )
