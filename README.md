@@ -56,9 +56,10 @@ pip install PyStormTracker
    cd PyStormTracker
    ```
 
-2. Install the package in editable mode:
+2. Install with **uv** (Recommended):
    ```bash
-   pip install -e .
+   uv sync --extra dev
+   uv run pre-commit install --hook-type pre-push
    ```
 
 ## Usage
@@ -84,25 +85,27 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 ## Development
 
 ### Setup
-It is recommended to use a virtual environment or conda for development:
+Using **uv** is the recommended way to set up your environment:
 ```bash
-conda create -n pst python=3.11
-conda activate pst
-pip install -e .[dev]
+# Install dependencies and sync virtual environment
+uv sync --extra dev
+
+# Install pre-push hooks
+uv run pre-commit install --hook-type pre-push
 ```
 
 ### Quality Control
-Before submitting a pull request, please ensure all checks pass:
+Run automated checks using **uv run**:
 
 **Linting & Formatting:**
 ```bash
-ruff check . --fix
-ruff format .
+uv run ruff check . --fix
+uv run ruff format .
 ```
 
 **Type Checking:**
 ```bash
-mypy src/
+uv run mypy src/
 ```
 
 ### Tiered Testing
@@ -113,17 +116,17 @@ To keep development cycles fast, testing is tiered:
 
 **Run fast unit tests only (Default):**
 ```bash
-pytest
+uv run pytest
 ```
 
 **Run ONLY slow/integration tests:**
 ```bash
-pytest --run-slow
+uv run pytest --run-slow
 ```
 
 **Run everything:**
 ```bash
-pytest --run-all
+uv run pytest --run-all
 ```
 
 ## Citations
