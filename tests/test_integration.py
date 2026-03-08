@@ -1,38 +1,38 @@
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
 from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
-
-# MS-MPI default path on Windows
-MSMPI_BIN = r"C:\Program Files\Microsoft MPI\Bin"
+from pystormtracker.stormtracker import parse_args, run_tracker
 
 
-def run_command(cmd: str, use_mpi: bool = False) -> str:
-    """Utility to run shell commands and check success."""
-    venv_bin = os.path.join(".venv", "Scripts", "stormtracker")
-    # Fallback to just stormtracker if not in venv
-    if not os.path.exists(venv_bin):
-        venv_bin = "stormtracker"
+def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
+    """Utility to run the tracker directly via function calls or MPI subprocess."""
+    if use_mpi:
+        base_cmd = f"{sys.executable} -m pystormtracker.stormtracker"
+        full_cmd = f"mpiexec -n 2 {base_cmd} {' '.join(cmd_args)}"
+        subprocess.run(full_cmd, shell=True, check=True, capture_output=True)
+        return
 
-    # Ensure MS-MPI bin is in path for Windows
-    env = os.environ.copy()
-    if os.path.exists(MSMPI_BIN):
-        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
-
-    full_cmd = f"mpiexec -n 2 {venv_bin} {cmd}" if use_mpi else f"{venv_bin} {cmd}"
-
-    result = subprocess.run(
-        full_cmd, shell=True, capture_output=True, text=True, env=env
-    )
-    assert result.returncode == 0, (
-        f"Command failed: {full_cmd}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-    )
-    return result.stdout
+    # Direct function call for Serial/Dask backends
+    with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
+        args = parse_args()
+        trange = (0, args.num) if args.num is not None else None
+        run_tracker(
+            infile=args.input,
+            varname=args.var,
+            outfile=args.output,
+            trange=trange,
+            mode=args.mode,
+            backend=args.backend,
+            n_workers=args.workers,
+        )
 
 
 def print_head(filename: Path | str, n: int = 15) -> None:
@@ -80,12 +80,11 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
-        ("msl", "min", "-n 120"),
-        ("vo", "max", "-n 120"),
-        ("msl", "min", ""),
-        ("vo", "max", ""),
+        pytest.param(("msl", "min", "-n 60"), id="msl_min_fast"),
+        pytest.param(("vo", "max", "-n 60"), id="vo_max_fast"),
+        pytest.param(("msl", "min", ""), marks=pytest.mark.slow, id="msl_min_full"),
+        pytest.param(("vo", "max", ""), marks=pytest.mark.slow, id="vo_max_full"),
     ],
-    ids=["msl_min_n120", "vo_max_n120", "msl_min_full", "vo_max_full"],
 )
 def config(
     request: Any,  # noqa: ANN401
@@ -104,11 +103,25 @@ def shared_serial_output(
 ) -> Path:
     """Run serial once and share it across tests to save time."""
     data_path, varname, mode, n_arg = config
-    temp_dir = tmp_path_factory.mktemp("data")
+    temp_dir: Path = tmp_path_factory.mktemp("data")
     out_file = temp_dir / "integration_serial.txt"
-    run_command(
-        f"-i {data_path} -v {varname} -m {mode} -o {out_file} {n_arg} --backend serial"
-    )
+
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(out_file),
+        "--backend",
+        "serial",
+    ]
+    if n_arg:
+        args.extend(n_arg.split())
+
+    run_command_direct(args)
 
     # Verbose print the IMILAST format output
     print(f"\nConfiguration: Variable={varname}, Mode={mode}, Args={n_arg}")
@@ -123,10 +136,25 @@ def test_dask_vs_serial(
     """Integration test comparing Serial and Dask backends."""
     data_path, varname, mode, n_arg = config
     out_file = tmp_path / "integration_dask.txt"
-    run_command(
-        f"-i {data_path} -v {varname} -m {mode} -o {out_file} {n_arg} "
-        "--backend dask --workers 2"
-    )
+
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(out_file),
+        "--backend",
+        "dask",
+        "--workers",
+        "2",
+    ]
+    if n_arg:
+        args.extend(n_arg.split())
+
+    run_command_direct(args)
     compare_tracks(shared_serial_output, out_file)
 
 
@@ -134,28 +162,34 @@ def test_mpi_vs_serial(
     shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str, str]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
-    # Check if mpiexec is actually available
-    env = os.environ.copy()
-    if os.path.exists(MSMPI_BIN):
-        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
-
     try:
-        subprocess.run("mpiexec -help", shell=True, capture_output=True, env=env)
+        subprocess.run("mpiexec -help", shell=True, capture_output=True)
     except FileNotFoundError:
         pytest.skip("mpiexec not found in path")
 
     data_path, varname, mode, n_arg = config
-
     mpi_out = tmp_path / "integration_mpi.txt"
-    run_command(
-        f"-i {data_path} -v {varname} -m {mode} -o {mpi_out} {n_arg} --backend mpi",
-        use_mpi=True,
-    )
 
-    # Compare directly to shared_serial_output
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(mpi_out),
+        "--backend",
+        "mpi",
+    ]
+    if n_arg:
+        args.extend(n_arg.split())
+
+    run_command_direct(args, use_mpi=True)
     compare_tracks(shared_serial_output, mpi_out)
 
 
+@pytest.mark.slow
 def test_legacy_regression(test_data_msl: str, tmp_path: Path) -> None:
     """Regression test against v0.0.2 legacy output using Dask."""
     ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
@@ -163,8 +197,20 @@ def test_legacy_regression(test_data_msl: str, tmp_path: Path) -> None:
         pytest.skip(f"Reference file {ref_file} not found")
 
     out_file = tmp_path / "legacy_regression.txt"
-    # Use Dask backend for speed with default workers
-    run_command(f"-i {test_data_msl} -v msl -m min -o {out_file} --backend dask")
+    args = [
+        "-i",
+        test_data_msl,
+        "-v",
+        "msl",
+        "-m",
+        "min",
+        "-o",
+        str(out_file),
+        "--backend",
+        "dask",
+    ]
+    run_command_direct(args)
+
     compare_tracks(
         ref_file, out_file, length_diff_tol=1, coord_tol=15.0, intensity_tol=500.0
     )

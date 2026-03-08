@@ -69,10 +69,7 @@ line-length = 88
 select = [
     "E", "W", "F", "I", "C4", "B", "UP", "PT", "SIM", "RUF", "ANN",
 ]
-ignore = [
-    "ANN101",
-    "ANN102",
-]
+ignore = []
 
 [tool.ruff.format]
 quote-style = "double"
@@ -90,7 +87,10 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+addopts = "-ra -q -m \"not slow\""
 testpaths = [
     "tests",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]

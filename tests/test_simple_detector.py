@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -19,9 +20,9 @@ def test_simple_detector_init(mock_dataset: MagicMock) -> None:
     }
 
     detector = SimpleDetector(pathname="test.nc", varname="slp")
-    detector._init()
+    detector._ensure_open()
 
-    mock_dataset.assert_called_once_with("test.nc", "r")
+    mock_dataset.assert_called_once_with(Path("test.nc"), "r")
     mock_var.set_auto_maskandscale.assert_called_once_with(False)
 
 

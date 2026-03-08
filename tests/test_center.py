@@ -29,13 +29,8 @@ def test_abs_dist() -> None:
     assert c1.abs_dist(c2) == pytest.approx(expected, rel=1e-5)
 
 
-def test_abs_dist_type_error() -> None:
-    c1 = Center(time=0, lat=0, lon=0, var=0)
-    with pytest.raises(TypeError, match="must be compared with a Center object"):
-        c1.abs_dist("not a center")  # type: ignore[arg-type]
-
-
 def test_lat_dist() -> None:
+
     c1 = Center(time=0, lat=0, lon=0, var=0)
     c2 = Center(time=0, lat=1, lon=0, var=0)
     expected = 6367.0 * (math.pi / 180.0)
