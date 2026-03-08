@@ -16,7 +16,7 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
   - **MPI**: Supports distributed execution via `mpi4py`.
   - **Serial**: Standard sequential execution for smaller datasets or debugging.
 - **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
-- **User-Friendly Output**: Results are exported directly to CSV with readable datetime strings and formatted numeric values.
+- **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
 
 ## Technical Methodology
 
@@ -65,7 +65,7 @@ stormtracker -i data/test/slp.2012.nc -v slp -o my_tracks
 | :--- | :--- | :--- |
 | `--input` | `-i` | **Required.** Path to the input NetCDF file. |
 | `--var` | `-v` | **Required.** Variable name to track (e.g., `slp`, `vo`). |
-| `--output` | `-o` | **Required.** Path to the output CSV file (appends `.csv` if missing). |
+| `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
 | `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |

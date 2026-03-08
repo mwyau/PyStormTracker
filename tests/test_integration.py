@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.models.tracks import Tracks
 
 # MS-MPI default path on Windows
 MSMPI_BIN = r"C:\Program Files\Microsoft MPI\Bin"
@@ -53,70 +54,15 @@ def compare_tracks(
     coord_tol: float = 1e-4,
     intensity_tol: float = 1e-4,
 ) -> None:
-    """Compares two tracking files for equality."""
-
-    def parse_imilast(filename: Path | str) -> list[list[list[str]]]:
-        tracks = []
-        with open(filename) as f:
-            lines = f.readlines()
-            current_track: list[list[str]] = []
-            for line in lines[1:]:  # skip header
-                parts = line.split()
-                if not parts:
-                    continue
-                if parts[0] == "90":
-                    if current_track:
-                        tracks.append(current_track)
-                    current_track = []
-                elif parts[0] == "00":
-                    current_track.append(parts[1:])
-            if current_track:
-                tracks.append(current_track)
-
-        # Sort tracks by their first point's time, lat, lon to ensure order independence
-        return sorted(
-            tracks,
-            key=lambda t: (t[0][2], float(t[0][7]), float(t[0][8]))
-            if t
-            else ("", 0.0, 0.0),
-        )
-
-    t1 = parse_imilast(file1)
-    t2 = parse_imilast(file2)
-
-    assert len(t1) == len(t2), f"Track count mismatch: {len(t1)} vs {len(t2)}"
-
-    for tr1, tr2 in zip(t1, t2, strict=False):
-        assert abs(len(tr1) - len(tr2)) <= length_diff_tol, (
-            f"Track length mismatch too large: {len(tr1)} vs {len(tr2)}"
-        )
-
-        # Convert tracks to dicts keyed by DateI10 (index 2) for robust matching
-        d1 = {p[2]: p for p in tr1}
-        d2 = {p[2]: p for p in tr2}
-
-        common_dates = set(d1.keys()) & set(d2.keys())
-        # We expect most points to be common if they are the same track
-        assert len(common_dates) >= min(len(tr1), len(tr2)) - length_diff_tol, (
-            "Too few common points in track matching"
-        )
-
-        for date in common_dates:
-            p1, p2 = d1[date], d2[date]
-            # Check float fields: lon, lat, Intensity1
-            # In new format, these are indices 7, 8, 9
-            for i in range(7, 9):  # lon, lat
-                val1, val2 = float(p1[i]), float(p2[i])
-                assert abs(val1 - val2) <= coord_tol, (
-                    f"Float mismatch at {date} index {i}: {val1} vs {val2}"
-                )
-
-            # Intensity should be more stable, but can differ if linking picks
-            # a different center
-            val1, val2 = float(p1[9]), float(p2[9])
-            assert abs(val1 - val2) <= intensity_tol, (
-                f"Intensity mismatch at {date}: {val1} vs {val2}"
-            )
+    """Compares two tracking files for equality using the Tracks class."""
+    t1 = Tracks.from_imilast(file1)
+    t2 = Tracks.from_imilast(file2)
+    t1.compare(
+        t2,
+        length_diff_tol=length_diff_tol,
+        coord_tol=coord_tol,
+        intensity_tol=intensity_tol,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -142,7 +88,9 @@ def test_data_vo() -> str:
     ids=["msl_min_n120", "vo_max_n120", "msl_min_full", "vo_max_full"],
 )
 def config(
-    request: Any, test_data_msl: str, test_data_vo: str  # noqa: ANN401
+    request: Any,  # noqa: ANN401
+    test_data_msl: str,
+    test_data_vo: str,
 ) -> tuple[str, str, str, str]:
     varname, mode, n_arg = request.param
     data_path = test_data_msl if varname == "msl" else test_data_vo
@@ -151,7 +99,8 @@ def config(
 
 @pytest.fixture(scope="module")
 def shared_serial_output(
-    tmp_path_factory: Any, config: tuple[str, str, str, str]  # noqa: ANN401
+    tmp_path_factory: Any,  # noqa: ANN401
+    config: tuple[str, str, str, str],
 ) -> Path:
     """Run serial once and share it across tests to save time."""
     data_path, varname, mode, n_arg = config
