@@ -56,13 +56,17 @@ jobs:
         run: mypy src/ tests/
 
   unit-tests:
+    name: unit-tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Install dependencies
         run: |
@@ -70,16 +74,20 @@ jobs:
           pip install .[dev]
       - name: Run Unit Tests
         run: |
-          pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-all
+          pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-full
 
-  integration-fast:
+  integration-tests:
+    name: integration-tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Install MPI
         run: |
@@ -89,27 +97,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[dev]
-      - name: Run Fast Integration Tests
+      - name: Run Integration Tests
         run: |
-          pytest -vv tests/test_integration.py
-
-  integration-full:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-      - name: Install MPI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y openmpi-bin libopenmpi-dev
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .[dev]
-      - name: Run Full Integration & Legacy Regression
-        run: |
-          pytest -vv tests/test_integration.py --run-slow
+          pytest -vv tests/test_integration.py --run-full
