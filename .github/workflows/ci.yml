@@ -14,6 +14,8 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    # Skip PR CI if the head branch is 'dev' to avoid double runs (push trigger covers it)
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
     outputs:
       python-versions: ${{ steps.versions.outputs.value }}
     steps:
@@ -22,6 +24,7 @@ jobs:
 
   ruff-lint:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -36,6 +39,7 @@ jobs:
 
   ruff-format:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -50,6 +54,7 @@ jobs:
 
   mypy-typecheck:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
