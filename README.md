@@ -16,6 +16,7 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
   - **MPI**: Supports distributed execution via `mpi4py`.
   - **Serial**: Standard sequential execution for smaller datasets or debugging.
 - **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
+- **CI/CD Integrated**: Automated linting, type-checking, and cross-version testing via GitHub Actions.
 - **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
 
 ## Technical Methodology
