@@ -69,10 +69,7 @@ line-length = 88
 select = [
     "E", "W", "F", "I", "C4", "B", "UP", "PT", "SIM", "RUF", "ANN",
 ]
-ignore = [
-    "ANN101",
-    "ANN102",
-]
+ignore = []
 
 [tool.ruff.format]
 quote-style = "double"
