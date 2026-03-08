@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import netCDF4
@@ -9,26 +10,57 @@ from .center import Center
 from .time import TimeRange
 
 
+@dataclass
+class Track:
+    """Represents a single storm track as a sequence of centers."""
+
+    centers: list[Center] = field(default_factory=list)
+
+    def __iter__(self) -> Iterator[Center]:
+        return iter(self.centers)
+
+    def __len__(self) -> int:
+        return len(self.centers)
+
+    def __getitem__(self, index: int) -> Center:
+        return self.centers[index]
+
+    def append(self, center: Center) -> None:
+        self.centers.append(center)
+
+    def extend(self, other: Track) -> None:
+        self.centers.extend(other.centers)
+
+    def abs_dist(self, other: Track) -> float:
+        """
+        Distance between the last point of this track and
+        the first point of another.
+        """
+        c1 = self.centers[-1]
+        c2 = other[0]
+        return c1.abs_dist(c2)
+
+
 class Tracks:
     def __init__(self) -> None:
-        self._tracks: list[list[Center]] = []
-        self.head: list[list[Center]] = []
-        self.tail: list[list[Center]] = []
+        self._tracks: list[Track] = []
+        self.head: list[Track] = []
+        self.tail: list[Track] = []
         self.time_range: TimeRange | None = None
 
-    def __getitem__(self, index: int) -> list[Center]:
+    def __getitem__(self, index: int) -> Track:
         return self._tracks[index]
 
-    def __setitem__(self, index: int, value: list[Center]) -> None:
+    def __setitem__(self, index: int, value: Track) -> None:
         self._tracks[index] = value
 
-    def __iter__(self) -> Iterator[list[Center]]:
+    def __iter__(self) -> Iterator[Track]:
         return iter(self._tracks)
 
     def __len__(self) -> int:
         return len(self._tracks)
 
-    def append(self, obj: list[Center]) -> None:
+    def append(self, obj: Track) -> None:
         self._tracks.append(obj)
 
     @classmethod
@@ -37,24 +69,23 @@ class Tracks:
         tracks_obj = cls()
         with open(filename) as f:
             lines = f.readlines()
-            current_track: list[Center] = []
+            current_track_centers: list[Center] = []
             for line in lines[1:]:  # skip header
                 parts = line.split()
                 if not parts:
                     continue
                 if parts[0] == "90":
-                    if current_track:
-                        tracks_obj.append(current_track)
-                    current_track = []
+                    if current_track_centers:
+                        tracks_obj.append(Track(current_track_centers))
+                    current_track_centers = []
                 elif parts[0] == "00":
                     # Format: 00 CycloneNo StepNo DateI10 Year Month Day Hour Lon Lat
                     # Intensity1. Center takes (time, lat, lon, var).
-                    # We store DateI10 as time if we don't have the original epoch.
                     lon, lat, var = float(parts[8]), float(parts[9]), float(parts[10])
                     time_val = float(parts[3])  # DateI10
-                    current_track.append(Center(time_val, lat, lon, var))
-            if current_track:
-                tracks_obj.append(current_track)
+                    current_track_centers.append(Center(time_val, lat, lon, var))
+            if current_track_centers:
+                tracks_obj.append(Track(current_track_centers))
 
         # Sort tracks by their first point's time, lat, lon for consistency
         tracks_obj._tracks.sort(
@@ -84,8 +115,6 @@ class Tracks:
                 f.write(f"90 {i} {len(track)}\n")
                 for step, center in enumerate(track, start=1):
                     try:
-                        # Attempt to use netCDF4 if time looks like a numeric offset
-                        # If it's already a DateI10 (from from_imilast), this may fail
                         dt_any: object = netCDF4.num2date(
                             [center.time], units=time_units, calendar=calendar
                         )
