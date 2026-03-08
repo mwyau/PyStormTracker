@@ -8,7 +8,7 @@ version = "0.3.0"
 description = "A Parallel Object-Oriented Cyclone Tracker in Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 authors = [
     { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
 ]
@@ -20,6 +20,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -63,7 +64,7 @@ exclude = [
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]
@@ -79,7 +80,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -93,7 +94,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --cov=src/pystormtracker --cov-report=term-missing --cov-report=xml"
+addopts = "-ra -q --cov=pystormtracker --cov-report=term-missing --cov-report=xml"
 testpaths = [
     "tests",
 ]
@@ -102,8 +103,14 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/pystormtracker"]
+source = ["pystormtracker"]
 omit = ["tests/*", "**/__init__.py"]
+
+[tool.coverage.paths]
+source = [
+    "src/pystormtracker",
+    "**/site-packages/pystormtracker",
+]
 
 [tool.coverage.report]
 show_missing = true
