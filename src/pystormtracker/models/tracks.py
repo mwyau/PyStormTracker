@@ -1,65 +1,104 @@
+from __future__ import annotations
+
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import netCDF4
 
 from .center import Center
+from .time import TimeRange
+
+
+@dataclass
+class Track:
+    """Represents a single storm track as a sequence of centers."""
+
+    centers: list[Center] = field(default_factory=list)
+
+    def __iter__(self) -> Iterator[Center]:
+        return iter(self.centers)
+
+    def __len__(self) -> int:
+        return len(self.centers)
+
+    def __getitem__(self, index: int) -> Center:
+        return self.centers[index]
+
+    def append(self, center: Center) -> None:
+        self.centers.append(center)
+
+    def extend(self, other: Track) -> None:
+        self.centers.extend(other.centers)
+
+    def abs_dist(self, other: Track) -> float:
+        """
+        Distance between the last point of this track and
+        the first point of another.
+        """
+        c1 = self.centers[-1]
+        c2 = other[0]
+        return c1.abs_dist(c2)
 
 
 class Tracks:
     def __init__(self) -> None:
-        self._tracks: list[list[Center]] = []
-        self.head: list[int] = []
-        self.tail: list[int] = []
-        self.tstart: Any | None = None
-        self.tend: Any | None = None
-        self.dt: Any | None = None
+        self._tracks: list[Track] = []
+        self.head: list[Track] = []
+        self.tail: list[Track] = []
+        self.time_range: TimeRange | None = None
 
-    def __getitem__(self, index: int) -> list[Center]:
+    def __getitem__(self, index: int) -> Track:
         return self._tracks[index]
 
-    def __setitem__(self, index: int, value: list[Center]) -> None:
+    def __setitem__(self, index: int, value: Track) -> None:
         self._tracks[index] = value
 
-    def __iter__(self) -> Iterator[list[Center]]:
+    def __iter__(self) -> Iterator[Track]:
         return iter(self._tracks)
 
     def __len__(self) -> int:
         return len(self._tracks)
 
-    def append(self, obj: list[Center]) -> None:
+    def append(self, obj: Track) -> None:
         self._tracks.append(obj)
 
+    def sort(self) -> None:
+        """Sorts tracks by their first point's time, lat, then lon."""
+
+        def track_key(t: Track) -> tuple[float, float, float]:
+            if not t.centers:
+                return (0.0, 0.0, 0.0)
+            c = t.centers[0]
+            return (c.time, c.lat, c.lon)
+
+        self._tracks.sort(key=track_key)
+
     @classmethod
-    def from_imilast(cls, filename: Path | str) -> "Tracks":
+    def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
         tracks_obj = cls()
         with open(filename) as f:
             lines = f.readlines()
-            current_track: list[Center] = []
+            current_track_centers: list[Center] = []
             for line in lines[1:]:  # skip header
                 parts = line.split()
                 if not parts:
                     continue
                 if parts[0] == "90":
-                    if current_track:
-                        tracks_obj.append(current_track)
-                    current_track = []
+                    if current_track_centers:
+                        tracks_obj.append(Track(current_track_centers))
+                    current_track_centers = []
                 elif parts[0] == "00":
                     # Format: 00 CycloneNo StepNo DateI10 Year Month Day Hour Lon Lat
                     # Intensity1. Center takes (time, lat, lon, var).
-                    # We store DateI10 as time if we don't have the original epoch.
                     lon, lat, var = float(parts[8]), float(parts[9]), float(parts[10])
                     time_val = float(parts[3])  # DateI10
-                    current_track.append(Center(time_val, lat, lon, var))
-            if current_track:
-                tracks_obj.append(current_track)
+                    current_track_centers.append(Center(time_val, lat, lon, var))
+            if current_track_centers:
+                tracks_obj.append(Track(current_track_centers))
 
-        # Sort tracks by their first point's time, lat, lon for consistency
-        tracks_obj._tracks.sort(
-            key=lambda t: (t[0].time, t[0].lat, t[0].lon) if t else (0.0, 0.0, 0.0)
-        )
+        tracks_obj.sort()
         return tracks_obj
 
     def to_imilast(
@@ -70,7 +109,7 @@ class Tracks:
         decimal_places: int = 4,
     ) -> None:
         """Exports tracks to an IMILAST format text file."""
-        if not any(outfile.endswith(ext) for ext in [".txt", ".imilast"]):
+        if not outfile.endswith(".txt"):
             outfile += ".txt"
 
         with open(outfile, "w", newline="") as f:
@@ -84,12 +123,10 @@ class Tracks:
                 f.write(f"90 {i} {len(track)}\n")
                 for step, center in enumerate(track, start=1):
                     try:
-                        # Attempt to use netCDF4 if time looks like a numeric offset
-                        # If it's already a DateI10 (from from_imilast), this may fail
-                        dt_any: Any = netCDF4.num2date(
+                        dt_any: object = netCDF4.num2date(
                             [center.time], units=time_units, calendar=calendar
                         )
-                        dt = dt_any[0]
+                        dt = dt_any[0]  # type: ignore[index]
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
                         yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
                     except Exception:
@@ -118,30 +155,34 @@ class Tracks:
 
     def compare(
         self,
-        other: "Tracks",
+        other: Tracks,
         length_diff_tol: int = 0,
         coord_tol: float = 1e-4,
         intensity_tol: float = 1e-4,
     ) -> None:
-        """Compares this Tracks object with another for equality within tolerances."""
+        """Compares this Tracks object with another for equality, ignoring order."""
         assert len(self) == len(other), (
             f"Track count mismatch: {len(self)} vs {len(other)}"
         )
+
+        self.sort()
+        other.sort()
 
         for tr1, tr2 in zip(self._tracks, other._tracks, strict=False):
             assert abs(len(tr1) - len(tr2)) <= length_diff_tol, (
                 f"Track length mismatch: {len(tr1)} vs {len(tr2)}"
             )
 
-            # Robust matching using time as key
-            d1 = {c.time: c for c in tr1}
-            d2 = {c.time: c for c in tr2}
+            # Robust matching using time as key for points within the track
+            d1 = {c.time: c for c in tr1.centers}
+            d2 = {c.time: c for c in tr2.centers}
 
             common_times = set(d1.keys()) & set(d2.keys())
+            # Ensure we have a significant overlap
             assert len(common_times) >= min(len(tr1), len(tr2)) - length_diff_tol
 
-            for t in common_times:
-                c1, c2 = d1[t], d2[t]
+            for t_val in common_times:
+                c1, c2 = d1[t_val], d2[t_val]
                 assert abs(c1.lat - c2.lat) <= coord_tol
                 assert abs(c1.lon - c2.lon) <= coord_tol
                 assert abs(c1.var - c2.var) <= intensity_tol

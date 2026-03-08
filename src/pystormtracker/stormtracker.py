@@ -1,9 +1,12 @@
-import os
 import timeit
 from argparse import ArgumentParser, Namespace
+from pathlib import Path
 from typing import Any, Literal
 
-from .models import Center, Grid, Tracks
+import dask
+from distributed import Client, LocalCluster
+
+from .models import Center, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
@@ -12,7 +15,10 @@ Backend = Literal["serial", "mpi", "dask"]
 def _detect_serial(
     infile: str, varname: str, trange: tuple[int, int] | None, mode: str
 ) -> tuple[list[list[Center]], Grid]:
-    grid = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+    time_range = (
+        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
+    )
+    grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     return grid.detect(minmaxmode=mode), grid  # type: ignore
 
 
@@ -27,7 +33,12 @@ def _detect_mpi(
     root = 0
 
     if rank == root:
-        grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+        time_range = (
+            TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
+        )
+        grid_obj = SimpleDetector(
+            pathname=infile, varname=varname, time_range=time_range
+        )
         grids: list[Grid] | None = grid_obj.split(size)
     else:
         grids = None
@@ -43,13 +54,15 @@ def _detect_dask(
     mode: str,
     n_workers: int | None,
 ) -> tuple[list[list[Center]], Grid]:
-    import dask
-    from distributed import Client, LocalCluster
+    import os
 
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
-    grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+    time_range = (
+        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
+    )
+    grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     grids = grid_obj.split(n_workers)
 
     with (
@@ -126,7 +139,7 @@ def run_tracker(
     else:
         centers, grid = _detect_serial(infile, varname, trange, mode)
 
-    if use_mpi and comm is not None:
+    if use_mpi and comm is not None and hasattr(comm, "Barrier"):
         comm.Barrier()
 
     if rank == 0:
@@ -137,7 +150,7 @@ def run_tracker(
     tracks = _link_centers(centers)
 
     # Consolidation Phase
-    if use_mpi and comm is not None:
+    if use_mpi and comm is not None and hasattr(comm, "Barrier"):
         timer["combiner"] = timeit.default_timer()
         tracks = _combine_mpi_tracks(tracks, comm)
         timer["combiner"] = timeit.default_timer() - timer["combiner"]
@@ -162,10 +175,9 @@ def run_tracker(
             time_units=getattr(time_obj, "units", ""),
             calendar=getattr(time_obj, "calendar", "standard"),
         )
+        out_path = Path(outfile)
         final_outfile = (
-            outfile
-            if any(outfile.endswith(e) for e in [".txt", ".imilast"])
-            else f"{outfile}.txt"
+            out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
         )
         print(f"Results exported to {final_outfile}")
 

@@ -16,6 +16,8 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
   - **MPI**: Supports distributed execution via `mpi4py`.
   - **Serial**: Standard sequential execution for smaller datasets or debugging.
 - **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
+- **CI/CD Integrated**: Automated linting, type-checking, and cross-version testing via GitHub Actions.
+- **Modern Architecture**: Leverages `typing.Protocol` for extensibility and `dataclasses` for clean, typed data models.
 - **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
 
 ## Technical Methodology
@@ -85,14 +87,53 @@ mpiexec -n 4 stormtracker -i input.nc -v slp -o tracks -b mpi
 
 ## Project Structure
 
-- `src/pystormtracker/models/`: Data structures (`Center`, `Grid`, `Tracks`).
+- `src/pystormtracker/models/`: Core data models (`Center`, `Track`, `Tracks`, `TimeRange`, and `Grid` protocol).
 - `src/pystormtracker/simple/`: Implementation of the Simple Tracker logic (`SimpleDetector`, `SimpleLinker`).
 - `src/pystormtracker/stormtracker.py`: CLI orchestration and parallel backends.
 
 ## Testing
 
-Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` from the [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) repository on the first run.
+Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` on the first run.
 
+```bash
+pytest
+```
+
+## Development
+
+### Setup
+It is recommended to use a virtual environment or conda for development:
+```bash
+conda create -n pst python=3.12
+conda activate pst
+pip install -e .[dev]
+```
+
+### Quality Control
+Before submitting a pull request, please ensure all checks pass:
+
+**Linting & Formatting:**
+```bash
+ruff check . --fix
+ruff format .
+```
+
+**Type Checking:**
+```bash
+mypy src/
+```
+
+### Tiered Testing
+To keep development cycles fast, integration tests are tiered:
+- **Fast Tests**: Default local runs.
+- **Slow Tests**: Full datasets and legacy regressions (marked with `@pytest.mark.slow`).
+
+**Run fast tests only:**
+```bash
+pytest -m "not slow"
+```
+
+**Run everything (CI behavior):**
 ```bash
 pytest
 ```
@@ -109,6 +150,7 @@ If you use this software in your research, please cite the following:
 
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
  - **IMILAST**, 2012: IMILAST Intercomparison Protocol. https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
+ - **IMILAST Data Download**: https://proclim.scnat.ch/en/activities/project_imilast/data_download
 
 ## License
 
