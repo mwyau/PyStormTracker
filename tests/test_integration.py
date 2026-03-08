@@ -9,7 +9,7 @@ import pytest
 
 from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
-from pystormtracker.stormtracker import parse_args, run_tracker
+from pystormtracker.stormtracker import main
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
@@ -22,21 +22,7 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
 
     # Direct function call for Serial/Dask backends
     with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
-        args = parse_args()
-        if args.num is not None:
-            # We don't easily have access to the grid here without repeating main logic
-            # but we can call run_tracker with the mocked argv
-            pass
-
-        run_tracker(
-            infile=args.input,
-            varname=args.var,
-            outfile=args.output,
-            time_range=None,  # Handled by args.num inside run_tracker or just pass None
-            mode=args.mode,
-            backend=args.backend,
-            n_workers=args.workers,
-        )
+        main()
 
 
 def print_head(filename: Path | str, n: int = 15) -> None:
@@ -194,27 +180,26 @@ def test_mpi_vs_serial(
 
 
 @pytest.mark.slow
-def test_legacy_regression(test_data_msl: str, tmp_path: Path) -> None:
-    """Regression test against v0.0.2 legacy output using Dask."""
+def test_legacy_regression(
+    shared_serial_output: Path, config: tuple[str, str, str, str]
+) -> None:
+    """Regression test against v0.0.2 legacy output."""
+    _, varname, _, n_arg = config
+    # Only compare if we are running the full msl dataset
+    if varname != "msl" or n_arg != "":
+        pytest.skip("Legacy regression only applies to full msl dataset")
+
     ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference file {ref_file} not found")
 
-    out_file = tmp_path / "legacy_regression.txt"
-    args = [
-        "-i",
-        test_data_msl,
-        "-v",
-        "msl",
-        "-m",
-        "min",
-        "-o",
-        str(out_file),
-        "--backend",
-        "dask",
-    ]
-    run_command_direct(args)
-
+    # The shared_serial_output must be from the msl_min_full configuration
+    # to match the legacy reference file.
+    # For now, we assume the 'msl_min_full' variant is used when running slow tests.
     compare_tracks(
-        ref_file, out_file, length_diff_tol=1, coord_tol=15.0, intensity_tol=500.0
+        ref_file,
+        shared_serial_output,
+        length_diff_tol=1,
+        coord_tol=15.0,
+        intensity_tol=500.0,
     )
