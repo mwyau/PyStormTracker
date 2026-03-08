@@ -38,7 +38,7 @@ def print_head(filename, n=15):
             print(line.rstrip())
     print("-------------------------------------------------------\n")
 
-def compare_tracks(file1, file2, allow_length_diff=False):
+def compare_tracks(file1, file2, length_diff_tol=0, coord_tol=1e-4, intensity_tol=1e-4):
     """Compares two tracking files for equality."""
     def parse_imilast(filename):
         tracks = []
@@ -66,10 +66,7 @@ def compare_tracks(file1, file2, allow_length_diff=False):
     assert len(t1) == len(t2), f"Track count mismatch: {len(t1)} vs {len(t2)}"
     
     for tr1, tr2 in zip(t1, t2):
-        if allow_length_diff:
-            assert abs(len(tr1) - len(tr2)) <= 1, f"Track length mismatch too large: {len(tr1)} vs {len(tr2)}"
-        else:
-            assert len(tr1) == len(tr2), f"Track length mismatch: {len(tr1)} vs {len(tr2)}"
+        assert abs(len(tr1) - len(tr2)) <= length_diff_tol, f"Track length mismatch too large: {len(tr1)} vs {len(tr2)}"
         
         # Convert tracks to dicts keyed by DateI10 (index 2) for robust matching
         d1 = {p[2]: p for p in tr1}
@@ -77,21 +74,17 @@ def compare_tracks(file1, file2, allow_length_diff=False):
         
         common_dates = set(d1.keys()) & set(d2.keys())
         # We expect most points to be common if they are the same track
-        assert len(common_dates) >= min(len(tr1), len(tr2)), "Too few common points in track matching"
+        assert len(common_dates) >= min(len(tr1), len(tr2)) - length_diff_tol, "Too few common points in track matching"
 
         for date in common_dates:
             p1, p2 = d1[date], d2[date]
             # Check float fields: lon, lat, Intensity1
             # In new format, these are indices 7, 8, 9
-            # For legacy regression, we allow larger coord diffs due to different linking decisions
-            coord_tol = 15.0 if allow_length_diff else 1e-4
-            
             for i in range(7, 9): # lon, lat
                 val1, val2 = float(p1[i]), float(p2[i])
                 assert abs(val1 - val2) <= coord_tol, f"Float mismatch at {date} index {i}: {val1} vs {val2}"
             
             # Intensity should be more stable, but can differ if linking picks a different center
-            intensity_tol = 500.0 if allow_length_diff else 1e-4
             val1, val2 = float(p1[9]), float(p2[9])
             assert abs(val1 - val2) <= intensity_tol, f"Intensity mismatch at {date}: {val1} vs {val2}"
 
@@ -166,4 +159,4 @@ def test_legacy_regression(test_data_msl, tmp_path):
     out_file = tmp_path / "legacy_regression.txt"
     # Use Dask backend for speed with default workers
     run_command(f"-i {test_data_msl} -v msl -m min -o {out_file} --backend dask")
-    compare_tracks(ref_file, out_file, allow_length_diff=True)
+    compare_tracks(ref_file, out_file, length_diff_tol=1, coord_tol=15.0, intensity_tol=500.0)
