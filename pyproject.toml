@@ -8,7 +8,7 @@ version = "0.3.0"
 description = "A Parallel Object-Oriented Cyclone Tracker in Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
 ]
@@ -20,8 +20,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
