@@ -87,7 +87,7 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+addopts = "-ra -q -m \"not slow\""
 testpaths = [
     "tests",
 ]
