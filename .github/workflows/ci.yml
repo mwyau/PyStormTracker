@@ -73,7 +73,7 @@ jobs:
           pip install .[dev]
       - name: Run Unit Tests
         run: |
-          pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-all
+          pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-all
 
   integration-fast:
     runs-on: ubuntu-latest
@@ -97,7 +97,7 @@ jobs:
           pip install .[dev]
       - name: Run Fast Integration Tests
         run: |
-          pytest tests/test_integration.py
+          pytest -vv tests/test_integration.py
 
   integration-full:
     name: integration-full (${{ matrix.python-version }})
@@ -122,4 +122,4 @@ jobs:
           pip install .[dev]
       - name: Run Full Integration & Legacy Regression
         run: |
-          pytest tests/test_integration.py --run-slow
+          pytest -vv tests/test_integration.py --run-slow
