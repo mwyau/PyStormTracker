@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import netCDF4
@@ -6,14 +9,21 @@ import netCDF4
 from .center import Center
 
 
+@dataclass
+class TimeRange:
+    """Metadata for the time range covered by a set of tracks."""
+
+    start: float
+    end: float
+    step: float | None = None
+
+
 class Tracks:
     def __init__(self) -> None:
         self._tracks: list[list[Center]] = []
         self.head: list[int] = []
         self.tail: list[int] = []
-        self.tstart: float | None = None
-        self.tend: float | None = None
-        self.dt: float | None = None
+        self.time_info: TimeRange | None = None
 
     def __getitem__(self, index: int) -> list[Center]:
         return self._tracks[index]
@@ -31,7 +41,7 @@ class Tracks:
         self._tracks.append(obj)
 
     @classmethod
-    def from_imilast(cls, filename: Path | str) -> "Tracks":
+    def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
         tracks_obj = cls()
         with open(filename) as f:
@@ -117,7 +127,7 @@ class Tracks:
 
     def compare(
         self,
-        other: "Tracks",
+        other: Tracks,
         length_diff_tol: int = 0,
         coord_tol: float = 1e-4,
         intensity_tol: float = 1e-4,
