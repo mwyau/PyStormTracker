@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    # Skip PR CI if the head branch is 'dev' to avoid double runs (push trigger covers it)
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
+    outputs:
+      python-versions: ${{ steps.versions.outputs.value }}
+    steps:
+      - id: versions
+        run: echo 'value=["3.11", "3.12", "3.13", "3.14"]' >> $GITHUB_OUTPUT
+
+  ruff-lint:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install ruff
+      - name: Lint with Ruff
+        run: ruff check .
+
+  ruff-format:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install ruff
+      - name: Check formatting with Ruff
+        run: ruff format --check .
+
+  mypy-typecheck:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.ref != 'dev'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+      - name: Type check with Mypy
+        run: mypy src/ tests/
+
+  unit-tests:
+    name: unit-tests (Python ${{ matrix.python-version }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+      - name: Run Unit Tests
+        run: |
+          pytest -vv
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  integration-tests:
+    name: integration-tests (Python ${{ matrix.python-version }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+      - name: Install MPI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openmpi-bin libopenmpi-dev
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+      - name: Run Integration Tests
+        run: |
+          pytest -vv tests/test_integration.py --run-all
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

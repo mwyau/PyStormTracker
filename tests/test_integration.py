@@ -1,84 +1,197 @@
+from __future__ import annotations
+
 import os
 import subprocess
-import pandas as pd
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
-# Paths to test data and outputs
-TEST_NC = "data/test/slp.2012.nc"
-SERIAL_OUT = "integration_serial.csv"
-DASK_OUT = "integration_dask.csv"
-MPI_OUT = "integration_mpi.csv"
+from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.models.tracks import Tracks
+from pystormtracker.stormtracker import main
 
-# MS-MPI default path on Windows
-MSMPI_BIN = r"C:\Program Files\Microsoft MPI\Bin"
 
-def run_command(cmd, use_mpi=False):
-    """Utility to run shell commands and check success."""
-    venv_bin = os.path.join(".venv", "Scripts", "stormtracker")
-    
-    # Ensure MS-MPI bin is in path for Windows
-    env = os.environ.copy()
-    if os.path.exists(MSMPI_BIN):
-        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
-    
+def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
+    """Utility to run the tracker directly via function calls or MPI subprocess."""
     if use_mpi:
-        full_cmd = f"mpiexec -n 2 {venv_bin} {cmd}"
-    else:
-        full_cmd = f"{venv_bin} {cmd}"
-        
-    result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True, env=env)
-    assert result.returncode == 0, f"Command failed: {full_cmd}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-    return result.stdout
+        base_cmd = f"{sys.executable} -m pystormtracker.stormtracker"
+        full_cmd = f"mpiexec -n 2 {base_cmd} {' '.join(cmd_args)}"
+        subprocess.run(full_cmd, shell=True, check=True, capture_output=True)
+        return
 
-def compare_csvs(file1, file2):
-    """Compares two tracking CSV files for equality."""
-    df1 = pd.read_csv(file1).sort_values(["track_id", "time"]).reset_index(drop=True)
-    df2 = pd.read_csv(file2).sort_values(["track_id", "time"]).reset_index(drop=True)
-    
-    # Check shape
-    assert df1.shape == df2.shape, f"Shape mismatch: {df1.shape} vs {df2.shape}"
-    
-    # Check content (allowing small float differences)
-    pd.testing.assert_frame_equal(df1, df2, check_dtype=False, atol=1e-4)
+    # Direct function call for Serial/Dask backends
+    with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
+        main()
 
-@pytest.fixture(scope="module", autouse=True)
-def shared_serial_output():
+
+def print_head(filename: Path | str, n: int = 15) -> None:
+    """Prints the first n lines of a file."""
+    print(f"\n--- First {n} lines of {os.path.basename(filename)} ---")
+    with open(filename) as f:
+        for _ in range(n):
+            line = f.readline()
+            if not line:
+                break
+            print(line.rstrip())
+    print("-------------------------------------------------------\n")
+
+
+def compare_tracks(
+    file1: Path | str,
+    file2: Path | str,
+    length_diff_tol: int = 0,
+    coord_tol: float = 1e-4,
+    intensity_tol: float = 1e-4,
+) -> None:
+    """Compares two tracking files for equality using the Tracks class."""
+    t1 = Tracks.from_imilast(file1)
+    t2 = Tracks.from_imilast(file2)
+    t1.compare(
+        t2,
+        length_diff_tol=length_diff_tol,
+        coord_tol=coord_tol,
+        intensity_tol=intensity_tol,
+    )
+
+
+@pytest.fixture(scope="module")
+def test_data_msl() -> str:
+    """Download MSL test data once per module."""
+    return fetch_era5_msl()
+
+
+@pytest.fixture(scope="module")
+def test_data_vo() -> str:
+    """Download VO test data once per module."""
+    return fetch_era5_vo850()
+
+
+@pytest.fixture(
+    scope="module",
+    params=[
+        pytest.param(("msl", "min"), id="msl_min_full"),
+        pytest.param(("vo", "max"), id="vo_max_full"),
+    ],
+)
+def config(
+    request: pytest.FixtureRequest,
+    test_data_msl: str,
+    test_data_vo: str,
+) -> tuple[str, str, str]:
+    param: tuple[str, str] = request.param
+    varname, mode = param
+    data_path = test_data_msl if varname == "msl" else test_data_vo
+    return data_path, varname, mode
+
+
+@pytest.fixture(scope="module")
+def shared_serial_output(
+    tmp_path_factory: pytest.TempPathFactory,
+    config: tuple[str, str, str],
+) -> Path:
     """Run serial once and share it across tests to save time."""
-    if not os.path.exists(TEST_NC):
-        pytest.skip("Test data not found")
-    
-    run_command(f"-i {TEST_NC} -v slp -o {SERIAL_OUT} -n 5 --backend serial")
-    yield SERIAL_OUT
-    if os.path.exists(SERIAL_OUT):
-        os.remove(SERIAL_OUT)
+    data_path, varname, mode = config
+    temp_dir: Path = tmp_path_factory.mktemp("data")
+    out_file = temp_dir / "integration_serial.txt"
 
-def test_dask_vs_serial(shared_serial_output):
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(out_file),
+        "--backend",
+        "serial",
+    ]
+
+    run_command_direct(args)
+
+    # Verbose print the IMILAST format output
+    print(f"\nConfiguration: Variable={varname}, Mode={mode}")
+    print_head(out_file, n=15)
+
+    return Path(out_file)
+
+
+@pytest.mark.slow
+def test_dask_vs_serial(
+    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
+) -> None:
     """Integration test comparing Serial and Dask backends."""
-    run_command(f"-i {TEST_NC} -v slp -o {DASK_OUT} -n 5 --backend dask --workers 2")
-    compare_csvs(shared_serial_output, DASK_OUT)
-    if os.path.exists(DASK_OUT):
-        os.remove(DASK_OUT)
+    data_path, varname, mode = config
+    out_file = tmp_path / "integration_dask.txt"
 
-def test_mpi_vs_serial(shared_serial_output):
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(out_file),
+        "--backend",
+        "dask",
+        "--workers",
+        "2",
+    ]
+
+    run_command_direct(args)
+    compare_tracks(shared_serial_output, out_file)
+
+
+@pytest.mark.slow
+def test_mpi_vs_serial(
+    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
+) -> None:
     """Integration test comparing Serial and MPI backends."""
-    # Check if mpiexec is actually available
-    env = os.environ.copy()
-    if os.path.exists(MSMPI_BIN):
-        env["PATH"] = MSMPI_BIN + os.pathsep + env["PATH"]
-    
     try:
-        subprocess.run("mpiexec -help", shell=True, capture_output=True, env=env)
+        subprocess.run("mpiexec -help", shell=True, capture_output=True)
     except FileNotFoundError:
         pytest.skip("mpiexec not found in path")
 
-    run_command(f"-i {TEST_NC} -v slp -o {MPI_OUT} -n 10 --backend mpi", use_mpi=True)
-    
-    # Note: We run 10 steps for MPI to test split logic, 
-    # so we need a fresh serial run for comparison if n is different.
-    SERIAL_10 = "integration_serial_10.csv"
-    run_command(f"-i {TEST_NC} -v slp -o {SERIAL_10} -n 10 --backend serial")
-    
-    compare_csvs(SERIAL_10, MPI_OUT)
-    
-    if os.path.exists(MPI_OUT): os.remove(MPI_OUT)
-    if os.path.exists(SERIAL_10): os.remove(SERIAL_10)
+    data_path, varname, mode = config
+    mpi_out = tmp_path / "integration_mpi.txt"
+
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(mpi_out),
+        "--backend",
+        "mpi",
+    ]
+
+    run_command_direct(args, use_mpi=True)
+    compare_tracks(shared_serial_output, mpi_out)
+
+
+def test_legacy_regression(
+    shared_serial_output: Path, config: tuple[str, str, str]
+) -> None:
+    """Regression test against v0.0.2 legacy output."""
+    _, varname, _ = config
+    # Only compare if we are running the full msl dataset
+    if varname != "msl":
+        pytest.skip("Legacy regression only applies to full msl dataset")
+
+    ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
+    if not os.path.exists(ref_file):
+        pytest.skip(f"Reference file {ref_file} not found")
+
+    compare_tracks(
+        ref_file,
+        shared_serial_output,
+        length_diff_tol=1,
+        coord_tol=15.0,
+        intensity_tol=500.0,
+    )
