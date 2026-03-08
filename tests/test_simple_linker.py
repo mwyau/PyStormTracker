@@ -16,16 +16,16 @@ def test_simple_linker_append_center() -> None:
     linker.append_center(tracks, [c1])
 
     assert len(tracks) == 1
-    assert tracks.time_info is not None
-    assert tracks.time_info.start == 0
-    assert tracks.time_info.end == 0
+    assert tracks.time_range is not None
+    assert tracks.time_range.start == 0
+    assert tracks.time_range.end == 0
 
     c2 = Center(6, 1, 1, 990)
     linker.append_center(tracks, [c2])
 
     assert len(tracks) == 1
-    assert tracks.time_info.end == 6
-    assert tracks.time_info.step == 6
+    assert tracks.time_range.end == 6
+    assert tracks.time_range.step == 6
     assert len(tracks[0]) == 2
 
 
@@ -44,5 +44,5 @@ def test_simple_linker_extend_track() -> None:
 
     assert len(t1) == 1
     assert len(t1[0]) == 2
-    assert t1.time_info is not None
-    assert t1.time_info.end == 6
+    assert t1.time_range is not None
+    assert t1.time_range.end == 6
