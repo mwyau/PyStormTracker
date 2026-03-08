@@ -39,7 +39,10 @@ class SimpleDetector:
         """Ensures the xarray dataset is open and basic variables are mapped."""
         if self._ds is None:
             # open_dataset is lazy by default
-            self._ds = xr.open_dataset(self.pathname, mask_and_scale=False)
+            # engine="h5netcdf" is the modern standard for NetCDF4 files
+            self._ds = xr.open_dataset(
+                self.pathname, mask_and_scale=False, engine="h5netcdf"
+            )
             self._data = self._ds[self.varname]
 
             # Identify coordinate names
