@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
+from .data_utils import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.stormtracker import main
 
