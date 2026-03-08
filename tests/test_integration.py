@@ -80,10 +80,11 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
-        ("msl", "min", "-n 60"),
-        ("vo", "max", "-n 60"),
+        pytest.param(("msl", "min", "-n 60"), id="msl_min_fast"),
+        pytest.param(("vo", "max", "-n 60"), id="vo_max_fast"),
+        pytest.param(("msl", "min", ""), marks=pytest.mark.slow, id="msl_min_full"),
+        pytest.param(("vo", "max", ""), marks=pytest.mark.slow, id="vo_max_full"),
     ],
-    ids=["msl_min_fast", "vo_max_fast"],
 )
 def config(
     request: Any,  # noqa: ANN401
