@@ -17,6 +17,7 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
   - **Serial**: Standard sequential execution for smaller datasets or debugging.
 - **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
 - **CI/CD Integrated**: Automated linting, type-checking, and cross-version testing via GitHub Actions.
+- **Modern Architecture**: Leverages `typing.Protocol` for extensibility and `dataclasses` for clean, typed data models.
 - **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
 
 ## Technical Methodology
@@ -86,7 +87,7 @@ mpiexec -n 4 stormtracker -i input.nc -v slp -o tracks -b mpi
 
 ## Project Structure
 
-- `src/pystormtracker/models/`: Data structures (`Center`, `Grid`, `Tracks`).
+- `src/pystormtracker/models/`: Core data models (`Center`, `Track`, `Tracks`, `TimeRange`, and `Grid` protocol).
 - `src/pystormtracker/simple/`: Implementation of the Simple Tracker logic (`SimpleDetector`, `SimpleLinker`).
 - `src/pystormtracker/stormtracker.py`: CLI orchestration and parallel backends.
 
