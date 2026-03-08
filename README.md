@@ -59,17 +59,14 @@ uv add PyStormTracker
 ```
 
 ### From Source
-1. Clone the repository:
+2. Install with **uv** (Recommended):
    ```bash
    git clone https://github.com/mwyau/PyStormTracker.git
    cd PyStormTracker
-   ```
-
-2. Install with **uv** (Recommended):
-   ```bash
-   uv sync --extra dev
+   uv sync --group dev
    uv run pre-commit install --hook-type pre-push
    ```
+
 
 ## Usage
 
@@ -97,7 +94,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 Using **uv** is the recommended way to set up your environment:
 ```bash
 # Install dependencies and sync virtual environment
-uv sync --extra dev
+uv sync --group dev
 
 # Install pre-push hooks
 uv run pre-commit install --hook-type pre-push
@@ -159,4 +156,4 @@ If you use this software in your research, please cite the following:
 
 ## License
 
-This project is licensed under the terms found in the `LICENSE` file.
+This project is licensed under the BSD-3-Clause terms found in the `LICENSE` file.
