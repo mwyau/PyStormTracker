@@ -55,6 +55,8 @@ jobs:
       - name: Type check with Mypy
         run: mypy src/ tests/
 
+        
+
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -76,10 +78,9 @@ jobs:
         run: |
           pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-full
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }})

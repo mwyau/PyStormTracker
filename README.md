@@ -2,10 +2,10 @@
 
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 [![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
-[![Docker Hub](https://img.shields.io/docker/pulls/xddd/pystormtracker.svg?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
+[![Docker Image Size](https://img.shields.io/docker/image-size/xddd/pystormtracker/latest?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/mwyau/PyStormTracker/pkgs/container/pystormtracker)
 [![CI](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml/badge.svg)](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/mwyau/PyStormTracker/graph/badge.svg?token=G6S6W6S6W6)](https://codecov.io/gh/mwyau/PyStormTracker)
+[![codecov](https://codecov.io/github/mwyau/PyStormTracker/graph/badge.svg?token=JmTabGA3cq)](https://codecov.io/github/mwyau/PyStormTracker)
 ![License](https://img.shields.io/pypi/l/PyStormTracker)
 ![Python versions](https://img.shields.io/pypi/pyversions/PyStormTracker)
 
@@ -71,7 +71,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 | `--input` | `-i` | **Required.** Path to the input NetCDF file. |
 | `--var` | `-v` | **Required.** Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
-| `--num` | `-n` | Number of time steps to process. |
+| `--num" | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
 | `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
