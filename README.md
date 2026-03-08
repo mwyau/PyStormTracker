@@ -2,6 +2,10 @@
 
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 [![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
+[![Docker Hub](https://img.shields.io/docker/pulls/xddd/pystormtracker.svg?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
+[![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/mwyau/PyStormTracker/pkgs/container/pystormtracker)
+[![CI](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml/badge.svg)](https://github.com/mwyau/PyStormTracker/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/mwyau/PyStormTracker/graph/badge.svg?token=G6S6W6S6W6)](https://codecov.io/gh/mwyau/PyStormTracker)
 ![License](https://img.shields.io/pypi/l/PyStormTracker)
 ![Python versions](https://img.shields.io/pypi/pyversions/PyStormTracker)
 
@@ -9,22 +13,21 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
 
 ## Features
 
-- **Modern Python 3 Support**: Fully migrated from Python 2 with comprehensive type hints.
-- **Flexible Data Support**: Works with `netCDF4` and handles various coordinate naming conventions (`lat`/`lon` vs `latitude`/`longitude`).
+- **Modern Python Support**: Strictly targets **Python 3.12+** with comprehensive type hints and 100% strict `mypy` compliance.
+- **Xarray Integrated**: Fully migrated to `xarray` and `h5netcdf` for robust, high-performance coordinate-aware I/O and lazy data loading.
 - **Parallel Backends**:
   - **Dask (Default)**: Automatically scales to all available CPU cores on local machines.
   - **MPI**: Supports distributed execution via `mpi4py`.
   - **Serial**: Standard sequential execution for smaller datasets or debugging.
-- **Robust Detection**: Handles masked/missing data correctly and includes automated unit/integration tests.
-- **CI/CD Integrated**: Automated linting, type-checking, and cross-version testing via GitHub Actions.
-- **Modern Architecture**: Leverages `typing.Protocol` for extensibility and `dataclasses` for clean, typed data models.
+- **Robust Detection**: Optimized $O(N)$ extrema filtering and robust handling of masked/missing data.
+- **CI/CD Integrated**: Automated linting, type-checking, and code coverage reporting via GitHub Actions.
 - **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
 
 ## Technical Methodology
 
 PyStormTracker treats meteorological fields as 2D images and leverages `scipy.ndimage` for robust feature detection:
 
-- **Local Extrema Detection**: Uses `generic_filter` with a sliding window (default 5x5) to identify local minima (cyclones) or maxima (anticyclones/vorticity).
+- **Local Extrema Detection**: Uses an optimized sliding window filter to identify local minima (cyclones) or maxima (anticyclones/vorticity).
 - **Intensity & Refinement**: Applies the **Laplacian operator** (`laplace`) to measure the "sharpness" of the field at each detected center point. This is used to resolve duplicates and ensure only the most physically intense point is kept when multiple adjacent pixels are flagged.
 - **Spherical Continuity**: Utilizes `mode='wrap'` for all filters to correctly handle periodic boundaries across the Prime Meridian, enabling seamless tracking across the entire globe.
 - **Heuristic Linking**: Implements a nearest-neighbor linking strategy to connect detected centers into trajectories across successive time steps.
@@ -32,8 +35,8 @@ PyStormTracker treats meteorological fields as 2D images and leverages `scipy.nd
 ## Installation
 
 ### Prerequisites
-- Python 3.10+
-- (Optional) MS-MPI or OpenMPI for MPI support.
+- Python 3.12+
+- (Optional) OpenMPI for MPI support.
 
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
@@ -71,33 +74,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 | `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
-| `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
-
-### Examples
-
-**Run with Dask (Auto-detected cores):**
-```bash
-stormtracker -i input.nc -v msl -o tracks
-```
-
-**Run with MPI (Distributed):**
-```bash
-mpiexec -n 4 stormtracker -i input.nc -v msl -o tracks -b mpi
-```
-
-## Project Structure
-
-- `src/pystormtracker/models/`: Core data models (`Center`, `Track`, `Tracks`, `TimeRange`, and `Grid` protocol).
-- `src/pystormtracker/simple/`: Implementation of the Simple Tracker logic (`SimpleDetector`, `SimpleLinker`).
-- `src/pystormtracker/stormtracker.py`: CLI orchestration and parallel backends.
-
-## Testing
-
-Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` on the first run.
-
-```bash
-pytest
-```
+| `--workers" | `-w` | Number of Dask workers (defaults to CPU core count). |
 
 ## Development
 
@@ -124,21 +101,22 @@ mypy src/
 ```
 
 ### Tiered Testing
-To keep development cycles fast, integration tests are tiered:
+To keep development cycles fast, testing is tiered:
 - **Fast Tests**: Default local runs (skips slow tests).
-- **Slow Tests**: Full datasets and legacy regressions (marked with `@pytest.mark.slow`).
+- **Slow Tests**: ONLY long-running integration/regression tests.
+- **Full Suite**: Everything (used in CI).
 
-**Run fast tests only (Default):**
+**Run fast unit tests only (Default):**
 ```bash
 pytest
 ```
 
-**Run slow tests only:**
+**Run ONLY slow/integration tests:**
 ```bash
 pytest --run-slow
 ```
 
-**Run everything (including slow tests):**
+**Run everything:**
 ```bash
 pytest --run-all
 ```
