@@ -1,109 +1,96 @@
-import csv
-import os
-import sys
+from __future__ import annotations
+
 import timeit
 from argparse import ArgumentParser, Namespace
-from typing import Any, Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
-import netCDF4
-import numpy as np
+if TYPE_CHECKING:
+    from mpi4py import MPI
 
-from .models import Center, Grid, Tracks
+from .models import DetectionResult, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
 
 
-def export_to_csv(
-    tracks: Tracks, outfile: str, grid: Grid, decimal_places: int = 4
-) -> None:
-    """Exports detected tracks to a user-friendly CSV file."""
-    time_obj = grid.get_time_obj()
-    units = getattr(time_obj, "units", "")
-    calendar = getattr(time_obj, "calendar", "standard")
-
-    if not outfile.endswith(".csv"):
-        outfile += ".csv"
-
-    with open(outfile, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["track_id", "time", "lat", "lon", "var"])
-        for i, track in enumerate(tracks):
-            for center in track:
-                try:
-                    dt = netCDF4.num2date(center.time, units=units, calendar=calendar)
-                    # dt can be a cftime.datetime or a standard datetime
-                    time_val = dt.strftime("%Y-%m-%d %H:%M:%S")  # type: ignore
-                except Exception:
-                    time_val = str(center.time)
-
-                if center.var is None or np.ma.is_masked(center.var):
-                    var_val = "--"
-                else:
-                    var_val = f"{float(center.var):.{decimal_places}f}"
-                writer.writerow([i, time_val, center.lat, center.lon, var_val])
-
-
 def _detect_serial(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str
-) -> tuple[list[list[Center]], Grid]:
-    grid = SimpleDetector(pathname=infile, varname=varname, trange=trange)
-    return grid.detect(minmaxmode=mode), grid  # type: ignore
+    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+) -> tuple[DetectionResult, Grid]:
+    grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
+    return (
+        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
+        grid,
+    )
 
 
 def _detect_mpi(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str
-) -> tuple[list[list[Center]], Grid, Any]:
+    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+) -> tuple[DetectionResult, Grid, MPI.Intracomm]:
     from mpi4py import MPI
 
-    comm = MPI.COMM_WORLD
+    comm: MPI.Intracomm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
     root = 0
 
     if rank == root:
-        grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+        grid_obj = SimpleDetector(
+            pathname=infile, varname=varname, time_range=time_range
+        )
         grids: list[Grid] | None = grid_obj.split(size)
     else:
         grids = None
 
-    grid = comm.scatter(grids, root=root)
-    return grid.detect(minmaxmode=mode), grid, comm
+    grid: Grid = comm.scatter(grids, root=root)
+    return (
+        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
+        grid,
+        comm,
+    )
 
 
 def _detect_dask(
     infile: str,
     varname: str,
-    trange: tuple[int, int] | None,
-    mode: str,
+    time_range: TimeRange | None,
+    mode: Literal["min", "max"],
     n_workers: int | None,
-) -> tuple[list[list[Center]], Grid]:
-    import dask
+) -> tuple[DetectionResult, Grid]:
+    import os
+
+    from dask.base import compute
+    from dask.delayed import delayed
     from distributed import Client, LocalCluster
 
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
-    grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+    grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     grids = grid_obj.split(n_workers)
 
-    with LocalCluster(
-        n_workers=n_workers, threads_per_worker=1
-    ) as cluster, Client(cluster):  # type: ignore
+    with (
+        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,
+        Client(cluster),
+    ):
         delayed_results = [
-            dask.delayed(g.detect)(minmaxmode=mode) for g in grids  # type: ignore
+            delayed(g.detect)(
+                size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode
+            )
+            for g in grids
         ]
-        results = dask.compute(*delayed_results)  # type: ignore
+        # compute returns a tuple, we convert to list[DetectionResult]
+        results = list(compute(*delayed_results))
 
     # Flatten results from chunks
-    flattened_results: list[list[Center]] = []
+    flattened_results: DetectionResult = []
     for chunk in results:
         flattened_results.extend(chunk)
 
     return flattened_results, grid_obj
 
 
-def _link_centers(centers: list[list[Center]]) -> Tracks:
+def _link_centers(centers: DetectionResult) -> Tracks:
     tracks = Tracks()
     linker = SimpleLinker()
     for step_centers in centers:
@@ -111,17 +98,17 @@ def _link_centers(centers: list[list[Center]]) -> Tracks:
     return tracks
 
 
-def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:
+def _combine_mpi_tracks(tracks: Tracks, comm: MPI.Intracomm) -> Tracks:
+    linker = SimpleLinker()
     rank = comm.Get_rank()
     size = comm.Get_size()
-    linker = SimpleLinker()
 
     nstripe = 2
     while nstripe <= size:
         if rank % nstripe == nstripe // 2:
             comm.send(tracks, dest=rank - nstripe // 2, tag=nstripe)
         elif rank % nstripe == 0 and rank + nstripe // 2 < size:
-            tracks_recv = comm.recv(source=rank + nstripe // 2, tag=nstripe)
+            tracks_recv: Tracks = comm.recv(source=rank + nstripe // 2, tag=nstripe)
             linker.extend_track(tracks, tracks_recv)
         nstripe *= 2
     return tracks
@@ -131,7 +118,7 @@ def run_tracker(
     infile: str,
     varname: str,
     outfile: str,
-    trange: tuple[int, int] | None = None,
+    time_range: TimeRange | None = None,
     mode: Literal["min", "max"] = "min",
     backend: Backend = "dask",
     n_workers: int | None = None,
@@ -151,13 +138,13 @@ def run_tracker(
         timer["detector"] = timeit.default_timer()
 
     # Detection Phase
-    comm = None
+    comm: MPI.Intracomm | None = None
     if use_mpi:
-        centers, grid, comm = _detect_mpi(infile, varname, trange, mode)
+        centers, _grid, comm = _detect_mpi(infile, varname, time_range, mode)
     elif use_dask:
-        centers, grid = _detect_dask(infile, varname, trange, mode, n_workers)
+        centers, _grid = _detect_dask(infile, varname, time_range, mode, n_workers)
     else:
-        centers, grid = _detect_serial(infile, varname, trange, mode)
+        centers, _grid = _detect_serial(infile, varname, time_range, mode)
 
     if use_mpi and comm is not None:
         comm.Barrier()
@@ -189,8 +176,12 @@ def run_tracker(
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
-        export_to_csv(tracks, outfile, grid)
-        final_outfile = outfile if outfile.endswith(".csv") else f"{outfile}.csv"
+        tracks.to_imilast(outfile)
+        out_path = Path(outfile)
+
+        final_outfile = (
+            out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
+        )
         print(f"Results exported to {final_outfile}")
 
 
@@ -199,7 +190,9 @@ def parse_args() -> Namespace:
     parser = ArgumentParser(description="PyStormTracker: A tool for tracking storms.")
     parser.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
     parser.add_argument("-v", "--var", required=True, help="Variable to track.")
-    parser.add_argument("-o", "--output", required=True, help="Output CSV file.")
+    parser.add_argument(
+        "-o", "--output", required=True, help="Output track file (.txt)."
+    )
     parser.add_argument("-n", "--num", type=int, help="Number of time steps.")
     parser.add_argument(
         "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
@@ -223,21 +216,28 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     args = parse_args()
-    trange = (0, args.num) if args.num is not None else None
+    time_range: TimeRange | None = None
 
-    try:
-        run_tracker(
-            infile=args.input,
-            varname=args.var,
-            outfile=args.output,
-            trange=trange,
-            mode=args.mode,
-            backend=args.backend,
-            n_workers=args.workers,
+    if args.num is not None:
+        # Determine actual times for the first n steps
+        grid_preview = SimpleDetector(pathname=args.input, varname=args.var)
+        times = grid_preview.get_time()
+        assert times is not None
+        num = min(args.num, len(times))
+        time_range = TimeRange(
+            start=times[0],
+            end=times[num - 1],
         )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+
+    run_tracker(
+        infile=args.input,
+        varname=args.var,
+        outfile=args.output,
+        time_range=time_range,
+        mode=args.mode,
+        backend=args.backend,
+        n_workers=args.workers,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+# Codecov configuration
+# This config disables status checks so Codecov only reports coverage
+# but never fails the build.
+
+coverage:
+  status:
+    project: off
+    patch: off
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false

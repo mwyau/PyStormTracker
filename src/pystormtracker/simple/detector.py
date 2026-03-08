@@ -1,227 +1,195 @@
-from typing import Any, Literal
+from __future__ import annotations
 
-import netCDF4
+from pathlib import Path
+from typing import Literal
+
 import numpy as np
+import xarray as xr
+from numpy.typing import NDArray
 from scipy.ndimage import generic_filter, laplace
 
-from ..models.center import Center
+from ..models.center import Center, DetectionResult
 from ..models.grid import Grid
+from ..models.time import TimeRange
 
 
-class SimpleDetector(Grid):
+class SimpleDetector:
+    """
+    A meteorological feature detector that treats fields as 2D images.
+    Uses xarray for robust coordinate handling and lazy-loading.
+    """
+
     def __init__(
-        self, pathname: str, varname: str, trange: tuple[int, int] | None = None
+        self,
+        pathname: str | Path,
+        varname: str,
+        time_range: TimeRange | None = None,
     ) -> None:
-
-        self.pathname = pathname
+        self.pathname = Path(pathname)
         self.varname = varname
-        self.trange = trange
+        self.time_range = time_range
 
-        self._open_file: bool = False
-        self._var: Any = None
-        self._time: Any = None
-        self._lat: Any = None
-        self._lon: Any = None
+        self._ds: xr.Dataset | None = None
+        self._data: xr.DataArray | None = None
+        self._lat_name: str = "latitude"
+        self._lon_name: str = "longitude"
+        self._time_name: str = "time"
 
-        self.f: Any = None
-        self.time: Any = None
-        self.lat: Any = None
-        self.lon: Any = None
+    def _ensure_open(self) -> None:
+        """Ensures the xarray dataset is open and basic variables are mapped."""
+        if self._ds is None:
+            # open_dataset is lazy by default
+            self._ds = xr.open_dataset(self.pathname)
+            self._data = self._ds[self.varname]
 
-    def _init(self) -> None:
-        if self._open_file is False:
-            self._open_file = True
-            self.f = netCDF4.Dataset(self.pathname, "r")
+            # Identify coordinate names
+            self._lat_name = "latitude" if "latitude" in self._ds.coords else "lat"
+            self._lon_name = "longitude" if "longitude" in self._ds.coords else "lon"
+            self._time_name = "time" if "time" in self._ds.coords else "valid_time"
 
-            # Dimension of var is time, lat, lon
-            self._var = self.f.variables[self.varname]
-            # Disable auto mask and scale as it may mask valid SLP values in some files
-            self._var.set_auto_maskandscale(False)
+    @property
+    def lat(self) -> NDArray[np.float64]:
+        self._ensure_open()
+        assert self._ds is not None
+        return np.asarray(self._ds[self._lat_name].values)
 
-            self._time = self.f.variables["time"]
+    @property
+    def lon(self) -> NDArray[np.float64]:
+        self._ensure_open()
+        assert self._ds is not None
+        return np.asarray(self._ds[self._lon_name].values)
 
-            if "latitude" in self.f.variables:
-                self._lat = self.f.variables["latitude"]
-            elif "lat" in self.f.variables:
-                self._lat = self.f.variables["lat"]
-            else:
-                raise KeyError(
-                    "Neither 'latitude' nor 'lat' found in NetCDF variables."
-                )
+    def get_var(
+        self, frame: int | tuple[int, int] | None = None
+    ) -> NDArray[np.float64] | None:
+        self._ensure_open()
+        assert self._data is not None
 
-            if "longitude" in self.f.variables:
-                self._lon = self.f.variables["longitude"]
-            elif "lon" in self.f.variables:
-                self._lon = self.f.variables["lon"]
-            else:
-                raise KeyError(
-                    "Neither 'longitude' nor 'lon' found in NetCDF variables."
-                )
-
-            self.time = None
-            self.lat = None
-            self.lon = None
-
-    def get_var(self, chart: int | tuple[int, int] | None = None) -> Any:
-
-        if self.trange is not None:
-            if self.trange[0] >= self.trange[1]:
-                return None
-
-        if chart is not None:
-            if isinstance(chart, tuple):
-                if (
-                    len(chart) != 2
-                    or not isinstance(chart[0], int)
-                    or not isinstance(chart[1], int)
-                ):
-                    raise TypeError("chart must be a tuple of two integers")
-            elif not isinstance(chart, int):
-                raise TypeError("chart must be an integer or tuple")
-
-            if self.trange is not None:
-                if isinstance(chart, int):
-                    if chart < 0 or chart >= self.trange[1] - self.trange[0]:
-                        raise IndexError("chart is out of bound of trange")
-                if isinstance(chart, tuple):
-                    if chart[0] == chart[1]:
-                        return None
-                    if chart[0] > chart[1]:
-                        raise IndexError("chart[1] must be larger than chart[0]")
-                    if chart[0] < 0 or chart[0] > self.trange[1] - self.trange[0]:
-                        raise IndexError("chart[0] is out of bound of trange")
-                    if chart[1] < 0 or chart[1] > self.trange[1] - self.trange[0]:
-                        raise IndexError("chart[1] is out of bound of trange")
-
-        self._init()
-
-        if isinstance(chart, int):
-            if self.trange is None:
-                return self._var[chart, :, :]
-            else:
-                return self._var[self.trange[0] + chart, :, :]
-        elif isinstance(chart, tuple):
-            if self.trange is None:
-                return self._var[chart[0] : chart[1], :, :]
-            else:
-                return self._var[
-                    self.trange[0] + chart[0] : self.trange[0] + chart[1], :, :
-                ]
+        # Base data for the configured time range
+        time_dim = self._data.dims[0]
+        if self.time_range:
+            data_range = self._data.sel(
+                {time_dim: slice(self.time_range.start, self.time_range.end)}
+            )
         else:
-            return self._var[:]
+            data_range = self._data
 
-    def get_time(self) -> Any:
+        match frame:
+            case int(idx):
+                data = data_range.isel({time_dim: idx})
+                return np.asarray(data.values).reshape((data.shape[-2], data.shape[-1]))
 
-        if self.trange is not None:
-            if self.trange[0] >= self.trange[1]:
-                return None
+            case (int(s_off), int(e_off)):
+                data = data_range.isel({time_dim: slice(s_off, e_off)})
+                return np.asarray(
+                    data.values.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
+                )
 
-        self._init()
-        if self.time is None:
-            if self.trange is None:
-                self.time = self._time[:]
-            else:
-                self.time = self._time[self.trange[0] : self.trange[1]]
-        return self.time
+            case None:
+                return np.asarray(
+                    data_range.values.reshape(
+                        (
+                            data_range.shape[0],
+                            data_range.shape[-2],
+                            data_range.shape[-1],
+                        )
+                    )
+                )
 
-    def get_time_obj(self) -> Any:
-        self._init()
-        return self._time
+            case _:
+                raise TypeError("frame must be an int, tuple[int, int], or None")
 
-    def get_lat(self) -> Any:
+    def get_time(self) -> NDArray[np.datetime64] | None:
+        self._ensure_open()
+        assert self._ds is not None
+        if self.time_range:
+            times = self._ds[self._time_name].sel(
+                {self._time_name: slice(self.time_range.start, self.time_range.end)}
+            )
+        else:
+            times = self._ds[self._time_name]
+        return np.asarray(times.values)
 
-        self._init()
-        if self.lat is None:
-            self.lat = self._lat[:]
+    def get_lat(self) -> NDArray[np.float64] | None:
         return self.lat
 
-    def get_lon(self) -> Any:
-
-        self._init()
-        if self.lon is None:
-            self.lon = self._lon[:]
+    def get_lon(self) -> NDArray[np.float64] | None:
         return self.lon
 
-    def split(self, num: int) -> list["Grid"]:
+    def split(self, num: int) -> list[Grid]:
+        if self._ds is not None:
+            raise RuntimeError("Cannot split after file has been opened.")
 
-        if not isinstance(num, int):
-            raise TypeError("number to split must be an integer")
-
-        if self._open_file is False:
-            if self.trange is not None:
-                time_len = self.trange[1] - self.trange[0]
-                tstart = self.trange[0]
-            else:
-                f = netCDF4.Dataset(self.pathname, "r")
-                time_len = f.dimensions["time"].size
-                f.close()
-                tstart = 0
-
-            chunk_size = time_len // num
-            remainder = time_len % num
-
-            tranges = [
-                (
-                    tstart + i * chunk_size + remainder * i // num,
-                    tstart + (i + 1) * chunk_size + remainder * (i + 1) // num,
+        with xr.open_dataset(self.pathname) as ds:
+            time_name = "time" if "time" in ds.coords else "valid_time"
+            if self.time_range:
+                times = ds[time_name].sel(
+                    {time_name: slice(self.time_range.start, self.time_range.end)}
                 )
-                for i in range(num)
-            ]
+            else:
+                times = ds[time_name]
 
-            return [
-                SimpleDetector(self.pathname, self.varname, trange=it) for it in tranges
-            ]
+            time_values = times.values
+            total_len = len(time_values)
 
-        else:
-            raise RuntimeError(
-                "SimpleDetector must not be initialized before running split()"
+        chunk_size = total_len // num
+        remainder = total_len % num
+
+        grids: list[Grid] = []
+        for i in range(num):
+            s_idx = i * chunk_size + min(i, remainder)
+            e_idx = (i + 1) * chunk_size + min(i + 1, remainder)
+
+            # Use actual time values for the sub-ranges
+            grids.append(
+                SimpleDetector(
+                    self.pathname,
+                    self.varname,
+                    time_range=TimeRange(
+                        start=time_values[s_idx], end=time_values[e_idx - 1]
+                    ),
+                )
             )
+        return grids
 
     def _local_extrema_func(
         self,
-        buffer: np.ndarray,
+        buffer: NDArray[np.float64],
         size: int,
         threshold: float,
         minmaxmode: Literal["min", "max"],
     ) -> bool:
+        center_val = buffer[(size * size) // 2]
 
-        half_size = size // 2
-
-        search_window = buffer.reshape((size, size))
-        origin = (half_size, half_size)
-
-        center_val = search_window[origin]
-
-        # If the center value is masked, it cannot be an extrema
-        if np.ma.is_masked(center_val):
+        if np.isnan(center_val) or np.isinf(center_val):
             return False
 
-        if threshold == 0.0:
-            if minmaxmode == "min":
-                return bool(center_val == search_window.min())
-            elif minmaxmode == "max":
-                return bool(center_val == search_window.max())
-        elif center_val == search_window.min():
-            if minmaxmode == "min":
-                # At least 8 of values in buffer should be larger than threshold
-                return bool(sorted(buffer)[8] - center_val > threshold)
-        elif center_val == search_window.max():
-            if minmaxmode == "max":
-                return bool(sorted(buffer)[0] - center_val < -1 * threshold)
-        return False
+        if minmaxmode == "min":
+            if center_val == buffer.min():
+                if threshold == 0.0:
+                    return True
+                # Quick check: 9th smallest value must be > center + threshold
+                return bool(np.partition(buffer, 8)[8] - center_val > threshold)
+            return False
+        else:
+            if center_val == buffer.max():
+                if threshold == 0.0:
+                    return True
+                # Quick check: 9th largest value must be < center - threshold
+                # Partition at index 8 of negated buffer finds 9th largest
+                ninth_largest = -np.partition(-buffer, 8)[8]
+                return bool(ninth_largest - center_val < -1.0 * threshold)
+            return False
 
     def _local_extrema_filter(
         self,
-        input_arr: np.ndarray,
+        input_arr: NDArray[np.float64],
         size: int,
         threshold: float = 0.0,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> np.ndarray:
-
+    ) -> NDArray[np.float64]:
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
-
-        half_size = size // 2
 
         output = generic_filter(
             input_arr,
@@ -234,29 +202,24 @@ class SimpleDetector(Grid):
                 "minmaxmode": minmaxmode,
             },
         )
-
-        # Mask the extreme latitudes
+        half_size = size // 2
         output[:half_size, :] = 0.0
         output[-half_size:, :] = 0.0
-
         return np.asarray(output)
 
-    def _local_max_laplace(self, buffer: np.ndarray, size: int) -> bool:
-        origin = (size * size) // 2
-        return bool(buffer[origin] and buffer[origin] == buffer.max())
-
     def _remove_dup_laplace(
-        self, data: np.ndarray, mask: np.ndarray, size: int = 5
-    ) -> np.ndarray:
+        self,
+        data: NDArray[np.float64],
+        mask: NDArray[np.float64],
+        size: int = 5,
+    ) -> NDArray[np.float64]:
         laplacian = np.multiply(laplace(data, mode="wrap"), mask)
-
         return np.asarray(
             generic_filter(
                 laplacian,
-                self._local_max_laplace,
+                lambda b: bool(b[len(b) // 2] and b[len(b) // 2] == b.max()),
                 size=size,
                 mode="wrap",
-                extra_keywords={"size": size},
             )
         )
 
@@ -264,52 +227,45 @@ class SimpleDetector(Grid):
         self,
         size: int = 5,
         threshold: float = 0.0,
-        chart_buffer: int = 400,
+        time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> list[list[Center]]:
-        """Returns a list of list of Center's"""
-
-        if self.trange is not None and self.trange[0] >= self.trange[1]:
-            return []
-
+    ) -> DetectionResult:
         time = self.get_time()
-        lat = self.get_lat()
-        lon = self.get_lon()
+        lat, lon = self.lat, self.lon
+        assert time is not None
 
         centers = []
-
-        var: Any = None
-
         num_steps = len(time)
+
         for it, t in enumerate(time):
-            ibuffer = it % chart_buffer
-            if ibuffer == 0:
-                var = self.get_var(chart=(it, min(it + chart_buffer, num_steps)))
+            ichunk = it % time_chunk_size
+            if ichunk == 0:
+                var = self.get_var(frame=(it, min(it + time_chunk_size, num_steps)))
 
-            if var is not None:
-                chart = var[ibuffer, :, :]
+            assert var is not None
+            frame = var[ichunk, :, :]
 
-                # Fill masked values so they aren't detected as extrema
-                if minmaxmode == "min":
-                    filled_chart = np.ma.filled(chart, fill_value=np.inf)
-                else:
-                    filled_chart = np.ma.filled(chart, fill_value=-np.inf)
+            # Xarray doesn't use masked arrays by default, but values can be NaN
+            fill = np.inf if minmaxmode == "min" else -np.inf
+            filled_frame = np.where(np.isnan(frame), fill, frame)
 
-                extrema = self._local_extrema_filter(
-                    filled_chart, size, threshold=threshold, minmaxmode=minmaxmode
-                )
+            extrema = self._local_extrema_filter(
+                filled_frame, size, threshold=threshold, minmaxmode=minmaxmode
+            )
 
-                # Ensure we don't detect centers on originally masked pixels
-                if np.ma.is_masked(chart):
-                    extrema[chart.mask] = 0
+            # Ensure we don't detect centers on NaN pixels
+            if np.isnan(frame).any():
+                extrema[np.isnan(frame)] = 0
 
-                extrema = self._remove_dup_laplace(filled_chart, extrema, size=5)
+            extrema = self._remove_dup_laplace(filled_frame, extrema, size=5)
 
-                center_list = [
-                    Center(t, float(lat[i]), float(lon[j]), chart[i, j])
-                    for i, j in np.transpose(extrema.nonzero())
-                ]
-                print(f"Step {it + 1}/{num_steps}: Found {len(center_list)} centers")
-                centers.append(center_list)
+            # Convert datetime64 to seconds since 1970
+            time_val = t.astype("datetime64[s]")
 
+            center_list = [
+                Center(time_val, float(lat[i]), float(lon[j]), float(frame[i, j]))
+                for i, j in np.transpose(extrema.nonzero())
+            ]
+            print(f"Step {it + 1}/{num_steps}: Found {len(center_list)} centers")
+            centers.append(center_list)
         return centers

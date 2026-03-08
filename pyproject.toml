@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.2.2"
+version = "0.3.0"
 description = "A Parallel Object-Oriented Cyclone Tracker in Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
 ]
@@ -20,17 +20,16 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 dependencies = [
-    "numpy>=1.24.0",
-    "scipy>=1.10.0",
-    "netCDF4>=1.6.5",
-    "dask>=2024.2.0",
-    "distributed>=2024.2.0",
+    "numpy>=1.23.0",
+    "scipy>=1.9.0",
+    "xarray[io,accel,parallel]>=2024.9.0",
 ]
 
 [project.scripts]
@@ -43,13 +42,16 @@ Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.3.4",
-    "mypy>=1.9.0",
+    "ruff>=0.9.0",
+    "mypy>=1.15.0",
     "pytest>=8.1.1",
-    "pre-commit>=3.7.0",
-    "netCDF4>=1.6.5",
-    "mpi4py>=3.1.5",
+    "pytest-cov>=5.0.0",
+    "pre-commit>=4.0.0",
+    "mpi4py>=4.0.0",
     "pandas>=2.2.0",
+    "sphinx>=7.2.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "myst-parser>=2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -60,18 +62,29 @@ exclude = [
     "data/**/*.nc",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0",
+    "mypy>=1.15.0",
+    "pytest>=8.1.1",
+    "pytest-cov>=5.0.0",
+    "pre-commit>=4.0.0",
+    "mpi4py>=4.0.0",
+    "pandas>=2.2.0",
+    "sphinx>=7.2.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "myst-parser>=2.0.0",
+]
+
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]
 select = [
     "E", "W", "F", "I", "C4", "B", "UP", "PT", "SIM", "RUF", "ANN",
 ]
-ignore = [
-    "ANN101",
-    "ANN102",
-]
+ignore = []
 
 [tool.ruff.format]
 quote-style = "double"
@@ -80,16 +93,43 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 disallow_untyped_defs = true
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["distributed.*", "dask.*", "scipy.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+addopts = "-ra -q --cov=pystormtracker --cov-report=term-missing --cov-report=xml"
 testpaths = [
     "tests",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["pystormtracker"]
+omit = ["tests/*", "**/__init__.py"]
+
+[tool.coverage.paths]
+source = [
+    "src/pystormtracker",
+    "**/site-packages/pystormtracker",
+]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "def __repr__",
+    "if __name__ == .__main__.:",
 ]

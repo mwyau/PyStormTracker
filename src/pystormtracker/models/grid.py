@@ -1,40 +1,36 @@
-from abc import ABCMeta, abstractmethod
-from typing import Any, Literal
+from __future__ import annotations
 
-from .center import Center
+from typing import Literal, Protocol, runtime_checkable
+
+import numpy as np
+from numpy.typing import NDArray
+
+from .center import DetectionResult
 
 
-class Grid(metaclass=ABCMeta):
-    @abstractmethod
-    def get_var(self, chart: int | tuple[int, int] | None = None) -> Any:
-        raise NotImplementedError
+@runtime_checkable
+class Grid(Protocol):
+    """
+    A structural interface representing a meteorological grid.
+    Any class implementing these methods is considered a Grid.
+    """
 
-    @abstractmethod
-    def get_time(self) -> Any:
-        raise NotImplementedError
+    def get_var(
+        self, frame: int | tuple[int, int] | None = None
+    ) -> NDArray[np.float64] | None: ...
 
-    @abstractmethod
-    def get_time_obj(self) -> Any:
-        raise NotImplementedError
+    def get_time(self) -> NDArray[np.datetime64] | None: ...
 
-    @abstractmethod
-    def get_lat(self) -> Any:
-        raise NotImplementedError
+    def get_lat(self) -> NDArray[np.float64] | None: ...
 
-    @abstractmethod
-    def get_lon(self) -> Any:
-        raise NotImplementedError
+    def get_lon(self) -> NDArray[np.float64] | None: ...
 
-    @abstractmethod
-    def split(self, num: int) -> list["Grid"]:
-        raise NotImplementedError
+    def split(self, num: int) -> list[Grid]: ...
 
-    @abstractmethod
     def detect(
         self,
-        size: int = 5,
-        threshold: float = 0.0,
-        chart_buffer: int = 400,
-        minmaxmode: Literal["min", "max"] = "min",
-    ) -> list[list[Center]]:
-        raise NotImplementedError
+        size: int,
+        threshold: float,
+        time_chunk_size: int,
+        minmaxmode: Literal["min", "max"],
+    ) -> DetectionResult: ...
