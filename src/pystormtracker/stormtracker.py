@@ -6,7 +6,7 @@ from typing import Any, Literal
 import dask
 from distributed import Client, LocalCluster
 
-from .models import Center, Grid, Tracks
+from .models import Center, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
@@ -15,7 +15,10 @@ Backend = Literal["serial", "mpi", "dask"]
 def _detect_serial(
     infile: str, varname: str, trange: tuple[int, int] | None, mode: str
 ) -> tuple[list[list[Center]], Grid]:
-    grid = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+    time_range = (
+        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
+    )
+    grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     return grid.detect(minmaxmode=mode), grid  # type: ignore
 
 
@@ -30,7 +33,12 @@ def _detect_mpi(
     root = 0
 
     if rank == root:
-        grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+        time_range = (
+            TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
+        )
+        grid_obj = SimpleDetector(
+            pathname=infile, varname=varname, time_range=time_range
+        )
         grids: list[Grid] | None = grid_obj.split(size)
     else:
         grids = None
@@ -51,7 +59,10 @@ def _detect_dask(
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
-    grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
+    time_range = (
+        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
+    )
+    grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     grids = grid_obj.split(n_workers)
 
     with (

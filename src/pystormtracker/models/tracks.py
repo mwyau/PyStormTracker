@@ -1,21 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 
 import netCDF4
 
 from .center import Center
-
-
-@dataclass
-class TimeRange:
-    """Metadata for the time range covered by a set of tracks."""
-
-    start: float
-    end: float
-    step: float | None = None
+from .time import TimeRange
 
 
 class Tracks:
@@ -23,7 +14,7 @@ class Tracks:
         self._tracks: list[list[Center]] = []
         self.head: list[int] = []
         self.tail: list[int] = []
-        self.time_info: TimeRange | None = None
+        self.time_range: TimeRange | None = None
 
     def __getitem__(self, index: int) -> list[Center]:
         return self._tracks[index]

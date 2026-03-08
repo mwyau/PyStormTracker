@@ -11,7 +11,7 @@ def test_tracks_init() -> None:
     assert len(t) == 0
     assert t.head == []
     assert t.tail == []
-    assert t.time_info is None
+    assert t.time_range is None
 
 
 def test_tracks_append_and_access() -> None:

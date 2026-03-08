@@ -1,5 +1,6 @@
 from ..models.center import Center
-from ..models.tracks import TimeRange, Tracks
+from ..models.time import TimeRange
+from ..models.tracks import Tracks
 
 
 class SimpleLinker:
@@ -64,14 +65,14 @@ class SimpleLinker:
         matched_index = self.match_center(tracks, centers)
 
         for i, d in enumerate(matched_index):
-            if tracks.time_info is None:
+            if tracks.time_range is None:
                 tracks.append([centers[i]])
                 tracks.head.append(len(tracks) - 1)
                 new_tail.append(len(tracks) - 1)
             elif d is None or (
-                tracks.time_info.end is not None
-                and tracks.time_info.step is not None
-                and centers[0].time - tracks.time_info.step > tracks.time_info.end
+                tracks.time_range.end is not None
+                and tracks.time_range.step is not None
+                and centers[0].time - tracks.time_range.step > tracks.time_range.end
             ):
                 tracks.append([centers[i]])
                 new_tail.append(len(tracks) - 1)
@@ -82,12 +83,12 @@ class SimpleLinker:
         tracks.tail = new_tail
 
         current_time = centers[0].time
-        if tracks.time_info is None:
-            tracks.time_info = TimeRange(start=current_time, end=current_time)
+        if tracks.time_range is None:
+            tracks.time_range = TimeRange(start=current_time, end=current_time)
         else:
-            if tracks.time_info.step is None:
-                tracks.time_info.step = current_time - tracks.time_info.start
-            tracks.time_info.end = current_time
+            if tracks.time_range.step is None:
+                tracks.time_range.step = current_time - tracks.time_range.start
+            tracks.time_range.end = current_time
 
     def extend_track(self, tracks1: Tracks, tracks2: Tracks) -> None:
         if len(tracks2) == 0:
@@ -97,7 +98,7 @@ class SimpleLinker:
             tracks1._tracks = tracks2._tracks
             tracks1.head = tracks2.head
             tracks1.tail = tracks2.tail
-            tracks1.time_info = tracks2.time_info
+            tracks1.time_range = tracks2.time_range
             return
 
         new_tail: list[int] = []
@@ -117,5 +118,5 @@ class SimpleLinker:
                     new_tail.append(len(tracks1) - 1)
 
         tracks1.tail = new_tail
-        if tracks1.time_info and tracks2.time_info:
-            tracks1.time_info.end = tracks2.time_info.end
+        if tracks1.time_range and tracks2.time_range:
+            tracks1.time_range.end = tracks2.time_range.end
