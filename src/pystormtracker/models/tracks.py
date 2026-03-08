@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 
 import numpy as np
@@ -77,7 +78,7 @@ class Tracks:
     @classmethod
     def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
-        import pandas as pd
+        from datetime import datetime
 
         tracks_obj = cls()
         with open(filename) as f:
@@ -96,16 +97,25 @@ class Tracks:
                     lon, lat, var = float(parts[8]), float(parts[9]), float(parts[10])
                     s_time = parts[3]
                     if len(s_time) == 10:
-                        dt_str = (
-                            f"{s_time[:4]}-{s_time[4:6]}-{s_time[6:8]} "
-                            f"{s_time[8:10]}:00:00"
+                        # Format: YYYYMMDDHH
+                        dt = datetime(
+                            int(s_time[:4]),
+                            int(s_time[4:6]),
+                            int(s_time[6:8]),
+                            int(s_time[8:10]),
+                            tzinfo=UTC,
                         )
-                        time_val = np.datetime64(pd.to_datetime(dt_str), "s")
+                        time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                     else:
                         # Numeric epoch or other
-                        time_val = np.datetime64(
-                            pd.to_datetime(float(s_time), unit="s"), "s"
-                        )
+                        try:
+                            # Assume unix timestamp
+                            dt = datetime.fromtimestamp(float(s_time), tz=UTC)
+                            time_val = np.datetime64(dt.replace(tzinfo=None), "s")
+                        except ValueError:
+                            # Fallback to direct numpy parsing if possible
+                            time_val = np.datetime64(s_time, "s")
+
                     current_track_centers.append(Center(time_val, lat, lon, var))
             if current_track_centers:
                 tracks_obj.append(Track(current_track_centers))
@@ -119,7 +129,7 @@ class Tracks:
         decimal_places: int = 4,
     ) -> None:
         """Exports tracks to an IMILAST format text file."""
-        import pandas as pd
+        from datetime import datetime
 
         if not outfile.endswith(".txt"):
             outfile += ".txt"
@@ -134,10 +144,13 @@ class Tracks:
             for i, track in enumerate(self._tracks, start=1):
                 f.write(f"90 {i} {len(track)}\n")
                 for step, center in enumerate(track, start=1):
-                    # Standardize conversion to datetime using pandas
+                    # Convert numpy.datetime64 to python datetime
                     try:
-                        dt = pd.to_datetime(center.time)
+                        t0 = np.datetime64("1970-01-01T00:00:00")
+                        ts = (center.time - t0) / np.timedelta64(1, "s")
+                        dt = datetime.fromtimestamp(float(ts), tz=UTC)
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
+
                         yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
                     except Exception:
                         yyyymmddhh = "0000000000"
