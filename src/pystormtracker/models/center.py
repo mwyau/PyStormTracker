@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TypeAlias
 
 import numpy as np
 
@@ -56,4 +57,4 @@ class Center:
         return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
 
 
-type DetectionResult = list[list[Center]]
+DetectionResult: TypeAlias = list[list[Center]]
