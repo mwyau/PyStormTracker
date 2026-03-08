@@ -74,7 +74,7 @@ jobs:
           pip install .[dev]
       - name: Run Unit Tests
         run: |
-          pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-full
+          pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-all
 
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }})
@@ -99,4 +99,4 @@ jobs:
           pip install .[dev]
       - name: Run Integration Tests
         run: |
-          pytest -vv tests/test_integration.py --run-full
+          pytest -vv tests/test_integration.py --run-all
