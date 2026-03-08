@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           cache: "pip"
       - name: Install dependencies
         run: pip install ruff
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           cache: "pip"
       - name: Install dependencies
         run: pip install ruff
@@ -46,7 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           cache: "pip"
       - name: Install dependencies
         run: |
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -74,7 +74,7 @@ jobs:
           pip install .[dev]
       - name: Run Unit Tests
         run: |
-          pytest -vv tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py
+          pytest -vv
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -104,3 +104,7 @@ jobs:
       - name: Run Integration Tests
         run: |
           pytest -vv tests/test_integration.py --run-all
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
