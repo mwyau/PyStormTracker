@@ -68,3 +68,6 @@ target/
 # TXT track files
 *.txt
 !data/test/tracks/*.txt
+
+# VSCode
+.vscode/
