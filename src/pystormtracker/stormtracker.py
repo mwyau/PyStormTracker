@@ -3,67 +3,11 @@ import timeit
 from argparse import ArgumentParser, Namespace
 from typing import Any, Literal
 
-import netCDF4
-import numpy as np
-
 from .models import Center, Grid, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
 
-
-def export_to_csv(
-    tracks: Tracks, outfile: str, grid: Grid, decimal_places: int = 4
-) -> None:
-    """Exports detected tracks to a user-friendly text file."""
-    time_obj = grid.get_time_obj()
-    units = getattr(time_obj, "units", "")
-    calendar = getattr(time_obj, "calendar", "standard")
-
-    if not any(outfile.endswith(ext) for ext in [".txt", ".csv"]):
-        outfile += ".txt"
-
-    with open(outfile, "w", newline="") as f:
-        # IMILAST Intercomparison Protocol format
-        f.write(
-            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n"
-        )
-
-        for i, track in enumerate(tracks, start=1):
-            f.write(f"90 {i} {len(track)}\n")
-            for step, center in enumerate(track, start=1):
-                try:
-                    # num2date returns an array-like if input is a list
-                    dt_any: Any = netCDF4.num2date(
-                        [center.time], units=units, calendar=calendar
-                    )
-                    dt = dt_any[0]
-                    yyyy = f"{dt.year:04d}"
-                    mm = f"{dt.month:02d}"
-                    dd = f"{dt.day:02d}"
-                    hh = f"{dt.hour:02d}"
-                    yyyymmddhh = f"{yyyy}{mm}{dd}{hh}"
-                except Exception:
-                    yyyy = "0000"
-                    mm = "00"
-                    dd = "00"
-                    hh = "00"
-                    yyyymmddhh = "0000000000"
-
-                if center.var is None or np.ma.is_masked(center.var):
-                    var_val = "-999.99"
-                else:
-                    var_val = f"{float(center.var):.{decimal_places}f}"
-
-                lon = center.lon
-                if lon > 180:
-                    lon -= 360
-
-                f.write(
-                    f"00 {i} {step} {yyyymmddhh} {dt.year} {dt.month:02d} "
-                    f"{dt.day:02d} {dt.hour:02d} {lon:.2f} {center.lat:.2f} "
-                    f"{var_val}\n"
-                )
 
 def _detect_serial(
     infile: str, varname: str, trange: tuple[int, int] | None, mode: str
@@ -108,13 +52,15 @@ def _detect_dask(
     grid_obj = SimpleDetector(pathname=infile, varname=varname, trange=trange)
     grids = grid_obj.split(n_workers)
 
-    with LocalCluster(
-        n_workers=n_workers, threads_per_worker=1
-    ) as cluster, Client(cluster):  # type: ignore
+    with (
+        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,  # type: ignore[no-untyped-call]
+        Client(cluster),  # type: ignore[no-untyped-call]
+    ):
         delayed_results = [
-            dask.delayed(g.detect)(minmaxmode=mode) for g in grids  # type: ignore
+            dask.delayed(g.detect)(minmaxmode=mode)  # type: ignore[attr-defined]
+            for g in grids
         ]
-        results = dask.compute(*delayed_results)  # type: ignore
+        results = dask.compute(*delayed_results)  # type: ignore[attr-defined, no-untyped-call]
 
     # Flatten results from chunks
     flattened_results: list[list[Center]] = []
@@ -210,8 +156,17 @@ def run_tracker(
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
-        export_to_csv(tracks, outfile, grid)
-        final_outfile = outfile if outfile.endswith(".csv") else f"{outfile}.csv"
+        time_obj = grid.get_time_obj()
+        tracks.to_imilast(
+            outfile,
+            time_units=getattr(time_obj, "units", ""),
+            calendar=getattr(time_obj, "calendar", "standard"),
+        )
+        final_outfile = (
+            outfile
+            if any(outfile.endswith(e) for e in [".txt", ".imilast"])
+            else f"{outfile}.txt"
+        )
         print(f"Results exported to {final_outfile}")
 
 
@@ -220,7 +175,9 @@ def parse_args() -> Namespace:
     parser = ArgumentParser(description="PyStormTracker: A tool for tracking storms.")
     parser.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
     parser.add_argument("-v", "--var", required=True, help="Variable to track.")
-    parser.add_argument("-o", "--output", required=True, help="Output CSV file.")
+    parser.add_argument(
+        "-o", "--output", required=True, help="Output track file (.txt)."
+    )
     parser.add_argument("-n", "--num", type=int, help="Number of time steps.")
     parser.add_argument(
         "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
@@ -246,16 +203,15 @@ def main() -> None:
     args = parse_args()
     trange = (0, args.num) if args.num is not None else None
 
-    if True:
-        run_tracker(
-            infile=args.input,
-            varname=args.var,
-            outfile=args.output,
-            trange=trange,
-            mode=args.mode,
-            backend=args.backend,
-            n_workers=args.workers,
-        )
+    run_tracker(
+        infile=args.input,
+        varname=args.var,
+        outfile=args.output,
+        trange=trange,
+        mode=args.mode,
+        backend=args.backend,
+        n_workers=args.workers,
+    )
 
 
 if __name__ == "__main__":

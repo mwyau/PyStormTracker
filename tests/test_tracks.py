@@ -11,6 +11,7 @@ def test_tracks_init() -> None:
     assert t.tend is None
     assert t.dt is None
 
+
 def test_tracks_append_and_access() -> None:
     t = Tracks()
     c1 = Center(0, 0, 0, 0)
@@ -27,6 +28,7 @@ def test_tracks_append_and_access() -> None:
     # Test __setitem__
     t[0] = [c1, c2]
     assert t[0] == [c1, c2]
+
 
 def test_tracks_iterator() -> None:
     t = Tracks()
