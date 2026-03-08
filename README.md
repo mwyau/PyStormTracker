@@ -15,7 +15,7 @@ PyStormTracker provides the implementation of the "Simple Tracker" algorithm use
 ## Features
 
 - **Modern Python Support**: Strictly targets **Python 3.11+** with comprehensive type hints and 100% strict `mypy` compliance.
-- **Xarray Integrated**: Leverages \`xarray\` with optimized I/O, acceleration, and parallel extras for robust, high-performance coordinate-aware processing and lazy data loading.
+- **Xarray Integrated**: Leverages `xarray` with optimized I/O, acceleration, and parallel extras for robust, high-performance coordinate-aware processing and lazy data loading.
 - **Parallel Backends**:
   - **Dask (Default)**: Automatically scales to all available CPU cores on local machines.
   - **MPI**: Supports distributed execution via `mpi4py`.
