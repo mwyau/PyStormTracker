@@ -63,6 +63,17 @@ class Tracks:
     def append(self, obj: Track) -> None:
         self._tracks.append(obj)
 
+    def sort(self) -> None:
+        """Sorts tracks by their first point's time, lat, then lon."""
+
+        def track_key(t: Track) -> tuple[float, float, float]:
+            if not t.centers:
+                return (0.0, 0.0, 0.0)
+            c = t.centers[0]
+            return (c.time, c.lat, c.lon)
+
+        self._tracks.sort(key=track_key)
+
     @classmethod
     def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
@@ -87,10 +98,7 @@ class Tracks:
             if current_track_centers:
                 tracks_obj.append(Track(current_track_centers))
 
-        # Sort tracks by their first point's time, lat, lon for consistency
-        tracks_obj._tracks.sort(
-            key=lambda t: (t[0].time, t[0].lat, t[0].lon) if t else (0.0, 0.0, 0.0)
-        )
+        tracks_obj.sort()
         return tracks_obj
 
     def to_imilast(
@@ -157,17 +165,10 @@ class Tracks:
             f"Track count mismatch: {len(self)} vs {len(other)}"
         )
 
-        # Sort criteria for tracks: first center's time, then lat, then lon
-        def track_key(t: Track) -> tuple[float, float, float]:
-            if not t.centers:
-                return (0.0, 0.0, 0.0)
-            c = t.centers[0]
-            return (c.time, c.lat, c.lon)
+        self.sort()
+        other.sort()
 
-        sorted_self = sorted(self._tracks, key=track_key)
-        sorted_other = sorted(other._tracks, key=track_key)
-
-        for tr1, tr2 in zip(sorted_self, sorted_other, strict=False):
+        for tr1, tr2 in zip(self._tracks, other._tracks, strict=False):
             assert abs(len(tr1) - len(tr2)) <= length_diff_tol, (
                 f"Track length mismatch: {len(tr1)} vs {len(tr2)}"
             )
