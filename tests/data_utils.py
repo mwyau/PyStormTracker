@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pooch
 
 DATA_RELEASE_VERSION = "v0.1.0-data"
