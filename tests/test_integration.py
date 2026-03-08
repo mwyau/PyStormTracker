@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -77,18 +78,19 @@ def test_data_vo() -> str:
     ],
 )
 def config(
-    request: Any,  # noqa: ANN401
+    request: pytest.FixtureRequest,
     test_data_msl: str,
     test_data_vo: str,
 ) -> tuple[str, str, str, str]:
-    varname, mode, n_arg = request.param
+    param: tuple[str, str, str] = request.param
+    varname, mode, n_arg = param
     data_path = test_data_msl if varname == "msl" else test_data_vo
     return data_path, varname, mode, n_arg
 
 
 @pytest.fixture(scope="module")
 def shared_serial_output(
-    tmp_path_factory: Any,  # noqa: ANN401
+    tmp_path_factory: pytest.TempPathFactory,
     config: tuple[str, str, str, str],
 ) -> Path:
     """Run serial once and share it across tests to save time."""

@@ -1,27 +1,35 @@
+from __future__ import annotations
+
 import timeit
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-from .models import Center, Grid, TimeRange, Tracks
+if TYPE_CHECKING:
+    from mpi4py import MPI
+
+from .models import DetectionResult, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
 
 
 def _detect_serial(
-    infile: str, varname: str, time_range: TimeRange | None, mode: str
-) -> tuple[list[list[Center]], Grid]:
+    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+) -> tuple[DetectionResult, Grid]:
     grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
-    return grid.detect(minmaxmode=mode), grid  # type: ignore
+    return (
+        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
+        grid,
+    )
 
 
 def _detect_mpi(
-    infile: str, varname: str, time_range: TimeRange | None, mode: str
-) -> tuple[list[list[Center]], Grid, Any]:
+    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+) -> tuple[DetectionResult, Grid, MPI.Intracomm]:
     from mpi4py import MPI
 
-    comm = MPI.COMM_WORLD
+    comm: MPI.Intracomm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
     root = 0
@@ -34,20 +42,25 @@ def _detect_mpi(
     else:
         grids = None
 
-    grid = comm.scatter(grids, root=root)
-    return grid.detect(minmaxmode=mode), grid, comm
+    grid: Grid = comm.scatter(grids, root=root)
+    return (
+        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
+        grid,
+        comm,
+    )
 
 
 def _detect_dask(
     infile: str,
     varname: str,
     time_range: TimeRange | None,
-    mode: str,
+    mode: Literal["min", "max"],
     n_workers: int | None,
-) -> tuple[list[list[Center]], Grid]:
+) -> tuple[DetectionResult, Grid]:
     import os
 
-    import dask
+    from dask.base import compute
+    from dask.delayed import delayed
     from distributed import Client, LocalCluster
 
     if n_workers is None or n_workers <= 0:
@@ -57,24 +70,27 @@ def _detect_dask(
     grids = grid_obj.split(n_workers)
 
     with (
-        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,  # type: ignore[no-untyped-call]
-        Client(cluster),  # type: ignore[no-untyped-call]
+        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,
+        Client(cluster),
     ):
         delayed_results = [
-            dask.delayed(g.detect)(minmaxmode=mode)  # type: ignore[attr-defined]
+            delayed(g.detect)(
+                size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode
+            )
             for g in grids
         ]
-        results = dask.compute(*delayed_results)  # type: ignore[attr-defined, no-untyped-call]
+        # compute returns a tuple, we convert to list[DetectionResult]
+        results = list(compute(*delayed_results))
 
     # Flatten results from chunks
-    flattened_results: list[list[Center]] = []
+    flattened_results: DetectionResult = []
     for chunk in results:
         flattened_results.extend(chunk)
 
     return flattened_results, grid_obj
 
 
-def _link_centers(centers: list[list[Center]]) -> Tracks:
+def _link_centers(centers: DetectionResult) -> Tracks:
     tracks = Tracks()
     linker = SimpleLinker()
     for step_centers in centers:
@@ -82,17 +98,17 @@ def _link_centers(centers: list[list[Center]]) -> Tracks:
     return tracks
 
 
-def _combine_mpi_tracks(tracks: Tracks, comm: Any) -> Tracks:  # noqa: ANN401
+def _combine_mpi_tracks(tracks: Tracks, comm: MPI.Intracomm) -> Tracks:
+    linker = SimpleLinker()
     rank = comm.Get_rank()
     size = comm.Get_size()
-    linker = SimpleLinker()
 
     nstripe = 2
     while nstripe <= size:
         if rank % nstripe == nstripe // 2:
             comm.send(tracks, dest=rank - nstripe // 2, tag=nstripe)
         elif rank % nstripe == 0 and rank + nstripe // 2 < size:
-            tracks_recv = comm.recv(source=rank + nstripe // 2, tag=nstripe)
+            tracks_recv: Tracks = comm.recv(source=rank + nstripe // 2, tag=nstripe)
             linker.extend_track(tracks, tracks_recv)
         nstripe *= 2
     return tracks
@@ -122,7 +138,7 @@ def run_tracker(
         timer["detector"] = timeit.default_timer()
 
     # Detection Phase
-    comm = None
+    comm: MPI.Intracomm | None = None
     if use_mpi:
         centers, _grid, comm = _detect_mpi(infile, varname, time_range, mode)
     elif use_dask:
@@ -130,7 +146,7 @@ def run_tracker(
     else:
         centers, _grid = _detect_serial(infile, varname, time_range, mode)
 
-    if use_mpi and comm is not None and hasattr(comm, "Barrier"):
+    if use_mpi and comm is not None:
         comm.Barrier()
 
     if rank == 0:
@@ -141,7 +157,7 @@ def run_tracker(
     tracks = _link_centers(centers)
 
     # Consolidation Phase
-    if use_mpi and comm is not None and hasattr(comm, "Barrier"):
+    if use_mpi and comm is not None:
         timer["combiner"] = timeit.default_timer()
         tracks = _combine_mpi_tracks(tracks, comm)
         timer["combiner"] = timeit.default_timer() - timer["combiner"]

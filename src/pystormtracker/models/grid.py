@@ -5,7 +5,7 @@ from typing import Literal, Protocol, runtime_checkable
 import numpy as np
 from numpy.typing import NDArray
 
-from .center import Center
+from .center import DetectionResult
 
 
 @runtime_checkable
@@ -33,4 +33,4 @@ class Grid(Protocol):
         threshold: float,
         time_chunk_size: int,
         minmaxmode: Literal["min", "max"],
-    ) -> list[list[Center]]: ...
+    ) -> DetectionResult: ...

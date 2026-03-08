@@ -1,9 +1,9 @@
-from typing import Any
+from __future__ import annotations
 
 import pytest
 
 
-def pytest_addoption(parser: Any) -> None:  # noqa: ANN401
+def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--run-slow", action="store_true", default=False, help="run slow tests"
     )
@@ -12,7 +12,9 @@ def pytest_addoption(parser: Any) -> None:  # noqa: ANN401
     )
 
 
-def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:  # noqa: ANN401
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     run_slow = config.getoption("--run-slow")
     run_all = config.getoption("--run-all")
 
