@@ -236,12 +236,12 @@ class SimpleDetector:
         num_steps = len(time)
 
         for it, t in enumerate(time):
-            ibuffer = it % time_chunk_size
-            if ibuffer == 0:
+            ichunk = it % time_chunk_size
+            if ichunk == 0:
                 var = self.get_var(chart=(it, min(it + time_chunk_size, num_steps)))
 
             assert var is not None
-            chart = var[ibuffer, :, :]
+            chart = var[ichunk, :, :]
 
             # Xarray doesn't use masked arrays by default, but values can be NaN
             fill = np.inf if minmaxmode == "min" else -np.inf
