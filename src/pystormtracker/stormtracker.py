@@ -166,9 +166,7 @@ def run_tracker(
         )
         out_path = Path(outfile)
         final_outfile = (
-            out_path
-            if out_path.suffix in [".txt", ".imilast"]
-            else out_path.with_suffix(".txt")
+            out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
         )
         print(f"Results exported to {final_outfile}")
 
