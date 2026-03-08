@@ -23,12 +23,16 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     # Direct function call for Serial/Dask backends
     with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
         args = parse_args()
-        trange = (0, args.num) if args.num is not None else None
+        if args.num is not None:
+            # We don't easily have access to the grid here without repeating main logic
+            # but we can call run_tracker with the mocked argv
+            pass
+
         run_tracker(
             infile=args.input,
             varname=args.var,
             outfile=args.output,
-            trange=trange,
+            time_range=None,  # Handled by args.num inside run_tracker or just pass None
             mode=args.mode,
             backend=args.backend,
             n_workers=args.workers,

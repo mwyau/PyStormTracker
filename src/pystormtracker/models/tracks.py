@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import netCDF4
+import numpy as np
 
 from .center import Center
 from .time import TimeRange
@@ -31,13 +31,13 @@ class Track:
     def extend(self, other: Track) -> None:
         self.centers.extend(other.centers)
 
-    def abs_dist(self, other: Track) -> float:
+    def abs_dist(self, other: Track | Center) -> float:
         """
         Distance between the last point of this track and
-        the first point of another.
+        the first point (or specific Center) of another.
         """
         c1 = self.centers[-1]
-        c2 = other[0]
+        c2 = other.centers[0] if hasattr(other, "centers") else other
         return c1.abs_dist(c2)
 
 
@@ -66,17 +66,19 @@ class Tracks:
     def sort(self) -> None:
         """Sorts tracks by their first point's time, lat, then lon."""
 
-        def track_key(t: Track) -> tuple[float, float, float]:
+        def track_key(t: Track) -> tuple[np.datetime64, float, float]:
             if not t.centers:
-                return (0.0, 0.0, 0.0)
+                return (np.datetime64("NaT"), 0.0, 0.0)
             c = t.centers[0]
-            return (c.time, c.lat, c.lon)
+            return (c.time, float(c.lat), float(c.lon))
 
         self._tracks.sort(key=track_key)
 
     @classmethod
     def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
+        import pandas as pd
+
         tracks_obj = cls()
         with open(filename) as f:
             lines = f.readlines()
@@ -91,9 +93,19 @@ class Tracks:
                     current_track_centers = []
                 elif parts[0] == "00":
                     # Format: 00 CycloneNo StepNo DateI10 Year Month Day Hour Lon Lat
-                    # Intensity1. Center takes (time, lat, lon, var).
                     lon, lat, var = float(parts[8]), float(parts[9]), float(parts[10])
-                    time_val = float(parts[3])  # DateI10
+                    s_time = parts[3]
+                    if len(s_time) == 10:
+                        dt_str = (
+                            f"{s_time[:4]}-{s_time[4:6]}-{s_time[6:8]} "
+                            f"{s_time[8:10]}:00:00"
+                        )
+                        time_val = np.datetime64(pd.to_datetime(dt_str))
+                    else:
+                        # Numeric epoch or other
+                        time_val = np.datetime64(
+                            pd.to_datetime(float(s_time), unit="s")
+                        )
                     current_track_centers.append(Center(time_val, lat, lon, var))
             if current_track_centers:
                 tracks_obj.append(Track(current_track_centers))
@@ -104,11 +116,11 @@ class Tracks:
     def to_imilast(
         self,
         outfile: str,
-        time_units: str = "",
-        calendar: str = "standard",
         decimal_places: int = 4,
     ) -> None:
         """Exports tracks to an IMILAST format text file."""
+        import pandas as pd
+
         if not outfile.endswith(".txt"):
             outfile += ".txt"
 
@@ -122,25 +134,14 @@ class Tracks:
             for i, track in enumerate(self._tracks, start=1):
                 f.write(f"90 {i} {len(track)}\n")
                 for step, center in enumerate(track, start=1):
+                    # Standardize conversion to datetime using pandas
                     try:
-                        dt_any: object = netCDF4.num2date(
-                            [center.time], units=time_units, calendar=calendar
-                        )
-                        dt = dt_any[0]  # type: ignore[index]
+                        dt = pd.to_datetime(center.time)
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
                         yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
                     except Exception:
-                        # Fallback for DateI10 or unknown format
-                        s_time = str(int(center.time))
-                        if len(s_time) == 10:  # YYYYMMDDHH
-                            yyyymmddhh = s_time
-                            yyyy = int(s_time[:4])
-                            mm = int(s_time[4:6])
-                            dd = int(s_time[6:8])
-                            hh = int(s_time[8:10])
-                        else:
-                            yyyymmddhh = "0000000000"
-                            yyyy, mm, dd, hh = 0, 0, 0, 0
+                        yyyymmddhh = "0000000000"
+                        yyyy, mm, dd, hh = 0, 0, 0, 0
 
                     var_val = f"{float(center.var):.{decimal_places}f}"
                     lon = center.lon

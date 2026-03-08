@@ -28,7 +28,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "netCDF4>=1.6.5",
+    "xarray>=2024.2.0",
     "dask>=2024.2.0",
     "distributed>=2024.2.0",
     "pooch>=1.8.0",
@@ -87,7 +87,7 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q -m \"not slow\""
+addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
