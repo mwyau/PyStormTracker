@@ -69,7 +69,7 @@ class Tracks:
         decimal_places: int = 4,
     ) -> None:
         """Exports tracks to an IMILAST format text file."""
-        if not any(outfile.endswith(ext) for ext in [".txt", ".imilast"]):
+        if not outfile.endswith(".txt"):
             outfile += ".txt"
 
         with open(outfile, "w", newline="") as f:
