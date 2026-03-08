@@ -1,15 +1,13 @@
 from ..models.center import Center
 from ..models.time import TimeRange
-from ..models.tracks import Tracks
+from ..models.tracks import Track, Tracks
 
 
 class SimpleLinker:
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
 
-    def match_center(
-        self, tracks: Tracks, centers: list[Center]
-    ) -> list[list[Center] | None]:
+    def match_center(self, tracks: Tracks, centers: list[Center]) -> list[Track | None]:
         """Matches a list of centers to the tails of existing tracks."""
         if not tracks.tail:
             return [None for _ in range(len(centers))]
@@ -25,7 +23,7 @@ class SimpleLinker:
                     dforward[it][ic] = dist
                     dbackward[ic][it] = dist
 
-        matched: list[list[Center] | None] = [None for _ in range(len(centers))]
+        matched: list[Track | None] = [None for _ in range(len(centers))]
 
         while True:
             has_match = False
@@ -55,9 +53,7 @@ class SimpleLinker:
 
         return matched
 
-    def match_track(
-        self, tracks1: Tracks, tracks2: Tracks
-    ) -> list[list[Center] | None]:
+    def match_track(self, tracks1: Tracks, tracks2: Tracks) -> list[Track | None]:
         """Matches the heads of tracks2 to the tails of tracks1."""
         centers = [track[0] for track in tracks2.head]
         return self.match_center(tracks1, centers)
@@ -67,13 +63,13 @@ class SimpleLinker:
             tracks.tail = []
             return
 
-        new_tail: list[list[Center]] = []
+        new_tail: list[Track] = []
         matched_tracks = self.match_center(tracks, centers)
 
         for i, matched_track in enumerate(matched_tracks):
             if tracks.time_range is None:
                 # First ever centers
-                new_track = [centers[i]]
+                new_track = Track([centers[i]])
                 tracks.append(new_track)
                 tracks.head.append(new_track)
                 new_tail.append(new_track)
@@ -83,7 +79,7 @@ class SimpleLinker:
                 and centers[0].time - tracks.time_range.step > tracks.time_range.end
             ):
                 # No match or gap in time detected
-                new_track = [centers[i]]
+                new_track = Track([centers[i]])
                 tracks.append(new_track)
                 new_tail.append(new_track)
             else:
@@ -112,7 +108,7 @@ class SimpleLinker:
             tracks1.time_range = tracks2.time_range
             return
 
-        new_tail: list[list[Center]] = []
+        new_tail: list[Track] = []
         matched_tracks = self.match_track(tracks1, tracks2)
 
         # Map of tracks2.head to the matched track in tracks1
