@@ -92,8 +92,47 @@ mpiexec -n 4 stormtracker -i input.nc -v slp -o tracks -b mpi
 
 ## Testing
 
-Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` from the [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) repository on the first run.
+Run the full test suite (unit and integration tests) using `pytest`. Test data will be automatically downloaded by `pooch` on the first run.
 
+```bash
+pytest
+```
+
+## Development
+
+### Setup
+It is recommended to use a virtual environment or conda for development:
+```bash
+conda create -n pst python=3.12
+conda activate pst
+pip install -e .[dev]
+```
+
+### Quality Control
+Before submitting a pull request, please ensure all checks pass:
+
+**Linting & Formatting:**
+```bash
+ruff check . --fix
+ruff format .
+```
+
+**Type Checking:**
+```bash
+mypy src/
+```
+
+### Tiered Testing
+To keep development cycles fast, integration tests are tiered:
+- **Fast Tests**: Default local runs.
+- **Slow Tests**: Full datasets and legacy regressions (marked with `@pytest.mark.slow`).
+
+**Run fast tests only:**
+```bash
+pytest -m "not slow"
+```
+
+**Run everything (CI behavior):**
 ```bash
 pytest
 ```
