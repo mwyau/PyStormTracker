@@ -55,15 +55,8 @@ jobs:
 
       - name: Run tests
         run: |
-          # Run core tests always
+          # Run core tests
           pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py
           
-          # Run fast integration tests always
-          pytest tests/test_integration.py -k n120
-          
-          # Run full integration and legacy regression only on dev/main branches
-          if [[ "${{ github.base_ref }}" == "dev" || "${{ github.base_ref }}" == "main" || "${{ github.ref_name }}" == "dev" || "${{ github.ref_name }}" == "main" ]]; then
-            pytest tests/test_integration.py -k "full or legacy"
-          else
-            echo "Skipping full integration and legacy regression tests on feature branch."
-          fi
+          # Run integration tests including slow ones
+          pytest tests/test_integration.py
