@@ -7,53 +7,59 @@ class SimpleLinker:
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
 
-    def match_center(self, tracks: Tracks, centers: list[Center]) -> list[int | None]:
-        ends = [tracks[i][-1] for i in tracks.tail]
+    def match_center(
+        self, tracks: Tracks, centers: list[Center]
+    ) -> list[list[Center] | None]:
+        """Matches a list of centers to the tails of existing tracks."""
+        if not tracks.tail:
+            return [None for _ in range(len(centers))]
 
-        dforward: list[dict[int, float]] = [{} for _ in range(len(ends))]
+        dforward: list[dict[int, float]] = [{} for _ in range(len(tracks.tail))]
         dbackward: list[dict[int, float]] = [{} for _ in range(len(centers))]
 
-        for ic1, c1 in enumerate(ends):
-            for ic2, c2 in enumerate(centers):
-                dist = c1.abs_dist(c2)
+        for it, track in enumerate(tracks.tail):
+            last_center = track[-1]
+            for ic, center in enumerate(centers):
+                dist = last_center.abs_dist(center)
                 if dist < self.threshold:
-                    dforward[ic1][ic2] = dist
-                    dbackward[ic2][ic1] = dist
+                    dforward[it][ic] = dist
+                    dbackward[ic][it] = dist
 
-        matched: list[int | None] = [None for _ in range(len(centers))]
+        matched: list[list[Center] | None] = [None for _ in range(len(centers))]
 
         while True:
             has_match = False
+            for ic, db in enumerate(dbackward):
+                if matched[ic] is None and len(db) > 0:
+                    # Get the index of the closest track tail for this center
+                    it_match = min(db, key=lambda k: db[k])
+                    df = dforward[it_match]
 
-            for i, db in enumerate(dbackward):
-                if matched[i] is None and len(db) > 0:
-                    # Get the index of the closest end for this center
-                    iforward = min(db, key=lambda k: db[k])
-                    di = dforward[iforward]
+                    # Check if this center is also the closest for that track tail
+                    if min(df, key=lambda k: df[k]) == ic:
+                        matched[ic] = tracks.tail[it_match]
 
-                    # Check if this center is also the closest for that end
-                    if min(di, key=lambda k: di[k]) == i:
-                        matched[i] = iforward
-
+                        # Clear resources to avoid double matching
                         db.clear()
                         for j in dbackward:
-                            if iforward in j:
-                                del j[iforward]
-                        di.clear()
-
+                            if it_match in j:
+                                del j[it_match]
+                        df.clear()
                         for j in dforward:
-                            if i in j:
-                                del j[i]
+                            if ic in j:
+                                del j[ic]
 
                         has_match = True
-
-            if has_match is False:
+            if not has_match:
                 break
 
-        return [tracks.tail[i] if i is not None else None for i in matched]
+        return matched
 
-    def match_track(self, tracks1: Tracks, tracks2: Tracks) -> list[int | None]:
-        centers = [tracks2[i][0] for i in tracks2.head]
+    def match_track(
+        self, tracks1: Tracks, tracks2: Tracks
+    ) -> list[list[Center] | None]:
+        """Matches the heads of tracks2 to the tails of tracks1."""
+        centers = [track[0] for track in tracks2.head]
         return self.match_center(tracks1, centers)
 
     def append_center(self, tracks: Tracks, centers: list[Center]) -> None:
@@ -61,24 +67,29 @@ class SimpleLinker:
             tracks.tail = []
             return
 
-        new_tail: list[int] = []
-        matched_index = self.match_center(tracks, centers)
+        new_tail: list[list[Center]] = []
+        matched_tracks = self.match_center(tracks, centers)
 
-        for i, d in enumerate(matched_index):
+        for i, matched_track in enumerate(matched_tracks):
             if tracks.time_range is None:
-                tracks.append([centers[i]])
-                tracks.head.append(len(tracks) - 1)
-                new_tail.append(len(tracks) - 1)
-            elif d is None or (
+                # First ever centers
+                new_track = [centers[i]]
+                tracks.append(new_track)
+                tracks.head.append(new_track)
+                new_tail.append(new_track)
+            elif matched_track is None or (
                 tracks.time_range.end is not None
                 and tracks.time_range.step is not None
                 and centers[0].time - tracks.time_range.step > tracks.time_range.end
             ):
-                tracks.append([centers[i]])
-                new_tail.append(len(tracks) - 1)
+                # No match or gap in time detected
+                new_track = [centers[i]]
+                tracks.append(new_track)
+                new_tail.append(new_track)
             else:
-                tracks[d].append(centers[i])
-                new_tail.append(d)
+                # Append to existing matched track
+                matched_track.append(centers[i])
+                new_tail.append(matched_track)
 
         tracks.tail = new_tail
 
@@ -91,31 +102,37 @@ class SimpleLinker:
             tracks.time_range.end = current_time
 
     def extend_track(self, tracks1: Tracks, tracks2: Tracks) -> None:
-        if len(tracks2) == 0:
+        if not tracks2:
             return
 
-        if len(tracks1) == 0:
+        if not tracks1:
             tracks1._tracks = tracks2._tracks
             tracks1.head = tracks2.head
             tracks1.tail = tracks2.tail
             tracks1.time_range = tracks2.time_range
             return
 
-        new_tail: list[int] = []
-        matched_index = self.match_track(tracks1, tracks2)
-        matched_dict = {d: matched_index[i] for i, d in enumerate(tracks2.head)}
-        tail_dict = dict.fromkeys(tracks2.tail)
+        new_tail: list[list[Center]] = []
+        matched_tracks = self.match_track(tracks1, tracks2)
 
-        for i, d in enumerate(tracks2):
-            match_idx = matched_dict.get(i)
-            if match_idx is not None:
-                tracks1[match_idx].extend(d)
-                if i in tail_dict:
-                    new_tail.append(match_idx)
+        # Map of tracks2.head to the matched track in tracks1
+        matched_map = {
+            id(tracks2.head[i]): matched_tracks[i] for i in range(len(tracks2.head))
+        }
+
+        # Track which tracks in tracks2 are currently tails
+        tail_ids = {id(t) for t in tracks2.tail}
+
+        for track2 in tracks2:
+            matched_track1 = matched_map.get(id(track2))
+            if matched_track1 is not None:
+                matched_track1.extend(track2)
+                if id(track2) in tail_ids:
+                    new_tail.append(matched_track1)
             else:
-                tracks1.append(d)
-                if i in tail_dict:
-                    new_tail.append(len(tracks1) - 1)
+                tracks1.append(track2)
+                if id(track2) in tail_ids:
+                    new_tail.append(track2)
 
         tracks1.tail = new_tail
         if tracks1.time_range and tracks2.time_range:

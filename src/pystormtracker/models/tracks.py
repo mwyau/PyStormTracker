@@ -12,8 +12,8 @@ from .time import TimeRange
 class Tracks:
     def __init__(self) -> None:
         self._tracks: list[list[Center]] = []
-        self.head: list[int] = []
-        self.tail: list[int] = []
+        self.head: list[list[Center]] = []
+        self.tail: list[list[Center]] = []
         self.time_range: TimeRange | None = None
 
     def __getitem__(self, index: int) -> list[Center]:
