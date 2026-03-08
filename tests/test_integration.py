@@ -92,6 +92,7 @@ def config(
     test_data_msl: str,
     test_data_vo: str,
 ) -> tuple[str, str, str, str]:
+    # request is a pytest.FixtureRequest but we use Any to avoid import complexity
     varname, mode, n_arg = request.param
     data_path = test_data_msl if varname == "msl" else test_data_vo
     return data_path, varname, mode, n_arg
@@ -104,7 +105,7 @@ def shared_serial_output(
 ) -> Path:
     """Run serial once and share it across tests to save time."""
     data_path, varname, mode, n_arg = config
-    temp_dir = tmp_path_factory.mktemp("data")
+    temp_dir: Path = tmp_path_factory.mktemp("data")
     out_file = temp_dir / "integration_serial.txt"
     run_command(
         f"-i {data_path} -v {varname} -m {mode} -o {out_file} {n_arg} --backend serial"
