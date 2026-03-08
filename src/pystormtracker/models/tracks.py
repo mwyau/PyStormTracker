@@ -152,25 +152,36 @@ class Tracks:
         coord_tol: float = 1e-4,
         intensity_tol: float = 1e-4,
     ) -> None:
-        """Compares this Tracks object with another for equality within tolerances."""
+        """Compares this Tracks object with another for equality, ignoring order."""
         assert len(self) == len(other), (
             f"Track count mismatch: {len(self)} vs {len(other)}"
         )
 
-        for tr1, tr2 in zip(self._tracks, other._tracks, strict=False):
+        # Sort criteria for tracks: first center's time, then lat, then lon
+        def track_key(t: Track) -> tuple[float, float, float]:
+            if not t.centers:
+                return (0.0, 0.0, 0.0)
+            c = t.centers[0]
+            return (c.time, c.lat, c.lon)
+
+        sorted_self = sorted(self._tracks, key=track_key)
+        sorted_other = sorted(other._tracks, key=track_key)
+
+        for tr1, tr2 in zip(sorted_self, sorted_other, strict=False):
             assert abs(len(tr1) - len(tr2)) <= length_diff_tol, (
                 f"Track length mismatch: {len(tr1)} vs {len(tr2)}"
             )
 
-            # Robust matching using time as key
-            d1 = {c.time: c for c in tr1}
-            d2 = {c.time: c for c in tr2}
+            # Robust matching using time as key for points within the track
+            d1 = {c.time: c for c in tr1.centers}
+            d2 = {c.time: c for c in tr2.centers}
 
             common_times = set(d1.keys()) & set(d2.keys())
+            # Ensure we have a significant overlap
             assert len(common_times) >= min(len(tr1), len(tr2)) - length_diff_tol
 
-            for t in common_times:
-                c1, c2 = d1[t], d2[t]
+            for t_val in common_times:
+                c1, c2 = d1[t_val], d2[t_val]
                 assert abs(c1.lat - c2.lat) <= coord_tol
                 assert abs(c1.lon - c2.lon) <= coord_tol
                 assert abs(c1.var - c2.var) <= intensity_tol
