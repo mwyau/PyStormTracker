@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 
 import numpy as np
@@ -77,7 +78,7 @@ class Tracks:
     @classmethod
     def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         tracks_obj = cls()
         with open(filename) as f:
@@ -102,14 +103,14 @@ class Tracks:
                             int(s_time[4:6]),
                             int(s_time[6:8]),
                             int(s_time[8:10]),
-                            tzinfo=timezone.utc,
+                            tzinfo=UTC,
                         )
                         time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                     else:
                         # Numeric epoch or other
                         try:
                             # Assume unix timestamp
-                            dt = datetime.fromtimestamp(float(s_time), tz=timezone.utc)
+                            dt = datetime.fromtimestamp(float(s_time), tz=UTC)
                             time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                         except ValueError:
                             # Fallback to direct numpy parsing if possible
@@ -128,7 +129,7 @@ class Tracks:
         decimal_places: int = 4,
     ) -> None:
         """Exports tracks to an IMILAST format text file."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         if not outfile.endswith(".txt"):
             outfile += ".txt"
@@ -147,7 +148,7 @@ class Tracks:
                     try:
                         t0 = np.datetime64("1970-01-01T00:00:00")
                         ts = (center.time - t0) / np.timedelta64(1, "s")
-                        dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+                        dt = datetime.fromtimestamp(float(ts), tz=UTC)
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
 
                         yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
