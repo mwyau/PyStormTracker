@@ -7,7 +7,7 @@
 ![Python versions](https://img.shields.io/pypi/pyversions/PyStormTracker)
 ![License](https://img.shields.io/pypi/l/PyStormTracker)
 [![Docker](https://img.shields.io/badge/docker-xddd%2Fpystormtracker-blue?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
-[![GHCR](https://img.shields.io/badge/ghcr.io-XDDD%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/XDDD/packages/container/package/pystormtracker)
+[![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
 PyStormTracker provides the implementation of the "Simple Tracker" algorithm used for cyclone trajectory analysis in **Yau and Chang (2020)**. It was originally developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 Summer Internships in Parallel Computational Science (SIParCS)** program, utilizing a task-parallel strategy with temporal decomposition and a tree reduction algorithm to process large climate datasets.
