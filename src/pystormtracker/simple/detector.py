@@ -254,7 +254,7 @@ class SimpleDetector:
             )
 
             # Ensure we don't detect centers on originally masked pixels
-            if np.ma.is_masked(frame):  # type: ignore[no-untyped-call]
+            if np.ma.is_masked(frame):
                 extrema[frame.mask] = 0  # type: ignore[attr-defined]
             elif np.isnan(frame).any():
                 extrema[np.isnan(frame)] = 0
