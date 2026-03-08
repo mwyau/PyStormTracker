@@ -118,7 +118,7 @@ def shared_serial_output(
     return Path(out_file)
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_dask_vs_serial(
     shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
 ) -> None:
@@ -145,7 +145,7 @@ def test_dask_vs_serial(
     compare_tracks(shared_serial_output, out_file)
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_mpi_vs_serial(
     shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
 ) -> None:
@@ -175,6 +175,7 @@ def test_mpi_vs_serial(
     compare_tracks(shared_serial_output, mpi_out)
 
 
+@pytest.mark.integration
 def test_legacy_regression(
     shared_serial_output: Path, config: tuple[str, str, str]
 ) -> None:
