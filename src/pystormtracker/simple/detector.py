@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-import netCDF4
 import numpy as np
+import xarray as xr
 from scipy.ndimage import generic_filter, laplace
 
 from ..models.center import Center
@@ -15,7 +15,7 @@ from ..models.time import TimeRange
 class SimpleDetector:
     """
     A meteorological feature detector that treats fields as 2D images.
-    Uses lazy-loading to minimize memory and I/O overhead.
+    Uses xarray for robust coordinate handling and lazy-loading.
     """
 
     def __init__(
@@ -28,93 +28,89 @@ class SimpleDetector:
         self.varname = varname
         self.time_range = time_range
 
-        self._dataset: netCDF4.Dataset | None = None
-        self._nc_var: Any = None
-        self._cache: dict[str, np.ndarray] = {}
+        self._ds: xr.Dataset | None = None
+        self._data: xr.DataArray | None = None
 
     def _ensure_open(self) -> None:
-        """Ensures the NetCDF file is open and basic variables are mapped."""
-        if self._dataset is None:
-            self._dataset = netCDF4.Dataset(self.pathname, "r")
-            self._nc_var = self._dataset.variables[self.varname]
-            self._nc_var.set_auto_maskandscale(False)
+        """Ensures the xarray dataset is open and basic variables are mapped."""
+        if self._ds is None:
+            # open_dataset is lazy by default
+            self._ds = xr.open_dataset(self.pathname, mask_and_scale=False)
+            self._data = self._ds[self.varname]
 
-    def _get_nc_var(self, name: str) -> Any:  # noqa: ANN401
-        self._ensure_open()
-        assert self._dataset is not None
-        return self._dataset.variables[name]
+            # Map coordinates to standard names if needed
+            if "latitude" not in self._ds.coords and "lat" in self._ds.coords:
+                self._ds = self._ds.rename({"lat": "latitude"})
+            if "longitude" not in self._ds.coords and "lon" in self._ds.coords:
+                self._ds = self._ds.rename({"lon": "longitude"})
+            if "valid_time" in self._ds.coords and "time" not in self._ds.coords:
+                self._ds = self._ds.rename({"valid_time": "time"})
 
     @property
     def lat(self) -> np.ndarray:
-        if "lat" not in self._cache:
-            names = ["latitude", "lat"]
-            self._ensure_open()
-            assert self._dataset is not None
-            for name in names:
-                if name in self._dataset.variables:
-                    self._cache["lat"] = np.asarray(self._dataset.variables[name][:])
-                    return self._cache["lat"]
-            raise KeyError(f"Neither {names} found in {self.pathname}")
-        return self._cache["lat"]
+        self._ensure_open()
+        assert self._ds is not None
+        return np.asarray(self._ds.latitude.values)
 
     @property
     def lon(self) -> np.ndarray:
-        if "lon" not in self._cache:
-            names = ["longitude", "lon"]
-            self._ensure_open()
-            assert self._dataset is not None
-            for name in names:
-                if name in self._dataset.variables:
-                    self._cache["lon"] = np.asarray(self._dataset.variables[name][:])
-                    return self._cache["lon"]
-            raise KeyError(f"Neither {names} found in {self.pathname}")
-        return self._cache["lon"]
+        self._ensure_open()
+        assert self._ds is not None
+        return np.asarray(self._ds.longitude.values)
 
     def get_var(self, chart: int | tuple[int, int] | None = None) -> np.ndarray | None:
         self._ensure_open()
+        assert self._data is not None
 
-        # SimpleDetector uses start/end as indices for temporal slicing
-        tstart = int(self.time_range.start) if self.time_range else 0
-        tend = int(self.time_range.end) if self.time_range else self._nc_var.shape[0]
+        # Base data for the configured time range
+        time_dim = self._data.dims[0]
+        if self.time_range:
+            data_range = self._data.sel(
+                {time_dim: slice(self.time_range.start, self.time_range.end)}
+            )
+        else:
+            data_range = self._data
 
         match chart:
             case int(idx):
-                data = self._nc_var[tstart + idx, ...]
-                return np.asarray(data.reshape((data.shape[-2], data.shape[-1])))
+                data = data_range.isel({time_dim: idx})
+                return np.asarray(data.values).reshape((data.shape[-2], data.shape[-1]))
 
             case (int(s_off), int(e_off)):
-                s, e = tstart + s_off, tstart + e_off
-                data = self._nc_var[s:e, ...]
+                data = data_range.isel({time_dim: slice(s_off, e_off)})
                 return np.asarray(
-                    data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
+                    data.values.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
                 )
 
             case None:
-                data = self._nc_var[tstart:tend, ...]
                 return np.asarray(
-                    data.reshape((data.shape[0], data.shape[-2], data.shape[-1]))
+                    data_range.values.reshape(
+                        (
+                            data_range.shape[0],
+                            data_range.shape[-2],
+                            data_range.shape[-1],
+                        )
+                    )
                 )
 
             case _:
                 raise TypeError("chart must be an int, tuple[int, int], or None")
 
     def get_time(self) -> np.ndarray | None:
-        if "time" not in self._cache:
-            name = "time" if "time" in self._get_nc_vars_list() else "valid_time"
-            nc_time = self._get_nc_var(name)
-            tstart = int(self.time_range.start) if self.time_range else 0
-            tend = int(self.time_range.end) if self.time_range else nc_time.shape[0]
-            self._cache["time"] = np.asarray(nc_time[tstart:tend])
-        return self._cache["time"]
-
-    def _get_nc_vars_list(self) -> list[str]:
         self._ensure_open()
-        assert self._dataset is not None
-        return list(self._dataset.variables.keys())
+        assert self._ds is not None
+        if self.time_range:
+            times = self._ds.time.sel(
+                time=slice(self.time_range.start, self.time_range.end)
+            )
+        else:
+            times = self._ds.time
+        return np.asarray(times.values)
 
     def get_time_obj(self) -> object | None:
-        name = "time" if "time" in self._get_nc_vars_list() else "valid_time"
-        return self._get_nc_var(name)  # type: ignore[no-any-return]
+        self._ensure_open()
+        assert self._ds is not None
+        return self._ds.time  # type: ignore[no-any-return]
 
     def get_lat(self) -> np.ndarray | None:
         return self.lat
@@ -123,29 +119,36 @@ class SimpleDetector:
         return self.lon
 
     def split(self, num: int) -> list[Grid]:
-        if self._dataset is not None:
+        if self._ds is not None:
             raise RuntimeError("Cannot split after file has been opened.")
 
-        with netCDF4.Dataset(self.pathname, "r") as f:
-            time_dim = "time" if "time" in f.dimensions else "valid_time"
-            total_len = f.dimensions[time_dim].size
+        with xr.open_dataset(self.pathname) as ds:
+            if self.time_range:
+                times = ds.time.sel(
+                    time=slice(self.time_range.start, self.time_range.end)
+                )
+            else:
+                times = ds.time
 
-        tstart = int(self.time_range.start) if self.time_range else 0
-        tend = int(self.time_range.end) if self.time_range else total_len
-        time_len = tend - tstart
+            time_values = times.values
+            total_len = len(time_values)
 
-        chunk_size = time_len // num
-        remainder = time_len % num
+        chunk_size = total_len // num
+        remainder = total_len % num
 
         grids: list[Grid] = []
         for i in range(num):
-            s = tstart + i * chunk_size + min(i, remainder)
-            e = tstart + (i + 1) * chunk_size + min(i + 1, remainder)
+            s_idx = i * chunk_size + min(i, remainder)
+            e_idx = (i + 1) * chunk_size + min(i + 1, remainder)
+
+            # Use actual time values for the sub-ranges
             grids.append(
                 SimpleDetector(
                     self.pathname,
                     self.varname,
-                    time_range=TimeRange(start=float(s), end=float(e)),
+                    time_range=TimeRange(
+                        start=time_values[s_idx], end=time_values[e_idx - 1]
+                    ),
                 )
             )
         return grids
@@ -161,7 +164,7 @@ class SimpleDetector:
         search_window = buffer.reshape((size, size))
         center_val = search_window[half_size, half_size]
 
-        if np.ma.is_masked(center_val):
+        if np.ma.is_masked(center_val) or np.isnan(center_val):
             return False
 
         if threshold == 0.0:
@@ -169,9 +172,9 @@ class SimpleDetector:
             return bool(center_val == limit)
 
         if minmaxmode == "min" and center_val == search_window.min():
-            return bool(sorted(buffer)[8] - center_val > threshold)
+            return bool(np.sort(buffer)[8] - center_val > threshold)
         if minmaxmode == "max" and center_val == search_window.max():
-            return bool(sorted(buffer)[0] - center_val < -1 * threshold)
+            return bool(np.sort(buffer)[0] - center_val < -1 * threshold)
         return False
 
     def _local_extrema_filter(
@@ -234,18 +237,28 @@ class SimpleDetector:
 
             assert var is not None
             chart = var[ibuffer, :, :]
+
+            # Xarray doesn't use masked arrays by default, but values can be NaN
             fill = np.inf if minmaxmode == "min" else -np.inf
-            filled_chart = np.ma.filled(chart, fill_value=fill)
+            filled_chart = np.where(np.isnan(chart), fill, chart)
 
             extrema = self._local_extrema_filter(
                 filled_chart, size, threshold=threshold, minmaxmode=minmaxmode
             )
+
+            # Ensure we don't detect centers on originally masked pixels
             if np.ma.is_masked(chart):
-                extrema[chart.mask] = 0  # type: ignore
+                extrema[chart.mask] = 0  # type: ignore[attr-defined]
+            elif np.isnan(chart).any():
+                extrema[np.isnan(chart)] = 0
 
             extrema = self._remove_dup_laplace(filled_chart, extrema, size=5)
+
+            # Convert datetime64 to seconds since 1970
+            time_val = t.astype("datetime64[s]")
+
             center_list = [
-                Center(t, float(lat[i]), float(lon[j]), chart[i, j])
+                Center(time_val, float(lat[i]), float(lon[j]), float(chart[i, j]))
                 for i, j in np.transpose(extrema.nonzero())
             ]
             print(f"Step {it + 1}/{num_steps}: Found {len(center_list)} centers")

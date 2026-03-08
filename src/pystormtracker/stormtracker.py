@@ -3,9 +3,6 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Any, Literal
 
-import dask
-from distributed import Client, LocalCluster
-
 from .models import Center, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
@@ -13,17 +10,14 @@ Backend = Literal["serial", "mpi", "dask"]
 
 
 def _detect_serial(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str
+    infile: str, varname: str, time_range: TimeRange | None, mode: str
 ) -> tuple[list[list[Center]], Grid]:
-    time_range = (
-        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
-    )
     grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     return grid.detect(minmaxmode=mode), grid  # type: ignore
 
 
 def _detect_mpi(
-    infile: str, varname: str, trange: tuple[int, int] | None, mode: str
+    infile: str, varname: str, time_range: TimeRange | None, mode: str
 ) -> tuple[list[list[Center]], Grid, Any]:
     from mpi4py import MPI
 
@@ -33,9 +27,6 @@ def _detect_mpi(
     root = 0
 
     if rank == root:
-        time_range = (
-            TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
-        )
         grid_obj = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range
         )
@@ -50,18 +41,18 @@ def _detect_mpi(
 def _detect_dask(
     infile: str,
     varname: str,
-    trange: tuple[int, int] | None,
+    time_range: TimeRange | None,
     mode: str,
     n_workers: int | None,
 ) -> tuple[list[list[Center]], Grid]:
     import os
 
+    import dask
+    from distributed import Client, LocalCluster
+
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
-    time_range = (
-        TimeRange(start=float(trange[0]), end=float(trange[1])) if trange else None
-    )
     grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     grids = grid_obj.split(n_workers)
 
@@ -111,7 +102,7 @@ def run_tracker(
     infile: str,
     varname: str,
     outfile: str,
-    trange: tuple[int, int] | None = None,
+    time_range: TimeRange | None = None,
     mode: Literal["min", "max"] = "min",
     backend: Backend = "dask",
     n_workers: int | None = None,
@@ -133,11 +124,11 @@ def run_tracker(
     # Detection Phase
     comm = None
     if use_mpi:
-        centers, grid, comm = _detect_mpi(infile, varname, trange, mode)
+        centers, _grid, comm = _detect_mpi(infile, varname, time_range, mode)
     elif use_dask:
-        centers, grid = _detect_dask(infile, varname, trange, mode, n_workers)
+        centers, _grid = _detect_dask(infile, varname, time_range, mode, n_workers)
     else:
-        centers, grid = _detect_serial(infile, varname, trange, mode)
+        centers, _grid = _detect_serial(infile, varname, time_range, mode)
 
     if use_mpi and comm is not None and hasattr(comm, "Barrier"):
         comm.Barrier()
@@ -169,13 +160,9 @@ def run_tracker(
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
-        time_obj = grid.get_time_obj()
-        tracks.to_imilast(
-            outfile,
-            time_units=getattr(time_obj, "units", ""),
-            calendar=getattr(time_obj, "calendar", "standard"),
-        )
+        tracks.to_imilast(outfile)
         out_path = Path(outfile)
+
         final_outfile = (
             out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
         )
@@ -213,13 +200,24 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     args = parse_args()
-    trange = (0, args.num) if args.num is not None else None
+    time_range: TimeRange | None = None
+
+    if args.num is not None:
+        # Determine actual times for the first n steps
+        grid_preview = SimpleDetector(pathname=args.input, varname=args.var)
+        times = grid_preview.get_time()
+        assert times is not None
+        num = min(args.num, len(times))
+        time_range = TimeRange(
+            start=times[0],
+            end=times[num - 1],
+        )
 
     run_tracker(
         infile=args.input,
         varname=args.var,
         outfile=args.output,
-        trange=trange,
+        time_range=time_range,
         mode=args.mode,
         backend=args.backend,
         n_workers=args.workers,

@@ -73,7 +73,7 @@ jobs:
           pip install .[dev]
       - name: Run Unit Tests
         run: |
-          pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py -m ""
+          pytest tests/test_center.py tests/test_simple_detector.py tests/test_simple_linker.py tests/test_tracks.py --run-all
 
   integration-fast:
     runs-on: ubuntu-latest
@@ -97,17 +97,20 @@ jobs:
           pip install .[dev]
       - name: Run Fast Integration Tests
         run: |
-          pytest tests/test_integration.py -m "not slow"
+          pytest tests/test_integration.py
 
   integration-full:
+    name: integration-full (${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    # Only run on 3.12 for full/legacy to save time and resources
+    strategy:
+      matrix:
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Install MPI
         run: |
@@ -119,4 +122,4 @@ jobs:
           pip install .[dev]
       - name: Run Full Integration & Legacy Regression
         run: |
-          pytest tests/test_integration.py -m "slow"
+          pytest tests/test_integration.py --run-slow
