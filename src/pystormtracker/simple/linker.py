@@ -1,5 +1,5 @@
 from ..models.center import Center
-from ..models.tracks import Tracks
+from ..models.tracks import TimeRange, Tracks
 
 
 class SimpleLinker:
@@ -26,10 +26,12 @@ class SimpleLinker:
 
             for i, db in enumerate(dbackward):
                 if matched[i] is None and len(db) > 0:
-                    iforward = min(db, key=db.get)  # type: ignore
+                    # Get the index of the closest end for this center
+                    iforward = min(db, key=lambda k: db[k])
                     di = dforward[iforward]
 
-                    if min(di, key=di.get) == i:  # type: ignore
+                    # Check if this center is also the closest for that end
+                    if min(di, key=lambda k: di[k]) == i:
                         matched[i] = iforward
 
                         db.clear()
@@ -59,18 +61,17 @@ class SimpleLinker:
             return
 
         new_tail: list[int] = []
-
         matched_index = self.match_center(tracks, centers)
 
         for i, d in enumerate(matched_index):
-            if tracks.tstart is None:
+            if tracks.time_info is None:
                 tracks.append([centers[i]])
                 tracks.head.append(len(tracks) - 1)
                 new_tail.append(len(tracks) - 1)
             elif d is None or (
-                tracks.tend is not None
-                and tracks.dt is not None
-                and centers[0].time - tracks.dt > tracks.tend
+                tracks.time_info.end is not None
+                and tracks.time_info.step is not None
+                and centers[0].time - tracks.time_info.step > tracks.time_info.end
             ):
                 tracks.append([centers[i]])
                 new_tail.append(len(tracks) - 1)
@@ -80,15 +81,26 @@ class SimpleLinker:
 
         tracks.tail = new_tail
 
-        tracks.tend = centers[0].time
-        if tracks.tstart is None:
-            tracks.tstart = centers[0].time
-        elif tracks.dt is None:
-            tracks.dt = tracks.tend - tracks.tstart
+        current_time = centers[0].time
+        if tracks.time_info is None:
+            tracks.time_info = TimeRange(start=current_time, end=current_time)
+        else:
+            if tracks.time_info.step is None:
+                tracks.time_info.step = current_time - tracks.time_info.start
+            tracks.time_info.end = current_time
 
     def extend_track(self, tracks1: Tracks, tracks2: Tracks) -> None:
-        new_tail: list[int] = []
+        if len(tracks2) == 0:
+            return
 
+        if len(tracks1) == 0:
+            tracks1._tracks = tracks2._tracks
+            tracks1.head = tracks2.head
+            tracks1.tail = tracks2.tail
+            tracks1.time_info = tracks2.time_info
+            return
+
+        new_tail: list[int] = []
         matched_index = self.match_track(tracks1, tracks2)
         matched_dict = {d: matched_index[i] for i, d in enumerate(tracks2.head)}
         tail_dict = dict.fromkeys(tracks2.tail)
@@ -105,4 +117,5 @@ class SimpleLinker:
                     new_tail.append(len(tracks1) - 1)
 
         tracks1.tail = new_tail
-        tracks1.tend = tracks2.tend
+        if tracks1.time_info and tracks2.time_info:
+            tracks1.time_info.end = tracks2.time_info.end
