@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC
 from pathlib import Path
 
 import numpy as np
@@ -78,7 +77,7 @@ class Tracks:
     @classmethod
     def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         tracks_obj = cls()
         with open(filename) as f:
@@ -129,7 +128,7 @@ class Tracks:
         decimal_places: int = 4,
     ) -> None:
         """Exports tracks to an IMILAST format text file."""
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         if not outfile.endswith(".txt"):
             outfile += ".txt"
