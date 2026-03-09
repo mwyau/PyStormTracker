@@ -8,9 +8,10 @@ from unittest.mock import patch
 
 import pytest
 
-from pystormtracker.data import fetch_era5_msl, fetch_era5_vo850
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.stormtracker import main
+
+from .data_utils import fetch_era5_msl, fetch_era5_vo850
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
@@ -118,7 +119,7 @@ def shared_serial_output(
     return Path(out_file)
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_dask_vs_serial(
     shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
 ) -> None:
@@ -145,7 +146,7 @@ def test_dask_vs_serial(
     compare_tracks(shared_serial_output, out_file)
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_mpi_vs_serial(
     shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
 ) -> None:
@@ -175,6 +176,7 @@ def test_mpi_vs_serial(
     compare_tracks(shared_serial_output, mpi_out)
 
 
+@pytest.mark.integration
 def test_legacy_regression(
     shared_serial_output: Path, config: tuple[str, str, str]
 ) -> None:
