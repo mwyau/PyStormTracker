@@ -48,6 +48,11 @@ mpi = [
 grib = [
     "cfgrib>=0.9.15",
 ]
+docs = [
+    "sphinx>=7.2.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "myst-parser>=2.0.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pystormtracker"]
@@ -60,12 +65,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "pre-commit>=4.0.0",
     "pooch>=1.8.0",
-    "pystormtracker[mpi,grib]",
-]
-docs = [
-    "sphinx>=7.2.0",
-    "sphinx-rtd-theme>=2.0.0",
-    "myst-parser>=2.0.0",
+    "pystormtracker[mpi,grib,docs]",
 ]
 
 [tool.ruff]

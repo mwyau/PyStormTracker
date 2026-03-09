@@ -1233,6 +1233,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+docs = [
+    { name = "myst-parser" },
+    { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "sphinx", version = "9.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "sphinx-rtd-theme" },
+]
 grib = [
     { name = "cfgrib" },
 ]
@@ -1245,16 +1251,10 @@ dev = [
     { name = "mypy" },
     { name = "pooch" },
     { name = "pre-commit" },
-    { name = "pystormtracker", extra = ["grib", "mpi"] },
+    { name = "pystormtracker", extra = ["docs", "grib", "mpi"] },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
-]
-docs = [
-    { name = "myst-parser" },
-    { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "sphinx", version = "9.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "sphinx-rtd-theme" },
 ]
 
 [package.metadata]
@@ -1265,26 +1265,24 @@ requires-dist = [
     { name = "h5netcdf", specifier = ">=1.0.0" },
     { name = "h5py", specifier = ">=3.0.0" },
     { name = "mpi4py", marker = "extra == 'mpi'", specifier = ">=4.0.0" },
+    { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=2.0.0" },
     { name = "numpy", specifier = ">=1.23.0" },
     { name = "scipy", specifier = ">=1.9.0" },
+    { name = "sphinx", marker = "extra == 'docs'", specifier = ">=7.2.0" },
+    { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=2.0.0" },
     { name = "xarray", specifier = ">=2024.9.0" },
 ]
-provides-extras = ["mpi", "grib"]
+provides-extras = ["mpi", "grib", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.15.0" },
     { name = "pooch", specifier = ">=1.8.0" },
     { name = "pre-commit", specifier = ">=4.0.0" },
-    { name = "pystormtracker", extras = ["mpi", "grib"] },
+    { name = "pystormtracker", extras = ["mpi", "grib", "docs"] },
     { name = "pytest", specifier = ">=8.1.1" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "ruff", specifier = ">=0.9.0" },
-]
-docs = [
-    { name = "myst-parser", specifier = ">=2.0.0" },
-    { name = "sphinx", specifier = ">=7.2.0" },
-    { name = "sphinx-rtd-theme", specifier = ">=2.0.0" },
 ]
 
 [[package]]
