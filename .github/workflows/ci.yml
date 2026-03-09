@@ -7,8 +7,13 @@ on:
       - dev
   pull_request:
     branches:
+      - main
       - dev
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
