@@ -11,7 +11,7 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.18764813
 repository-code: 'https://github.com/mwyau/PyStormTracker'
-url: 'https://github.com/mwyau/PyStormTracker'
+url: 'https://pystormtracker.readthedocs.io/'
 abstract: A Parallel Object-Oriented Cyclone Tracker in Python
 keywords:
   - cyclone tracking
@@ -19,7 +19,7 @@ keywords:
   - dask
   - mpi
 license: BSD-3-Clause
-version: 0.3.0
+version: 0.3.1
 date-released: '2026-03-08'
 preferred-citation:
   type: article

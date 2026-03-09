@@ -10,7 +10,9 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-PyStormTracker provides the implementation of the "Simple Tracker" algorithm used for cyclone trajectory analysis in **Yau and Chang (2020)**. It was originally developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 Summer Internships in Parallel Computational Science (SIParCS)** program, utilizing a task-parallel strategy with temporal decomposition and a tree reduction algorithm to process large climate datasets.
+PyStormTracker implements the "Simple Tracker" algorithm for cyclone trajectory analysis in **Yau and Chang (2020)**. Work is currently in progress to port the adaptive constraints tracking algorithm in **Hodges (1999)** from C to Python, and the Accumulated Track Activity metrics in **Yau and Chang (2020)** from Matlab to Python.
+
+Originally developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program, this package utilizes task-parallel strategies and tree reduction algorithms to efficiently process large climate datasets.
 
 ## Features
 
@@ -45,22 +47,26 @@ Full documentation, including API references and advanced usage examples, is ava
 
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
+
+For use as a CLI tool:
 ```bash
-pip install PyStormTracker
+uv tool install PyStormTracker
+```
+
+For use as a library in your project:
+```bash
+uv add PyStormTracker
 ```
 
 ### From Source
-1. Clone the repository:
+2. Install with **uv** (Recommended):
    ```bash
    git clone https://github.com/mwyau/PyStormTracker.git
    cd PyStormTracker
-   ```
-
-2. Install with **uv** (Recommended):
-   ```bash
-   uv sync --extra dev
+   uv sync --group dev
    uv run pre-commit install --hook-type pre-push
    ```
+
 
 ## Usage
 
@@ -88,7 +94,7 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 Using **uv** is the recommended way to set up your environment:
 ```bash
 # Install dependencies and sync virtual environment
-uv sync --extra dev
+uv sync --group dev
 
 # Install pre-push hooks
 uv run pre-commit install --hook-type pre-push
@@ -110,8 +116,8 @@ uv run mypy src/
 
 ### Tiered Testing
 To keep development cycles fast, testing is tiered:
-- **Fast Tests**: Default local runs (skips slow tests).
-- **Slow Tests**: ONLY long-running integration/regression tests.
+- **Fast Tests**: Default local runs (skips integration tests).
+- **Integration Tests**: ONLY long-running integration/regression tests.
 - **Full Suite**: Everything (used in CI).
 
 **Run fast unit tests only (Default):**
@@ -119,10 +125,11 @@ To keep development cycles fast, testing is tiered:
 uv run pytest
 ```
 
-**Run ONLY slow/integration tests:**
+**Run ONLY integration tests:**
 ```bash
-uv run pytest --run-slow
+uv run pytest --run-integration
 ```
+
 
 **Run everything:**
 ```bash
@@ -133,17 +140,21 @@ uv run pytest --run-all
 
 If you use this software in your research, please cite the following:
 
-- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, https://doi.org/10.1175/JCLI-D-20-0393.1.
-
 - **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, https://doi.org/10.5281/zenodo.18764813.
+
+- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, https://doi.org/10.1175/JCLI-D-20-0393.1.
 
 ## References
 
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
+
  - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, https://doi.org/10.1175/BAMS-D-11-00154.1.
- - **IMILAST Intercomparison Protocol**: https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
- - **IMILAST Data Download**: https://proclim.scnat.ch/en/activities/project_imilast/data_download
+   - **IMILAST Intercomparison Protocol**: https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
+   - **IMILAST Data Download**: https://proclim.scnat.ch/en/activities/project_imilast/data_download
+
+- **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
+
 
 ## License
 
-This project is licensed under the terms found in the `LICENSE` file.
+This project is licensed under the BSD-3-Clause terms found in the `LICENSE` file.
