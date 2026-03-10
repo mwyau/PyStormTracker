@@ -1,15 +1,16 @@
 name: Docker Publish
 
 on:
+  push:
+    branches:
+      - main
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 'The branch, tag, or SHA to build from'
-        required: true
-        type: string
-        default: 'main'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   DOCKER_HUB_REPO: xddd/pystormtracker
@@ -27,8 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          # Priority: Manual input -> current workflow ref
-          ref: ${{ github.event.inputs.ref || github.ref }}
+          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - name: Set up QEMU
@@ -58,16 +58,19 @@ jobs:
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
           tags: |
-            # 1. Always tag with short SHA (no prefix)
-            type=sha,prefix=,format=short
-            # 2. Tag with 'latest' for any release or manual build of main
-            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.event.inputs.ref == 'main' || github.ref_name == 'main' }}
-            # 3. Semantic Versioning for tags (v0.3.2 -> 0.3.2, 0.3, 0)
+            # Always tag with short SHA
+            type=sha,format=short
+            # Tag with 'latest' only for releases
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            # Tag with 'dev' only for main branch
+            type=raw,value=dev,enable=${{ github.ref_name == 'main' }}
+            # Branch tag only for manual builds (non-main)
+            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' && github.ref_name != 'main' }}
+            # Semver tags only for releases
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{major}},enable=${{ github.event_name == 'release' }}
-            # 4. Tag with branch name for manual builds of non-main branches
-            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref != 'main' }}
+
 
       - name: Build and push Docker image
         id: push
@@ -75,7 +78,8 @@ jobs:
         with:
           context: .
           push: true
-          provenance: false
+          provenance: true
+          sbom: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
