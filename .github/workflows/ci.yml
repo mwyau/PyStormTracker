@@ -109,7 +109,7 @@ jobs:
           uv run pytest -vv
 
   integration-tests:
-    name: integration-tests (Python ${{ matrix.python-version }}/${{ matrix.arch }})
+    name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
