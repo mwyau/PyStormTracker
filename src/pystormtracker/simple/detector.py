@@ -140,6 +140,9 @@ class SimpleDetector:
             s_idx = i * chunk_size + min(i, remainder)
             e_idx = (i + 1) * chunk_size + min(i + 1, remainder)
 
+            if s_idx >= e_idx:
+                continue
+
             # Use actual time values for the sub-ranges
             grids.append(
                 SimpleDetector(
