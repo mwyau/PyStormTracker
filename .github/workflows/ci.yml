@@ -30,6 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -41,6 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -52,6 +58,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -70,10 +79,14 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -94,10 +107,14 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
