@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOCKER_HUB_REPO: docker.io/xddd/pystormtracker
-  GHCR_REPO: ghcr.io/xddd/pystormtracker
+  DOCKER_HUB_REPO: docker.io/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
@@ -61,17 +61,15 @@ jobs:
           tags: |
             # Always tag with short SHA
             type=sha,format=short,prefix=
-            # Tag with 'latest' only for releases
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
-            # Tag with 'dev' only for main branch
-            type=raw,value=dev,enable=${{ github.ref_name == 'main' }}
-            # Branch tag only for manual builds (non-main)
-            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' && github.ref_name != 'main' }}
-            # Semver tags only for releases
-            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{major}},enable=${{ github.event_name == 'release' }}
-
+            # Tag with 'edge' only for main branch
+            type=edge,branch=main
+            # Branch tag for all branches except main
+            type=ref,event=branch,enable=${{ github.ref_name != 'main' }}
+            # Semver tags for releases (includes 'latest')
+            type=semver,pattern=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }}
 
       - name: Build and push Docker image
         id: push
@@ -84,8 +82,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-build
+          cache-to: type=gha,mode=max,scope=docker-build
 
       - name: Generate artifact attestation (Docker Hub)
         uses: actions/attest-build-provenance@v4
@@ -94,33 +92,18 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      - name: Generate artifact attestation (GHCR)
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.GHCR_REPO }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: false
-
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           path: ./
-          artifact-name: sbom.spdx.json
-          output-file: sbom.spdx.json
-          output-format: spdx-json
+          artifact-name: sbom.cyclonedx.json
+          output-file: sbom.cyclonedx.json
+          format: cyclonedx-json
 
       - name: Attest SBOM (Docker Hub)
         uses: actions/attest-sbom@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: 'sbom.spdx.json'
+          sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
-
-      - name: Attest SBOM (GHCR)
-        uses: actions/attest-sbom@v4
-        with:
-          subject-name: ${{ env.GHCR_REPO }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: 'sbom.spdx.json'
-          push-to-registry: false
