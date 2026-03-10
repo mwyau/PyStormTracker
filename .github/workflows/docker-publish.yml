@@ -1,22 +1,16 @@
 name: Docker Publish
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    branches: [dev]
-    types: [completed]
+  push:
+    branches:
+      - main
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'The branch to build from'
-        required: true
-        type: choice
-        options:
-        - main
-        - dev
-        default: 'main'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   DOCKER_HUB_REPO: xddd/pystormtracker
@@ -25,20 +19,17 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      github.event_name == 'release' ||
-      github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          # Checkout the branch on manual trigger, the commit on workflow_run, or the tag on release
-          ref: ${{ github.event.inputs.branch || github.event.workflow_run.head_sha }}
-          fetch-depth: 0 # Fetches all history for all tags. Needed for semver.
+          ref: ${{ github.ref }}
+          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -67,22 +58,44 @@ jobs:
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
           tags: |
-            # Tag all builds with the short commit hash
+            # Always tag with short SHA
             type=sha,format=short
-            # 'dev' tag for CI runs on dev branch or manual builds of dev
-            type=raw,value=dev,enable=${{ (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'dev') || (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'dev') }}
-            # 'latest' and semantic version tags for releases
+            # Tag with 'latest' only for releases
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
-            type=match,pattern=v(.*),group=1,enable=${{ github.event_name == 'release' }}
+            # Tag with 'dev' only for main branch
+            type=raw,value=dev,enable=${{ github.ref_name == 'main' }}
+            # Branch tag only for manual builds (non-main)
+            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' && github.ref_name != 'main' }}
+            # Semver tags only for releases
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}},enable=${{ github.event_name == 'release' }}
+
 
       - name: Build and push Docker image
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          provenance: false
+          provenance: true
+          sbom: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Generate artifact attestation (Docker Hub)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.DOCKER_HUB_REPO }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate artifact attestation (GHCR)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.GHCR_REPO }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
