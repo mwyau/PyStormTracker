@@ -99,21 +99,23 @@ jobs:
         with:
           subject-name: ${{ env.GHCR_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          push-to-registry: false
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.GHCR_REPO }}@${{ steps.push.outputs.digest }}
-          artifact-name: sbom.spdx.json
-          output-file: sbom.spdx.json
+          artifact-name: sbom.cyclonedx.json
+          output-file: sbom.cyclonedx.json
+          output-format: cyclonedx-json
+          args: --exclude-files
 
       - name: Attest SBOM (Docker Hub)
         uses: actions/attest-sbom@v2
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: 'sbom.spdx.json'
+          sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
 
       - name: Attest SBOM (GHCR)
@@ -121,5 +123,5 @@ jobs:
         with:
           subject-name: ${{ env.GHCR_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: 'sbom.spdx.json'
-          push-to-registry: true
+          sbom-path: 'sbom.cyclonedx.json'
+          push-to-registry: false
