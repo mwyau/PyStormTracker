@@ -88,14 +88,14 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Generate artifact attestation (Docker Hub)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
       - name: Generate artifact attestation (GHCR)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.GHCR_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
