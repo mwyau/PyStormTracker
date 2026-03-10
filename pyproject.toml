@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.3.3-dev"
+version = "0.3.3.dev"
 description = "A Parallel Object-Oriented Cyclone Tracker in Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
@@ -47,14 +47,23 @@ mpi = [
 ]
 grib = [
     "cfgrib>=0.9.15.1",
+    "eccodes>=2.43.0",
+    "eccodeslib>=2.43.0",
 ]
 netcdf4 = [
     "netCDF4>=1.6.1",
 ]
+all = [
+    "cfgrib>=0.9.15.1",
+    "eccodes>=2.43.0",
+    "eccodeslib>=2.43.0",
+    "mpi4py>=4.1.0",
+    "netCDF4>=1.6.1",
+]
 docs = [
+    "myst-parser>=5.0.0",
     "sphinx>=9.0.4",
     "sphinx-rtd-theme>=3.1.0",
-    "myst-parser>=5.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -65,9 +74,9 @@ dev = [
     "mypy>=1.19.1",
     "pooch>=1.9.0",
     "pre-commit>=4.5.1",
-    "pystormtracker[mpi,grib,netcdf4,docs]",
-    "pytest-cov>=7.0.0",
+    "PyStormTracker[all]",
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
 ]
 
@@ -109,6 +118,9 @@ testpaths = [
 markers = [
     "integration: marks tests as integration (skipped by default, run with --run-integration)",
 ]
+filterwarnings = [
+    "ignore:numpy.ndarray size changed:RuntimeWarning",
+]
 
 [tool.coverage.run]
 source = ["pystormtracker"]
@@ -128,3 +140,6 @@ exclude_lines = [
     "def __repr__",
     "if __name__ == .__main__.:",
 ]
+
+[tool.uv]
+link-mode = "copy"
