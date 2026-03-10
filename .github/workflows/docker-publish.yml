@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOCKER_HUB_REPO: docker.io/${{ vars.ORG_NAME }}/${{ vars.IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ vars.ORG_NAME }}/${{ vars.IMAGE_NAME }}
+  DOCKER_HUB_REPO: docker.io/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
@@ -82,8 +82,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-build
+          cache-to: type=gha,mode=max,scope=docker-build
 
       - name: Generate artifact attestation (Docker Hub)
         uses: actions/attest-build-provenance@v4
@@ -96,14 +96,14 @@ jobs:
         uses: anchore/sbom-action@v0
         with:
           path: ./
-          artifact-name: sbom.spdx.json
-          output-file: sbom.spdx.json
-          output-format: spdx-json
+          artifact-name: sbom.cyclonedx.json
+          output-file: sbom.cyclonedx.json
+          format: cyclonedx-json
 
       - name: Attest SBOM (Docker Hub)
         uses: actions/attest-sbom@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: 'sbom.spdx.json'
+          sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
