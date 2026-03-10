@@ -20,6 +20,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -78,8 +79,8 @@ jobs:
         with:
           context: .
           push: true
-          provenance: true
-          sbom: true
+          provenance: false
+          sbom: false
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -98,4 +99,26 @@ jobs:
         with:
           subject-name: ${{ env.GHCR_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.GHCR_REPO }}@${{ steps.push.outputs.digest }}
+          artifact-name: sbom.spdx.json
+
+      - name: Attest SBOM (Docker Hub)
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.DOCKER_HUB_REPO }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: 'sbom.spdx.json'
+          push-to-registry: true
+
+      - name: Attest SBOM (GHCR)
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.GHCR_REPO }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: 'sbom.spdx.json'
           push-to-registry: true
