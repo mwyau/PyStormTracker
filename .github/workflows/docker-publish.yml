@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOCKER_HUB_REPO: xddd/pystormtracker
+  DOCKER_HUB_REPO: docker.io/xddd/pystormtracker
   GHCR_REPO: ghcr.io/xddd/pystormtracker
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
             ${{ env.GHCR_REPO }}
           tags: |
             # Always tag with short SHA
-            type=sha,format=short
+            type=sha,format=short,prefix=
             # Tag with 'latest' only for releases
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
             # Tag with 'dev' only for main branch
