@@ -10,30 +10,29 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-PyStormTracker implements the "Simple Tracker" algorithm for cyclone trajectory analysis in **Yau and Chang (2020)**. Work is currently in progress to port the adaptive constraints tracking algorithm in **Hodges (1999)** from C to Python, and the Accumulated Track Activity metrics in **Yau and Chang (2020)** from Matlab to Python.
+**PyStormTracker** is a Python package for cyclone trajectory analysis, implementing the "Simple Tracker" algorithm described in **Yau and Chang (2020)**. It is currently being expanded to include a Python port of the adaptive constraints tracking algorithm from **Hodges (1999)** (originally in C) and the Accumulated Track Activity metrics from **Yau and Chang (2020)** (originally in Matlab).
 
-Originally developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program, this package utilizes task-parallel strategies and tree reduction algorithms to efficiently process large climate datasets.
+Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently and accurately process large-scale climate datasets.
 
 ## Features
 
-- **Modern Python Support**: Strictly targets **Python 3.11+** with comprehensive type hints and 100% strict `mypy` compliance.
-- **Xarray Integrated**: Leverages `xarray` with optimized I/O, acceleration, and parallel extras for robust, high-performance coordinate-aware processing and lazy data loading.
-- **Parallel Backends**:
-  - **Dask (Default)**: Automatically scales to all available CPU cores on local machines.
-  - **MPI**: Supports distributed execution via `mpi4py`.
-  - **Serial**: Standard sequential execution for smaller datasets or debugging.
-- **Robust Detection**: Optimized $O(N)$ extrema filtering and robust handling of masked/missing data.
-- **CI/CD Integrated**: Automated linting, type-checking, and code coverage reporting via GitHub Actions.
-- **Standardized Output**: Results are exported to the IMILAST intercomparison format (.txt) with readable datetime strings and formatted numeric values.
+- **Modern & Typed**: Strictly targets **Python 3.11+** with complete type hints and strict `mypy` compliance.
+- **Xarray Native**: Leverages `xarray` for robust, high-performance coordinate-aware processing, lazy data loading, and optimized I/O.
+- **Scalable Execution**: Supports multiple backends:
+  - **Dask (Default)**: Automatically scales to utilize all available CPU cores.
+  - **MPI**: Enables distributed execution across cluster nodes via `mpi4py`.
+  - **Serial**: Standard sequential execution for debugging or small datasets.
+- **Robust Feature Detection**: Employs optimized $O(N)$ extrema filtering with robust handling of masked or missing data.
+- **Interoperable Output**: Exports tracking results to the standard IMILAST intercomparison format (`.txt`) with human-readable datetime strings.
 
 ## Technical Methodology
 
-PyStormTracker treats meteorological fields as 2D images and leverages `scipy.ndimage` for robust feature detection:
+PyStormTracker treats meteorological fields as 2D images, utilizing `scipy.ndimage` for robust feature detection and tracking:
 
-- **Local Extrema Detection**: Uses an optimized sliding window filter to identify local minima (cyclones) or maxima (anticyclones/vorticity).
-- **Intensity & Refinement**: Applies the **Laplacian operator** (`laplace`) to measure the "sharpness" of the field at each detected center point. This is used to resolve duplicates and ensure only the most physically intense point is kept when multiple adjacent pixels are flagged.
-- **Spherical Continuity**: Utilizes `mode='wrap'` for all filters to correctly handle periodic boundaries across the Prime Meridian, enabling seamless tracking across the entire globe.
-- **Heuristic Linking**: Implements a nearest-neighbor linking strategy to connect detected centers into trajectories across successive time steps.
+- **Local Extrema Detection**: Employs an optimized sliding window filter to efficiently identify local minima (e.g., cyclones) or maxima (e.g., anticyclones, vorticity).
+- **Intensity & Refinement**: Applies the discrete **Laplacian operator** to measure the "sharpness" of the field at each candidate center. This metric resolves duplicate detections, ensuring only the most physically intense point is retained when adjacent pixels are flagged.
+- **Spherical Continuity**: Uses `mode='wrap'` for all spatial filters to correctly handle periodic boundary conditions across the Prime Meridian, allowing for seamless global tracking.
+- **Trajectory Linking**: Connects detected centers across consecutive time steps into continuous trajectories using a nearest-neighbor heuristic linking strategy.
 
 ## Documentation
 
@@ -48,32 +47,34 @@ Full documentation, including API references and advanced usage examples, is ava
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
 
-For use as a CLI tool:
+Using `pip` (standard):
 ```bash
-uv tool install PyStormTracker
+pip install PyStormTracker
 ```
 
-For use as a library in your project:
+Using `uv` (recommended):
 ```bash
+# For use as a CLI tool
+uv tool install PyStormTracker
+
+# For use as a library in your project
 uv add PyStormTracker
 ```
 
 ### From Source
-2. Install with **uv** (Recommended):
-   ```bash
-   git clone https://github.com/mwyau/PyStormTracker.git
-   cd PyStormTracker
-   uv sync --group dev
-   uv run pre-commit install --hook-type pre-push
-   ```
-
+Install with `uv` (Recommended):
+```bash
+git clone https://github.com/mwyau/PyStormTracker.git
+cd PyStormTracker
+uv sync --group dev
+```
 
 ## Usage
 
 Once installed, you can use the `stormtracker` command directly:
 
 ```bash
-stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
+stormtracker -i era5_msl_2025-2026_djf_2.5x2.5.nc -v msl -o my_tracks
 ```
 
 ### Command Line Arguments
@@ -91,17 +92,14 @@ stormtracker -i era5_msl_2.5x2.5.nc -v msl -o my_tracks
 ## Development
 
 ### Setup
-Using **uv** is the recommended way to set up your environment:
+Using `uv` is the recommended way to set up your environment:
 ```bash
 # Install dependencies and sync virtual environment
 uv sync --group dev
-
-# Install pre-push hooks
-uv run pre-commit install --hook-type pre-push
 ```
 
 ### Quality Control
-Run automated checks using **uv run**:
+Run automated checks using `uv run`:
 
 **Linting & Formatting:**
 ```bash
@@ -118,7 +116,7 @@ uv run mypy src/
 To keep development cycles fast, testing is tiered:
 - **Fast Tests**: Default local runs (skips integration tests).
 - **Integration Tests**: ONLY long-running integration/regression tests.
-- **Full Suite**: Everything (used in CI).
+- **Full Suite**: Everything.
 
 **Run fast unit tests only (Default):**
 ```bash
@@ -130,7 +128,6 @@ uv run pytest
 uv run pytest --run-integration
 ```
 
-
 **Run everything:**
 ```bash
 uv run pytest --run-all
@@ -140,20 +137,19 @@ uv run pytest --run-all
 
 If you use this software in your research, please cite the following:
 
-- **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, https://doi.org/10.5281/zenodo.18764813.
+- **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, [https://doi.org/10.5281/zenodo.18764813](https://doi.org/10.5281/zenodo.18764813).
 
-- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, https://doi.org/10.1175/JCLI-D-20-0393.1.
+- **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [https://doi.org/10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
 
 ## References
 
- - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, https://doi.org/10.5281/zenodo.18868625.
+ - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, [https://doi.org/10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
- - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, https://doi.org/10.1175/BAMS-D-11-00154.1.
-   - **IMILAST Intercomparison Protocol**: https://proclim.scnat.ch/en/activities/project_imilast/intercomparison
-   - **IMILAST Data Download**: https://proclim.scnat.ch/en/activities/project_imilast/data_download
+ - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [https://doi.org/10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
+   - **IMILAST Intercomparison Protocol**: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
+   - **IMILAST Data Download**: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
 
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
-
 
 ## License
 
