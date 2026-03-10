@@ -11,23 +11,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: read
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    outputs:
-      python-versions: ${{ steps.versions.outputs.value }}
-    steps:
-      - id: versions
-        run: echo 'value=["3.11", "3.12", "3.13", "3.14"]' >> $GITHUB_OUTPUT
-
   ruff-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,7 +33,7 @@ jobs:
         run: uv run ruff check .
 
   ruff-format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -55,7 +47,7 @@ jobs:
         run: uv run ruff format --check .
 
   mypy-typecheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -68,20 +60,32 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libeccodes-dev
+          sudo apt-get install -y libopenmpi-dev libeccodes-dev
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --frozen --group dev
       - name: Type check with Mypy
         run: uv run mypy src/ tests/
 
   unit-tests:
-    name: unit-tests (Python ${{ matrix.python-version }})
-    needs: prepare
-    runs-on: ubuntu-latest
+    name: unit-tests (Python ${{ matrix.python-version }}/${{ matrix.arch }}${{ matrix.min-deps && ', min-deps' || '' }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+            python-version: "3.11"
+          - arch: amd64
+            os: ubuntu-24.04
+            python-version: "3.11"
+            min-deps: true
+          - arch: amd64
+            os: ubuntu-24.04
+            python-version: "3.14"
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            python-version: "3.14"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -95,21 +99,30 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libeccodes-dev
+          sudo apt-get install -y libopenmpi-dev libeccodes-dev
       - name: Install dependencies
-        run: uv sync --group dev
+        if: ${{ !matrix.min-deps }}
+        run: uv sync --frozen --group dev
+      - name: Install dependencies (min-deps)
+        if: ${{ matrix.min-deps }}
+        run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
         run: |
           uv run pytest -vv
 
   integration-tests:
-    name: integration-tests (Python ${{ matrix.python-version }})
-    needs: prepare
-    runs-on: ubuntu-latest
+    name: integration-tests (Python ${{ matrix.python-version }}/${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ${{ fromJSON(needs.prepare.outputs.python-versions) }}
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+            python-version: "3.14"
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            python-version: "3.14"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -125,7 +138,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openmpi-bin libopenmpi-dev libeccodes-dev
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --frozen --group dev
       - name: Run Integration Tests
         run: |
           uv run pytest -vv tests/test_integration.py --run-integration
