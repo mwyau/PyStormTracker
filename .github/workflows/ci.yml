@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   ruff-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -33,7 +33,7 @@ jobs:
         run: uv run ruff check .
 
   ruff-format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -47,7 +47,7 @@ jobs:
         run: uv run ruff format --check .
 
   mypy-typecheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -67,25 +67,24 @@ jobs:
         run: uv run mypy src/ tests/
 
   unit-tests:
-    name: unit-tests (${{ matrix.arch }}, Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
+    name: unit-tests (Python ${{ matrix.python-version }}/${{ matrix.arch }}${{ matrix.min-deps && ', min-deps' || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             python-version: "3.11"
           - arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             python-version: "3.11"
-            resolution: lowest-direct
             min-deps: true
           - arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             python-version: "3.14"
           - arch: arm64
-            os: ubuntu-24.04-arm64
+            os: ubuntu-24.04-arm
             python-version: "3.14"
     steps:
       - uses: actions/checkout@v6
@@ -100,7 +99,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libeccodes-dev
+          sudo apt-get install -y libopenmpi-dev libeccodes-dev
       - name: Install dependencies
         if: ${{ !matrix.min-deps }}
         run: uv sync --frozen --group dev
@@ -113,7 +112,7 @@ jobs:
 
   integration-tests:
     name: integration-tests (Python 3.14/amd64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
