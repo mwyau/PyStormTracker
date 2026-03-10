@@ -110,7 +110,7 @@ jobs:
           output-format: spdx-json
 
       - name: Attest SBOM (Docker Hub)
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -118,7 +118,7 @@ jobs:
           push-to-registry: true
 
       - name: Attest SBOM (GHCR)
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@v4
         with:
           subject-name: ${{ env.GHCR_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
