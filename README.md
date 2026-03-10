@@ -43,6 +43,7 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
+- **Windows Users**: Note that the `grib` optional dependency (via `eccodeslib`) currently only supports Linux and macOS.
 
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
@@ -66,7 +67,7 @@ Install with `uv` (Recommended):
 ```bash
 git clone https://github.com/mwyau/PyStormTracker.git
 cd PyStormTracker
-uv sync --group dev
+uv sync
 ```
 
 ## Usage
@@ -95,7 +96,7 @@ stormtracker -i era5_msl_2025-2026_djf_2.5x2.5.nc -v msl -o my_tracks
 Using `uv` is the recommended way to set up your environment:
 ```bash
 # Install dependencies and sync virtual environment
-uv sync --group dev
+uv sync
 ```
 
 ### Quality Control
