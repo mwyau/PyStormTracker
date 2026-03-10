@@ -1366,7 +1366,7 @@ wheels = [
 
 [[package]]
 name = "pystormtracker"
-version = "0.3.3.dev0"
+version = "0.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "dask" },
