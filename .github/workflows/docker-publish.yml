@@ -106,6 +106,7 @@ jobs:
         with:
           image: ${{ env.GHCR_REPO }}@${{ steps.push.outputs.digest }}
           artifact-name: sbom.spdx.json
+          output-file: sbom.spdx.json
 
       - name: Attest SBOM (Docker Hub)
         uses: actions/attest-sbom@v2
