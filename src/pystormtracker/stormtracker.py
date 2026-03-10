@@ -59,27 +59,28 @@ def _detect_dask(
 ) -> tuple[DetectionResult, Grid]:
     import os
 
+    import dask
     from dask.base import compute
     from dask.delayed import delayed
-    from distributed import Client, LocalCluster
 
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
+    # Configure dask to use the threaded scheduler with n_workers
+    # Alternatively, we can let dask decide, but here we want to honor n_workers
+    # dask.config.set(num_workers=n_workers) is global.
+
     grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
     grids = grid_obj.split(n_workers)
 
-    with (
-        LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster,
-        Client(cluster),
-    ):
-        delayed_results = [
-            delayed(g.detect)(
-                size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode
-            )
-            for g in grids
-        ]
-        # compute returns a tuple, we convert to list[DetectionResult]
+    delayed_results = [
+        delayed(g.detect)(
+            size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode
+        )
+        for g in grids
+    ]
+
+    with dask.config.set(num_workers=n_workers):
         results = list(compute(*delayed_results))
 
     # Flatten results from chunks
