@@ -146,6 +146,9 @@ jobs:
   docker-build:
     name: docker-build
     needs: [integration-tests]
+    if: |
+      startsWith(github.ref, 'refs/heads/main') ||
+      startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
