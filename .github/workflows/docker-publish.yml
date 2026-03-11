@@ -86,10 +86,25 @@ jobs:
           cache-from: type=gha,scope=docker-build
           cache-to: type=gha,mode=max,scope=docker-build
 
-      - name: Generate SBOM + Provenance (Docker Hub)
+      - name: Generate Provenance (Docker Hub)
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          predicate-type: sbom,provenance
+          push-to-registry: true
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          artifact-name: sbom.cyclonedx.json
+          output-file: sbom.cyclonedx.json
+          format: cyclonedx-json
+
+      - name: Attest SBOM (Docker Hub)
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ${{ env.DOCKER_HUB_REPO }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
