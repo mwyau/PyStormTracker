@@ -1,6 +1,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
-from .models import Center, Tracks
+from .hodges.tracker import HodgesTracker
+from .models import Center, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker, SimpleTracker
 
 try:
@@ -8,4 +9,12 @@ try:
 except PackageNotFoundError:
     __version__ = "0.4.0.dev"
 
-__all__ = ["Center", "SimpleDetector", "SimpleLinker", "SimpleTracker", "Tracks"]
+__all__ = [
+    "Center",
+    "HodgesTracker",
+    "SimpleDetector",
+    "SimpleLinker",
+    "SimpleTracker",
+    "TimeRange",
+    "Tracks",
+]

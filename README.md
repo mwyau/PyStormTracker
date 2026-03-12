@@ -119,7 +119,7 @@ for track in tracks:
         print(f"Track {track.track_id} lived for {len(track)} steps.")
 
 # 4. Export the data to standard IMILAST format
-write_imilast(tracks, "output.txt")
+tracks.write("output.txt")
 ```
 
 ## Development
