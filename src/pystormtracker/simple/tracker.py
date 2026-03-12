@@ -6,16 +6,16 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from mpi4py import MPI
 
-from ..models import DetectedCenters, TimeRange, Tracks
-from .detector import SimpleDetector
+from ..models import TimeRange, Tracks
+from .detector import SimpleDetector, RawDetectionStep
 from .linker import SimpleLinker
 
 
-def _link_centers(centers: DetectedCenters) -> Tracks:
+def _link_centers(raw_steps: list[RawDetectionStep]) -> Tracks:
     tracks = Tracks()
     linker = SimpleLinker()
-    for step_centers in centers:
-        linker.append_center(tracks, step_centers)
+    for step_data in raw_steps:
+        linker.append_raw(tracks, step_data)
     return tracks
 
 
@@ -23,10 +23,10 @@ def _detect_and_link(
     detector: SimpleDetector, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
 ) -> Tracks:
     """Worker task: Detects centers and immediately links them into a local Tracks object."""
-    centers = detector.detect(
+    raw_steps = detector.detect_raw(
         size=size, threshold=threshold, time_chunk_size=time_chunk_size, minmaxmode=mode
     )
-    return _link_centers(centers)
+    return _link_centers(raw_steps)
 
 
 def _dask_extend_track(tracks1: Tracks, tracks2: Tracks) -> Tracks:

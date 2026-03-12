@@ -1,6 +1,5 @@
-from .center import Center, DetectedCenters
-from .time import TimeRange
+from .center import Center
 from .tracker import Tracker
-from .tracks import Tracks
+from .tracks import TimeRange, Tracks
 
-__all__ = ["Center", "DetectedCenters", "TimeRange", "Tracker", "Tracks"]
+__all__ = ["Center", "TimeRange", "Tracker", "Tracks"]
