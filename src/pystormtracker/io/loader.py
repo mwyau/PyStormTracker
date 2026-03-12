@@ -61,9 +61,7 @@ class DataLoader:
         ds = self.ensure_open()
         coords = ds.coords
 
-        time_name = next(
-            (c for c in self.VAR_MAPPING["time"] if c in coords), "time"
-        )
+        time_name = next((c for c in self.VAR_MAPPING["time"] if c in coords), "time")
         lat_name = next(
             (c for c in self.VAR_MAPPING["latitude"] if c in coords), "latitude"
         )

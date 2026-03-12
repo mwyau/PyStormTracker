@@ -19,7 +19,9 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     """Utility to run the tracker directly via function calls or MPI subprocess."""
     if use_mpi:
         base_cmd = f"{sys.executable} -m pystormtracker.cli"
-        full_cmd = f"mpiexec --oversubscribe -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
+        full_cmd = (
+            f"mpiexec --oversubscribe -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
+        )
         subprocess.run(full_cmd, shell=True, check=True, capture_output=True)
         return
 
