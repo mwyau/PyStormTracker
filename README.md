@@ -27,7 +27,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 
 ## Technical Methodology
 
-PyStormTracker treats meteorological fields as 2D images, utilizing `scipy.ndimage` for robust feature detection and tracking:
+PyStormTracker treats meteorological fields as 2D images and leverages JIT-compiled Numba loops for robust, high-performance feature detection:
 
 - **Local Extrema Detection**: Employs an optimized sliding window filter to efficiently identify local minima (e.g., cyclones) or maxima (e.g., anticyclones, vorticity).
 - **Intensity & Refinement**: Applies the discrete **Laplacian operator** to measure the "sharpness" of the field at each candidate center. This metric resolves duplicate detections, ensuring only the most physically intense point is retained when adjacent pixels are flagged.
