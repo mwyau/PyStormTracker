@@ -49,7 +49,7 @@ def compare_tracks(
     """Compares two tracking files for equality using the Tracks class."""
     t1 = read_imilast(file1)
     t2 = read_imilast(file2)
-    
+
     # Requirement: PERFECT MATCH
     assert len(t1) == len(t2), f"Track count mismatch: {len(t1)} vs {len(t2)}"
 

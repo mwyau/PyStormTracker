@@ -69,7 +69,7 @@ class SimpleTracker:
 
         time_range = None
         if start_time is not None or end_time is not None:
-            # Requires opening the file to find exact matching start/end bounds 
+            # Requires opening the file to find exact matching start/end bounds
             # if one is missing, but TimeRange handles exact numpy datetimes.
             st = np.datetime64(start_time) if start_time else None
             et = np.datetime64(end_time) if end_time else None
@@ -90,7 +90,9 @@ class SimpleTracker:
         elif backend == "dask":
             from .concurrent import run_simple_dask
 
-            tracks = run_simple_dask(infile, varname, time_range, mode, n_workers, engine)
+            tracks = run_simple_dask(
+                infile, varname, time_range, mode, n_workers, engine
+            )
         else:
             tracks = self._detect_serial(infile, varname, time_range, mode, engine)
 

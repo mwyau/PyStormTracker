@@ -15,7 +15,8 @@ def test_simple_detector_init(mock_open: MagicMock) -> None:
     mock_data = MagicMock(spec=xr.DataArray)
     mock_ds.__getitem__.return_value = mock_data
     mock_ds.coords = ["time", "latitude", "longitude"]
-    mock_ds.variables = {"slp": mock_data}
+    # SimpleDetector checks ds.data_vars
+    mock_ds.data_vars = {"slp": mock_data}
 
     detector = SimpleDetector(pathname="test.nc", varname="slp")
     detector._ensure_open()
