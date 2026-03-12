@@ -12,6 +12,8 @@
 
 The project is currently being expanded to include a Python port of the adaptive constraints tracking algorithm from **Hodges (1999)** and Accumulated Track Activity metrics.
 
+Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently process large-scale climate datasets.
+
 ## Features
 
 - **High-Performance Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution.
@@ -24,14 +26,47 @@ The project is currently being expanded to include a Python port of the adaptive
 - **Typed & Modern**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
 - **Interoperable**: Full support for the standard **IMILAST** intercomparison format.
 
+## Technical Methodology
+
+PyStormTracker treats meteorological fields as 2D images and leverages JIT-compiled Numba loops for high-performance feature detection:
+
+- **Local Extrema Detection**: Employs an optimized sliding window filter to efficiently identify local minima (e.g., cyclones) or maxima (e.g., anticyclones, vorticity).
+- **Intensity & Refinement**: Applies the discrete **Laplacian operator** to measure the "sharpness" of the field at each candidate center. This metric resolves duplicate detections, ensuring only the most physically intense point is retained when adjacent pixels are flagged.
+- **Trajectory Linking**: Connects detected centers across consecutive time steps into continuous trajectories using a vectorized nearest-neighbor heuristic linking strategy.
+
+## Documentation
+
+Full documentation, including API references and advanced usage examples, is available at [pystormtracker.readthedocs.io](https://pystormtracker.readthedocs.io/).
+
 ## Installation
 
-```bash
-# Using uv (recommended)
-uv add PyStormTracker
+### Prerequisites
+- Python 3.11+
+- (Optional) OpenMPI for MPI support.
 
-# Using pip
+### From PyPI (Recommended)
+You can install the latest stable version of PyStormTracker directly from PyPI:
+
+Using `pip` (standard):
+```bash
 pip install PyStormTracker
+```
+
+Using `uv` (recommended):
+```bash
+# For use as a CLI tool
+uv tool install PyStormTracker
+
+# For use as a library in your project
+uv add PyStormTracker
+```
+
+### From Source
+Install with `uv` (Recommended):
+```bash
+git clone https://github.com/mwyau/PyStormTracker.git
+cd PyStormTracker
+uv sync
 ```
 
 ## Usage
@@ -91,13 +126,68 @@ tracks.write("output.txt", format="imilast")
 
 Sample datasets for testing and benchmarking are hosted in the [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) repository.
 
+## Development
+
+### Setup
+Using `uv` is the recommended way to set up your environment:
+```bash
+# Install dependencies and sync virtual environment
+uv sync
+```
+
+### Quality Control
+Run automated checks using `uv run`:
+
+**Linting & Formatting:**
+```bash
+uv run ruff check . --fix
+uv run ruff format .
+```
+
+**Type Checking:**
+```bash
+uv run mypy src/
+```
+
+### Tiered Testing
+To keep development cycles fast, testing is tiered:
+- **Fast Tests**: Default local runs (skips integration tests).
+- **Integration Tests**: ONLY long-running integration/regression tests.
+- **Full Suite**: Everything.
+
+**Run fast unit tests only (Default):**
+```bash
+uv run pytest
+```
+
+**Run ONLY integration tests:**
+```bash
+uv run pytest --run-integration
+```
+
+**Run everything:**
+```bash
+uv run pytest --run-all
+```
+
 ## Citations
 
 If you use this software in your research, please cite the following:
 
-- **Yau, A. M. W. and Chang, E. K. M.**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. *J. Climate*, **33**, 10169–10186.
-- **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373.
+- **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, [https://doi.org/10.5281/zenodo.18764813](https://doi.org/10.5281/zenodo.18764813).
+
+- **Yau, A. M. W. and Chang, E. K. M.**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. *J. Climate*, **33**, 10169–10186, [https://doi.org/10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
+
+## References
+
+ - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, [https://doi.org/10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
+
+ - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [https://doi.org/10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
+   - **IMILAST Intercomparison Protocol**: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
+   - **IMILAST Data Download**: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
+
+- **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
 
 ## License
 
-BSD-3-Clause
+This project is licensed under the BSD-3-Clause terms found in the `LICENSE` file.
