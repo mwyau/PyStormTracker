@@ -325,3 +325,18 @@ class Tracks:
                 for k in c1.vars:
                     assert k in c2.vars, f"Variable {k} missing in right track"
                     assert abs(c1.vars[k] - c2.vars[k]) <= intensity_tol
+
+    def write(self, outfile: str | Path, format: str = "imilast") -> None:
+        """
+        Exports tracks to a file in the specified format.
+
+        Args:
+            outfile (str | Path): Output file path.
+            format (str): Output format. Currently only "imilast" is supported.
+        """
+        if format.lower() == "imilast":
+            from ..io.imilast import write_imilast
+
+            write_imilast(self, outfile)
+        else:
+            raise ValueError(f"Unsupported output format: {format}")
