@@ -2,21 +2,28 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, TypeAlias
 
 import numba as nb
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from ..models.center import Center, DetectedCenters
-from ..models.time import TimeRange
+from ..models.tracks import TimeRange
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
     _numba_laplace_masked,
     _numba_remove_dup,
 )
+
+# Type alias for a single time step's raw detection arrays
+RawDetectionStep: TypeAlias = tuple[
+    np.datetime64,
+    NDArray[np.float64],
+    NDArray[np.float64],
+    dict[str, NDArray[np.float64]],
+]
 
 
 class SimpleDetector:
@@ -207,23 +214,24 @@ class SimpleDetector:
         threshold: float = 0.0,
         time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> list[tuple[np.datetime64, NDArray[np.int64], NDArray[np.int64], dict[str, NDArray[np.float64]]]]:
+    ) -> list[RawDetectionStep]:
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
 
-        time = self.get_time()
-        assert time is not None
-        num_steps = len(time)
+        time_array = self.get_time()
+        lat, lon = self.lat, self.lon
+        assert time_array is not None
+        num_steps = len(time_array)
         
         # Optimization: Read the entire time range for this worker in one go
         # This significantly improves I/O performance by making a single contiguous-ish read
         full_var = self.get_var()
         assert full_var is not None
 
-        raw_results = []
+        raw_results: list[RawDetectionStep] = []
         is_min = minmaxmode == "min"
 
-        for it, t in enumerate(time):
+        for it, t in enumerate(time_array):
             # Print progress using global indices if available
             if (it + 1) % 10 == 0 or it == 0 or it == num_steps - 1:
                 if self.global_total_steps:
@@ -251,37 +259,6 @@ class SimpleDetector:
             r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
             time_val = t.astype("datetime64[s]")
             
-            raw_results.append((time_val, r_idx, c_idx, {self.varname: vals}))
+            raw_results.append((time_val, lat[r_idx], lon[c_idx], {self.varname: vals}))
         
         return raw_results
-
-    def detect(
-        self,
-        size: int = 5,
-        threshold: float = 0.0,
-        time_chunk_size: int = 360,
-        minmaxmode: Literal["min", "max"] = "min",
-    ) -> DetectedCenters:
-        raw_results = self.detect_raw(
-            size=size,
-            threshold=threshold,
-            time_chunk_size=time_chunk_size,
-            minmaxmode=minmaxmode,
-        )
-
-        lat, lon = self.lat, self.lon
-        centers = []
-        for time_val, r_idx, c_idx, vars_dict in raw_results:
-            # vars_dict is {self.varname: [val1, val2, ...]}
-            # we need to transpose it into individual dicts
-            keys = list(vars_dict.keys())
-            vals_matrix = [vars_dict[k] for k in keys]
-            
-            center_list = []
-            for i, (r, c) in enumerate(zip(r_idx, c_idx, strict=False)):
-                c_vars = {k: float(vals_matrix[idx][i]) for idx, k in enumerate(keys)}
-                center_list.append(
-                    Center(time_val, float(lat[r]), float(lon[c]), c_vars)
-                )
-            centers.append(center_list)
-        return centers

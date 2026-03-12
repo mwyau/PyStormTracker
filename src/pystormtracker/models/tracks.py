@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
 
@@ -8,7 +9,14 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .center import Center
-from .time import TimeRange
+
+@dataclass
+class TimeRange:
+    """Metadata for the time range covered by a set of tracks."""
+
+    start: np.datetime64
+    end: np.datetime64
+    step: np.timedelta64 | None = None
 
 
 class Track:

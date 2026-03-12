@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Protocol, runtime_checkable
 
-from .time import TimeRange
-from .tracks import Tracks
+from .tracks import TimeRange, Tracks
 
 
 @runtime_checkable

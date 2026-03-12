@@ -1,8 +1,8 @@
 import numpy as np
 
 from ..models.center import Center
-from ..models.time import TimeRange
-from ..models.tracks import Track, Tracks
+from ..models.tracks import TimeRange, Track, Tracks
+from .detector import RawDetectionStep
 
 
 def haversine_matrix(
@@ -32,22 +32,23 @@ class SimpleLinker:
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
 
-    def append_center(self, tracks: Tracks, centers: list[Center]) -> None:
-        if not centers:
+    def append_raw(self, tracks: Tracks, step_data: RawDetectionStep) -> None:
+        time_val, new_lats, new_lons, vars_dict = step_data
+        
+        num_centers = len(new_lats)
+        if num_centers == 0:
             tracks.tail = []
             return
-
-        new_times = np.array([c.time for c in centers], dtype="datetime64[s]")
-        new_lats = np.array([c.lat for c in centers], dtype=np.float64)
-        new_lons = np.array([c.lon for c in centers], dtype=np.float64)
         
-        current_time = new_times[0]
+        current_time = time_val
 
         if not tracks.tail:
             # First ever centers
             new_tail = []
-            for i in range(len(centers)):
-                t = tracks.add_track([centers[i]])
+            for i in range(num_centers):
+                c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
+                c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
+                t = tracks.add_track([c])
                 new_tail.append(t)
                 tracks._head_ids.add(t.track_id)
                 tracks._tail_ids.add(t.track_id)
@@ -63,8 +64,10 @@ class SimpleLinker:
             if current_time - tracks.time_range.step > tracks.time_range.end:
                 # Gap in time detected, do not link
                 new_tail = []
-                for i in range(len(centers)):
-                    t = tracks.add_track([centers[i]])
+                for i in range(num_centers):
+                    c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
+                    c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
+                    t = tracks.add_track([c])
                     new_tail.append(t)
                     tracks._head_ids.add(t.track_id)
                     tracks._tail_ids.add(t.track_id)
@@ -76,11 +79,11 @@ class SimpleLinker:
         tail_lons = np.array([t[-1].lon for t in tail_tracks])
 
         dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
-        matched_indices = [-1] * len(centers)
+        matched_indices = [-1] * num_centers
 
         while True:
             has_match = False
-            for ic in range(len(centers)):
+            for ic in range(num_centers):
                 if matched_indices[ic] == -1 and np.any(
                     dist_matrix[:, ic] < self.threshold
                 ):
@@ -97,14 +100,17 @@ class SimpleLinker:
                 break
 
         new_tail_ids = set()
-        for ic in range(len(centers)):
+        for ic in range(num_centers):
             it_match = matched_indices[ic]
+            c_vars = {k: float(v[ic]) for k, v in vars_dict.items()}
+            c = Center(time_val, float(new_lats[ic]), float(new_lons[ic]), c_vars)
+            
             if it_match != -1:
                 t = tail_tracks[it_match]
-                t.append(centers[ic])
+                t.append(c)
                 new_tail_ids.add(t.track_id)
             else:
-                t = tracks.add_track([centers[ic]])
+                t = tracks.add_track([c])
                 tracks._head_ids.add(t.track_id)
                 new_tail_ids.add(t.track_id)
 
