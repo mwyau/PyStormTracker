@@ -1,0 +1,76 @@
+# PyStormTracker Architecture
+
+This document describes the modern, high-performance architecture of PyStormTracker, detailing how it leverages vectorization and decoupled components to process massive climate datasets efficiently.
+
+## 1. High-Level Design Philosophy
+
+PyStormTracker is built for scale and extensibility. The architecture is centered around three core principles:
+1.  **Unified API (Tracker Protocol):** A structural interface that allows the CLI and Python API to support multiple tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) interchangeably.
+2.  **Vectorization & JIT:** Heavy mathematical operations are offloaded to **Numba** JIT-compiled kernels and **NumPy** broadcasting, bypassing Python's loop overhead and Global Interpreter Lock (GIL).
+3.  **Hybrid Parallelism:** The architecture parallelizes the computationally intensive **Detection** phase while centralizing the **Linking** phase to ensure perfect serial-parallel consistency.
+
+---
+
+## 2. Modern Core Components
+
+### 2.1 Array-Backed Data Models (`Tracks`, `Track`, `Center`)
+The data models utilize a contiguous memory paradigm:
+*   **`Tracks`**: The central container holding contiguous 1D NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and a dictionary of scientific variables.
+*   **`Track`**: A lightweight "view" into the `Tracks` arrays for a specific ID.
+*   **`Center`**: A simple dataclass used strictly for iteration or final data export.
+
+**Benefits:** By avoiding the creation of millions of Python objects, memory usage is minimized, and data serialization between parallel processes is nearly instantaneous. Raw NumPy arrays also enable extremely fast distance calculations via C-level broadcasting.
+
+### 2.2 Shared DataLoader
+Data loading is encapsulated in a dedicated `DataLoader` class (`io/loader.py`). This component handles:
+*   **Format Abstraction**: Seamlessly detects and opens NetCDF (via `h5netcdf` or `netcdf4`) and GRIB (via `cfgrib`) files.
+*   **Variable Mapping**: Automatically maps common variable aliases (e.g., `msl`/`slp`, `vo`/`rv`) and coordinate names (`latitude`/`lat`), allowing the same tracking logic to work across different data providers.
+*   **Contiguous I/O**: Performs single-block contiguous reads from disk, bypassing HDF5 lock contention.
+
+### 2.3 Vectorized Linker (`SimpleLinker`)
+Trajectory construction uses NumPy broadcasting to calculate Haversine distance matrices between existing track tails and new storm centers. By sorting points spatially before matching, the Linker ensures deterministic, greedy nearest-neighbor linking.
+
+### 2.4 Parallel Pipeline (Gather-then-Link)
+To ensure that parallel results are bit-wise identical to serial runs, PyStormTracker uses a hybrid parallel strategy:
+1.  **Parallel Detection**: Assigned time chunks are distributed across Dask or MPI workers. Each worker runs Numba kernels to find centers and returns raw coordinate arrays.
+2.  **Centralized Linking**: The main process gathers the raw detections from all workers and performs a single sequential link. 
+
+**Why this works:** In storm tracking, the **Detection** phase (finding local extrema in 3D grids) consumes >95% of the runtime. The **Linking** phase (connecting coordinate lists) is extremely fast once vectorized. Centralizing the link eliminates the complex "merging" bugs found in tree-reduction strategies while maintaining near-perfect parallel scaling.
+
+---
+
+## 3. The `Tracker` Protocol
+
+The `Tracker` Protocol (defined in `src/pystormtracker/models/tracker.py`) provides a standardized interface for all tracking algorithms:
+
+```python
+import pystormtracker as pst
+
+# Instantiate any compliant tracker
+tracker = pst.SimpleTracker()
+
+# Standardized .track() method
+tracks = tracker.track(
+    infile="era5_msl.nc", 
+    varname="msl", 
+    start_time="2025-01-01",
+    backend="dask"
+)
+
+# Standardized export
+tracks.write("output.txt", format="imilast")
+```
+
+---
+
+## Appendix: Evolution from Legacy Architecture
+
+The current architecture represents a fundamental shift from the legacy nested-object design used in earlier versions.
+
+| Feature | Legacy Architecture (v0.3.x and earlier) | Modern Architecture (v0.4.0+) |
+| :--- | :--- | :--- |
+| **Data Storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
+| **Parallelism** | Threads (bottlenecked by GIL). | Processes/MPI (true concurrent I/O). |
+| **Linking Strategy** | Tree-reduction (prone to boundary splits). | Parallel Detect + Centralized Link (perfect matching). |
+| **Linker** | $O(N^2)$ nested Python loops. | Vectorized NumPy matrix broadcasting. |
+| **I/O** | Many small lazy-loaded chunks. | Contiguous shared `DataLoader`. |

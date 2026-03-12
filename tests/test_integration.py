@@ -8,17 +8,20 @@ from unittest.mock import patch
 
 import pytest
 
-from pystormtracker.models.tracks import Tracks
-from pystormtracker.stormtracker import main
+from pystormtracker.cli import main
+from pystormtracker.io.imilast import read_imilast
+from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
-from .data_utils import fetch_era5_msl, fetch_era5_vo850
+N_WORKERS = 4
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     """Utility to run the tracker directly via function calls or MPI subprocess."""
     if use_mpi:
-        base_cmd = f"{sys.executable} -m pystormtracker.stormtracker"
-        full_cmd = f"mpiexec -n 2 {base_cmd} {' '.join(cmd_args)}"
+        base_cmd = f"{sys.executable} -m pystormtracker.cli"
+        full_cmd = (
+            f"mpiexec --oversubscribe -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
+        )
         subprocess.run(full_cmd, shell=True, check=True, capture_output=True)
         return
 
@@ -47,8 +50,12 @@ def compare_tracks(
     intensity_tol: float = 1e-4,
 ) -> None:
     """Compares two tracking files for equality using the Tracks class."""
-    t1 = Tracks.from_imilast(file1)
-    t2 = Tracks.from_imilast(file2)
+    t1 = read_imilast(file1)
+    t2 = read_imilast(file2)
+
+    # Requirement: PERFECT MATCH
+    assert len(t1) == len(t2), f"Track count mismatch: {len(t1)} vs {len(t2)}"
+
     t1.compare(
         t2,
         length_diff_tol=length_diff_tol,
@@ -60,13 +67,13 @@ def compare_tracks(
 @pytest.fixture(scope="module")
 def test_data_msl() -> str:
     """Download MSL test data once per module."""
-    return fetch_era5_msl()
+    return fetch_era5_msl(resolution="2.5x2.5")
 
 
 @pytest.fixture(scope="module")
 def test_data_vo() -> str:
     """Download VO test data once per module."""
-    return fetch_era5_vo850()
+    return fetch_era5_vo850(resolution="2.5x2.5")
 
 
 @pytest.fixture(
@@ -139,7 +146,7 @@ def test_dask_vs_serial(
         "--backend",
         "dask",
         "--workers",
-        "2",
+        str(N_WORKERS),
     ]
 
     run_command_direct(args)
@@ -174,6 +181,56 @@ def test_mpi_vs_serial(
 
     run_command_direct(args, use_mpi=True)
     compare_tracks(shared_serial_output, mpi_out)
+
+
+@pytest.mark.integration
+def test_grib_serial(tmp_path: Path) -> None:
+    """Test that tracking works correctly with GRIB input."""
+    grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
+    out_file = tmp_path / "integration_grib.txt"
+
+    args = [
+        "-i",
+        grib_path,
+        "-v",
+        "msl",
+        "-m",
+        "min",
+        "-o",
+        str(out_file),
+        "--backend",
+        "serial",
+    ]
+
+    run_command_direct(args)
+    assert out_file.exists()
+    tracks = read_imilast(out_file)
+    assert len(tracks) > 0
+
+
+@pytest.mark.integration
+def test_grib_vo_serial(tmp_path: Path) -> None:
+    """Test that tracking works correctly with VO850 GRIB input."""
+    grib_path = fetch_era5_vo850(resolution="2.5x2.5", format="grib")
+    out_file = tmp_path / "integration_grib_vo.txt"
+
+    args = [
+        "-i",
+        grib_path,
+        "-v",
+        "vo",
+        "-m",
+        "max",
+        "-o",
+        str(out_file),
+        "--backend",
+        "serial",
+    ]
+
+    run_command_direct(args)
+    assert out_file.exists()
+    tracks = read_imilast(out_file)
+    assert len(tracks) > 0
 
 
 @pytest.mark.integration

@@ -1,135 +1,153 @@
+from __future__ import annotations
+
+import numpy as np
+
 from ..models.center import Center
-from ..models.time import TimeRange
-from ..models.tracks import Track, Tracks
+from ..models.tracks import TimeRange, Tracks
+from .detector import RawDetectionStep
+
+
+def haversine_matrix(
+    lats1: np.ndarray, lons1: np.ndarray, lats2: np.ndarray, lons2: np.ndarray
+) -> np.ndarray:
+    """Vectorized Haversine distance calculation returning a distance matrix in km."""
+    R = 6367.0
+    DEGTORAD = np.pi / 180.0
+
+    lats1_rad = lats1 * DEGTORAD
+    lats2_rad = lats2 * DEGTORAD
+
+    dlat = lats2_rad[None, :] - lats1_rad[:, None]
+    dlon = (lons2 * DEGTORAD)[None, :] - (lons1 * DEGTORAD)[:, None]
+
+    a = (
+        np.sin(dlat / 2.0) ** 2
+        + np.cos(lats1_rad)[:, None]
+        * np.cos(lats2_rad)[None, :]
+        * np.sin(dlon / 2.0) ** 2
+    )
+    c = 2 * np.arcsin(np.sqrt(a))
+    return np.asarray(R * c)
 
 
 class SimpleLinker:
+    """
+    Heuristic nearest-neighbor linker for cyclone trajectories.
+    Uses spatial priority sorting and vectorized distance matrices for performance.
+    """
+
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
 
-    def match_center(self, tracks: Tracks, centers: list[Center]) -> list[Track | None]:
-        """Matches a list of centers to the tails of existing tracks."""
-        if not tracks.tail:
-            return [None for _ in range(len(centers))]
+    def append(self, tracks: Tracks, step_data: RawDetectionStep) -> None:
+        """
+        Links a single time step of detections to existing track tails.
+        """
+        time_val, new_lats, new_lons, vars_dict = step_data
 
-        dforward: list[dict[int, float]] = [{} for _ in range(len(tracks.tail))]
-        dbackward: list[dict[int, float]] = [{} for _ in range(len(centers))]
+        num_centers = len(new_lats)
+        if num_centers == 0:
+            # If no centers, all previous tails die
+            tracks._tail_ids = set()
+            return
 
-        for it, track in enumerate(tracks.tail):
-            last_center = track[-1]
-            for ic, center in enumerate(centers):
-                dist = last_center.abs_dist(center)
-                if dist < self.threshold:
-                    dforward[it][ic] = dist
-                    dbackward[ic][it] = dist
+        # Deterministic sorting of input centers (Spatial Priority)
+        # This ensures greedy matches are reproducible.
+        sort_idx = np.lexsort((new_lons, new_lats))
+        new_lats = new_lats[sort_idx]
+        new_lons = new_lons[sort_idx]
+        vars_dict = {k: v[sort_idx] for k, v in vars_dict.items()}
 
-        matched: list[Track | None] = [None for _ in range(len(centers))]
+        current_time = time_val
 
+        if not tracks._tail_ids:
+            # First ever centers in this object
+            new_tail_ids = set()
+            for i in range(num_centers):
+                c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
+                c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
+                t = tracks.add_track([c])
+                new_tail_ids.add(t.track_id)
+                tracks._head_ids.add(t.track_id)
+
+            tracks._tail_ids = new_tail_ids
+            # Update boundaries if not set
+            if tracks.time_range is None:
+                tracks.time_range = TimeRange(start=current_time, end=current_time)
+            return
+
+        # Temporal gap check
+        if (
+            tracks.time_range
+            and tracks.time_range.end is not None
+            and tracks.time_range.step is not None
+            and current_time - tracks.time_range.step > tracks.time_range.end
+        ):
+            # All previous tails die due to gap
+            new_tail_ids = set()
+            for i in range(num_centers):
+                c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
+                c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
+                t = tracks.add_track([c])
+                new_tail_ids.add(t.track_id)
+                tracks._head_ids.add(t.track_id)
+            tracks._tail_ids = new_tail_ids
+            tracks.time_range.end = current_time
+            return
+
+        # Deterministic sorting of existing tails
+        tail_tracks = sorted(tracks.tail, key=lambda t: (t[-1].lat, t[-1].lon))
+        tail_lats = np.array([t[-1].lat for t in tail_tracks])
+        tail_lons = np.array([t[-1].lon for t in tail_tracks])
+
+        dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
+        matched_indices = [-1] * num_centers
+
+        # Global greedy matching
         while True:
             has_match = False
-            for ic, db in enumerate(dbackward):
-                if matched[ic] is None and len(db) > 0:
-                    # Get the index of the closest track tail for this center
-                    it_match = min(db, key=lambda k: db[k])
-                    df = dforward[it_match]
+            for ic in range(num_centers):
+                if matched_indices[ic] == -1 and np.any(
+                    dist_matrix[:, ic] < self.threshold
+                ):
+                    it_match = int(np.argmin(dist_matrix[:, ic]))
+                    if dist_matrix[it_match, ic] >= self.threshold:
+                        continue
 
-                    # Check if this center is also the closest for that track tail
-                    if min(df, key=lambda k: df[k]) == ic:
-                        matched[ic] = tracks.tail[it_match]
-
-                        # Clear resources to avoid double matching
-                        db.clear()
-                        for j in dbackward:
-                            if it_match in j:
-                                del j[it_match]
-                        df.clear()
-                        for j in dforward:
-                            if ic in j:
-                                del j[ic]
-
+                    # Mutual closest check
+                    if np.argmin(dist_matrix[it_match, :]) == ic:
+                        matched_indices[ic] = it_match
+                        dist_matrix[:, ic] = np.inf
+                        dist_matrix[it_match, :] = np.inf
                         has_match = True
             if not has_match:
                 break
 
-        return matched
+        new_tail_ids = set()
+        for ic in range(num_centers):
+            it_match = matched_indices[ic]
+            c_vars = {k: float(v[ic]) for k, v in vars_dict.items()}
+            c = Center(time_val, float(new_lats[ic]), float(new_lons[ic]), c_vars)
 
-    def match_track(self, tracks1: Tracks, tracks2: Tracks) -> list[Track | None]:
-        """Matches the heads of tracks2 to the tails of tracks1."""
-        centers = [track[0] for track in tracks2.head]
-        return self.match_center(tracks1, centers)
+            if it_match != -1:
+                t = tail_tracks[it_match]
+                t.append(c)
+                new_tail_ids.add(t.track_id)
+            else:
+                t = tracks.add_track([c])
+                tracks._head_ids.add(t.track_id)
+                new_tail_ids.add(t.track_id)
 
-    def append_center(self, tracks: Tracks, centers: list[Center]) -> None:
-        if not centers:
-            tracks.tail = []
-            return
+        # Update tails: ONLY tracks that received a center at THIS time step
+        tracks._tail_ids = new_tail_ids
 
-        new_tail: list[Track] = []
-        matched_tracks = self.match_center(tracks, centers)
-
-        for i, matched_track in enumerate(matched_tracks):
-            if tracks.time_range is None:
-                # First ever centers
-                new_track = Track([centers[i]])
-                tracks.append(new_track)
-                tracks.head.append(new_track)
-                new_tail.append(new_track)
-            elif matched_track is None or (
-                tracks.time_range.end is not None
-                and tracks.time_range.step is not None
-                and centers[0].time - tracks.time_range.step > tracks.time_range.end
+        # Bookkeeping for TimeRange
+        if tracks.time_range:
+            if (
+                tracks.time_range.step is None
+                and current_time != tracks.time_range.start
             ):
-                # No match or gap in time detected
-                new_track = Track([centers[i]])
-                tracks.append(new_track)
-                new_tail.append(new_track)
-            else:
-                # Append to existing matched track
-                matched_track.append(centers[i])
-                new_tail.append(matched_track)
-
-        tracks.tail = new_tail
-
-        current_time = centers[0].time
-        if tracks.time_range is None:
-            tracks.time_range = TimeRange(start=current_time, end=current_time)
-        else:
-            if tracks.time_range.step is None:
                 tracks.time_range.step = current_time - tracks.time_range.start
-            tracks.time_range.end = current_time
-
-    def extend_track(self, tracks1: Tracks, tracks2: Tracks) -> None:
-        if not tracks2:
-            return
-
-        if not tracks1:
-            tracks1._tracks = tracks2._tracks
-            tracks1.head = tracks2.head
-            tracks1.tail = tracks2.tail
-            tracks1.time_range = tracks2.time_range
-            return
-
-        new_tail: list[Track] = []
-        matched_tracks = self.match_track(tracks1, tracks2)
-
-        # Map of tracks2.head to the matched track in tracks1
-        matched_map = {
-            id(tracks2.head[i]): matched_tracks[i] for i in range(len(tracks2.head))
-        }
-
-        # Track which tracks in tracks2 are currently tails
-        tail_ids = {id(t) for t in tracks2.tail}
-
-        for track2 in tracks2:
-            matched_track1 = matched_map.get(id(track2))
-            if matched_track1 is not None:
-                matched_track1.extend(track2)
-                if id(track2) in tail_ids:
-                    new_tail.append(matched_track1)
-            else:
-                tracks1.append(track2)
-                if id(track2) in tail_ids:
-                    new_tail.append(track2)
-
-        tracks1.tail = new_tail
-        if tracks1.time_range and tracks2.time_range:
-            tracks1.time_range.end = tracks2.time_range.end
+            # Only extend end if it's forward in time
+            if current_time > tracks.time_range.end:
+                tracks.time_range.end = current_time

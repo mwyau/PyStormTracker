@@ -29,12 +29,12 @@ dependencies = [
     "h5netcdf>=1.0.0",
     "h5py>=3.8.0",
     "numpy>=1.24.0",
-    "scipy>=1.9.2",
+    "numba>=0.60.0",
     "xarray>=2024.9.0",
 ]
 
 [project.scripts]
-stormtracker = "pystormtracker.stormtracker:main"
+stormtracker = "pystormtracker.cli:main"
 
 [project.urls]
 Homepage = "https://pypi.org/project/PyStormTracker/"
@@ -48,7 +48,7 @@ mpi = [
 grib = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0",
+    "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
 ]
 netcdf4 = [
     "netCDF4>=1.6.1",
@@ -56,7 +56,7 @@ netcdf4 = [
 all = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0",
+    "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
     "mpi4py>=4.1.0",
     "netCDF4>=1.6.1",
 ]
@@ -71,10 +71,9 @@ packages = ["src/pystormtracker"]
 
 [dependency-groups]
 dev = [
+    "PyStormTracker[all]",
     "mypy>=1.19.1",
     "pooch>=1.9.0",
-    "pre-commit>=4.5.1",
-    "PyStormTracker[all]",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
@@ -101,17 +100,16 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
-ignore_missing_imports = true
 disallow_untyped_defs = true
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
-module = ["distributed.*", "dask.*", "scipy.*"]
+module = ["dask.*", "numba.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --cov=pystormtracker --cov-report=term-missing --cov-report=xml"
+addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
