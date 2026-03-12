@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+import numpy as np
+
 from ..models import TimeRange, Tracks
 from .detector import RawDetectionStep, SimpleDetector
 from .linker import SimpleLinker
