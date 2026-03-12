@@ -12,7 +12,7 @@ from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
 from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
-N_WORKERS = 2
+N_WORKERS = 4
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:

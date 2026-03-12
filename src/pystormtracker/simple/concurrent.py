@@ -8,16 +8,8 @@ if TYPE_CHECKING:
     from mpi4py import MPI
 
 from ..models import TimeRange, Tracks
-from .detector import SimpleDetector
-from .linker import SimpleLinker
-from .tracker import _detect_and_link
-
-
-def _dask_extend_track(tracks1: Tracks, tracks2: Tracks) -> Tracks:
-    """Worker task: Tree reduction node that merges two Tracks objects."""
-    linker = SimpleLinker()
-    linker.extend_track(tracks1, tracks2)
-    return tracks1
+from .detector import RawDetectionStep, SimpleDetector
+from .tracker import _detect_and_link, _link_centers
 
 
 def run_simple_dask(
@@ -40,15 +32,12 @@ def run_simple_dask(
 
     t0 = timeit.default_timer()
     # Use processes=True to ensure Xarray/HDF5 locking doesn't serialize I/O
-    with (
-        LocalCluster(
-            n_workers=n_workers,
-            threads_per_worker=1,
-            processes=True,
-            dashboard_address=None,
-        ) as cluster,
-        Client(cluster) as client,
-    ):
+    with LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=1,
+        processes=True,
+        dashboard_address=None,
+    ) as cluster, Client(cluster) as client:
         t1 = timeit.default_timer()
         print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
 
@@ -65,22 +54,20 @@ def run_simple_dask(
                 )
             )
 
-        # Dask Tree Reduction for Linking
-        while len(futures) > 1:
-            next_futures = []
-            for i in range(0, len(futures), 2):
-                if i + 1 < len(futures):
-                    f = client.submit(_dask_extend_track, futures[i], futures[i + 1])
-                    next_futures.append(f)
-                else:
-                    next_futures.append(futures[i])
-            futures = next_futures
+        # Gather results from all workers
+        all_raw_chunks: list[list[RawDetectionStep]] = client.gather(futures)
 
-        final_tracks: Tracks = futures[0].result()
+        # Flatten chunks into a single sequence of steps
+        # They are gathered in the order of the futures list (sorted by split)
+        all_raw_steps: list[RawDetectionStep] = [
+            step for chunk in all_raw_chunks for step in chunk
+        ]
+
         t2 = timeit.default_timer()
         print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
 
-    return final_tracks
+    # Centralized linking guarantees bit-wise identity with Serial
+    return _link_centers(all_raw_steps, time_range=time_range)
 
 
 def run_simple_mpi(
@@ -106,21 +93,19 @@ def run_simple_mpi(
         detectors = None
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
-    tracks = _detect_and_link(
+    raw_chunk = _detect_and_link(
         detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode
     )
 
-    comm.Barrier()
+    # Gather all raw chunks at root
+    all_raw_chunks = comm.gather(raw_chunk, root=root)
 
-    # Combiner phase
-    linker = SimpleLinker()
-    nstripe = 2
-    while nstripe <= size:
-        if rank % nstripe == nstripe // 2:
-            comm.send(tracks, dest=rank - nstripe // 2, tag=nstripe)
-        elif rank % nstripe == 0 and rank + nstripe // 2 < size:
-            tracks_recv: Tracks = comm.recv(source=rank + nstripe // 2, tag=nstripe)
-            linker.extend_track(tracks, tracks_recv)
-        nstripe *= 2
+    if rank == root:
+        assert all_raw_chunks is not None
+        all_raw_steps: list[RawDetectionStep] = [
+            step for chunk in all_raw_chunks for step in chunk
+        ]
+        return _link_centers(all_raw_steps, time_range=time_range)
 
-    return tracks
+    # Non-root ranks return empty Tracks (orchestrated by cli.py)
+    return Tracks()
