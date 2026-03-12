@@ -5,7 +5,8 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Literal
 
-from .models import TimeRange
+import numpy as np
+
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
 
@@ -16,7 +17,8 @@ def run_tracker(
     infile: str,
     varname: str,
     outfile: str | None,
-    time_range: TimeRange | None = None,
+    start_time: str | np.datetime64 | None = None,
+    end_time: str | np.datetime64 | None = None,
     mode: Literal["min", "max"] = "min",
     backend: Backend = "serial",
     n_workers: int | None = None,
@@ -37,7 +39,8 @@ def run_tracker(
     tracks = tracker.track(
         infile=infile,
         varname=varname,
-        time_range=time_range,
+        start_time=start_time,
+        end_time=end_time,
         mode=mode,
         backend=backend,
         n_workers=n_workers,
@@ -98,7 +101,8 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     args = parse_args()
-    time_range: TimeRange | None = None
+    start_time = None
+    end_time = None
 
     if args.num is not None:
         # Determine actual times for the first n steps
@@ -106,16 +110,15 @@ def main() -> None:
         times = detector_preview.get_time()
         assert times is not None
         num = min(args.num, len(times))
-        time_range = TimeRange(
-            start=times[0],
-            end=times[num - 1],
-        )
+        start_time = times[0]
+        end_time = times[num - 1]
 
     run_tracker(
         infile=args.input,
         varname=args.var,
         outfile=args.output,
-        time_range=time_range,
+        start_time=start_time,
+        end_time=end_time,
         mode=args.mode,
         backend=args.backend,
         n_workers=args.workers,

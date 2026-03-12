@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import numpy as np
 from typing import Literal, Protocol, runtime_checkable
 
-from .tracks import TimeRange, Tracks
+from .tracks import Tracks
 
 
 @runtime_checkable
@@ -16,7 +17,8 @@ class Tracker(Protocol):
         self,
         infile: str,
         varname: str,
-        time_range: TimeRange | None = None,
+        start_time: str | np.datetime64 | None = None,
+        end_time: str | np.datetime64 | None = None,
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
