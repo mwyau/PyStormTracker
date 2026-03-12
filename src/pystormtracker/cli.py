@@ -201,7 +201,8 @@ def run_tracker(
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
-        tracks.to_imilast(outfile)
+        from .io.imilast import write_imilast
+        write_imilast(tracks, outfile)
         out_path = Path(outfile)
 
         final_outfile = (
