@@ -16,6 +16,12 @@ class DataLoader:
     _ds_cache: ClassVar[dict[Path, xr.Dataset]] = {}
     _ds_lock: ClassVar[threading.Lock] = threading.Lock()
 
+    # Common variable name aliases
+    VAR_MAPPING: ClassVar[dict[str, list[str]]] = {
+        "msl": ["msl", "slp", "prmsl", "mean_sea_level_pressure"],
+        "vo": ["vo", "rv", "relative_vorticity", "vorticity"],
+    }
+
     def __init__(self, pathname: str | Path, engine: str | None = None) -> None:
         self.pathname = Path(pathname)
         self.engine = engine
@@ -51,9 +57,9 @@ class DataLoader:
         """Returns the mapped names for (time, lat, lon)."""
         ds = self.ensure_open()
         coords = ds.coords
-        
+
         time_name = next((c for c in ["time", "valid_time"] if c in coords), "time")
         lat_name = next((c for c in ["latitude", "lat"] if c in coords), "latitude")
         lon_name = next((c for c in ["longitude", "lon"] if c in coords), "longitude")
-        
+
         return time_name, lat_name, lon_name
