@@ -11,6 +11,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="run ONLY integration tests",
     )
     parser.addoption(
+        "--run-vo", action="store_true", default=False, help="run VO integration tests"
+    )
+    parser.addoption(
         "--run-all", action="store_true", default=False, help="run all tests"
     )
 

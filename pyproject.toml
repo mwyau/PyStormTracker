@@ -109,7 +109,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+addopts = "-ra -q --durations=0"
 testpaths = [
     "tests",
 ]
