@@ -170,7 +170,7 @@ class SimpleDetector:
         chunk_size = total_len // num
         remainder = total_len % num
 
-        grids: list[SimpleDetector] = []
+        detectors: list[SimpleDetector] = []
         for i in range(num):
             s_idx = i * chunk_size + min(i, remainder)
             e_idx = (i + 1) * chunk_size + min(i + 1, remainder)
@@ -190,7 +190,7 @@ class SimpleDetector:
                     s_time = time_coord[s_idx].values
                     e_time = time_coord[e_idx - 1].values
 
-            grids.append(
+            detectors.append(
                 SimpleDetector(
                     self.pathname,
                     self.varname,
@@ -199,7 +199,7 @@ class SimpleDetector:
                     global_total_steps=total_len,
                 )
             )
-        return grids
+        return detectors
 
     def detect_raw(
         self,

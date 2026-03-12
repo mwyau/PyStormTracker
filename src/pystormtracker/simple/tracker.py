@@ -20,10 +20,10 @@ def _link_centers(centers: DetectedCenters) -> Tracks:
 
 
 def _detect_and_link(
-    grid: SimpleDetector, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
+    detector: SimpleDetector, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
 ) -> Tracks:
     """Worker task: Detects centers and immediately links them into a local Tracks object."""
-    centers = grid.detect(
+    centers = detector.detect(
         size=size, threshold=threshold, time_chunk_size=time_chunk_size, minmaxmode=mode
     )
     return _link_centers(centers)
@@ -44,8 +44,8 @@ class SimpleTracker:
     def _detect_serial(
         self, infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
     ) -> Tracks:
-        grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
-        tracks = _detect_and_link(grid, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
+        detector = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
+        tracks = _detect_and_link(detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
         return tracks
 
     def _detect_mpi(
@@ -59,15 +59,15 @@ class SimpleTracker:
         root = 0
 
         if rank == root:
-            grid_obj = SimpleDetector(
+            detector_obj = SimpleDetector(
                 pathname=infile, varname=varname, time_range=time_range
             )
-            grids: list[SimpleDetector] | None = grid_obj.split(size)
+            detectors: list[SimpleDetector] | None = detector_obj.split(size)
         else:
-            grids = None
+            detectors = None
 
-        grid: SimpleDetector = comm.scatter(grids, root=root)
-        tracks = _detect_and_link(grid, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
+        detector: SimpleDetector = comm.scatter(detectors, root=root)
+        tracks = _detect_and_link(detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
         
         return tracks, comm
 
@@ -99,18 +99,18 @@ class SimpleTracker:
         if n_workers is None or n_workers <= 0:
             n_workers = os.cpu_count() or 4
 
-        grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
-        grids = grid_obj.split(n_workers)
+        detector_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
+        detectors = detector_obj.split(n_workers)
 
         # Use processes=True to ensure Xarray/HDF5 locking doesn't serialize I/O
         with LocalCluster(n_workers=n_workers, threads_per_worker=1, processes=True, dashboard_address=None) as cluster:
             with Client(cluster) as client:
                 futures = []
-                for g in grids:
+                for d in detectors:
                     futures.append(
                         client.submit(
                             _detect_and_link,
-                            g,
+                            d,
                             5,
                             0.0,
                             360,
