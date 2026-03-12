@@ -27,11 +27,13 @@ Previously, the data was modeled using a deeply nested structure of custom Pytho
 
 **The New Architecture:**
 The models have been rewritten to be **Array-Backed**. The concept of a single "point" or "list" is now merely a logical view over contiguous memory.
-*   The `Tracks` class is the sole owner of the data. Internally, it holds exactly five 1D NumPy arrays: `track_ids`, `times`, `lats`, `lons`, and `vars`.
+*   The `Tracks` class is the sole owner of the data. Internally, it holds exactly five 1D NumPy arrays: `track_ids`, `times`, `lats`, `lons`, and a dictionary of variables.
 *   A `Track` object no longer holds a list of centers. It is instantiated with a `track_id` and a reference to the parent `Tracks` object. It simply yields a "view" of the arrays where the ID matches.
 *   The `Center` class still exists strictly for backward compatibility and simple iteration, but it is entirely bypassed during heavy computation.
 
 *Why it's fast:* NumPy arrays are blocks of C-contiguous memory. When Dask or MPI needs to send a worker's results to the main node, it simply drops the raw memory buffer into the socket. There is zero object traversal.
+
+While Xarray is excellent for data loading and coordinate management (and is still used in the `Detector` phase), it is intentionally avoided in the `Tracks` model to maximize performance. Raw NumPy arrays provide significantly lower serialization overhead and enable the linker to use extremely fast C-level broadcasting for distance calculations without the constant metadata lookup and coordinate alignment checks that Xarray would require.
 
 ### 2.2 The Detector (`SimpleDetector` & Numba Kernels)
 
@@ -85,7 +87,6 @@ The `Tracker` Protocol enforces a clean, user-friendly API that replaces complex
 
 ```python
 import pystormtracker as pst
-from pystormtracker.io.imilast import write_imilast
 
 # 1. Instantiate the tracker
 tracker = pst.SimpleTracker()
@@ -102,7 +103,7 @@ tracks = tracker.track(
 )
 
 # 3. Export
-write_imilast(tracks, "output.txt")
+tracks.write("output.txt", format="imilast")
 ```
 
 Internally, missing bounding dates are elegantly handled using `np.datetime64("NaT")` (Not a Time), allowing the internal logic to robustly slice open-ended time boundaries without relying on arbitrary string hacks like `"1000-01-01"`.

@@ -177,6 +177,56 @@ def test_mpi_vs_serial(
 
 
 @pytest.mark.integration
+def test_grib_serial(tmp_path: Path) -> None:
+    """Test that tracking works correctly with GRIB input."""
+    grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
+    out_file = tmp_path / "integration_grib.txt"
+
+    args = [
+        "-i",
+        grib_path,
+        "-v",
+        "msl",
+        "-m",
+        "min",
+        "-o",
+        str(out_file),
+        "--backend",
+        "serial",
+    ]
+
+    run_command_direct(args)
+    assert out_file.exists()
+    tracks = read_imilast(out_file)
+    assert len(tracks) > 0
+
+
+@pytest.mark.integration
+def test_grib_vo_serial(tmp_path: Path) -> None:
+    """Test that tracking works correctly with VO850 GRIB input."""
+    grib_path = fetch_era5_vo850(resolution="2.5x2.5", format="grib")
+    out_file = tmp_path / "integration_grib_vo.txt"
+
+    args = [
+        "-i",
+        grib_path,
+        "-v",
+        "vo",
+        "-m",
+        "max",
+        "-o",
+        str(out_file),
+        "--backend",
+        "serial",
+    ]
+
+    run_command_direct(args)
+    assert out_file.exists()
+    tracks = read_imilast(out_file)
+    assert len(tracks) > 0
+
+
+@pytest.mark.integration
 def test_legacy_regression(
     shared_serial_output: Path, config: tuple[str, str, str]
 ) -> None:

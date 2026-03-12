@@ -86,17 +86,18 @@ def _numba_remove_dup(laplacian: NDArray[np.float64], size: int) -> NDArray[np.f
         for c in range(cols):
             center_val = laplacian[r, c]
             if center_val != 0:
-                is_max = True
+                is_most_intense = True
+                abs_center = abs(center_val)
                 for i in range(-half_size, half_size + 1):
                     rr = (r + i) % rows
                     for j in range(-half_size, half_size + 1):
                         cc = (c + j) % cols
-                        if laplacian[rr, cc] > center_val:
-                            is_max = False
+                        if abs(laplacian[rr, cc]) > abs_center:
+                            is_most_intense = False
                             break
-                    if not is_max:
+                    if not is_most_intense:
                         break
-                if is_max:
+                if is_most_intense:
                     out[r, c] = 1.0
     return out
 

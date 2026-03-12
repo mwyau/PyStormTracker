@@ -97,7 +97,6 @@ You can easily integrate PyStormTracker into your own scripts or Jupyter Noteboo
 
 ```python
 import pystormtracker as pst
-from pystormtracker.io.imilast import write_imilast
 
 # 1. Instantiate the tracker (defaults to Serial backend)
 tracker = pst.SimpleTracker()
@@ -119,7 +118,7 @@ for track in tracks:
         print(f"Track {track.track_id} lived for {len(track)} steps.")
 
 # 4. Export the data to standard IMILAST format
-tracks.write("output.txt")
+tracks.write("output.txt", format="imilast")
 ```
 
 ## Development
