@@ -466,8 +466,8 @@ name = "eccodeslib"
 version = "2.46.0.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "eckitlib" },
-    { name = "fckitlib" },
+    { name = "eckitlib", marker = "sys_platform != 'win32'" },
+    { name = "fckitlib", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/87/60/46397972fc1d26395dbfad9bb7a69efc3c143a796776261a4264fc82bbf1/eccodeslib-2.46.0.13-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:14fbb785f9ddccaa31e20844e0448112f469c73d5d965cdb05ec4ae04235293d", size = 8791189, upload-time = "2026-02-26T14:09:09.89Z" },
@@ -516,7 +516,7 @@ name = "fckitlib"
 version = "0.14.2.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "eckitlib" },
+    { name = "eckitlib", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bf/24/56c323a09f314013abead047fa7dda2530f95b8c3c366c88be0eb87f9a9e/fckitlib-0.14.2.13-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:c08aa4f961b29df0c7a6ba642c20e60e8eee97a3fec15a97331e1fa94b07c384", size = 382221, upload-time = "2026-02-26T14:09:18.972Z" },
@@ -1373,7 +1373,7 @@ dependencies = [
 all = [
     { name = "cfgrib" },
     { name = "eccodes" },
-    { name = "eccodeslib" },
+    { name = "eccodeslib", marker = "sys_platform != 'win32'" },
     { name = "mpi4py" },
     { name = "netcdf4" },
 ]
@@ -1386,7 +1386,7 @@ docs = [
 grib = [
     { name = "cfgrib" },
     { name = "eccodes" },
-    { name = "eccodeslib" },
+    { name = "eccodeslib", marker = "sys_platform != 'win32'" },
 ]
 mpi = [
     { name = "mpi4py" },
@@ -1413,8 +1413,8 @@ requires-dist = [
     { name = "distributed", specifier = ">=2024.1.0" },
     { name = "eccodes", marker = "extra == 'all'", specifier = ">=2.43.0" },
     { name = "eccodes", marker = "extra == 'grib'", specifier = ">=2.43.0" },
-    { name = "eccodeslib", marker = "extra == 'all'", specifier = ">=2.43.0" },
-    { name = "eccodeslib", marker = "extra == 'grib'", specifier = ">=2.43.0" },
+    { name = "eccodeslib", marker = "sys_platform != 'win32' and extra == 'all'", specifier = ">=2.43.0" },
+    { name = "eccodeslib", marker = "sys_platform != 'win32' and extra == 'grib'", specifier = ">=2.43.0" },
     { name = "h5netcdf", specifier = ">=1.0.0" },
     { name = "h5py", specifier = ">=3.8.0" },
     { name = "mpi4py", marker = "extra == 'all'", specifier = ">=4.1.0" },

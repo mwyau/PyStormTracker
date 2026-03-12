@@ -48,7 +48,7 @@ mpi = [
 grib = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0",
+    "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
 ]
 netcdf4 = [
     "netCDF4>=1.6.1",
@@ -56,7 +56,7 @@ netcdf4 = [
 all = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0",
+    "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
     "mpi4py>=4.1.0",
     "netCDF4>=1.6.1",
 ]
@@ -71,9 +71,9 @@ packages = ["src/pystormtracker"]
 
 [dependency-groups]
 dev = [
+    "PyStormTracker[all]",
     "mypy>=1.19.1",
     "pooch>=1.9.0",
-    "PyStormTracker[all]",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
