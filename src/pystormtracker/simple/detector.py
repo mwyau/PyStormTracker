@@ -207,7 +207,7 @@ class SimpleDetector:
         threshold: float = 0.0,
         time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> list[tuple[np.datetime64, NDArray[np.int64], NDArray[np.int64], NDArray[np.float64]]]:
+    ) -> list[tuple[np.datetime64, NDArray[np.int64], NDArray[np.int64], dict[str, NDArray[np.float64]]]]:
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
 
@@ -251,7 +251,7 @@ class SimpleDetector:
             r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
             time_val = t.astype("datetime64[s]")
             
-            raw_results.append((time_val, r_idx, c_idx, vals))
+            raw_results.append((time_val, r_idx, c_idx, {self.varname: vals}))
         
         return raw_results
 
@@ -271,10 +271,17 @@ class SimpleDetector:
 
         lat, lon = self.lat, self.lon
         centers = []
-        for time_val, r_idx, c_idx, vals in raw_results:
-            center_list = [
-                Center(time_val, float(lat[r]), float(lon[c]), float(val))
-                for r, c, val in zip(r_idx, c_idx, vals, strict=False)
-            ]
+        for time_val, r_idx, c_idx, vars_dict in raw_results:
+            # vars_dict is {self.varname: [val1, val2, ...]}
+            # we need to transpose it into individual dicts
+            keys = list(vars_dict.keys())
+            vals_matrix = [vars_dict[k] for k in keys]
+            
+            center_list = []
+            for i, (r, c) in enumerate(zip(r_idx, c_idx, strict=False)):
+                c_vars = {k: float(vals_matrix[idx][i]) for idx, k in enumerate(keys)}
+                center_list.append(
+                    Center(time_val, float(lat[r]), float(lon[c]), c_vars)
+                )
             centers.append(center_list)
         return centers

@@ -15,7 +15,7 @@ def test_simple_linker_append_center() -> None:
     tracks = Tracks()
 
     t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, 1000)
+    c1 = Center(t0, 0, 0, {"msl": 1000})
     linker.append_center(tracks, [c1])
 
     assert len(tracks) == 1
@@ -24,7 +24,7 @@ def test_simple_linker_append_center() -> None:
     assert tracks.time_range.end == t0
 
     t6 = np.datetime64("2025-12-01T06:00:00")
-    c2 = Center(t6, 1, 1, 990)
+    c2 = Center(t6, 1, 1, {"msl": 990})
     linker.append_center(tracks, [c2])
 
     assert len(tracks) == 1
@@ -39,11 +39,11 @@ def test_simple_linker_extend_track() -> None:
     t2 = Tracks()
 
     t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, 1000)
+    c1 = Center(t0, 0, 0, {"msl": 1000})
     linker.append_center(t1, [c1])
 
     t6 = np.datetime64("2025-12-01T06:00:00")
-    c2 = Center(t6, 1, 1, 990)
+    c2 = Center(t6, 1, 1, {"msl": 990})
     linker.append_center(t2, [c2])
 
     linker.extend_track(t1, t2)

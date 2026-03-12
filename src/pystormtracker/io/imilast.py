@@ -55,7 +55,7 @@ def read_imilast(filename: Path | str) -> Tracks:
         times=np.array(times, dtype="datetime64[s]"),
         lats=np.array(lats, dtype=np.float64),
         lons=np.array(lons, dtype=np.float64),
-        vars_vals=np.array(vars_vals, dtype=np.float64),
+        vars_dict={"Intensity1": np.array(vars_vals, dtype=np.float64)},
     )
     obj.sort()
     return obj
@@ -88,7 +88,8 @@ def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 4) 
                     yyyymmddhh = "0000000000"
                     yyyy, mm, dd, hh = 0, 0, 0, 0
 
-                var_val = f"{float(center.var):.{decimal_places}f}"
+                val = list(center.vars.values())[0] if center.vars else np.nan
+                var_val = f"{float(val):.{decimal_places}f}"
                 lon = center.lon
                 if lon > 180:
                     lon -= 360
