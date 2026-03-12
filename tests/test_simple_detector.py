@@ -15,12 +15,13 @@ def test_simple_detector_init(mock_open: MagicMock) -> None:
     mock_data = MagicMock(spec=xr.DataArray)
     mock_ds.__getitem__.return_value = mock_data
     mock_ds.coords = ["time", "latitude", "longitude"]
-    mock_ds.variables = {"slp": mock_data}
+    # SimpleDetector checks ds.data_vars
+    mock_ds.data_vars = {"slp": mock_data}
 
     detector = SimpleDetector(pathname="test.nc", varname="slp")
     detector._ensure_open()
 
-    mock_open.assert_called_once_with(Path("test.nc"))
+    mock_open.assert_called_once_with(Path("test.nc"), engine="h5netcdf", chunks={})
 
 
 @patch("xarray.open_dataset")
@@ -39,11 +40,13 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = SimpleDetector(pathname="test.nc", varname="slp")
-    centers = detector.detect(size=5, threshold=0.0)
+    detector = SimpleDetector(pathname="test2.nc", varname="slp")
+    raw_results = detector.detect(size=5, threshold=0.0)
 
-    assert len(centers) == 1
-    assert len(centers[0]) == 1
-    assert centers[0][0].lat == 3.0
-    assert centers[0][0].lon == 3.0
-    assert centers[0][0].var == 950.0
+    assert len(raw_results) == 1
+    _time_val, lats, lons, vars_dict = raw_results[0]
+
+    assert len(lats) == 1
+    assert lats[0] == 3.0
+    assert lons[0] == 3.0
+    assert vars_dict["slp"][0] == 950.0

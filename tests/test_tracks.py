@@ -2,8 +2,9 @@ from pathlib import Path
 
 import numpy as np
 
+from pystormtracker.io.imilast import read_imilast, write_imilast
 from pystormtracker.models.center import Center
-from pystormtracker.models.tracks import Track, Tracks
+from pystormtracker.models.tracks import Tracks
 
 
 def test_tracks_init() -> None:
@@ -17,32 +18,40 @@ def test_tracks_init() -> None:
 def test_tracks_append_and_access() -> None:
     t = Tracks()
     t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, 0)
-    c2 = Center(t0, 1, 1, 1)
+    c1 = Center(t0, 0, 0, {"msl": 0})
+    c2 = Center(t0, 1, 1, {"msl": 1})
 
-    t.append(Track([c1]))
+    tr1 = t.add_track([c1])
     assert len(t) == 1
-    assert t[0] == Track([c1])
+    assert t[0] == tr1
 
-    t.append(Track([c2]))
+    tr2 = t.add_track([c2])
     assert len(t) == 2
-    assert t[1] == Track([c2])
+    assert t[1] == tr2
 
     # Test __setitem__
-    t[0] = Track([c1, c2])
-    assert t[0] == Track([c1, c2])
+    # Note: we need another Tracks object to get a properly baked Track view
+    # to replace into the first Tracks object.
+    t2 = Tracks()
+    tr_new = t2.add_track([c1, c2])
+
+    # Replaces the first track. The new track is appended at the end.
+    t[0] = tr_new
+    assert len(t[-1]) == 2
+    assert t[-1][0].lat == c1.lat
+    assert t[-1][1].lat == c2.lat
 
 
 def test_tracks_iterator() -> None:
     t = Tracks()
     t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, 0)
-    c2 = Center(t0, 1, 1, 1)
-    t.append(Track([c1]))
-    t.append(Track([c2]))
+    c1 = Center(t0, 0, 0, {"msl": 0})
+    c2 = Center(t0, 1, 1, {"msl": 1})
+    tr1 = t.add_track([c1])
+    tr2 = t.add_track([c2])
 
     collected = list(t)
-    assert collected == [Track([c1]), Track([c2])]
+    assert collected == [tr1, tr2]
 
 
 def test_tracks_imilast_io(tmp_path: Path) -> None:
@@ -52,19 +61,19 @@ def test_tracks_imilast_io(tmp_path: Path) -> None:
     t1_time = np.datetime64("2025-12-01T00:00:00")
     t1_time2 = np.datetime64("2025-12-01T06:00:00")
 
-    c1 = Center(t1_time, 10.0, 20.0, 1000.0)
-    c2 = Center(t1_time2, 11.0, 21.0, 990.0)
-    t.append(Track([c1, c2]))
+    c1 = Center(t1_time, 10.0, 20.0, {"Intensity1": 1000.0})
+    c2 = Center(t1_time2, 11.0, 21.0, {"Intensity1": 990.0})
+    t.add_track([c1, c2])
 
     # Track 2: 1 point
-    c3 = Center(t1_time, -10.0, -20.0, 1010.0)
-    t.append(Track([c3]))
+    c3 = Center(t1_time, -10.0, -20.0, {"Intensity1": 1010.0})
+    t.add_track([c3])
 
     out_file = tmp_path / "test_io.txt"
-    t.to_imilast(str(out_file))
+    write_imilast(t, out_file)
 
     # Read back
-    t2 = Tracks.from_imilast(out_file)
+    t2 = read_imilast(out_file)
 
     assert len(t2) == 2
 
@@ -73,30 +82,32 @@ def test_tracks_imilast_io(tmp_path: Path) -> None:
 
 
 def test_track_methods() -> None:
+    t = Tracks()
     t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, 0)
-    c2 = Center(t0 + np.timedelta64(6, "h"), 1, 1, 1)
+    c1 = Center(t0, 0, 0, {"msl": 0})
+    c2 = Center(t0 + np.timedelta64(6, "h"), 1, 1, {"msl": 1})
 
-    track = Track([c1])
+    track = t.add_track([c1])
     assert len(track) == 1
-    assert track[0] == c1
+    assert track[0].lat == c1.lat
 
     # iter
-    assert list(track) == [c1]
+    assert [c.lat for c in track] == [c1.lat]
 
     # append
     track.append(c2)
     assert len(track) == 2
-    assert track[1] == c2
+    assert track[1].lat == c2.lat
 
     # extend
-    track2 = Track([Center(t0 + np.timedelta64(12, "h"), 2, 2, 2)])
+    t2 = Tracks()
+    track2 = t2.add_track([Center(t0 + np.timedelta64(12, "h"), 2, 2, {"msl": 2})])
     track.extend(track2)
     assert len(track) == 3
-    assert track[2].var == 2
+    assert track[2].vars["msl"] == 2
 
     # abs_dist (distance between last point of track and another center)
-    c3 = Center(t0 + np.timedelta64(18, "h"), 0, 1, 0)
+    c3 = Center(t0 + np.timedelta64(18, "h"), 0, 1, {"msl": 0})
     # Haversine distance from track last point (2,2) to target center (0,1)
     dist = track.abs_dist(c3)
     assert dist > 240
@@ -107,14 +118,10 @@ def test_tracks_sort() -> None:
     t0 = np.datetime64("2025-12-01T00:00:00")
     t1 = t0 + np.timedelta64(6, "h")
 
-    tr1 = Track([Center(t1, 0, 0, 0)])
-    tr2 = Track([Center(t0, 10, 10, 0)])
-    tr3 = Track([Center(t0, 5, 5, 0)])
-
     tracks = Tracks()
-    tracks.append(tr1)
-    tracks.append(tr2)
-    tracks.append(tr3)
+    tr1 = tracks.add_track([Center(t1, 0, 0, {"msl": 0})])
+    tr2 = tracks.add_track([Center(t0, 10, 10, {"msl": 0})])
+    tr3 = tracks.add_track([Center(t0, 5, 5, {"msl": 0})])
 
     tracks.sort()
 

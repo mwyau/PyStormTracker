@@ -83,6 +83,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
+        min-deps: [false]
         include:
           - python-version: "3.11"
             min-deps: true
@@ -105,8 +106,12 @@ jobs:
         if: ${{ matrix.min-deps }}
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
-        run: |
-          uv run pytest -vv
+        if: matrix.python-version != '3.14' || matrix.min-deps
+        run: uv run pytest -vv
+
+      - name: Run Unit Tests with Coverage
+        if: matrix.python-version == '3.14' && !matrix.min-deps
+        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
@@ -136,9 +141,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
-        run: |
-          uv run pytest -vv tests/test_integration.py --run-integration
+        if: matrix.arch != 'amd64'
+        run: uv run pytest -vv tests/test_integration.py --run-integration
+
+      - name: Run Integration Tests with Coverage
+        if: matrix.arch == 'amd64'
+        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration.py --run-integration
+
       - name: Upload coverage reports to Codecov
+        if: matrix.arch == 'amd64'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

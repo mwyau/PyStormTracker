@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TypeAlias
 
 import numpy as np
 
@@ -14,7 +13,7 @@ class Center:
     time: np.datetime64
     lat: float
     lon: float
-    var: float
+    vars: dict[str, float]
 
     # Earth radius in kilometers
     R: float = 6367.0
@@ -22,10 +21,10 @@ class Center:
     DEGTORAD: float = math.pi / 180.0
 
     def __repr__(self) -> str:
-        return str(self.var)
+        return str(self.vars)
 
     def __str__(self) -> str:
-        return f"[time={self.time}, lat={self.lat}, lon={self.lon}, var={self.var}]"
+        return f"[time={self.time}, lat={self.lat}, lon={self.lon}, vars={self.vars}]"
 
     def abs_dist(self, center: Center) -> float:
         """Haversine formula for calculating the great circle distance in km."""
@@ -55,6 +54,3 @@ class Center:
         avglat = (self.lat + center.lat) / 2
         dlon = center.lon - self.lon
         return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
-
-
-DetectionResult: TypeAlias = list[list[Center]]

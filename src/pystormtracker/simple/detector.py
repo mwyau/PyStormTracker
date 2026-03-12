@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal, TypeAlias
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
-from scipy.ndimage import generic_filter, laplace
 
-from ..models.center import Center, DetectionResult
-from ..models.grid import Grid
-from ..models.time import TimeRange
+from ..io.loader import DataLoader
+from ..models.tracks import TimeRange
+from .kernels import (
+    _numba_extrema_filter,
+    _numba_get_centers,
+    _numba_laplace_masked,
+    _numba_remove_dup,
+)
+
+# Type alias for a single time step's raw detection arrays
+RawDetectionStep: TypeAlias = tuple[
+    np.datetime64,
+    NDArray[np.float64],
+    NDArray[np.float64],
+    dict[str, NDArray[np.float64]],
+]
 
 
 class SimpleDetector:
@@ -19,45 +32,68 @@ class SimpleDetector:
     Uses xarray for robust coordinate handling and lazy-loading.
     """
 
+    _ds_cache: ClassVar[dict[Path, xr.Dataset]] = {}
+    _ds_lock: ClassVar[threading.Lock] = threading.Lock()
+
     def __init__(
         self,
         pathname: str | Path,
         varname: str,
         time_range: TimeRange | None = None,
+        global_start_idx: int = 0,
+        global_total_steps: int | None = None,
+        engine: str | None = None,
     ) -> None:
         self.pathname = Path(pathname)
-        self.varname = varname
+        self.requested_varname = varname
         self.time_range = time_range
+        self.global_start_idx = global_start_idx
+        self.global_total_steps = global_total_steps
 
-        self._ds: xr.Dataset | None = None
+        self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self._lat_name: str = "latitude"
-        self._lon_name: str = "longitude"
-        self._time_name: str = "time"
+        self.varname = varname  # Updated after open
 
     def _ensure_open(self) -> None:
         """Ensures the xarray dataset is open and basic variables are mapped."""
-        if self._ds is None:
-            # open_dataset is lazy by default
-            self._ds = xr.open_dataset(self.pathname)
-            self._data = self._ds[self.varname]
+        if self._data is None:
+            ds = self._loader.ensure_open()
 
-            # Identify coordinate names
-            self._lat_name = "latitude" if "latitude" in self._ds.coords else "lat"
-            self._lon_name = "longitude" if "longitude" in self._ds.coords else "lon"
-            self._time_name = "time" if "time" in self._ds.coords else "valid_time"
+            # Identify the actual variable name using mapping aliases
+            actual_var = None
+            possible_names = DataLoader.VAR_MAPPING.get(
+                self.requested_varname, [self.requested_varname]
+            )
+            for name in possible_names:
+                if name in ds.data_vars:
+                    actual_var = name
+                    break
+
+            if actual_var is None:
+                if self.requested_varname in ds.data_vars:
+                    actual_var = self.requested_varname
+                else:
+                    raise KeyError(
+                        f"Variable '{self.requested_varname}' not found. "
+                        f"Available: {list(ds.data_vars.keys())}"
+                    )
+
+            self.varname = actual_var
+            self._data = ds[self.varname]
 
     @property
     def lat(self) -> NDArray[np.float64]:
         self._ensure_open()
-        assert self._ds is not None
-        return np.asarray(self._ds[self._lat_name].values)
+        ds = self._loader.ensure_open()
+        _, lat_name, _ = self._loader.get_coords()
+        return np.asarray(ds[lat_name].values)
 
     @property
     def lon(self) -> NDArray[np.float64]:
         self._ensure_open()
-        assert self._ds is not None
-        return np.asarray(self._ds[self._lon_name].values)
+        ds = self._loader.ensure_open()
+        _, _, lon_name = self._loader.get_coords()
+        return np.asarray(ds[lon_name].values)
 
     def get_var(
         self, frame: int | tuple[int, int] | None = None
@@ -65,12 +101,20 @@ class SimpleDetector:
         self._ensure_open()
         assert self._data is not None
 
-        # Base data for the configured time range
-        time_dim = self._data.dims[0]
+        time_dim, _, _ = self._loader.get_coords()
+
         if self.time_range:
-            data_range = self._data.sel(
-                {time_dim: slice(self.time_range.start, self.time_range.end)}
-            )
+            start, end = self.time_range.start, self.time_range.end
+            # Handle NaT bounds with explicit types
+            # xarray .sel() accepts DataArray or slice
+            if not np.isnat(start) and not np.isnat(end):
+                data_range = self._data.sel({time_dim: slice(start, end)})
+            elif not np.isnat(start):
+                data_range = self._data.where(self._data[time_dim] >= start, drop=True)
+            elif not np.isnat(end):
+                data_range = self._data.where(self._data[time_dim] <= end, drop=True)
+            else:
+                data_range = self._data
         else:
             data_range = self._data
 
@@ -101,41 +145,50 @@ class SimpleDetector:
 
     def get_time(self) -> NDArray[np.datetime64] | None:
         self._ensure_open()
-        assert self._ds is not None
+        ds = self._loader.ensure_open()
+        time_dim, _, _ = self._loader.get_coords()
+
         if self.time_range:
-            times = self._ds[self._time_name].sel(
-                {self._time_name: slice(self.time_range.start, self.time_range.end)}
-            )
-        else:
-            times = self._ds[self._time_name]
-        return np.asarray(times.values)
-
-    def get_lat(self) -> NDArray[np.float64] | None:
-        return self.lat
-
-    def get_lon(self) -> NDArray[np.float64] | None:
-        return self.lon
-
-    def split(self, num: int) -> list[Grid]:
-        if self._ds is not None:
-            raise RuntimeError("Cannot split after file has been opened.")
-
-        with xr.open_dataset(self.pathname) as ds:
-            time_name = "time" if "time" in ds.coords else "valid_time"
-            if self.time_range:
-                times = ds[time_name].sel(
-                    {time_name: slice(self.time_range.start, self.time_range.end)}
-                )
+            start, end = self.time_range.start, self.time_range.end
+            time_coord = ds[time_dim]
+            if not np.isnat(start) and not np.isnat(end):
+                times = time_coord.sel({time_dim: slice(start, end)})
+            elif not np.isnat(start):
+                times = time_coord.where(time_coord >= start, drop=True)
+            elif not np.isnat(end):
+                times = time_coord.where(time_coord <= end, drop=True)
             else:
-                times = ds[time_name]
+                times = time_coord
+        else:
+            times = ds[time_dim]
+        return np.asarray(times.values).astype("datetime64[s]")
 
-            time_values = times.values
-            total_len = len(time_values)
+    def split(self, num: int) -> list[SimpleDetector]:
+        self._ensure_open()
+        time_name, _, _ = self._loader.get_coords()
+        time_coord = self._loader.ensure_open()[time_name]
+
+        # Determine total length based on active time range
+        if self.time_range:
+            start, end = self.time_range.start, self.time_range.end
+            if not np.isnat(start) and not np.isnat(end):
+                active_times = time_coord.sel({time_name: slice(start, end)})
+            elif not np.isnat(start):
+                active_times = time_coord.where(time_coord >= start, drop=True)
+            elif not np.isnat(end):
+                active_times = time_coord.where(time_coord <= end, drop=True)
+            else:
+                active_times = time_coord
+        else:
+            active_times = time_coord
+
+        time_values = np.asarray(active_times.values).astype("datetime64[s]")
+        total_len = len(time_values)
 
         chunk_size = total_len // num
         remainder = total_len % num
 
-        grids: list[Grid] = []
+        detectors: list[SimpleDetector] = []
         for i in range(num):
             s_idx = i * chunk_size + min(i, remainder)
             e_idx = (i + 1) * chunk_size + min(i + 1, remainder)
@@ -143,88 +196,19 @@ class SimpleDetector:
             if s_idx >= e_idx:
                 continue
 
-            # Use actual time values for the sub-ranges
-            grids.append(
+            detectors.append(
                 SimpleDetector(
                     self.pathname,
-                    self.varname,
+                    self.requested_varname,
                     time_range=TimeRange(
                         start=time_values[s_idx], end=time_values[e_idx - 1]
                     ),
+                    global_start_idx=s_idx,
+                    global_total_steps=total_len,
+                    engine=self._loader.engine,
                 )
             )
-        return grids
-
-    def _local_extrema_func(
-        self,
-        buffer: NDArray[np.float64],
-        size: int,
-        threshold: float,
-        minmaxmode: Literal["min", "max"],
-    ) -> bool:
-        center_val = buffer[(size * size) // 2]
-
-        if np.isnan(center_val) or np.isinf(center_val):
-            return False
-
-        if minmaxmode == "min":
-            if center_val == buffer.min():
-                if threshold == 0.0:
-                    return True
-                # Quick check: 9th smallest value must be > center + threshold
-                return bool(np.partition(buffer, 8)[8] - center_val > threshold)
-            return False
-        else:
-            if center_val == buffer.max():
-                if threshold == 0.0:
-                    return True
-                # Quick check: 9th largest value must be < center - threshold
-                # Partition at index 8 of negated buffer finds 9th largest
-                ninth_largest = -np.partition(-buffer, 8)[8]
-                return bool(ninth_largest - center_val < -1.0 * threshold)
-            return False
-
-    def _local_extrema_filter(
-        self,
-        input_arr: NDArray[np.float64],
-        size: int,
-        threshold: float = 0.0,
-        minmaxmode: Literal["min", "max"] = "min",
-    ) -> NDArray[np.float64]:
-        if size % 2 != 1:
-            raise ValueError("size must be an odd number")
-
-        output = generic_filter(
-            input_arr,
-            self._local_extrema_func,
-            size=size,
-            mode="wrap",
-            extra_keywords={
-                "size": size,
-                "threshold": threshold,
-                "minmaxmode": minmaxmode,
-            },
-        )
-        half_size = size // 2
-        output[:half_size, :] = 0.0
-        output[-half_size:, :] = 0.0
-        return np.asarray(output)
-
-    def _remove_dup_laplace(
-        self,
-        data: NDArray[np.float64],
-        mask: NDArray[np.float64],
-        size: int = 5,
-    ) -> NDArray[np.float64]:
-        laplacian = np.multiply(laplace(data, mode="wrap"), mask)
-        return np.asarray(
-            generic_filter(
-                laplacian,
-                lambda b: bool(b[len(b) // 2] and b[len(b) // 2] == b.max()),
-                size=size,
-                mode="wrap",
-            )
-        )
+        return detectors
 
     def detect(
         self,
@@ -232,43 +216,48 @@ class SimpleDetector:
         threshold: float = 0.0,
         time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
-    ) -> DetectionResult:
-        time = self.get_time()
+    ) -> list[RawDetectionStep]:
+        if size % 2 != 1:
+            raise ValueError("size must be an odd number")
+
+        time_array = self.get_time()
         lat, lon = self.lat, self.lon
-        assert time is not None
+        assert time_array is not None
+        num_steps = len(time_array)
 
-        centers = []
-        num_steps = len(time)
+        # Optimization: Read the entire time range for this worker in one go
+        full_var = self.get_var()
+        assert full_var is not None
 
-        for it, t in enumerate(time):
-            ichunk = it % time_chunk_size
-            if ichunk == 0:
-                var = self.get_var(frame=(it, min(it + time_chunk_size, num_steps)))
+        raw_results: list[RawDetectionStep] = []
+        is_min = minmaxmode == "min"
 
-            assert var is not None
-            frame = var[ichunk, :, :]
+        for it, t in enumerate(time_array):
+            if (it + 1) % 10 == 0 or it == 0 or it == num_steps - 1:
+                if self.global_total_steps:
+                    s_idx = self.global_start_idx + it + 1
+                    g_steps = self.global_total_steps
+                    print(f"  Step {it + 1}/{num_steps} (Global: {s_idx}/{g_steps})")
+                else:
+                    print(f"  Step {it + 1}/{num_steps}")
 
-            # Xarray doesn't use masked arrays by default, but values can be NaN
-            fill = np.inf if minmaxmode == "min" else -np.inf
+            frame = full_var[it, :, :]
+
+            fill = np.inf if is_min else -np.inf
             filled_frame = np.where(np.isnan(frame), fill, frame)
 
-            extrema = self._local_extrema_filter(
-                filled_frame, size, threshold=threshold, minmaxmode=minmaxmode
-            )
+            extrema = _numba_extrema_filter(filled_frame, size, threshold, is_min)
 
-            # Ensure we don't detect centers on NaN pixels
             if np.isnan(frame).any():
                 extrema[np.isnan(frame)] = 0
 
-            extrema = self._remove_dup_laplace(filled_frame, extrema, size=5)
+            laplacian = _numba_laplace_masked(filled_frame, extrema)
+            extrema = _numba_remove_dup(laplacian, size=5)
 
-            # Convert datetime64 to seconds since 1970
+            # Extract raw data using Numba
+            r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
             time_val = t.astype("datetime64[s]")
 
-            center_list = [
-                Center(time_val, float(lat[i]), float(lon[j]), float(frame[i, j]))
-                for i, j in np.transpose(extrema.nonzero())
-            ]
-            print(f"Step {it + 1}/{num_steps}: Found {len(center_list)} centers")
-            centers.append(center_list)
-        return centers
+            raw_results.append((time_val, lat[r_idx], lon[c_idx], {self.varname: vals}))
+
+        return raw_results
