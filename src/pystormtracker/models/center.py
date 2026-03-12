@@ -57,4 +57,4 @@ class Center:
         return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
 
 
-DetectionResult: TypeAlias = list[list[Center]]
+DetectedCenters: TypeAlias = list[list[Center]]
