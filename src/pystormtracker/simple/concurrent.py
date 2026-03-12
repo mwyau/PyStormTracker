@@ -41,7 +41,7 @@ def run_simple_dask(
         with Client(cluster) as client:
             t1 = timeit.default_timer()
             print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
-            
+
             futures = []
             for d in detectors:
                 futures.append(
@@ -93,9 +93,9 @@ def run_simple_mpi(
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
     tracks = _detect_and_link(detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
-    
+
     comm.Barrier()
-    
+
     # Combiner phase
     linker = SimpleLinker()
     nstripe = 2
@@ -106,5 +106,5 @@ def run_simple_mpi(
             tracks_recv: Tracks = comm.recv(source=rank + nstripe // 2, tag=nstripe)
             linker.extend_track(tracks, tracks_recv)
         nstripe *= 2
-        
+
     return tracks

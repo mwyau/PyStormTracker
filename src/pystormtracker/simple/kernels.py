@@ -101,7 +101,7 @@ def _numba_remove_dup(laplacian: NDArray[np.float64], size: int) -> NDArray[np.f
     return out
 
 
-@nb.njit(nogil=True, cache=True)
+@nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
 def _numba_get_centers(
     extrema: NDArray[np.float64], frame: NDArray[np.float64]
 ) -> tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.float64]]:

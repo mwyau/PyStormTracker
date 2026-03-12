@@ -25,7 +25,7 @@ def haversine_matrix(
         * np.sin(dlon / 2.0) ** 2
     )
     c = 2 * np.arcsin(np.sqrt(a))
-    return R * c
+    return np.asarray(R * c)
 
 
 class SimpleLinker:
@@ -34,12 +34,12 @@ class SimpleLinker:
 
     def append(self, tracks: Tracks, step_data: RawDetectionStep) -> None:
         time_val, new_lats, new_lons, vars_dict = step_data
-        
+
         num_centers = len(new_lats)
         if num_centers == 0:
             tracks.tail = []
             return
-        
+
         current_time = time_val
 
         if not tracks.tail:
@@ -104,7 +104,7 @@ class SimpleLinker:
             it_match = matched_indices[ic]
             c_vars = {k: float(v[ic]) for k, v in vars_dict.items()}
             c = Center(time_val, float(new_lats[ic]), float(new_lons[ic]), c_vars)
-            
+
             if it_match != -1:
                 t = tail_tracks[it_match]
                 t.append(c)

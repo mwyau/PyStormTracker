@@ -79,6 +79,34 @@ To achieve this, the concept of a rigid `Grid` interface has been deprecated in 
 
 In this paradigm, the CLI does not dictate how data is loaded or split. The CLI simply instantiates a concrete tracker (e.g., `SimpleTracker`) and calls `.track(infile, varname)`. The `SimpleTracker` encapsulates its own specific logic for NetCDF reading, chunking, and worker dispatch. When a new tracker is introduced, it will implement the same `.track()` interface but is entirely free to handle data loading (e.g., reading spectral harmonics instead of 2D frames) in whatever way is most optimal for its mathematics.
 
+### 3.1 Standardized Python API
+
+The `Tracker` Protocol enforces a clean, user-friendly API that replaces complex internal models (like `TimeRange`) with simple strings or `np.datetime64` parameters:
+
+```python
+import pystormtracker as pst
+from pystormtracker.io.imilast import write_imilast
+
+# 1. Instantiate the tracker
+tracker = pst.SimpleTracker()
+
+# 2. Run the tracking algorithm. Returns an array-backed Tracks object.
+tracks = tracker.track(
+    infile="data.nc", 
+    varname="msl", 
+    mode="min",
+    start_time="2025-01-01",   # Simply pass strings or datetime64!
+    end_time="2025-01-31",     
+    backend="dask",            # serial, dask, or mpi
+    n_workers=4
+)
+
+# 3. Export
+write_imilast(tracks, "output.txt")
+```
+
+Internally, missing bounding dates are elegantly handled using `np.datetime64("NaT")` (Not a Time), allowing the internal logic to robustly slice open-ended time boundaries without relying on arbitrary string hacks like `"1000-01-01"`.
+
 ## 4. Summary of Improvements
 - **Zero Object Pickling:** Dask/MPI serialize flat arrays instantly.
 - **I/O Optimization:** Single-block contiguous reads bypass HDF5 lock contention.

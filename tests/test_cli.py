@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 
 from pystormtracker.cli import main, parse_args, run_tracker
-
 from pystormtracker.utils.data_utils import fetch_era5_msl
 
 

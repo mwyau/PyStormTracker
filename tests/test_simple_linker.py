@@ -1,6 +1,5 @@
 import numpy as np
 
-from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.simple.linker import SimpleLinker
 

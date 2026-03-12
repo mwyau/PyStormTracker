@@ -72,13 +72,15 @@ uv sync
 
 ## Usage
 
+### Command Line Interface
+
 Once installed, you can use the `stormtracker` command directly:
 
 ```bash
 stormtracker -i era5_msl_2025-2026_djf_2.5x2.5.nc -v msl -o my_tracks
 ```
 
-### Command Line Arguments
+#### Command Line Arguments
 
 | Argument | Short | Description |
 | :--- | :--- | :--- |
@@ -87,8 +89,39 @@ stormtracker -i era5_msl_2025-2026_djf_2.5x2.5.nc -v msl -o my_tracks
 | `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
 | `--num` | `-n` | Number of time steps to process. |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
-| `--backend` | `-b` | `dask` (default), `serial`, or `mpi`. |
+| `--backend` | `-b` | `serial` (default), `dask`, or `mpi`. |
 | `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
+
+### Python API
+
+You can easily integrate PyStormTracker into your own scripts or Jupyter Notebooks:
+
+```python
+import pystormtracker as pst
+from pystormtracker.io.imilast import write_imilast
+
+# 1. Instantiate the tracker (defaults to Serial backend)
+tracker = pst.SimpleTracker()
+
+# 2. Run the tracking algorithm. Returns an array-backed Tracks object.
+tracks = tracker.track(
+    infile="data.nc", 
+    varname="msl", 
+    mode="min",
+    start_time="2025-01-01",   # Optional: limit by start date
+    end_time="2025-01-31",     # Optional: limit by end date
+    backend="dask",            # Optional: use 'serial', 'dask', or 'mpi'
+    n_workers=4
+)
+
+# 3. Analyze the results programmatically
+for track in tracks:
+    if len(track) >= 8:
+        print(f"Track {track.track_id} lived for {len(track)} steps.")
+
+# 4. Export the data to standard IMILAST format
+write_imilast(tracks, "output.txt")
+```
 
 ## Development
 
