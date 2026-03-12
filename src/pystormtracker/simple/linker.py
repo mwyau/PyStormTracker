@@ -39,12 +39,19 @@ class SimpleLinker:
 
         num_centers = len(new_lats)
         if num_centers == 0:
-            tracks.tail = []
+            tracks._tail_ids = set()
             return
+
+        # Deterministic sorting of input centers (Spatial Priority)
+        # This ensures serial and parallel runs choose the same greedy matches.
+        sort_idx = np.lexsort((new_lons, new_lats))
+        new_lats = new_lats[sort_idx]
+        new_lons = new_lons[sort_idx]
+        vars_dict = {k: v[sort_idx] for k, v in vars_dict.items()}
 
         current_time = time_val
 
-        if not tracks.tail:
+        if not tracks._tail_ids:
             # First ever centers
             new_tail = []
             for i in range(num_centers):
@@ -74,13 +81,15 @@ class SimpleLinker:
             tracks.time_range.end = current_time
             return
 
-        tail_tracks = tracks.tail
+        # Deterministic sorting of existing tails
+        tail_tracks = sorted(tracks.tail, key=lambda t: (t[-1].lat, t[-1].lon))
         tail_lats = np.array([t[-1].lat for t in tail_tracks])
         tail_lons = np.array([t[-1].lon for t in tail_tracks])
 
         dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
         matched_indices = [-1] * num_centers
 
+        # Global greedy matching
         while True:
             has_match = False
             for ic in range(num_centers):
@@ -91,6 +100,7 @@ class SimpleLinker:
                     if dist_matrix[it_match, ic] >= self.threshold:
                         continue
 
+                    # Mutual closest check
                     if np.argmin(dist_matrix[it_match, :]) == ic:
                         matched_indices[ic] = it_match
                         dist_matrix[:, ic] = np.inf
@@ -138,7 +148,8 @@ class SimpleLinker:
             tracks1.time_range = tracks2.time_range
             return
 
-        t2_heads = tracks2.head
+        # Deterministic sorting of incoming heads
+        t2_heads = sorted(tracks2.head, key=lambda t: (t[0].lat, t[0].lon))
         if not t2_heads:
             return
 
@@ -146,7 +157,8 @@ class SimpleLinker:
         new_lats = np.array([c.lat for c in new_centers])
         new_lons = np.array([c.lon for c in new_centers])
 
-        t1_tails = tracks1.tail
+        # Deterministic sorting of existing tails
+        t1_tails = sorted(tracks1.tail, key=lambda t: (t[-1].lat, t[-1].lon))
         if not t1_tails:
             for tid in tracks2.unique_track_ids:
                 tracks1.append(Track(tid, tracks2))
@@ -160,17 +172,13 @@ class SimpleLinker:
 
         dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
 
-        # Invalidate matches that don't align in time or have a temporal gap
+        # Strict Temporal Continuity Fix
         gap_exists = False
         t1_tr = tracks1.time_range
         t2_tr = tracks2.time_range
-        if (
-            t1_tr
-            and t2_tr
-            and t1_tr.step
-            and t2_tr.start - t1_tr.step > t1_tr.end
-        ):
-            gap_exists = True
+        if t1_tr and t2_tr and t1_tr.step:
+            if t2_tr.start - t1_tr.step > t1_tr.end:
+                gap_exists = True
 
         expected_start_time = tracks2.time_range.start if tracks2.time_range else None
 

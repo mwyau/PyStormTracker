@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import threading
 from pathlib import Path
-from typing import ClassVar, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
+from ..io.loader import DataLoader
 from ..models.tracks import TimeRange
 from .kernels import (
     _numba_extrema_filter,
@@ -31,8 +31,11 @@ class SimpleDetector:
     Uses xarray for robust coordinate handling and lazy-loading.
     """
 
-    _ds_cache: ClassVar[dict[Path, xr.Dataset]] = {}
-    _ds_lock: ClassVar[threading.Lock] = threading.Lock()
+    # Common variable name aliases
+    VAR_MAPPING: dict[str, list[str]] = {
+        "msl": ["msl", "slp", "prmsl", "mean_sea_level_pressure"],
+        "vo": ["vo", "rv", "relative_vorticity", "vorticity"],
+    }
 
     def __init__(
         self,
@@ -41,62 +44,58 @@ class SimpleDetector:
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
+        engine: str | None = None,
     ) -> None:
         self.pathname = Path(pathname)
-        self.varname = varname
+        self.requested_varname = varname
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
-
-        self._ds: xr.Dataset | None = None
+        
+        self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self._lat_name: str = "latitude"
-        self._lon_name: str = "longitude"
-        self._time_name: str = "time"
+        self.varname = varname  # Updated after open
 
     def _ensure_open(self) -> None:
         """Ensures the xarray dataset is open and basic variables are mapped."""
-        if self._ds is None:
-            with self._ds_lock:
-                if self.pathname not in self._ds_cache:
-                    # open_dataset is lazy by default
-                    # chunks={} enables dask-backed arrays for better threading
-                    
-                    # Detect engine based on extension
-                    ext = self.pathname.suffix.lower()
-                    if ext in [".grib", ".grib2", ".grb"]:
-                        engine = "cfgrib"
-                    else:
-                        engine = "h5netcdf"
+        if self._data is None:
+            ds = self._loader.ensure_open()
+            
+            # Identify the actual variable name using mapping aliases
+            actual_var = None
+            possible_names = self.VAR_MAPPING.get(
+                self.requested_varname, [self.requested_varname]
+            )
+            for name in possible_names:
+                if name in ds.data_vars:
+                    actual_var = name
+                    break
 
-                    try:
-                        self._ds_cache[self.pathname] = xr.open_dataset(
-                            self.pathname, engine=engine, chunks={}
-                        )
-                    except Exception:
-                        # Fallback to default engine if specified engine fails
-                        self._ds_cache[self.pathname] = xr.open_dataset(
-                            self.pathname, chunks={}
-                        )
-                self._ds = self._ds_cache[self.pathname]
-            self._data = self._ds[self.varname]
+            if actual_var is None:
+                if self.requested_varname in ds.data_vars:
+                    actual_var = self.requested_varname
+                else:
+                    raise KeyError(
+                        f"Variable '{self.requested_varname}' not found. "
+                        f"Available: {list(ds.data_vars.keys())}"
+                    )
 
-            # Identify coordinate names
-            self._lat_name = "latitude" if "latitude" in self._ds.coords else "lat"
-            self._lon_name = "longitude" if "longitude" in self._ds.coords else "lon"
-            self._time_name = "time" if "time" in self._ds.coords else "valid_time"
+            self.varname = actual_var
+            self._data = ds[self.varname]
 
     @property
     def lat(self) -> NDArray[np.float64]:
         self._ensure_open()
-        assert self._ds is not None
-        return np.asarray(self._ds[self._lat_name].values)
+        ds = self._loader.ensure_open()
+        _, lat_name, _ = self._loader.get_coords()
+        return np.asarray(ds[lat_name].values)
 
     @property
     def lon(self) -> NDArray[np.float64]:
         self._ensure_open()
-        assert self._ds is not None
-        return np.asarray(self._ds[self._lon_name].values)
+        ds = self._loader.ensure_open()
+        _, _, lon_name = self._loader.get_coords()
+        return np.asarray(ds[lon_name].values)
 
     def get_var(
         self, frame: int | tuple[int, int] | None = None
@@ -104,12 +103,19 @@ class SimpleDetector:
         self._ensure_open()
         assert self._data is not None
 
-        # Base data for the configured time range
-        time_dim = self._data.dims[0]
+        time_dim, _, _ = self._loader.get_coords()
+        
         if self.time_range:
-            data_range = self._data.sel(
-                {time_dim: slice(self.time_range.start, self.time_range.end)}
-            )
+            start, end = self.time_range.start, self.time_range.end
+            sel_dict = {}
+            if not np.isnat(start) and not np.isnat(end):
+                sel_dict[time_dim] = slice(start, end)
+            elif not np.isnat(start):
+                sel_dict[time_dim] = self._data[time_dim] >= start
+            elif not np.isnat(end):
+                sel_dict[time_dim] = self._data[time_dim] <= end
+            
+            data_range = self._data.sel(sel_dict) if sel_dict else self._data
         else:
             data_range = self._data
 
@@ -140,46 +146,45 @@ class SimpleDetector:
 
     def get_time(self) -> NDArray[np.datetime64] | None:
         self._ensure_open()
-        assert self._ds is not None
+        ds = self._loader.ensure_open()
+        time_dim, _, _ = self._loader.get_coords()
+        
         if self.time_range:
-            times = self._ds[self._time_name].sel(
-                {self._time_name: slice(self.time_range.start, self.time_range.end)}
-            )
+            start, end = self.time_range.start, self.time_range.end
+            sel_dict = {}
+            if not np.isnat(start) and not np.isnat(end):
+                sel_dict[time_dim] = slice(start, end)
+            elif not np.isnat(start):
+                sel_dict[time_dim] = ds[time_dim] >= start
+            elif not np.isnat(end):
+                sel_dict[time_dim] = ds[time_dim] <= end
+                
+            times = ds[time_dim].sel(sel_dict) if sel_dict else ds[time_dim]
         else:
-            times = self._ds[self._time_name]
-        return np.asarray(times.values)
-
-    def get_lat(self) -> NDArray[np.float64] | None:
-        return self.lat
-
-    def get_lon(self) -> NDArray[np.float64] | None:
-        return self.lon
+            times = ds[time_dim]
+        return np.asarray(times.values).astype("datetime64[s]")
 
     def split(self, num: int) -> list[SimpleDetector]:
-        if self._ds is not None:
-            raise RuntimeError("Cannot split after file has been opened.")
+        self._ensure_open()
+        time_name, _, _ = self._loader.get_coords()
+        time_coord = self._loader.ensure_open()[time_name]
+        
+        # Determine total length based on active time range
+        if self.time_range:
+            start, end = self.time_range.start, self.time_range.end
+            sel_dict = {}
+            if not np.isnat(start) and not np.isnat(end):
+                sel_dict[time_name] = slice(start, end)
+            elif not np.isnat(start):
+                sel_dict[time_name] = time_coord >= start
+            elif not np.isnat(end):
+                sel_dict[time_name] = time_coord <= end
+            active_times = time_coord.sel(sel_dict) if sel_dict else time_coord
+        else:
+            active_times = time_coord
 
-        # Open lazily using chunks={} to only read metadata
-        with xr.open_dataset(self.pathname, chunks={}) as ds:
-            time_name = "time" if "time" in ds.coords else "valid_time"
-            time_coord = ds[time_name]
-            total_len = len(time_coord)
-
-            # Slicing if there's already a time range
-            if self.time_range:
-                # Find indices for the given time range
-                # Use sel with nearest to be robust, but indices are preferred
-                times_subset = time_coord.sel(
-                    {time_name: slice(self.time_range.start, self.time_range.end)}
-                )
-                total_len = len(times_subset)
-                # To be truly lazy, we can use the relative indices if we knew them
-                # but we need some values here.
-                # Let's get values only for the subset if it's already a slice.
-                time_values = times_subset.values
-            else:
-                # No subset yet, get metadata only
-                time_values = None
+        time_values = np.asarray(active_times.values).astype("datetime64[s]")
+        total_len = len(time_values)
 
         chunk_size = total_len // num
         remainder = total_len % num
@@ -192,25 +197,16 @@ class SimpleDetector:
             if s_idx >= e_idx:
                 continue
 
-            # Determine TimeRange for this chunk
-            if time_values is not None:
-                # Use already loaded subset
-                s_time = time_values[s_idx]
-                e_time = time_values[e_idx - 1]
-            else:
-                # Load only the first and last time for this chunk lazily
-                with xr.open_dataset(self.pathname, chunks={}) as ds:
-                    time_coord = ds[time_name]
-                    s_time = time_coord[s_idx].values
-                    e_time = time_coord[e_idx - 1].values
-
             detectors.append(
                 SimpleDetector(
                     self.pathname,
-                    self.varname,
-                    time_range=TimeRange(start=s_time, end=e_time),
+                    self.requested_varname,
+                    time_range=TimeRange(
+                        start=time_values[s_idx], end=time_values[e_idx - 1]
+                    ),
                     global_start_idx=s_idx,
                     global_total_steps=total_len,
+                    engine=self._loader.engine,
                 )
             )
         return detectors
@@ -231,7 +227,6 @@ class SimpleDetector:
         num_steps = len(time_array)
 
         # Optimization: Read the entire time range for this worker in one go
-        # This significantly improves I/O performance
         full_var = self.get_var()
         assert full_var is not None
 
@@ -239,16 +234,11 @@ class SimpleDetector:
         is_min = minmaxmode == "min"
 
         for it, t in enumerate(time_array):
-            # Print progress using global indices if available
             if (it + 1) % 10 == 0 or it == 0 or it == num_steps - 1:
                 if self.global_total_steps:
-                    s_idx = self.global_start_idx + 1
-                    e_idx = self.global_start_idx + num_steps
-                    idx_range = f"{s_idx}-{e_idx}"
-                    step_prog = f"Step {it + 1}/{num_steps}"
-                    g_idx = self.global_start_idx + it + 1
-                    glob_prog = f"Global: {g_idx}/{self.global_total_steps}"
-                    print(f"  [{idx_range}] {step_prog} ({glob_prog})")
+                    s_idx = self.global_start_idx + it + 1
+                    g_steps = self.global_total_steps
+                    print(f"  Step {it + 1}/{num_steps} (Global: {s_idx}/{g_steps})")
                 else:
                     print(f"  Step {it + 1}/{num_steps}")
 

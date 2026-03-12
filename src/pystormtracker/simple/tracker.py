@@ -45,9 +45,10 @@ class SimpleTracker:
         varname: str,
         time_range: TimeRange | None,
         mode: Literal["min", "max"],
+        engine: str | None = None,
     ) -> Tracks:
         detector = SimpleDetector(
-            pathname=infile, varname=varname, time_range=time_range
+            pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
         tracks = _detect_and_link(
             detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode
@@ -63,11 +64,12 @@ class SimpleTracker:
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
+        engine: str | None = None,
     ) -> Tracks:
 
         time_range = None
         if start_time is not None or end_time is not None:
-            # Requires opening the file to find exact matching start/end bounds
+            # Requires opening the file to find exact matching start/end bounds 
             # if one is missing, but TimeRange handles exact numpy datetimes.
             st = np.datetime64(start_time) if start_time else None
             et = np.datetime64(end_time) if end_time else None
@@ -84,12 +86,12 @@ class SimpleTracker:
         if backend == "mpi":
             from .concurrent import run_simple_mpi
 
-            tracks = run_simple_mpi(infile, varname, time_range, mode)
+            tracks = run_simple_mpi(infile, varname, time_range, mode, engine)
         elif backend == "dask":
             from .concurrent import run_simple_dask
 
-            tracks = run_simple_dask(infile, varname, time_range, mode, n_workers)
+            tracks = run_simple_dask(infile, varname, time_range, mode, n_workers, engine)
         else:
-            tracks = self._detect_serial(infile, varname, time_range, mode)
+            tracks = self._detect_serial(infile, varname, time_range, mode, engine)
 
         return tracks
