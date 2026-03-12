@@ -73,7 +73,6 @@ packages = ["src/pystormtracker"]
 dev = [
     "mypy>=1.19.1",
     "pooch>=1.9.0",
-    "pre-commit>=4.5.1",
     "PyStormTracker[all]",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -110,7 +109,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --cov=pystormtracker --cov-report=term-missing --cov-report=xml"
+addopts = "-ra -q"
 testpaths = [
     "tests",
 ]

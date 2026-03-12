@@ -106,7 +106,7 @@ jobs:
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
         run: |
-          uv run pytest -vv
+          uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
@@ -137,7 +137,7 @@ jobs:
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
         run: |
-          uv run pytest -vv tests/test_integration.py --run-integration
+          uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration.py --run-integration
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:

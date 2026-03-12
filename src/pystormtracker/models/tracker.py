@@ -19,6 +19,6 @@ class Tracker(Protocol):
         varname: str,
         time_range: TimeRange | None = None,
         mode: Literal["min", "max"] = "min",
-        backend: Literal["serial", "mpi", "dask"] = "dask",
+        backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
     ) -> Tracks: ...

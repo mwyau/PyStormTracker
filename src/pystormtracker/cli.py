@@ -18,7 +18,7 @@ def run_tracker(
     outfile: str | None,
     time_range: TimeRange | None = None,
     mode: Literal["min", "max"] = "min",
-    backend: Backend = "dask",
+    backend: Backend = "serial",
     n_workers: int | None = None,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
@@ -83,8 +83,8 @@ def parse_args() -> Namespace:
         "-b",
         "--backend",
         choices=["serial", "mpi", "dask"],
-        default="dask",
-        help="Parallel backend. Default is 'dask'.",
+        default="serial",
+        help="Parallel backend. Default is 'serial'.",
     )
     parser.add_argument(
         "-w",
