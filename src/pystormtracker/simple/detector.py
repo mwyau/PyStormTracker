@@ -31,12 +31,6 @@ class SimpleDetector:
     Uses xarray for robust coordinate handling and lazy-loading.
     """
 
-    # Common variable name aliases
-    VAR_MAPPING: dict[str, list[str]] = {
-        "msl": ["msl", "slp", "prmsl", "mean_sea_level_pressure"],
-        "vo": ["vo", "rv", "relative_vorticity", "vorticity"],
-    }
-
     def __init__(
         self,
         pathname: str | Path,
@@ -63,7 +57,7 @@ class SimpleDetector:
             
             # Identify the actual variable name using mapping aliases
             actual_var = None
-            possible_names = self.VAR_MAPPING.get(
+            possible_names = DataLoader.VAR_MAPPING.get(
                 self.requested_varname, [self.requested_varname]
             )
             for name in possible_names:
