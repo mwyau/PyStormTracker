@@ -176,9 +176,13 @@ class SimpleLinker:
         gap_exists = False
         t1_tr = tracks1.time_range
         t2_tr = tracks2.time_range
-        if t1_tr and t2_tr and t1_tr.step:
-            if t2_tr.start - t1_tr.step > t1_tr.end:
-                gap_exists = True
+        if (
+            t1_tr
+            and t2_tr
+            and t1_tr.step
+            and t2_tr.start - t1_tr.step > t1_tr.end
+        ):
+            gap_exists = True
 
         expected_start_time = tracks2.time_range.start if tracks2.time_range else None
 

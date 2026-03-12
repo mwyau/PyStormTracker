@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import ClassVar, Literal, TypeAlias
 
 import numpy as np
 import xarray as xr
@@ -31,6 +32,9 @@ class SimpleDetector:
     Uses xarray for robust coordinate handling and lazy-loading.
     """
 
+    _ds_cache: ClassVar[dict[Path, xr.Dataset]] = {}
+    _ds_lock: ClassVar[threading.Lock] = threading.Lock()
+
     def __init__(
         self,
         pathname: str | Path,
@@ -45,7 +49,7 @@ class SimpleDetector:
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
-        
+
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
         self.varname = varname  # Updated after open
@@ -54,7 +58,7 @@ class SimpleDetector:
         """Ensures the xarray dataset is open and basic variables are mapped."""
         if self._data is None:
             ds = self._loader.ensure_open()
-            
+
             # Identify the actual variable name using mapping aliases
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
@@ -98,18 +102,19 @@ class SimpleDetector:
         assert self._data is not None
 
         time_dim, _, _ = self._loader.get_coords()
-        
+
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
-            sel_dict = {}
+            # Handle NaT bounds with explicit types
+            # xarray .sel() accepts DataArray or slice
             if not np.isnat(start) and not np.isnat(end):
-                sel_dict[time_dim] = slice(start, end)
+                data_range = self._data.sel({time_dim: slice(start, end)})
             elif not np.isnat(start):
-                sel_dict[time_dim] = self._data[time_dim] >= start
+                data_range = self._data.where(self._data[time_dim] >= start, drop=True)
             elif not np.isnat(end):
-                sel_dict[time_dim] = self._data[time_dim] <= end
-            
-            data_range = self._data.sel(sel_dict) if sel_dict else self._data
+                data_range = self._data.where(self._data[time_dim] <= end, drop=True)
+            else:
+                data_range = self._data
         else:
             data_range = self._data
 
@@ -142,18 +147,18 @@ class SimpleDetector:
         self._ensure_open()
         ds = self._loader.ensure_open()
         time_dim, _, _ = self._loader.get_coords()
-        
+
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
-            sel_dict = {}
+            time_coord = ds[time_dim]
             if not np.isnat(start) and not np.isnat(end):
-                sel_dict[time_dim] = slice(start, end)
+                times = time_coord.sel({time_dim: slice(start, end)})
             elif not np.isnat(start):
-                sel_dict[time_dim] = ds[time_dim] >= start
+                times = time_coord.where(time_coord >= start, drop=True)
             elif not np.isnat(end):
-                sel_dict[time_dim] = ds[time_dim] <= end
-                
-            times = ds[time_dim].sel(sel_dict) if sel_dict else ds[time_dim]
+                times = time_coord.where(time_coord <= end, drop=True)
+            else:
+                times = time_coord
         else:
             times = ds[time_dim]
         return np.asarray(times.values).astype("datetime64[s]")
@@ -162,18 +167,18 @@ class SimpleDetector:
         self._ensure_open()
         time_name, _, _ = self._loader.get_coords()
         time_coord = self._loader.ensure_open()[time_name]
-        
+
         # Determine total length based on active time range
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
-            sel_dict = {}
             if not np.isnat(start) and not np.isnat(end):
-                sel_dict[time_name] = slice(start, end)
+                active_times = time_coord.sel({time_name: slice(start, end)})
             elif not np.isnat(start):
-                sel_dict[time_name] = time_coord >= start
+                active_times = time_coord.where(time_coord >= start, drop=True)
             elif not np.isnat(end):
-                sel_dict[time_name] = time_coord <= end
-            active_times = time_coord.sel(sel_dict) if sel_dict else time_coord
+                active_times = time_coord.where(time_coord <= end, drop=True)
+            else:
+                active_times = time_coord
         else:
             active_times = time_coord
 
