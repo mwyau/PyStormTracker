@@ -10,7 +10,6 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..models.center import Center, DetectedCenters
-from ..models.grid import Grid
 from ..models.time import TimeRange
 from .kernels import (
     _numba_extrema_filter,
@@ -142,7 +141,7 @@ class SimpleDetector:
     def get_lon(self) -> NDArray[np.float64] | None:
         return self.lon
 
-    def split(self, num: int) -> list[Grid]:
+    def split(self, num: int) -> list[SimpleDetector]:
         if self._ds is not None:
             raise RuntimeError("Cannot split after file has been opened.")
 
@@ -171,7 +170,7 @@ class SimpleDetector:
         chunk_size = total_len // num
         remainder = total_len % num
 
-        grids: list[Grid] = []
+        grids: list[SimpleDetector] = []
         for i in range(num):
             s_idx = i * chunk_size + min(i, remainder)
             e_idx = (i + 1) * chunk_size + min(i + 1, remainder)

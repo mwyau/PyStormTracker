@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from mpi4py import MPI
 
-from ..models import DetectedCenters, Grid, TimeRange, Tracks
+from ..models import DetectedCenters, TimeRange, Tracks
 from .detector import SimpleDetector
 from .linker import SimpleLinker
 
@@ -20,7 +20,7 @@ def _link_centers(centers: DetectedCenters) -> Tracks:
 
 
 def _detect_and_link(
-    grid: Grid, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
+    grid: SimpleDetector, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
 ) -> Tracks:
     """Worker task: Detects centers and immediately links them into a local Tracks object."""
     centers = grid.detect(
@@ -62,11 +62,11 @@ class SimpleTracker:
             grid_obj = SimpleDetector(
                 pathname=infile, varname=varname, time_range=time_range
             )
-            grids: list[Grid] | None = grid_obj.split(size)
+            grids: list[SimpleDetector] | None = grid_obj.split(size)
         else:
             grids = None
 
-        grid: Grid = comm.scatter(grids, root=root)
+        grid: SimpleDetector = comm.scatter(grids, root=root)
         tracks = _detect_and_link(grid, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
         
         return tracks, comm
@@ -139,7 +139,7 @@ class SimpleTracker:
         varname: str,
         time_range: TimeRange | None = None,
         mode: Literal["min", "max"] = "min",
-        backend: Literal["serial", "mpi", "dask"] = "dask",
+        backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
     ) -> Tracks:
         use_mpi = backend == "mpi"
