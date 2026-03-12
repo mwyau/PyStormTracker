@@ -47,5 +47,6 @@ def benchmark() -> None:
     with open("benchmark_results_025.txt", "w") as f:
         f.write(summary)
 
+
 if __name__ == "__main__":
     benchmark()

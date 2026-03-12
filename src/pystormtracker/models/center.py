@@ -54,6 +54,3 @@ class Center:
         avglat = (self.lat + center.lat) / 2
         dlon = center.lon - self.lon
         return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
-
-
-

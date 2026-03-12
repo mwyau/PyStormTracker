@@ -69,8 +69,7 @@ def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 4) 
 
     with open(outfile_str, "w", newline="") as f:
         header = (
-            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,"
-            "LongE,LatN,Intensity1\n"
+            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n"
         )
         f.write(header)
 
