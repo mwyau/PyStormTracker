@@ -25,10 +25,11 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
+    "distributed>=2024.1.0",
     "h5netcdf>=1.0.0",
     "h5py>=3.8.0",
     "numpy>=1.24.0",
-    "scipy>=1.9.2",
+    "numba>=0.60.0",
     "xarray>=2024.9.0",
 ]
 
@@ -100,12 +101,11 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
-ignore_missing_imports = true
 disallow_untyped_defs = true
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
-module = ["distributed.*", "dask.*", "scipy.*"]
+module = ["dask.*", "numba.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
