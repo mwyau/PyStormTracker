@@ -79,8 +79,8 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
-        pytest.param(("msl", "min"), id="msl_min_short"),
-        pytest.param(("vo", "max"), id="vo_max_short"),
+        pytest.param(("msl", "min"), id="msl_min_full"),
+        pytest.param(("vo", "max"), id="vo_max_full"),
     ],
 )
 def config(
@@ -113,8 +113,6 @@ def shared_serial_output(
         mode,
         "-o",
         str(out_file),
-        "-n",
-        "50",  # Keep it fast
         "--backend",
         "serial",
     ]
@@ -145,8 +143,6 @@ def test_dask_vs_serial(
         mode,
         "-o",
         str(out_file),
-        "-n",
-        "50",
         "--backend",
         "dask",
         "--workers",
@@ -179,8 +175,6 @@ def test_mpi_vs_serial(
         mode,
         "-o",
         str(mpi_out),
-        "-n",
-        "50",
         "--backend",
         "mpi",
     ]
@@ -204,8 +198,6 @@ def test_grib_serial(tmp_path: Path) -> None:
         "min",
         "-o",
         str(out_file),
-        "-n",
-        "20",
         "--backend",
         "serial",
     ]
@@ -231,8 +223,6 @@ def test_grib_vo_serial(tmp_path: Path) -> None:
         "max",
         "-o",
         str(out_file),
-        "-n",
-        "20",
         "--backend",
         "serial",
     ]
@@ -257,7 +247,10 @@ def test_legacy_regression(
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference file {ref_file} not found")
 
-    # Note: Legacy reference is for FULL dataset (360 steps)
-    # Our shared_serial_output is now 50 steps.
-    # We should skip this regression test unless we are running full.
-    pytest.skip("Skipping legacy regression for shortened test run")
+    compare_tracks(
+        ref_file,
+        shared_serial_output,
+        length_diff_tol=1,
+        coord_tol=15.0,
+        intensity_tol=500.0,
+    )
