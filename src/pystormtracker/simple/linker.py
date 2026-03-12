@@ -159,6 +159,19 @@ class SimpleLinker:
         tail_lons = np.array([t[-1].lon for t in t1_tails])
 
         dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
+
+        # Invalidate matches that don't align in time or have a temporal gap
+        gap_exists = False
+        if tracks1.time_range and tracks2.time_range and tracks1.time_range.step:
+            if tracks2.time_range.start - tracks1.time_range.step > tracks1.time_range.end:
+                gap_exists = True
+
+        expected_start_time = tracks2.time_range.start if tracks2.time_range else None
+
+        for ic, c in enumerate(new_centers):
+            if gap_exists or c.time != expected_start_time:
+                dist_matrix[:, ic] = np.inf
+
         matched_indices = [-1] * len(new_centers)
 
         while True:
