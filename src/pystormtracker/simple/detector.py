@@ -61,12 +61,20 @@ class SimpleDetector:
                 if self.pathname not in self._ds_cache:
                     # open_dataset is lazy by default
                     # chunks={} enables dask-backed arrays for better threading
-                    # Use h5netcdf engine for better thread safety if available
+                    
+                    # Detect engine based on extension
+                    ext = self.pathname.suffix.lower()
+                    if ext in [".grib", ".grib2", ".grb"]:
+                        engine = "cfgrib"
+                    else:
+                        engine = "h5netcdf"
+
                     try:
                         self._ds_cache[self.pathname] = xr.open_dataset(
-                            self.pathname, engine="h5netcdf", chunks={}
+                            self.pathname, engine=engine, chunks={}
                         )
                     except Exception:
+                        # Fallback to default engine if specified engine fails
                         self._ds_cache[self.pathname] = xr.open_dataset(
                             self.pathname, chunks={}
                         )
