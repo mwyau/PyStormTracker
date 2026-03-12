@@ -32,7 +32,7 @@ class SimpleLinker:
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
 
-    def append_raw(self, tracks: Tracks, step_data: RawDetectionStep) -> None:
+    def append(self, tracks: Tracks, step_data: RawDetectionStep) -> None:
         time_val, new_lats, new_lons, vars_dict = step_data
         
         num_centers = len(new_lats)

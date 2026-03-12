@@ -12,7 +12,7 @@ def _link_centers(raw_steps: list[RawDetectionStep]) -> Tracks:
     tracks = Tracks()
     linker = SimpleLinker()
     for step_data in raw_steps:
-        linker.append_raw(tracks, step_data)
+        linker.append(tracks, step_data)
     return tracks
 
 
@@ -20,7 +20,7 @@ def _detect_and_link(
     detector: SimpleDetector, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
 ) -> Tracks:
     """Worker task: Detects centers and immediately links them into a local Tracks object."""
-    raw_steps = detector.detect_raw(
+    raw_steps = detector.detect(
         size=size, threshold=threshold, time_chunk_size=time_chunk_size, minmaxmode=mode
     )
     return _link_centers(raw_steps)
