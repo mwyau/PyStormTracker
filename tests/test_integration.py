@@ -11,7 +11,7 @@ import pytest
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.stormtracker import main
 
-from .data_utils import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
