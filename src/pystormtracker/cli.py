@@ -102,8 +102,8 @@ def main() -> None:
 
     if args.num is not None:
         # Determine actual times for the first n steps
-        grid_preview = SimpleDetector(pathname=args.input, varname=args.var)
-        times = grid_preview.get_time()
+        detector_preview = SimpleDetector(pathname=args.input, varname=args.var)
+        times = detector_preview.get_time()
         assert times is not None
         num = min(args.num, len(times))
         time_range = TimeRange(
