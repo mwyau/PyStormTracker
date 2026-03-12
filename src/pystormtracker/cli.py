@@ -22,6 +22,7 @@ def run_tracker(
     mode: Literal["min", "max"] = "min",
     backend: Backend = "serial",
     n_workers: int | None = None,
+    engine: str | None = None,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -44,6 +45,7 @@ def run_tracker(
         mode=mode,
         backend=backend,
         n_workers=n_workers,
+        engine=engine,
     )
 
     # Export Phase
@@ -95,6 +97,13 @@ def parse_args() -> Namespace:
         default=None,
         help="Number of workers for Dask. Defaults to number of CPU cores.",
     )
+    parser.add_argument(
+        "-e",
+        "--engine",
+        choices=["h5netcdf", "netcdf4", "cfgrib"],
+        default=None,
+        help="Xarray engine to use for reading the input file.",
+    )
     return parser.parse_args()
 
 
@@ -105,7 +114,9 @@ def main() -> None:
 
     if args.num is not None:
         # Determine actual times for the first n steps
-        detector_preview = SimpleDetector(pathname=args.input, varname=args.var)
+        detector_preview = SimpleDetector(
+            pathname=args.input, varname=args.var, engine=args.engine
+        )
         times = detector_preview.get_time()
         assert times is not None
         num = min(args.num, len(times))
@@ -121,6 +132,7 @@ def main() -> None:
         mode=args.mode,
         backend=args.backend,
         n_workers=args.workers,
+        engine=args.engine,
     )
 
 

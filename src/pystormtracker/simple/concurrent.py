@@ -26,6 +26,7 @@ def run_simple_dask(
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     n_workers: int | None,
+    engine: str | None = None,
 ) -> Tracks:
     from dask.distributed import Client, LocalCluster
 
@@ -33,7 +34,7 @@ def run_simple_dask(
         n_workers = os.cpu_count() or 4
 
     detector_obj = SimpleDetector(
-        pathname=infile, varname=varname, time_range=time_range
+        pathname=infile, varname=varname, time_range=time_range, engine=engine
     )
     detectors = detector_obj.split(n_workers)
 
@@ -80,7 +81,11 @@ def run_simple_dask(
 
 
 def run_simple_mpi(
-    infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
+    infile: str,
+    varname: str,
+    time_range: TimeRange | None,
+    mode: Literal["min", "max"],
+    engine: str | None = None,
 ) -> Tracks:
     from mpi4py import MPI
 
@@ -91,7 +96,7 @@ def run_simple_mpi(
 
     if rank == root:
         detector_obj = SimpleDetector(
-            pathname=infile, varname=varname, time_range=time_range
+            pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
     else:

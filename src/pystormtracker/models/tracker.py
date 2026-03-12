@@ -23,4 +23,5 @@ class Tracker(Protocol):
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
+        engine: str | None = None,
     ) -> Tracks: ...

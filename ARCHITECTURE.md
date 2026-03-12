@@ -1,115 +1,74 @@
 # PyStormTracker Architecture
 
-This document describes the modern, high-performance architecture of PyStormTracker, specifically detailing the transition from the legacy nested-object approach to the current vectorized, array-backed paradigm.
+This document describes the modern, high-performance architecture of PyStormTracker, detailing how it leverages vectorization and array-backed models to process massive climate datasets efficiently.
 
 ## 1. High-Level Design Philosophy
 
-PyStormTracker is designed to analyze massive meteorological datasets (e.g., decades of ERA5 reanalysis data at 0.25° resolution) to detect and link storm centers into continuous tracks.
-
-The architecture is built upon three core pillars:
-1.  **Tracker Protocols:** The codebase is designed to support multiple completely different tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) under a single, unified CLI and API.
-2.  **Vectorization First:** The heavy lifting is done in C-speed environments via NumPy broadcasting and Numba JIT compilation, keeping the Python layer strictly for orchestration.
-3.  **Zero-Copy Parallelism:** The data models are structured as flat, contiguous NumPy arrays, allowing Dask processes and MPI workers to serialize and transmit millions of data points with near-zero pickling overhead.
+PyStormTracker is built for scale and extensibility. The architecture is centered around three core principles:
+1.  **Unified API (Tracker Protocol):** A structural interface that allows the CLI and Python API to support multiple tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) interchangeably.
+2.  **Vectorization & JIT:** Heavy mathematical operations are offloaded to **Numba** JIT-compiled kernels and **NumPy** broadcasting, bypassing Python's loop overhead and Global Interpreter Lock (GIL).
+3.  **Zero-Copy Parallelism:** Core data structures are maintained as flat NumPy arrays, enabling rapid serialization across Dask processes and MPI workers with near-zero overhead.
 
 ---
 
-## 2. Comparing the Old vs. New Architecture
+## 2. Modern Core Components
 
-### 2.1 Data Models (`Tracks`, `Track`, `Center`)
+### 2.1 Array-Backed Data Models (`Tracks`, `Track`, `Center`)
+The data models are the foundation of the library's performance. 
+*   **`Tracks`**: The central container holding contiguous 1D NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and a dictionary of scientific variables.
+*   **`Track`**: A lightweight "view" into the `Tracks` arrays for a specific ID.
+*   **`Center`**: A simple dataclass used strictly for iteration or final data export.
 
-**The Old Architecture:**
-Previously, the data was modeled using a deeply nested structure of custom Python objects:
-*   A `Tracks` object contained a `list[Track]`.
-*   A `Track` object contained a `list[Center]`.
-*   A `Center` was a dataclass holding individual `float` and `datetime` values.
-
-*Why it bottlenecked:* Python is terrible at managing millions of tiny objects. Creating millions of `Center` instances invoked massive memory overhead and garbage collection pauses. More importantly, when running in parallel (Dask Processes or MPI), passing these objects between processes required the `pickle` module to traverse the entire nested tree, serialize every object, transmit it, and deserialize it on the other side. This serialization overhead often took longer than the actual scientific computation, resulting in a 1.0x (or worse) parallel speedup.
-
-**The New Architecture:**
-The models have been rewritten to be **Array-Backed**. The concept of a single "point" or "list" is now merely a logical view over contiguous memory.
-*   The `Tracks` class is the sole owner of the data. Internally, it holds exactly five 1D NumPy arrays: `track_ids`, `times`, `lats`, `lons`, and a dictionary of variables.
-*   A `Track` object no longer holds a list of centers. It is instantiated with a `track_id` and a reference to the parent `Tracks` object. It simply yields a "view" of the arrays where the ID matches.
-*   The `Center` class still exists strictly for backward compatibility and simple iteration, but it is entirely bypassed during heavy computation.
-
-*Why it's fast:* NumPy arrays are blocks of C-contiguous memory. When Dask or MPI needs to send a worker's results to the main node, it simply drops the raw memory buffer into the socket. There is zero object traversal.
-
-While Xarray is excellent for data loading and coordinate management (and is still used in the `Detector` phase), it is intentionally avoided in the `Tracks` model to maximize performance. Raw NumPy arrays provide significantly lower serialization overhead and enable the linker to use extremely fast C-level broadcasting for distance calculations without the constant metadata lookup and coordinate alignment checks that Xarray would require.
+**Benefits:** By avoiding the creation of millions of Python objects, memory usage is minimized, and parallel data transfer (via Pickle) is transformed from a major bottleneck into a trivial operation.
 
 ### 2.2 The Detector (`SimpleDetector` & Numba Kernels)
+Data loading and feature detection are decoupled:
+*   **DataLoader**: Uses Xarray to perform single-block contiguous reads from NetCDF or GRIB files, bypassing the HDF5 global lock contention common in threaded environments.
+*   **Kernels**: All spatial filters are implemented in Numba with `nogil=True` and `cache=True`, ensuring they run at raw C speeds and remain compiled on disk for future runs.
 
-**The Old Architecture:**
-The detector relied on Xarray combined with Dask's `chunks={}` to lazy-load chunks of NetCDF data. Inside the computation loop, it created new Python `Center` objects one-by-one and appended them to a list. Furthermore, the underlying mathematical filters (Numba) were not configured to cache or run outside the GIL.
+### 2.3 Vectorized Linker (`SimpleLinker`)
+Trajectory construction uses NumPy broadcasting to calculate Haversine distance matrices between track tails and new storm centers. This replaces nested Python `for` loops with optimized C-level matrix operations, reducing linking time from seconds to milliseconds.
 
-*Why it bottlenecked:* 
-1.  Xarray's HDF5/NetCDF4 backend relies on `h5py`, which requires a strict global lock (`HDF5_LOCK`). When Dask threads tried to read chunks simultaneously, they were forced into a single-file line, defeating the purpose of threading.
-2.  Creating Python objects inside the hot detection loop choked the system.
-
-**The New Architecture:**
-The detector and the math have been fundamentally separated.
-*   **The DataLoader (`SimpleDetector`):** Drops the Dask `chunks={}` argument. Instead, when a worker process is assigned a time slice (e.g., steps 100 to 200), the worker uses Xarray to slice that specific chunk and read it *entirely into memory at once* as a native NumPy array. This guarantees a single, fast contiguous disk read and bypasses the HDF5 lock contention.
-*   **The Math (`kernels.py`):** All mathematical logic (extrema finding, laplacian filters, duplicate removal) has been extracted into a pure Numba module. The decorators now use `nogil=True` and `cache=True`, meaning they execute at raw C speeds and don't recompile on every run.
-*   **Flat Outputs:** The detector strictly uses `detect()`, which returns a `RawDetectionStep` (a tuple of 1D NumPy arrays containing the raw coordinates and variables of every detected storm in that time chunk).
-
-### 2.3 The Linker (`SimpleLinker`)
-
-**The Old Architecture:**
-To connect detected storms from Time $T$ to existing tracks from Time $T-1$, the linker used a nested `for` loop inside `append_center()`, calculating the Haversine distance between every single Python `Center` object using the `math` module.
-
-*Why it bottlenecked:* Calculating distances point-by-point in pure Python scales at $O(M \times N)$ and is incredibly slow when processing thousands of active storm centers.
-
-**The New Architecture:**
-The Linker is now completely **Vectorized**, and the legacy `append_center()` method has been replaced with `append()`.
-Instead of unpacking arrays into Python objects, `append()` takes the `RawDetectionStep` arrays directly from the detector. It extracts the `tail` coordinates from the `Tracks` arrays and passes everything into `haversine_matrix()`, which uses NumPy Broadcasting to instantly calculate the full $M \times N$ distance matrix in C. Finding the mutually closest points is reduced to highly optimized `np.argmin()` calls along the matrix axes. Python `Center` objects are now only instantiated at the very end of the pipeline if specifically requested for iteration or export.
-
-### 2.4 Parallel Orchestration and Tree Reduction
-
-**The Old Architecture:**
-In the previous setup, Dask parallelism was attempted at the lowest possible level: wrapping individual `detect()` calls in `dask.delayed` and having the main thread sequentially link the millions of returned `Center` objects.
-
-**The New Architecture:**
-The orchestration (located in `src/pystormtracker/simple/tracker.py`) now treats workers as independent, intelligent nodes.
-1.  **Detect & Link Locally:** A worker process receives its time slice. It reads the data, runs the Numba kernels, and immediately uses its own local Vectorized Linker to connect the centers. It returns a fully formed, lightweight, array-backed `Tracks` object.
-2.  **Tree Reduction:** Whether using MPI or Dask Processes, the architecture utilizes a Binary Tree Reduction. If Worker 1 finishes Block A and Worker 2 finishes Block B, they don't send their data to the main thread. Instead, a reduction task takes both `Tracks` objects, instantly matches the tails of A to the heads of B using the Vectorized Linker, concatenates the underlying NumPy arrays via `np.concatenate`, and passes the merged object up the tree.
+### 2.4 Parallel Pipeline & Tree Reduction
+PyStormTracker uses a binary tree reduction strategy for distributed execution:
+1.  **Local Phase**: Workers independently detect and link centers within their assigned time chunks, producing local `Tracks` objects.
+2.  **Reduction Phase**: Adjacent `Tracks` objects are merged by matching the "tails" of one chunk to the "heads" of the next, using the vectorized linker to maintain global track identity.
 
 ---
 
-## 3. Extensibility: The `Tracker` Protocol
+## 3. The `Tracker` Protocol
 
-The ultimate goal of this refactor is to prepare the codebase for future algorithms, such as the `HodgesTracker`.
-
-To achieve this, the concept of a rigid `Grid` interface has been deprecated in favor of a top-level `Tracker` Protocol (located in `src/pystormtracker/models/tracker.py`). 
-
-In this paradigm, the CLI does not dictate how data is loaded or split. The CLI simply instantiates a concrete tracker (e.g., `SimpleTracker`) and calls `.track(infile, varname)`. The `SimpleTracker` encapsulates its own specific logic for NetCDF reading, chunking, and worker dispatch. When a new tracker is introduced, it will implement the same `.track()` interface but is entirely free to handle data loading (e.g., reading spectral harmonics instead of 2D frames) in whatever way is most optimal for its mathematics.
-
-### 3.1 Standardized Python API
-
-The `Tracker` Protocol enforces a clean, user-friendly API that replaces complex internal models (like `TimeRange`) with simple strings or `np.datetime64` parameters:
+The `Tracker` Protocol (defined in `src/pystormtracker/models/tracker.py`) provides a standardized interface for all tracking algorithms:
 
 ```python
 import pystormtracker as pst
 
-# 1. Instantiate the tracker
+# Instantiate any compliant tracker
 tracker = pst.SimpleTracker()
 
-# 2. Run the tracking algorithm. Returns an array-backed Tracks object.
+# Standardized .track() method handles dates, backends, and engines
 tracks = tracker.track(
-    infile="data.nc", 
+    infile="era5_msl.nc", 
     varname="msl", 
-    mode="min",
-    start_time="2025-01-01",   # Simply pass strings or datetime64!
-    end_time="2025-01-31",     
-    backend="dask",            # serial, dask, or mpi
-    n_workers=4
+    start_time="2025-01-01",
+    backend="dask"
 )
-
-# 3. Export
-tracks.write("output.txt", format="imilast")
 ```
 
-Internally, missing bounding dates are elegantly handled using `np.datetime64("NaT")` (Not a Time), allowing the internal logic to robustly slice open-ended time boundaries without relying on arbitrary string hacks like `"1000-01-01"`.
+This abstraction allows for the future addition of complex algorithms like the **Hodges Tracker** without altering the CLI or user-facing API.
 
-## 4. Summary of Improvements
-- **Zero Object Pickling:** Dask/MPI serialize flat arrays instantly.
-- **I/O Optimization:** Single-block contiguous reads bypass HDF5 lock contention.
-- **Vectorized Linking:** C-level broadcasting replaces pure-Python nested loops.
-- **Unified Interface:** The `Tracker` Protocol cleanly prepares the package for multi-algorithm support.
+---
+
+## Appendix: Evolution from Legacy Architecture
+
+The current architecture represents a fundamental shift from the legacy nested-object design used in earlier versions.
+
+| Feature | Legacy Architecture (v0.3.x and earlier) | Modern Architecture (v0.4.0+) |
+| :--- | :--- | :--- |
+| **Data Storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
+| **Parallelism** | Threads (bottlenecked by GIL and HDF5 lock). | Processes/MPI (true concurrent I/O). |
+| **Serialization** | Slow `pickle` traversal of object trees. | Instant zero-copy array buffer transfer. |
+| **Linker** | $O(N^2)$ nested Python loops. | Vectorized NumPy matrix broadcasting. |
+| **I/O** | Many small lazy-loaded chunks. | Single-block contiguous reads. |
+
+The modern architecture was necessitated by the shift toward high-resolution (0.25°) datasets, where the overhead of the legacy object-oriented approach made global tracking across multiple decades computationally infeasible.
