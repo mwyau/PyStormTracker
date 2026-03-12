@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 
 from ..models.center import Center
@@ -60,19 +62,17 @@ class SimpleLinker:
             tracks.time_range
             and tracks.time_range.end is not None
             and tracks.time_range.step is not None
+            and current_time - tracks.time_range.step > tracks.time_range.end
         ):
-            if current_time - tracks.time_range.step > tracks.time_range.end:
-                # Gap in time detected, do not link
-                new_tail = []
-                for i in range(num_centers):
-                    c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
-                    c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
-                    t = tracks.add_track([c])
-                    new_tail.append(t)
-                    tracks._head_ids.add(t.track_id)
-                    tracks._tail_ids.add(t.track_id)
-                tracks.time_range.end = current_time
-                return
+            # Gap in time detected, do not link
+            for i in range(num_centers):
+                c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
+                c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
+                t = tracks.add_track([c])
+                tracks._head_ids.add(t.track_id)
+                tracks._tail_ids.add(t.track_id)
+            tracks.time_range.end = current_time
+            return
 
         tail_tracks = tracks.tail
         tail_lats = np.array([t[-1].lat for t in tail_tracks])
@@ -132,7 +132,7 @@ class SimpleLinker:
             tracks1.times = tracks2.times.copy()
             tracks1.lats = tracks2.lats.copy()
             tracks1.lons = tracks2.lons.copy()
-            tracks1.vars = tracks2.vars.copy()
+            tracks1.vars = {k: v.copy() for k, v in tracks2.vars.items()}
             tracks1._head_ids = tracks2._head_ids.copy()
             tracks1._tail_ids = tracks2._tail_ids.copy()
             tracks1.time_range = tracks2.time_range
@@ -162,9 +162,15 @@ class SimpleLinker:
 
         # Invalidate matches that don't align in time or have a temporal gap
         gap_exists = False
-        if tracks1.time_range and tracks2.time_range and tracks1.time_range.step:
-            if tracks2.time_range.start - tracks1.time_range.step > tracks1.time_range.end:
-                gap_exists = True
+        t1_tr = tracks1.time_range
+        t2_tr = tracks2.time_range
+        if (
+            t1_tr
+            and t2_tr
+            and t1_tr.step
+            and t2_tr.start - t1_tr.step > t1_tr.end
+        ):
+            gap_exists = True
 
         expected_start_time = tracks2.time_range.start if tracks2.time_range else None
 

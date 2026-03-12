@@ -131,7 +131,9 @@ class Tracks:
             self.lats = np.asarray(lats, dtype=np.float64)
             self.lons = np.asarray(lons, dtype=np.float64)
             if vars_dict:
-                self.vars = {k: np.asarray(v, dtype=np.float64) for k, v in vars_dict.items()}
+                self.vars = {
+                    k: np.asarray(v, dtype=np.float64) for k, v in vars_dict.items()
+                }
             else:
                 self.vars = {}
         else:
@@ -236,7 +238,7 @@ class Tracks:
 
     def append(self, obj: Track) -> None:
         if obj._tracks is self:
-            return # Already in here
+            return  # Already in here
 
         tid = self._get_new_id()
 
@@ -267,7 +269,13 @@ class Tracks:
             first_indices_list.append(idx)
 
         first_indices = np.array(first_indices_list)
-        sort_keys = np.lexsort((self.lons[first_indices], self.lats[first_indices], self.times[first_indices]))
+        sort_keys = np.lexsort(
+            (
+                self.lons[first_indices],
+                self.lats[first_indices],
+                self.times[first_indices],
+            )
+        )
 
         sorted_u_ids = np.array(u_ids)[sort_keys]
 
