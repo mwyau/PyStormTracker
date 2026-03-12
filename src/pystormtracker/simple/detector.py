@@ -60,7 +60,7 @@ class SimpleDetector:
             with self._ds_lock:
                 if self.pathname not in self._ds_cache:
                     # open_dataset is lazy by default
-                    # chunks={} enables dask-backed arrays which handles threading better
+                    # chunks={} enables dask-backed arrays for better threading
                     # Use h5netcdf engine for better thread safety if available
                     try:
                         self._ds_cache[self.pathname] = xr.open_dataset(
@@ -160,14 +160,14 @@ class SimpleDetector:
             # Slicing if there's already a time range
             if self.time_range:
                 # Find indices for the given time range
-                # Use sel with nearest to be robust, but indices are preferred for lazy loading
+                # Use sel with nearest to be robust, but indices are preferred
                 times_subset = time_coord.sel(
                     {time_name: slice(self.time_range.start, self.time_range.end)}
                 )
                 total_len = len(times_subset)
-                # To be truly lazy, we can use the relative indices if we knew them,
+                # To be truly lazy, we can use the relative indices if we knew them
                 # but we need some values here.
-                # Let's get the values only for the subset if it's already a slice.
+                # Let's get values only for the subset if it's already a slice.
                 time_values = times_subset.values
             else:
                 # No subset yet, get metadata only
@@ -223,7 +223,7 @@ class SimpleDetector:
         num_steps = len(time_array)
 
         # Optimization: Read the entire time range for this worker in one go
-        # This significantly improves I/O performance by making a single contiguous-ish read
+        # This significantly improves I/O performance
         full_var = self.get_var()
         assert full_var is not None
 
@@ -234,10 +234,13 @@ class SimpleDetector:
             # Print progress using global indices if available
             if (it + 1) % 10 == 0 or it == 0 or it == num_steps - 1:
                 if self.global_total_steps:
-                    print(
-                        f"  [{self.global_start_idx + 1}-{self.global_start_idx + num_steps}] "
-                        f"Step {it + 1}/{num_steps} (Global: {self.global_start_idx + it + 1}/{self.global_total_steps})"
-                    )
+                    s_idx = self.global_start_idx + 1
+                    e_idx = self.global_start_idx + num_steps
+                    idx_range = f"{s_idx}-{e_idx}"
+                    step_prog = f"Step {it + 1}/{num_steps}"
+                    g_idx = self.global_start_idx + it + 1
+                    glob_prog = f"Global: {g_idx}/{self.global_total_steps}"
+                    print(f"  [{idx_range}] {step_prog} ({glob_prog})")
                 else:
                     print(f"  Step {it + 1}/{num_steps}")
 

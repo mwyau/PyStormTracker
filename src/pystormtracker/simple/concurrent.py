@@ -32,43 +32,49 @@ def run_simple_dask(
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
 
-    detector_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
+    detector_obj = SimpleDetector(
+        pathname=infile, varname=varname, time_range=time_range
+    )
     detectors = detector_obj.split(n_workers)
 
     t0 = timeit.default_timer()
     # Use processes=True to ensure Xarray/HDF5 locking doesn't serialize I/O
-    with LocalCluster(n_workers=n_workers, threads_per_worker=1, processes=True, dashboard_address=None) as cluster:
-        with Client(cluster) as client:
-            t1 = timeit.default_timer()
-            print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
+    with LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=1,
+        processes=True,
+        dashboard_address=None,
+    ) as cluster, Client(cluster) as client:
+        t1 = timeit.default_timer()
+        print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
 
-            futures = []
-            for d in detectors:
-                futures.append(
-                    client.submit(
-                        _detect_and_link,
-                        d,
-                        5,
-                        0.0,
-                        360,
-                        mode,
-                    )
+        futures = []
+        for d in detectors:
+            futures.append(
+                client.submit(
+                    _detect_and_link,
+                    d,
+                    5,
+                    0.0,
+                    360,
+                    mode,
                 )
+            )
 
-            # Dask Tree Reduction for Linking
-            while len(futures) > 1:
-                next_futures = []
-                for i in range(0, len(futures), 2):
-                    if i + 1 < len(futures):
-                        f = client.submit(_dask_extend_track, futures[i], futures[i + 1])
-                        next_futures.append(f)
-                    else:
-                        next_futures.append(futures[i])
-                futures = next_futures
+        # Dask Tree Reduction for Linking
+        while len(futures) > 1:
+            next_futures = []
+            for i in range(0, len(futures), 2):
+                if i + 1 < len(futures):
+                    f = client.submit(_dask_extend_track, futures[i], futures[i + 1])
+                    next_futures.append(f)
+                else:
+                    next_futures.append(futures[i])
+            futures = next_futures
 
-            final_tracks: Tracks = futures[0].result()
-            t2 = timeit.default_timer()
-            print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
+        final_tracks: Tracks = futures[0].result()
+        t2 = timeit.default_timer()
+        print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
 
     return final_tracks
 
@@ -92,7 +98,9 @@ def run_simple_mpi(
         detectors = None
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
-    tracks = _detect_and_link(detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
+    tracks = _detect_and_link(
+        detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode
+    )
 
     comm.Barrier()
 
