@@ -46,18 +46,18 @@ The detector relied on Xarray combined with Dask's `chunks={}` to lazy-load chun
 The detector and the math have been fundamentally separated.
 *   **The DataLoader (`SimpleDetector`):** Drops the Dask `chunks={}` argument. Instead, when a worker process is assigned a time slice (e.g., steps 100 to 200), the worker uses Xarray to slice that specific chunk and read it *entirely into memory at once* as a native NumPy array. This guarantees a single, fast contiguous disk read and bypasses the HDF5 lock contention.
 *   **The Math (`kernels.py`):** All mathematical logic (extrema finding, laplacian filters, duplicate removal) has been extracted into a pure Numba module. The decorators now use `nogil=True` and `cache=True`, meaning they execute at raw C speeds and don't recompile on every run.
-*   **Flat Outputs:** `detect_raw()` no longer creates `Center` objects. It simply returns a tuple of 1D NumPy arrays containing the raw coordinates of every detected storm in that time chunk.
+*   **Flat Outputs:** `detect()` and `DetectedCenters` have been entirely removed. The detector strictly uses `detect_raw()`, which returns a `RawDetectionStep` (a tuple of 1D NumPy arrays containing the raw coordinates and variables of every detected storm in that time chunk).
 
 ### 2.3 The Linker (`SimpleLinker`)
 
 **The Old Architecture:**
-To connect detected storms from Time $T$ to existing tracks from Time $T-1$, the linker used a nested `for` loop, calculating the Haversine distance between every single Python `Center` object using the `math` module.
+To connect detected storms from Time $T$ to existing tracks from Time $T-1$, the linker used a nested `for` loop inside `append_center()`, calculating the Haversine distance between every single Python `Center` object using the `math` module.
 
 *Why it bottlenecked:* Calculating distances point-by-point in pure Python scales at $O(M \times N)$ and is incredibly slow when processing thousands of active storm centers.
 
 **The New Architecture:**
-The Linker is now completely **Vectorized**.
-Instead of using `for` loops, it extracts the `tail` coordinates from the `Tracks` array and the `new` coordinates from the detector. It passes both into `haversine_matrix()`, which uses NumPy Broadcasting to instantly calculate the full $M \times N$ distance matrix in C. Finding the mutually closest points is reduced to highly optimized `np.argmin()` calls along the matrix axes.
+The Linker is now completely **Vectorized**, and the legacy `append_center()` method has been replaced with `append_raw()`.
+Instead of unpacking arrays into Python objects, `append_raw()` takes the `RawDetectionStep` arrays directly from the detector. It extracts the `tail` coordinates from the `Tracks` arrays and passes everything into `haversine_matrix()`, which uses NumPy Broadcasting to instantly calculate the full $M \times N$ distance matrix in C. Finding the mutually closest points is reduced to highly optimized `np.argmin()` calls along the matrix axes. Python `Center` objects are now only instantiated at the very end of the pipeline if specifically requested for iteration or export.
 
 ### 2.4 Parallel Orchestration and Tree Reduction
 
