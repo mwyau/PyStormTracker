@@ -4,6 +4,7 @@ import numpy as np
 
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Track, Tracks
+from pystormtracker.io.imilast import read_imilast, write_imilast
 
 
 def test_tracks_init() -> None:
@@ -69,10 +70,10 @@ def test_tracks_imilast_io(tmp_path: Path) -> None:
     t.add_track([c3])
 
     out_file = tmp_path / "test_io.txt"
-    t.to_imilast(str(out_file))
+    write_imilast(t, out_file)
 
     # Read back
-    t2 = Tracks.from_imilast(out_file)
+    t2 = read_imilast(out_file)
 
     assert len(t2) == 2
 
