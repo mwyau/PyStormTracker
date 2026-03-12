@@ -88,7 +88,7 @@ def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 4) 
                     yyyymmddhh = "0000000000"
                     yyyy, mm, dd, hh = 0, 0, 0, 0
 
-                val = list(center.vars.values())[0] if center.vars else np.nan
+                val = next(iter(center.vars.values())) if center.vars else np.nan
                 var_val = f"{float(val):.{decimal_places}f}"
                 lon = center.lon
                 if lon > 180:

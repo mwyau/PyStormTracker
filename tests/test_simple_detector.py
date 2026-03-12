@@ -43,8 +43,8 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     raw_results = detector.detect(size=5, threshold=0.0)
 
     assert len(raw_results) == 1
-    time_val, lats, lons, vars_dict = raw_results[0]
-    
+    _time_val, lats, lons, vars_dict = raw_results[0]
+
     assert len(lats) == 1
     assert lats[0] == 3.0
     assert lons[0] == 3.0

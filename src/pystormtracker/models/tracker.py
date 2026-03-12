@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import numpy as np
 from typing import Literal, Protocol, runtime_checkable
+
+import numpy as np
 
 from .tracks import Tracks
 

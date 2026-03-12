@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC
-from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .center import Center
+
 
 @dataclass
 class TimeRange:
@@ -24,8 +23,8 @@ class Track:
     it acts as a view into the parent Tracks object."""
 
     def __init__(
-        self, 
-        track_id: int, 
+        self,
+        track_id: int,
         tracks: Tracks
     ) -> None:
         self.track_id = track_id
@@ -37,7 +36,12 @@ class Track:
         if len(self) != len(other):
             return False
         for c1, c2 in zip(self, other, strict=False):
-            if c1.time != c2.time or c1.lat != c2.lat or c1.lon != c2.lon or c1.vars != c2.vars:
+            if (
+                c1.time != c2.time
+                or c1.lat != c2.lat
+                or c1.lon != c2.lon
+                or c1.vars != c2.vars
+            ):
                 return False
         return True
 
@@ -72,7 +76,7 @@ class Track:
         self._tracks.times = np.append(self._tracks.times, center.time)
         self._tracks.lats = np.append(self._tracks.lats, center.lat)
         self._tracks.lons = np.append(self._tracks.lons, center.lon)
-        
+
         for k, v in center.vars.items():
             if k not in self._tracks.vars:
                 # If a new var appears, fill previous points with NaN
@@ -82,15 +86,27 @@ class Track:
     def extend(self, other: Track) -> None:
         idx = other.indices
         if self._tracks is not other._tracks:
-            self._tracks.track_ids = np.concatenate([self._tracks.track_ids, np.full(len(idx), self.track_id)])
-            self._tracks.times = np.concatenate([self._tracks.times, other._tracks.times[idx]])
-            self._tracks.lats = np.concatenate([self._tracks.lats, other._tracks.lats[idx]])
-            self._tracks.lons = np.concatenate([self._tracks.lons, other._tracks.lons[idx]])
-            
+            self._tracks.track_ids = np.concatenate(
+                [self._tracks.track_ids, np.full(len(idx), self.track_id)]
+            )
+            self._tracks.times = np.concatenate(
+                [self._tracks.times, other._tracks.times[idx]]
+            )
+            self._tracks.lats = np.concatenate(
+                [self._tracks.lats, other._tracks.lats[idx]]
+            )
+            self._tracks.lons = np.concatenate(
+                [self._tracks.lons, other._tracks.lons[idx]]
+            )
+
             for k in other._tracks.vars:
                 if k not in self._tracks.vars:
-                    self._tracks.vars[k] = np.full(len(self._tracks.track_ids) - len(idx), np.nan)
-                self._tracks.vars[k] = np.concatenate([self._tracks.vars[k], other._tracks.vars[k][idx]])
+                    self._tracks.vars[k] = np.full(
+                        len(self._tracks.track_ids) - len(idx), np.nan
+                    )
+                self._tracks.vars[k] = np.concatenate(
+                    [self._tracks.vars[k], other._tracks.vars[k][idx]]
+                )
         else:
             other._tracks.track_ids[idx] = self.track_id
 
@@ -114,17 +130,20 @@ class Tracks:
             self.times = np.asarray(times, dtype="datetime64[s]")
             self.lats = np.asarray(lats, dtype=np.float64)
             self.lons = np.asarray(lons, dtype=np.float64)
-            self.vars = {k: np.asarray(v, dtype=np.float64) for k, v in vars_dict.items()} if vars_dict else {}
+            if vars_dict:
+                self.vars = {k: np.asarray(v, dtype=np.float64) for k, v in vars_dict.items()}
+            else:
+                self.vars = {}
         else:
             self.track_ids = np.empty(0, dtype=np.int64)
             self.times = np.empty(0, dtype="datetime64[s]")
             self.lats = np.empty(0, dtype=np.float64)
             self.lons = np.empty(0, dtype=np.float64)
             self.vars = {}
-            
+
         self.time_range: TimeRange | None = None
         self._next_id = 0
-        
+
         # Keep track of tails and heads using array of track_ids
         self._head_ids: set[int] = set()
         self._tail_ids: set[int] = set()
@@ -138,23 +157,23 @@ class Tracks:
         times = np.array([c.time for c in centers], dtype="datetime64[s]")
         lats = np.array([c.lat for c in centers], dtype=np.float64)
         lons = np.array([c.lon for c in centers], dtype=np.float64)
-        
+
         # Consolidate vars from centers
-        var_keys = set()
+        var_keys: set[str] = set()
         for c in centers:
             var_keys.update(c.vars.keys())
-            
+
         self.track_ids = np.concatenate([self.track_ids, np.full(len(centers), tid)])
         self.times = np.concatenate([self.times, times])
         self.lats = np.concatenate([self.lats, lats])
         self.lons = np.concatenate([self.lons, lons])
-        
+
         for k in var_keys:
             vals = np.array([c.vars.get(k, np.nan) for c in centers], dtype=np.float64)
             if k not in self.vars:
                 self.vars[k] = np.full(len(self.track_ids) - len(centers), np.nan)
             self.vars[k] = np.concatenate([self.vars[k], vals])
-            
+
         return Track(tid, self)
 
     @property
@@ -179,7 +198,7 @@ class Tracks:
         if len(self.track_ids) == 0:
             return []
         _, idx = np.unique(self.track_ids, return_index=True)
-        return self.track_ids[np.sort(idx)].tolist()
+        return list(self.track_ids[np.sort(idx)])
 
     def __getitem__(self, index: int) -> Track:
         tid = self.unique_track_ids[index]
@@ -218,21 +237,21 @@ class Tracks:
     def append(self, obj: Track) -> None:
         if obj._tracks is self:
             return # Already in here
-            
+
         tid = self._get_new_id()
-        
+
         assert obj._tracks is not None
         idx = obj.indices
         self.track_ids = np.concatenate([self.track_ids, np.full(len(idx), tid)])
         self.times = np.concatenate([self.times, obj._tracks.times[idx]])
         self.lats = np.concatenate([self.lats, obj._tracks.lats[idx]])
         self.lons = np.concatenate([self.lons, obj._tracks.lons[idx]])
-        
+
         for k in obj._tracks.vars:
             if k not in self.vars:
                 self.vars[k] = np.full(len(self.track_ids) - len(idx), np.nan)
             self.vars[k] = np.concatenate([self.vars[k], obj._tracks.vars[k][idx]])
-            
+
         obj.track_id = tid
         obj._tracks = self
 
@@ -240,28 +259,29 @@ class Tracks:
         """Sorts tracks by their first point's time, lat, then lon."""
         if len(self.track_ids) == 0:
             return
-            
-        first_indices = []
+
+        first_indices_list = []
         u_ids = self.unique_track_ids
         for tid in u_ids:
             idx = np.where(self.track_ids == tid)[0][0]
-            first_indices.append(idx)
-            
-        first_indices = np.array(first_indices)
+            first_indices_list.append(idx)
+
+        first_indices = np.array(first_indices_list)
         sort_keys = np.lexsort((self.lons[first_indices], self.lats[first_indices], self.times[first_indices]))
-        
+
         sorted_u_ids = np.array(u_ids)[sort_keys]
-        
-        new_indices = []
+
+        new_indices: list[int] = []
         for tid in sorted_u_ids:
             new_indices.extend(np.where(self.track_ids == tid)[0])
-            
-        self.track_ids = self.track_ids[new_indices]
-        self.times = self.times[new_indices]
-        self.lats = self.lats[new_indices]
-        self.lons = self.lons[new_indices]
+
+        new_indices_arr = np.array(new_indices)
+        self.track_ids = self.track_ids[new_indices_arr]
+        self.times = self.times[new_indices_arr]
+        self.lats = self.lats[new_indices_arr]
+        self.lons = self.lons[new_indices_arr]
         for k in list(self.vars.keys()):
-            self.vars[k] = self.vars[k][new_indices]
+            self.vars[k] = self.vars[k][new_indices_arr]
 
     def compare(
         self,
@@ -293,7 +313,7 @@ class Tracks:
                 c1, c2 = d1[t_val], d2[t_val]
                 assert abs(c1.lat - c2.lat) <= coord_tol
                 assert abs(c1.lon - c2.lon) <= coord_tol
-                
+
                 for k in c1.vars:
                     assert k in c2.vars, f"Variable {k} missing in right track"
                     assert abs(c1.vars[k] - c2.vars[k]) <= intensity_tol

@@ -2,9 +2,9 @@ from pathlib import Path
 
 import numpy as np
 
-from pystormtracker.models.center import Center
-from pystormtracker.models.tracks import Track, Tracks
 from pystormtracker.io.imilast import read_imilast, write_imilast
+from pystormtracker.models.center import Center
+from pystormtracker.models.tracks import Tracks
 
 
 def test_tracks_init() -> None:
@@ -30,11 +30,11 @@ def test_tracks_append_and_access() -> None:
     assert t[1] == tr2
 
     # Test __setitem__
-    # Note: we need another Tracks object to get a properly baked Track view 
+    # Note: we need another Tracks object to get a properly baked Track view
     # to replace into the first Tracks object.
     t2 = Tracks()
     tr_new = t2.add_track([c1, c2])
-    
+
     # Replaces the first track. The new track is appended at the end.
     t[0] = tr_new
     assert len(t[-1]) == 2

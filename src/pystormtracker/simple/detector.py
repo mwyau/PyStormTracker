@@ -4,7 +4,6 @@ import threading
 from pathlib import Path
 from typing import ClassVar, Literal, TypeAlias
 
-import numba as nb
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
@@ -166,7 +165,7 @@ class SimpleDetector:
                     {time_name: slice(self.time_range.start, self.time_range.end)}
                 )
                 total_len = len(times_subset)
-                # To be truly lazy, we can use the relative indices if we knew them, 
+                # To be truly lazy, we can use the relative indices if we knew them,
                 # but we need some values here.
                 # Let's get the values only for the subset if it's already a slice.
                 time_values = times_subset.values
@@ -222,7 +221,7 @@ class SimpleDetector:
         lat, lon = self.lat, self.lon
         assert time_array is not None
         num_steps = len(time_array)
-        
+
         # Optimization: Read the entire time range for this worker in one go
         # This significantly improves I/O performance by making a single contiguous-ish read
         full_var = self.get_var()
@@ -258,7 +257,7 @@ class SimpleDetector:
             # Extract raw data using Numba
             r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
             time_val = t.astype("datetime64[s]")
-            
+
             raw_results.append((time_val, lat[r_idx], lon[c_idx], {self.varname: vals}))
-        
+
         return raw_results

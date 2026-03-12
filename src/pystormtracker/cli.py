@@ -50,7 +50,7 @@ def run_tracker(
     if rank == 0:
         timer["total"] = timeit.default_timer() - timer["total"]
         print(f"Total tracking time: {timer['total']:.4f}s")
-        
+
         if outfile is None:
             print("Skipping export as outfile is None.")
             return
