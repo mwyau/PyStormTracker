@@ -251,7 +251,7 @@ class SimpleDetector:
             if np.isnan(frame).any():
                 extrema[np.isnan(frame)] = 0
 
-            laplacian = _numba_laplace_masked(filled_frame, extrema)
+            laplacian = _numba_laplace_masked(filled_frame, extrema, is_min)
             extrema = _numba_remove_dup(laplacian, size=5)
 
             # Extract raw data using Numba

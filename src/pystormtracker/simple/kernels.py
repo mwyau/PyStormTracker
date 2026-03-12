@@ -36,31 +36,33 @@ def _numba_extrema_filter(
                     break
 
             if is_extrema:
-                if threshold == 0.0:
-                    out[r, c] = 1.0
+                # Always run the 9th filtering (even if threshold=0) to remove plateaus.
+                # Use a rank that scales with window size (default 8 for 5x5).
+                rank = (size * size) // 3
+
+                window = np.empty(size * size, dtype=data.dtype)
+                idx = 0
+                for i in range(-half_size, half_size + 1):
+                    rr = r + i
+                    for j in range(-half_size, half_size + 1):
+                        cc = (c + j) % cols
+                        window[idx] = data[rr, cc]
+                        idx += 1
+                window.sort()
+
+                if is_min:
+                    if window[rank] - center_val > threshold:
+                        out[r, c] = 1.0
                 else:
-                    window = np.empty(size * size, dtype=data.dtype)
-                    idx = 0
-                    for i in range(-half_size, half_size + 1):
-                        rr = r + i
-                        for j in range(-half_size, half_size + 1):
-                            cc = (c + j) % cols
-                            window[idx] = data[rr, cc]
-                            idx += 1
-                    window.sort()
-                    if is_min:
-                        if window[8] - center_val > threshold:
-                            out[r, c] = 1.0
-                    else:
-                        if window[-9] - center_val < -threshold:
-                            out[r, c] = 1.0
+                    if window[size * size - 1 - rank] - center_val < -threshold:
+                        out[r, c] = 1.0
 
     return out
 
 
 @nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
 def _numba_laplace_masked(
-    data: NDArray[np.float64], mask: NDArray[np.float64]
+    data: NDArray[np.float64], mask: NDArray[np.float64], is_min: bool
 ) -> NDArray[np.float64]:
     rows, cols = data.shape
     out = np.zeros_like(data)
@@ -72,7 +74,14 @@ def _numba_laplace_masked(
                 left = data[r, (c - 1) % cols]
                 right = data[r, (c + 1) % cols]
                 center = data[r, c]
-                out[r, c] = (up + down + left + right - 4.0 * center) * mask[r, c]
+                # Laplacian: d2f/dx2 + d2f/dy2
+                # For a local minimum, center < neighbors, so (neighbors - 4*center) > 0
+                # For a local maximum, center > neighbors, so (4*center - neighbors) > 0
+                if is_min:
+                    val = up + down + left + right - 4.0 * center
+                else:
+                    val = 4.0 * center - (up + down + left + right)
+                out[r, c] = val * mask[r, c]
     return out
 
 
@@ -92,9 +101,15 @@ def _numba_remove_dup(laplacian: NDArray[np.float64], size: int) -> NDArray[np.f
                     rr = (r + i) % rows
                     for j in range(-half_size, half_size + 1):
                         cc = (c + j) % cols
-                        if abs(laplacian[rr, cc]) > abs_center:
+                        val = abs(laplacian[rr, cc])
+                        if val > abs_center:
                             is_most_intense = False
                             break
+                        elif val == abs_center:
+                            # Tie-breaking: lower index wins
+                            if rr < r or (rr == r and cc < c):
+                                is_most_intense = False
+                                break
                     if not is_most_intense:
                         break
                 if is_most_intense:
