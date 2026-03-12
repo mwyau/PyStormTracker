@@ -10,13 +10,13 @@ def test_simple_linker_init() -> None:
     assert linker.threshold == 1000.0
 
 
-def test_simple_linker_append_raw() -> None:
+def test_simple_linker_append() -> None:
     linker = SimpleLinker()
     tracks = Tracks()
 
     t0 = np.datetime64("2025-12-01T00:00:00")
     step_data_1 = (t0, np.array([0.0]), np.array([0.0]), {"msl": np.array([1000.0])})
-    linker.append_raw(tracks, step_data_1)
+    linker.append(tracks, step_data_1)
 
     assert len(tracks) == 1
     assert tracks.time_range is not None
@@ -25,7 +25,7 @@ def test_simple_linker_append_raw() -> None:
 
     t6 = np.datetime64("2025-12-01T06:00:00")
     step_data_2 = (t6, np.array([1.0]), np.array([1.0]), {"msl": np.array([990.0])})
-    linker.append_raw(tracks, step_data_2)
+    linker.append(tracks, step_data_2)
 
     assert len(tracks) == 1
     assert tracks.time_range.end == t6
@@ -40,11 +40,11 @@ def test_simple_linker_extend_track() -> None:
 
     t0 = np.datetime64("2025-12-01T00:00:00")
     step_data_1 = (t0, np.array([0.0]), np.array([0.0]), {"msl": np.array([1000.0])})
-    linker.append_raw(t1, step_data_1)
+    linker.append(t1, step_data_1)
 
     t6 = np.datetime64("2025-12-01T06:00:00")
     step_data_2 = (t6, np.array([1.0]), np.array([1.0]), {"msl": np.array([990.0])})
-    linker.append_raw(t2, step_data_2)
+    linker.append(t2, step_data_2)
 
     linker.extend_track(t1, t2)
 

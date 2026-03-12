@@ -40,7 +40,7 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     mock_open.return_value = ds
 
     detector = SimpleDetector(pathname="test2.nc", varname="slp")
-    raw_results = detector.detect_raw(size=5, threshold=0.0)
+    raw_results = detector.detect(size=5, threshold=0.0)
 
     assert len(raw_results) == 1
     time_val, lats, lons, vars_dict = raw_results[0]

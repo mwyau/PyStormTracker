@@ -208,7 +208,7 @@ class SimpleDetector:
             )
         return detectors
 
-    def detect_raw(
+    def detect(
         self,
         size: int = 5,
         threshold: float = 0.0,
