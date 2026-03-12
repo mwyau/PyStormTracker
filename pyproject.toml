@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.scripts]
-stormtracker = "pystormtracker.stormtracker:main"
+stormtracker = "pystormtracker.cli:main"
 
 [project.urls]
 Homepage = "https://pypi.org/project/PyStormTracker/"

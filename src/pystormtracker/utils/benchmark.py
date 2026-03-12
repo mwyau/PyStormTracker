@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import timeit
-from pystormtracker.stormtracker import _detect_serial, _detect_dask
+from pystormtracker.cli import _detect_serial, _detect_dask
 from pystormtracker.utils.data_utils import fetch_era5_msl
 
 
