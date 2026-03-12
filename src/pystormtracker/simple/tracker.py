@@ -42,11 +42,31 @@ class SimpleTracker:
         self,
         infile: str,
         varname: str,
-        time_range: TimeRange | None = None,
+        start_time: str | np.datetime64 | None = None,
+        end_time: str | np.datetime64 | None = None,
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
     ) -> Tracks:
+        import numpy as np
+        
+        time_range = None
+        if start_time is not None or end_time is not None:
+            # Requires opening the file to find exact matching start/end bounds if one is missing, 
+            # but TimeRange handles exact numpy datetimes well. 
+            # We'll rely on the Detector's sel(slice()) to handle boundaries.
+            st = np.datetime64(start_time) if start_time else None
+            et = np.datetime64(end_time) if end_time else None
+            
+            # Since TimeRange expects exact np.datetime64, we supply them
+            # For simplicity, if one is missing, we use extreme dates
+            if st is None:
+                st = np.datetime64("1000-01-01")
+            if et is None:
+                et = np.datetime64("9999-12-31")
+                
+            time_range = TimeRange(start=st, end=et)
+
         if backend == "mpi":
             from .concurrent import run_simple_mpi
             tracks = run_simple_mpi(infile, varname, time_range, mode)
