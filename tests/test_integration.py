@@ -8,10 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from pystormtracker.io.imilast import read_imilast
-from pystormtracker.models.tracks import Tracks
 from pystormtracker.cli import main
-
+from pystormtracker.io.imilast import read_imilast
 from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
 N_WORKERS = 4
