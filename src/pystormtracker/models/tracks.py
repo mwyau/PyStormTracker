@@ -23,11 +23,7 @@ class Track:
     """Represents a single storm track. In the array-backed architecture,
     it acts as a view into the parent Tracks object."""
 
-    def __init__(
-        self,
-        track_id: int,
-        tracks: Tracks
-    ) -> None:
+    def __init__(self, track_id: int, tracks: Tracks) -> None:
         self.track_id = track_id
         self._tracks = tracks
 

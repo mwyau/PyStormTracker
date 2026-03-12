@@ -40,12 +40,15 @@ def run_simple_dask(
 
     t0 = timeit.default_timer()
     # Use processes=True to ensure Xarray/HDF5 locking doesn't serialize I/O
-    with LocalCluster(
-        n_workers=n_workers,
-        threads_per_worker=1,
-        processes=True,
-        dashboard_address=None,
-    ) as cluster, Client(cluster) as client:
+    with (
+        LocalCluster(
+            n_workers=n_workers,
+            threads_per_worker=1,
+            processes=True,
+            dashboard_address=None,
+        ) as cluster,
+        Client(cluster) as client,
+    ):
         t1 = timeit.default_timer()
         print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
 

@@ -14,6 +14,7 @@ from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
 N_WORKERS = 2
 
+
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     """Utility to run the tracker directly via function calls or MPI subprocess."""
     if use_mpi:
@@ -111,7 +112,7 @@ def shared_serial_output(
         "-o",
         str(out_file),
         "-n",
-        "50", # Keep it fast
+        "50",  # Keep it fast
         "--backend",
         "serial",
     ]

@@ -31,6 +31,7 @@ def run_tracker(
     rank = 0
     if use_mpi:
         from mpi4py import MPI
+
         rank = MPI.COMM_WORLD.Get_rank()
 
     if rank == 0:
