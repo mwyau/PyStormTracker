@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import timeit
-from pystormtracker.cli import _detect_serial, _detect_dask
+from pystormtracker.simple.tracker import SimpleTracker
 from pystormtracker.utils.data_utils import fetch_era5_msl
 
 
@@ -18,15 +18,17 @@ def benchmark() -> None:
     print(f"{'Workers':<10} | {'Total Time (s)':<18}")
     print("-" * 35)
 
+    tracker = SimpleTracker()
+
     for w in workers_list:
         print(f"\n--- Running with {w} workers ---")
         
         start_time = timeit.default_timer()
         
         if w > 1:
-            _detect_dask(infile, varname, time_range=None, mode=mode, n_workers=w)
+            tracker.track(infile, varname, time_range=None, mode=mode, backend="dask", n_workers=w)
         else:
-            _detect_serial(infile, varname, time_range=None, mode=mode)
+            tracker.track(infile, varname, time_range=None, mode=mode, backend="serial")
             
         total_time = timeit.default_timer() - start_time
         results[w] = total_time
