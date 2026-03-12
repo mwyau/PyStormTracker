@@ -1,103 +1,260 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .center import Center
 from .time import TimeRange
 
 
-@dataclass
 class Track:
-    """Represents a single storm track as a sequence of centers."""
+    """Represents a single storm track. In the array-backed architecture,
+    it acts as a view into the parent Tracks object."""
 
-    centers: list[Center] = field(default_factory=list)
+    def __init__(
+        self, 
+        track_id: int, 
+        tracks: Tracks
+    ) -> None:
+        self.track_id = track_id
+        self._tracks = tracks
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Track):
+            return False
+        if len(self) != len(other):
+            return False
+        for c1, c2 in zip(self, other, strict=False):
+            if c1.time != c2.time or c1.lat != c2.lat or c1.lon != c2.lon or c1.var != c2.var:
+                return False
+        return True
+
+    @property
+    def indices(self) -> NDArray[np.int64]:
+        return np.where(self._tracks.track_ids == self.track_id)[0]
 
     def __iter__(self) -> Iterator[Center]:
-        return iter(self.centers)
+        idx = self.indices
+        for i in idx:
+            yield Center(
+                self._tracks.times[i],
+                float(self._tracks.lats[i]),
+                float(self._tracks.lons[i]),
+                float(self._tracks.vars[i]),
+            )
 
     def __len__(self) -> int:
-        return len(self.centers)
+        return len(self.indices)
 
     def __getitem__(self, index: int) -> Center:
-        return self.centers[index]
+        idx = self.indices[index]
+        return Center(
+            self._tracks.times[idx],
+            float(self._tracks.lats[idx]),
+            float(self._tracks.lons[idx]),
+            float(self._tracks.vars[idx]),
+        )
 
     def append(self, center: Center) -> None:
-        self.centers.append(center)
+        self._tracks.track_ids = np.append(self._tracks.track_ids, self.track_id)
+        self._tracks.times = np.append(self._tracks.times, center.time)
+        self._tracks.lats = np.append(self._tracks.lats, center.lat)
+        self._tracks.lons = np.append(self._tracks.lons, center.lon)
+        self._tracks.vars = np.append(self._tracks.vars, center.var)
 
     def extend(self, other: Track) -> None:
-        self.centers.extend(other.centers)
+        idx = other.indices
+        if self._tracks is not other._tracks:
+            self._tracks.track_ids = np.concatenate([self._tracks.track_ids, np.full(len(idx), self.track_id)])
+            self._tracks.times = np.concatenate([self._tracks.times, other._tracks.times[idx]])
+            self._tracks.lats = np.concatenate([self._tracks.lats, other._tracks.lats[idx]])
+            self._tracks.lons = np.concatenate([self._tracks.lons, other._tracks.lons[idx]])
+            self._tracks.vars = np.concatenate([self._tracks.vars, other._tracks.vars[idx]])
+        else:
+            other._tracks.track_ids[idx] = self.track_id
 
     def abs_dist(self, other: Track | Center) -> float:
-        """
-        Distance between the last point of this track and
-        the first point (or specific Center) of another.
-        """
-        c1 = self.centers[-1]
-        c2 = other.centers[0] if hasattr(other, "centers") else other
+        c1 = self[-1]
+        c2 = other[0] if hasattr(other, "__getitem__") else other
         return c1.abs_dist(c2)
 
 
 class Tracks:
-    def __init__(self) -> None:
-        self._tracks: list[Track] = []
-        self.head: list[Track] = []
-        self.tail: list[Track] = []
+    def __init__(
+        self,
+        track_ids: NDArray[np.int64] | None = None,
+        times: NDArray[np.datetime64] | None = None,
+        lats: NDArray[np.float64] | None = None,
+        lons: NDArray[np.float64] | None = None,
+        vars_vals: NDArray[np.float64] | None = None,
+    ) -> None:
+        if track_ids is not None:
+            self.track_ids = np.asarray(track_ids, dtype=np.int64)
+            self.times = np.asarray(times, dtype="datetime64[s]")
+            self.lats = np.asarray(lats, dtype=np.float64)
+            self.lons = np.asarray(lons, dtype=np.float64)
+            self.vars = np.asarray(vars_vals, dtype=np.float64)
+        else:
+            self.track_ids = np.empty(0, dtype=np.int64)
+            self.times = np.empty(0, dtype="datetime64[s]")
+            self.lats = np.empty(0, dtype=np.float64)
+            self.lons = np.empty(0, dtype=np.float64)
+            self.vars = np.empty(0, dtype=np.float64)
+            
         self.time_range: TimeRange | None = None
+        self._next_id = 0
+        
+        # Keep track of tails and heads using array of track_ids
+        self._head_ids: set[int] = set()
+        self._tail_ids: set[int] = set()
+
+    def add_track(self, centers: list[Center]) -> Track:
+        """Helper to append a new track from a list of Centers."""
+        tid = self._get_new_id()
+        if not centers:
+            return Track(tid, self)
+
+        times = np.array([c.time for c in centers], dtype="datetime64[s]")
+        lats = np.array([c.lat for c in centers], dtype=np.float64)
+        lons = np.array([c.lon for c in centers], dtype=np.float64)
+        vars_vals = np.array([c.var for c in centers], dtype=np.float64)
+        
+        self.track_ids = np.concatenate([self.track_ids, np.full(len(centers), tid)])
+        self.times = np.concatenate([self.times, times])
+        self.lats = np.concatenate([self.lats, lats])
+        self.lons = np.concatenate([self.lons, lons])
+        self.vars = np.concatenate([self.vars, vars_vals])
+        
+        return Track(tid, self)
+
+    @property
+    def head(self) -> list[Track]:
+        return [Track(tid, self) for tid in self._head_ids]
+
+    @head.setter
+    def head(self, val: list[Track]) -> None:
+        self._head_ids = {t.track_id for t in val if t.track_id is not None}
+
+    @property
+    def tail(self) -> list[Track]:
+        return [Track(tid, self) for tid in self._tail_ids]
+
+    @tail.setter
+    def tail(self, val: list[Track]) -> None:
+        self._tail_ids = {t.track_id for t in val if t.track_id is not None}
+
+    @property
+    def unique_track_ids(self) -> list[int]:
+        # Return unique track IDs in order of first appearance
+        if len(self.track_ids) == 0:
+            return []
+        _, idx = np.unique(self.track_ids, return_index=True)
+        return self.track_ids[np.sort(idx)].tolist()
 
     def __getitem__(self, index: int) -> Track:
-        return self._tracks[index]
+        tid = self.unique_track_ids[index]
+        return Track(tid, self)
 
     def __setitem__(self, index: int, value: Track) -> None:
-        self._tracks[index] = value
+        # Replaces track at index with value track
+        tid = self.unique_track_ids[index]
+        if value._tracks is self:
+            idx = np.where(self.track_ids == tid)[0]
+            self.track_ids[idx] = value.track_id
+        else:
+            # Replace physical data
+            idx = np.where(self.track_ids != tid)[0]
+            self.track_ids = self.track_ids[idx]
+            self.times = self.times[idx]
+            self.lats = self.lats[idx]
+            self.lons = self.lons[idx]
+            self.vars = self.vars[idx]
+            self.append(value)
 
     def __iter__(self) -> Iterator[Track]:
-        return iter(self._tracks)
+        for tid in self.unique_track_ids:
+            yield Track(tid, self)
 
     def __len__(self) -> int:
-        return len(self._tracks)
+        return len(self.unique_track_ids)
+
+    def _get_new_id(self) -> int:
+        self._next_id += 1
+        while self._next_id in self.unique_track_ids:
+            self._next_id += 1
+        return self._next_id
 
     def append(self, obj: Track) -> None:
-        self._tracks.append(obj)
+        if obj._tracks is self:
+            return # Already in here
+            
+        tid = self._get_new_id()
+        
+        assert obj._tracks is not None
+        idx = obj.indices
+        self.track_ids = np.concatenate([self.track_ids, np.full(len(idx), tid)])
+        self.times = np.concatenate([self.times, obj._tracks.times[idx]])
+        self.lats = np.concatenate([self.lats, obj._tracks.lats[idx]])
+        self.lons = np.concatenate([self.lons, obj._tracks.lons[idx]])
+        self.vars = np.concatenate([self.vars, obj._tracks.vars[idx]])
+            
+        obj.track_id = tid
+        obj._tracks = self
 
     def sort(self) -> None:
         """Sorts tracks by their first point's time, lat, then lon."""
-
-        def track_key(t: Track) -> tuple[np.datetime64, float, float]:
-            if not t.centers:
-                return (np.datetime64("NaT"), 0.0, 0.0)
-            c = t.centers[0]
-            return (c.time, float(c.lat), float(c.lon))
-
-        self._tracks.sort(key=track_key)
+        if len(self.track_ids) == 0:
+            return
+            
+        first_indices = []
+        u_ids = self.unique_track_ids
+        for tid in u_ids:
+            idx = np.where(self.track_ids == tid)[0][0]
+            first_indices.append(idx)
+            
+        first_indices = np.array(first_indices)
+        sort_keys = np.lexsort((self.lons[first_indices], self.lats[first_indices], self.times[first_indices]))
+        
+        sorted_u_ids = np.array(u_ids)[sort_keys]
+        
+        new_indices = []
+        for tid in sorted_u_ids:
+            new_indices.extend(np.where(self.track_ids == tid)[0])
+            
+        self.track_ids = self.track_ids[new_indices]
+        self.times = self.times[new_indices]
+        self.lats = self.lats[new_indices]
+        self.lons = self.lons[new_indices]
+        self.vars = self.vars[new_indices]
 
     @classmethod
     def from_imilast(cls, filename: Path | str) -> Tracks:
         """Loads tracks from an IMILAST format text file."""
         from datetime import datetime
+        
+        track_ids = []
+        times = []
+        lats = []
+        lons = []
+        vars_vals = []
 
-        tracks_obj = cls()
         with open(filename) as f:
             lines = f.readlines()
-            current_track_centers: list[Center] = []
             for line in lines[1:]:  # skip header
                 parts = line.split()
                 if not parts:
                     continue
                 if parts[0] == "90":
-                    if current_track_centers:
-                        tracks_obj.append(Track(current_track_centers))
-                    current_track_centers = []
+                    continue
                 elif parts[0] == "00":
-                    # Format: 00 CycloneNo StepNo DateI10 Year Month Day Hour Lon Lat
+                    track_id = int(parts[1])
                     lon, lat, var = float(parts[8]), float(parts[9]), float(parts[10])
                     s_time = parts[3]
                     if len(s_time) == 10:
-                        # Format: YYYYMMDDHH
                         dt = datetime(
                             int(s_time[:4]),
                             int(s_time[4:6]),
@@ -107,33 +264,35 @@ class Tracks:
                         )
                         time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                     else:
-                        # Numeric epoch or other
                         try:
-                            # Assume unix timestamp
                             dt = datetime.fromtimestamp(float(s_time), tz=UTC)
                             time_val = np.datetime64(dt.replace(tzinfo=None), "s")
                         except ValueError:
-                            # Fallback to direct numpy parsing if possible
                             time_val = np.datetime64(s_time, "s")
 
-                    current_track_centers.append(Center(time_val, lat, lon, var))
-            if current_track_centers:
-                tracks_obj.append(Track(current_track_centers))
+                    track_ids.append(track_id)
+                    times.append(time_val)
+                    lats.append(lat)
+                    lons.append(lon)
+                    vars_vals.append(var)
 
-        tracks_obj.sort()
-        return tracks_obj
+        obj = cls(
+            track_ids=np.array(track_ids, dtype=np.int64),
+            times=np.array(times, dtype="datetime64[s]"),
+            lats=np.array(lats, dtype=np.float64),
+            lons=np.array(lons, dtype=np.float64),
+            vars_vals=np.array(vars_vals, dtype=np.float64)
+        )
+        obj.sort()
+        return obj
 
-    def to_imilast(
-        self,
-        outfile: str,
-        decimal_places: int = 4,
-    ) -> None:
+    def to_imilast(self, outfile: str, decimal_places: int = 4) -> None:
         """Exports tracks to an IMILAST format text file."""
         from datetime import datetime
-
+        
         if not outfile.endswith(".txt"):
             outfile += ".txt"
-
+            
         with open(outfile, "w", newline="") as f:
             header = (
                 "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,"
@@ -141,16 +300,15 @@ class Tracks:
             )
             f.write(header)
 
-            for i, track in enumerate(self._tracks, start=1):
+            t0 = np.datetime64("1970-01-01T00:00:00")
+            
+            for i, track in enumerate(self, start=1):
                 f.write(f"90 {i} {len(track)}\n")
                 for step, center in enumerate(track, start=1):
-                    # Convert numpy.datetime64 to python datetime
                     try:
-                        t0 = np.datetime64("1970-01-01T00:00:00")
                         ts = (center.time - t0) / np.timedelta64(1, "s")
                         dt = datetime.fromtimestamp(float(ts), tz=UTC)
                         yyyymmddhh = dt.strftime("%Y%m%d%H")
-
                         yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
                     except Exception:
                         yyyymmddhh = "0000000000"
@@ -182,17 +340,15 @@ class Tracks:
         self.sort()
         other.sort()
 
-        for tr1, tr2 in zip(self._tracks, other._tracks, strict=False):
+        for tr1, tr2 in zip(self, other, strict=False):
             assert abs(len(tr1) - len(tr2)) <= length_diff_tol, (
                 f"Track length mismatch: {len(tr1)} vs {len(tr2)}"
             )
 
-            # Robust matching using time as key for points within the track
-            d1 = {c.time: c for c in tr1.centers}
-            d2 = {c.time: c for c in tr2.centers}
+            d1 = {c.time: c for c in tr1}
+            d2 = {c.time: c for c in tr2}
 
             common_times = set(d1.keys()) & set(d2.keys())
-            # Ensure we have a significant overlap
             assert len(common_times) >= min(len(tr1), len(tr2)) - length_diff_tol
 
             for t_val in common_times:
