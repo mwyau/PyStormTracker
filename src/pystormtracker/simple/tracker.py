@@ -49,15 +49,26 @@ class SimpleTracker:
         varname: str,
         time_range: TimeRange | None,
         mode: Literal["min", "max"],
+        threshold: float = 0.0,
         engine: str | None = None,
     ) -> Tracks:
+        import timeit
+
+        t0 = timeit.default_timer()
         detector = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
         raw_steps = _detect_and_link(
-            detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode
+            detector, size=5, threshold=threshold, time_chunk_size=360, mode=mode
         )
-        return _link_centers(raw_steps, time_range=detector.time_range)
+        t1 = timeit.default_timer()
+        print(f"    [Serial] Detection time: {t1 - t0:.4f}s")
+
+        t2 = timeit.default_timer()
+        tracks = _link_centers(raw_steps, time_range=detector.time_range)
+        t3 = timeit.default_timer()
+        print(f"    [Serial] Linking time: {t3 - t2:.4f}s")
+        return tracks
 
     def track(
         self,
@@ -68,8 +79,18 @@ class SimpleTracker:
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
+        threshold: float | None = None,
         engine: str | None = None,
     ) -> Tracks:
+        import timeit
+
+        t0 = timeit.default_timer()
+
+        # Set variable specific thresholds if not provided
+        if threshold is None:
+            threshold = 0.0
+            if varname in ["vo", "vo850", "relative_vorticity"]:
+                threshold = 1e-5
 
         time_range = None
         if start_time is not None or end_time is not None:
@@ -86,14 +107,34 @@ class SimpleTracker:
         if backend == "mpi":
             from .concurrent import run_simple_mpi
 
-            tracks = run_simple_mpi(infile, varname, time_range, mode, engine)
+            tracks = run_simple_mpi(
+                infile, varname, time_range, mode, threshold=threshold, engine=engine
+            )
         elif backend == "dask":
             from .concurrent import run_simple_dask
 
             tracks = run_simple_dask(
-                infile, varname, time_range, mode, n_workers, engine
+                infile,
+                varname,
+                time_range,
+                mode,
+                n_workers,
+                threshold=threshold,
+                engine=engine,
             )
         else:
-            tracks = self._detect_serial(infile, varname, time_range, mode, engine)
+            tracks = self._detect_serial(
+                infile, varname, time_range, mode, threshold=threshold, engine=engine
+            )
+
+        t_end = timeit.default_timer()
+        rank = 0
+        if backend == "mpi":
+            from mpi4py import MPI
+
+            rank = MPI.COMM_WORLD.Get_rank()
+
+        if rank == 0:
+            print(f"Tracking time: {t_end - t0:.4f}s")
 
         return tracks

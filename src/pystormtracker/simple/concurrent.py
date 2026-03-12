@@ -18,6 +18,7 @@ def run_simple_dask(
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     n_workers: int | None,
+    threshold: float = 0.0,
     engine: str | None = None,
 ) -> Tracks:
     from dask.distributed import Client, LocalCluster
@@ -51,7 +52,7 @@ def run_simple_dask(
                     _detect_and_link,
                     d,
                     5,
-                    0.0,
+                    threshold,
                     360,
                     mode,
                 )
@@ -70,7 +71,11 @@ def run_simple_dask(
         print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
 
     # Centralized linking guarantees bit-wise identity with Serial
-    return _link_centers(all_raw_steps, time_range=time_range)
+    t3 = timeit.default_timer()
+    tracks = _link_centers(all_raw_steps, time_range=time_range)
+    t4 = timeit.default_timer()
+    print(f"    [Dask] Linking time: {t4 - t3:.4f}s")
+    return tracks
 
 
 def run_simple_mpi(
@@ -78,6 +83,7 @@ def run_simple_mpi(
     varname: str,
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
+    threshold: float = 0.0,
     engine: str | None = None,
 ) -> Tracks:
     from mpi4py import MPI
@@ -87,6 +93,7 @@ def run_simple_mpi(
     size = comm.Get_size()
     root = 0
 
+    t0 = timeit.default_timer()
     if rank == root:
         detector_obj = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
@@ -96,19 +103,32 @@ def run_simple_mpi(
         detectors = None
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
+    t_scatter = timeit.default_timer()
+    if rank == root:
+        print(f"    [MPI] Prep & Scatter time: {t_scatter - t0:.4f}s")
+
+    t1 = timeit.default_timer()
     raw_chunk = _detect_and_link(
-        detector, size=5, threshold=0.0, time_chunk_size=360, mode=mode
+        detector, size=5, threshold=threshold, time_chunk_size=360, mode=mode
     )
+    # t2 = timeit.default_timer()
+    # print(f"    [MPI Rank {rank}] Task execution time: {t2 - t1:.4f}s")
 
     # Gather all raw chunks at root
     all_raw_chunks = comm.gather(raw_chunk, root=root)
+    t3 = timeit.default_timer()
 
     if rank == root:
+        print(f"    [MPI] Detection & Gather time: {t3 - t1:.4f}s")
         assert all_raw_chunks is not None
         all_raw_steps: list[RawDetectionStep] = [
             step for chunk in all_raw_chunks for step in chunk
         ]
-        return _link_centers(all_raw_steps, time_range=time_range)
+        t4 = timeit.default_timer()
+        tracks = _link_centers(all_raw_steps, time_range=time_range)
+        t5 = timeit.default_timer()
+        print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
+        return tracks
 
     # Non-root ranks return empty Tracks (orchestrated by cli.py)
     return Tracks()
