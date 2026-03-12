@@ -8,25 +8,48 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from mpi4py import MPI
 
-from .models import DetectionResult, Grid, TimeRange, Tracks
+from .models import DetectedCenters, Grid, TimeRange, Tracks
 from .simple import SimpleDetector, SimpleLinker
 
 Backend = Literal["serial", "mpi", "dask"]
 
 
+def _link_centers(centers: DetectedCenters) -> Tracks:
+    tracks = Tracks()
+    linker = SimpleLinker()
+    for step_centers in centers:
+        linker.append_center(tracks, step_centers)
+    return tracks
+
+
+def _detect_and_link(
+    grid: Grid, size: int, threshold: float, time_chunk_size: int, mode: Literal["min", "max"]
+) -> Tracks:
+    """Worker task: Detects centers and immediately links them into a local Tracks object."""
+    centers = grid.detect(
+        size=size, threshold=threshold, time_chunk_size=time_chunk_size, minmaxmode=mode
+    )
+    return _link_centers(centers)
+
+
+def _dask_extend_track(tracks1: Tracks, tracks2: Tracks) -> Tracks:
+    """Worker task: Tree reduction node that merges two Tracks objects."""
+    linker = SimpleLinker()
+    linker.extend_track(tracks1, tracks2)
+    return tracks1
+
+
 def _detect_serial(
     infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
-) -> tuple[DetectionResult, Grid]:
+) -> tuple[Tracks, Grid]:
     grid = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
-    return (
-        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
-        grid,
-    )
+    tracks = _detect_and_link(grid, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
+    return tracks, grid
 
 
 def _detect_mpi(
     infile: str, varname: str, time_range: TimeRange | None, mode: Literal["min", "max"]
-) -> tuple[DetectionResult, Grid, MPI.Intracomm]:
+) -> tuple[Tracks, Grid, MPI.Intracomm]:
     from mpi4py import MPI
 
     comm: MPI.Intracomm = MPI.COMM_WORLD
@@ -43,60 +66,9 @@ def _detect_mpi(
         grids = None
 
     grid: Grid = comm.scatter(grids, root=root)
-    return (
-        grid.detect(size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode),
-        grid,
-        comm,
-    )
-
-
-def _detect_dask(
-    infile: str,
-    varname: str,
-    time_range: TimeRange | None,
-    mode: Literal["min", "max"],
-    n_workers: int | None,
-) -> tuple[DetectionResult, Grid]:
-    import os
-
-    import dask
-    from dask.base import compute
-    from dask.delayed import delayed
-
-    if n_workers is None or n_workers <= 0:
-        n_workers = os.cpu_count() or 4
-
-    # Configure dask to use the threaded scheduler with n_workers
-    # Alternatively, we can let dask decide, but here we want to honor n_workers
-    # dask.config.set(num_workers=n_workers) is global.
-
-    grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
-    grids = grid_obj.split(n_workers)
-
-    delayed_results = [
-        delayed(g.detect)(
-            size=5, threshold=0.0, time_chunk_size=360, minmaxmode=mode
-        )
-        for g in grids
-    ]
-
-    with dask.config.set(num_workers=n_workers):
-        results = list(compute(*delayed_results))
-
-    # Flatten results from chunks
-    flattened_results: DetectionResult = []
-    for chunk in results:
-        flattened_results.extend(chunk)
-
-    return flattened_results, grid_obj
-
-
-def _link_centers(centers: DetectionResult) -> Tracks:
-    tracks = Tracks()
-    linker = SimpleLinker()
-    for step_centers in centers:
-        linker.append_center(tracks, step_centers)
-    return tracks
+    tracks = _detect_and_link(grid, size=5, threshold=0.0, time_chunk_size=360, mode=mode)
+    
+    return tracks, grid, comm
 
 
 def _combine_mpi_tracks(tracks: Tracks, comm: MPI.Intracomm) -> Tracks:
@@ -115,10 +87,65 @@ def _combine_mpi_tracks(tracks: Tracks, comm: MPI.Intracomm) -> Tracks:
     return tracks
 
 
+def _detect_dask(
+    infile: str,
+    varname: str,
+    time_range: TimeRange | None,
+    mode: Literal["min", "max"],
+    n_workers: int | None,
+) -> tuple[Tracks, Grid]:
+    import os
+    import timeit
+    from dask.distributed import Client, LocalCluster
+
+    if n_workers is None or n_workers <= 0:
+        n_workers = os.cpu_count() or 4
+
+    grid_obj = SimpleDetector(pathname=infile, varname=varname, time_range=time_range)
+    grids = grid_obj.split(n_workers)
+
+    t0 = timeit.default_timer()
+    # Use processes=True to ensure Xarray/HDF5 locking doesn't serialize I/O
+    with LocalCluster(n_workers=n_workers, threads_per_worker=1, processes=True, dashboard_address=None) as cluster:
+        with Client(cluster) as client:
+            t1 = timeit.default_timer()
+            print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
+            
+            futures = []
+            for g in grids:
+                futures.append(
+                    client.submit(
+                        _detect_and_link,
+                        g,
+                        5,
+                        0.0,
+                        360,
+                        mode,
+                    )
+                )
+
+            # Dask Tree Reduction for Linking
+            while len(futures) > 1:
+                next_futures = []
+                for i in range(0, len(futures), 2):
+                    if i + 1 < len(futures):
+                        f = client.submit(_dask_extend_track, futures[i], futures[i + 1])
+                        next_futures.append(f)
+                    else:
+                        next_futures.append(futures[i])
+                futures = next_futures
+
+            final_tracks = futures[0].result()
+            t2 = timeit.default_timer()
+            print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
+
+    return final_tracks, grid_obj
+
+
 def run_tracker(
     infile: str,
     varname: str,
-    outfile: str,
+    outfile: str | None,
     time_range: TimeRange | None = None,
     mode: Literal["min", "max"] = "min",
     backend: Backend = "dask",
@@ -136,28 +163,24 @@ def run_tracker(
         rank = MPI.COMM_WORLD.Get_rank()
 
     if rank == 0:
-        timer["detector"] = timeit.default_timer()
+        timer["worker_phase"] = timeit.default_timer()
 
-    # Detection Phase
+    # Detection & Local Linking Phase
     comm: MPI.Intracomm | None = None
     if use_mpi:
-        centers, _grid, comm = _detect_mpi(infile, varname, time_range, mode)
+        tracks, _grid, comm = _detect_mpi(infile, varname, time_range, mode)
     elif use_dask:
-        centers, _grid = _detect_dask(infile, varname, time_range, mode, n_workers)
+        tracks, _grid = _detect_dask(infile, varname, time_range, mode, n_workers)
     else:
-        centers, _grid = _detect_serial(infile, varname, time_range, mode)
+        tracks, _grid = _detect_serial(infile, varname, time_range, mode)
 
     if use_mpi and comm is not None:
         comm.Barrier()
 
     if rank == 0:
-        timer["detector"] = timeit.default_timer() - timer["detector"]
-        timer["linker"] = timeit.default_timer()
+        timer["worker_phase"] = timeit.default_timer() - timer["worker_phase"]
 
-    # Linking Phase
-    tracks = _link_centers(centers)
-
-    # Consolidation Phase
+    # MPI Consolidation Phase (Dask is already reduced in _detect_dask)
     if use_mpi and comm is not None:
         timer["combiner"] = timeit.default_timer()
         tracks = _combine_mpi_tracks(tracks, comm)
@@ -165,12 +188,13 @@ def run_tracker(
 
     # Export Phase
     if rank == 0:
-        timer["linker"] = timeit.default_timer() - timer["linker"]
+        print(f"Worker phase (Detect + Local Link + Dask Reduce): {timer['worker_phase']:.4f}s")
+        if outfile is None:
+            print("Skipping linker metrics and export as outfile is None.")
+            return
 
-        print(f"Detector time: {timer['detector']:.4f}s")
-        print(f"Linker time: {timer['linker']:.4f}s")
         if "combiner" in timer:
-            print(f"Combiner time: {timer['combiner']:.4f}s")
+            print(f"MPI Combiner time: {timer['combiner']:.4f}s")
 
         num_tracks = len(
             [t for t in tracks if len(t) >= 8 and t[0].abs_dist(t[-1]) >= 1000.0]
