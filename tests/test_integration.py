@@ -85,29 +85,39 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
-        pytest.param(("msl", "min"), id="msl_min_full"),
-        pytest.param(("vo", "max"), id="vo_max_full"),
+        pytest.param(("msl", "min", 60), id="msl_min_short"),
+        pytest.param(("vo", "max", 60), id="vo_max_short"),
+        pytest.param(("msl", "min", None), id="msl_min_full"),
+        pytest.param(("vo", "max", None), id="vo_max_full"),
     ],
 )
 def config(
     request: pytest.FixtureRequest,
     test_data_msl: str,
     test_data_vo: str,
-) -> tuple[str, str, str]:
-    param: tuple[str, str] = request.param
-    varname, mode = param
+) -> tuple[str, str, str, int | None]:
+    param: tuple[str, str, int | None] = request.param
+    varname, mode, steps = param
+
+    # Full tests only run in CI to keep local development fast
+    # Short tests only run locally to save time in CI
+    is_ci = os.environ.get("GITHUB_ACTIONS")
+    if steps is None and not is_ci:
+        pytest.skip("Full integration tests only run in CI (local is short-only)")
+    if steps is not None and is_ci:
+        pytest.skip("Short integration tests only run locally (CI runs full tests)")
 
     data_path = test_data_msl if varname == "msl" else test_data_vo
-    return data_path, varname, mode
+    return data_path, varname, mode, steps
 
 
 @pytest.fixture(scope="module")
 def serial_reference(
     tmp_path_factory: pytest.TempPathFactory,
-    config: tuple[str, str, str],
+    config: tuple[str, str, str, int | None],
 ) -> Path:
     """Run serial once and share it across tests to save time."""
-    data_path, varname, mode = config
+    data_path, varname, mode, steps = config
     temp_dir: Path = tmp_path_factory.mktemp("data")
     out_file = temp_dir / "integration_serial.txt"
 
@@ -124,10 +134,13 @@ def serial_reference(
         "serial",
     ]
 
+    if steps:
+        args.extend(["-n", str(steps)])
+
     run_command_direct(args)
 
     # Verbose print the IMILAST format output
-    print(f"\nConfiguration: Variable={varname}, Mode={mode}")
+    print(f"\nConfiguration: Variable={varname}, Mode={mode}, Steps={steps or 'Full'}")
     print_head(out_file, n=15)
 
     return Path(out_file)
@@ -135,10 +148,10 @@ def serial_reference(
 
 @pytest.mark.integration
 def test_dask_vs_serial(
-    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str]
+    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Integration test comparing Serial and Dask backends."""
-    data_path, varname, mode = config
+    data_path, varname, mode, steps = config
     out_file = tmp_path / "integration_dask.txt"
 
     args = [
@@ -156,13 +169,16 @@ def test_dask_vs_serial(
         str(N_WORKERS),
     ]
 
+    if steps:
+        args.extend(["-n", str(steps)])
+
     run_command_direct(args)
     compare_tracks(serial_reference, out_file)
 
 
 @pytest.mark.integration
 def test_mpi_vs_serial(
-    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str]
+    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
     try:
@@ -170,7 +186,7 @@ def test_mpi_vs_serial(
     except FileNotFoundError:
         pytest.skip("mpiexec not found in path")
 
-    data_path, varname, mode = config
+    data_path, varname, mode, steps = config
     mpi_out = tmp_path / "integration_mpi.txt"
 
     args = [
@@ -186,16 +202,19 @@ def test_mpi_vs_serial(
         "mpi",
     ]
 
+    if steps:
+        args.extend(["-n", str(steps)])
+
     run_command_direct(args, use_mpi=True)
     compare_tracks(serial_reference, mpi_out)
 
 
 @pytest.mark.integration
 def test_grib_vs_netcdf(
-    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str]
+    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Test that tracking matches between NetCDF and GRIB inputs."""
-    _, varname, _ = config
+    _, varname, mode, steps = config
 
     if varname == "msl":
         grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
@@ -212,12 +231,15 @@ def test_grib_vs_netcdf(
         "-v",
         varname,
         "-m",
-        "min" if varname == "msl" else "max",
+        mode,
         "-o",
         str(out_file),
         "--backend",
         "serial",
     ]
+
+    if steps:
+        args.extend(["-n", str(steps)])
 
     run_command_direct(args)
     compare_tracks(serial_reference, out_file)
@@ -225,10 +247,13 @@ def test_grib_vs_netcdf(
 
 @pytest.mark.integration
 def test_legacy_regression(
-    serial_reference: Path, config: tuple[str, str, str]
+    serial_reference: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Regression test against v0.0.2 legacy output."""
-    _, varname, _ = config
+    _, varname, _, steps = config
+
+    if steps is not None:
+        pytest.skip("Legacy regression only valid for full datasets")
 
     if varname == "msl":
         ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"

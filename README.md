@@ -153,7 +153,9 @@ uv run mypy src/
 ### Tiered Testing
 To keep development cycles fast, testing is tiered:
 - **Fast Tests**: Default local runs (skips integration tests).
-- **Integration Tests**: Long-running integration and regression tests (including VO).
+- **Integration Tests**: Integration and regression tests.
+  - **Local**: Runs "short" variants (60 time steps) to ensure backend consistency quickly.
+  - **CI**: Runs "full" (all time steps) variants, including legacy regressions.
 - **Full Suite**: Everything.
 
 **Run fast unit tests only (Default):**
@@ -161,7 +163,7 @@ To keep development cycles fast, testing is tiered:
 uv run pytest
 ```
 
-**Run integration and regression tests:**
+**Run integration tests (Short variants locally):**
 ```bash
 uv run pytest --run-integration
 ```
