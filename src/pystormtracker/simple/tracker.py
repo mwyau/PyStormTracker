@@ -56,9 +56,7 @@ class SimpleTracker:
         detector = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
-        raw_steps = _detect_and_link(
-            detector, size=5, threshold=threshold, mode=mode
-        )
+        raw_steps = _detect_and_link(detector, size=5, threshold=threshold, mode=mode)
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0:.4f}s")
 
