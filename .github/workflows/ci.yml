@@ -20,6 +20,8 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Dockerfile'
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -113,6 +115,12 @@ jobs:
         if: matrix.python-version == '3.14' && !matrix.min-deps
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
+      - name: Upload coverage reports to Codecov
+        if: matrix.python-version == '3.14' && !matrix.min-deps
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
@@ -158,8 +166,10 @@ jobs:
     name: docker-build
     needs: [integration-tests]
     if: |
-      startsWith(github.ref, 'refs/heads/main') ||
-      startsWith(github.ref, 'refs/heads/release/')
+      github.event_name != 'pull_request' &&
+      (startsWith(github.ref, 'refs/heads/main') ||
+       startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -178,20 +188,38 @@ jobs:
           push: false
           load: true
           platforms: linux/amd64
-          tags: "${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+          tags: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
           cache-from: type=gha,scope=docker-build
           cache-to: type=gha,mode=max,scope=docker-build
 
       - name: Smoke test Docker image
         run: |
-          docker run --rm ${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
+          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
           format: "table"
           exit-code: "0"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
+
+  docker-publish:
+    name: docker-publish
+    needs: [docker-build]
+    if: |
+      github.event_name != 'pull_request' &&
+      (startsWith(github.ref, 'refs/heads/main') ||
+       startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/tags/v'))
+    uses: ./.github/workflows/docker-publish.yml
+    secrets: inherit
+
+  pypi-publish:
+    name: pypi-publish
+    needs: [integration-tests]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    uses: ./.github/workflows/python-publish.yml
+    secrets: inherit
