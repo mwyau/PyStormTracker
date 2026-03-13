@@ -18,8 +18,8 @@ class DataLoader:
 
     # Common variable and coordinate name aliases
     VAR_MAPPING: ClassVar[dict[str, list[str]]] = {
-        "msl": ["msl", "slp", "prmsl", "mean_sea_level_pressure"],
-        "vo": ["vo", "rv", "relative_vorticity", "vorticity"],
+        "msl": ["msl", "slp"],
+        "vo": ["vo"],
         "latitude": ["latitude", "lat"],
         "longitude": ["longitude", "lon"],
         "time": ["time", "valid_time"],

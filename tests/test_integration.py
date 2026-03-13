@@ -46,8 +46,8 @@ def compare_tracks(
     file1: Path | str,
     file2: Path | str,
     length_diff_tol: int = 0,
-    coord_tol: float = 1e-4,
-    intensity_tol: float = 1e-4,
+    coord_tol: float = 1e-5,
+    intensity_tol: float = 1e-5,
     count_tol: int = 0,
     dist_tol: float | None = None,
 ) -> None:
@@ -97,12 +97,6 @@ def config(
     param: tuple[str, str] = request.param
     varname, mode = param
 
-    if varname == "vo":
-        run_vo = request.config.getoption("--run-vo")
-        run_all = request.config.getoption("--run-all")
-        if not (run_vo or run_all):
-            pytest.skip("VO tests skipped (use --run-vo or --run-all to run)")
-
     data_path = test_data_msl if varname == "msl" else test_data_vo
     return data_path, varname, mode
 
@@ -130,7 +124,6 @@ def serial_reference(
         "serial",
     ]
 
-    # Use 1e-5 threshold for VO to match legacy reference
     run_command_direct(args)
 
     # Verbose print the IMILAST format output
@@ -162,6 +155,7 @@ def test_dask_vs_serial(
         "--workers",
         str(N_WORKERS),
     ]
+
     run_command_direct(args)
     compare_tracks(serial_reference, out_file)
 
@@ -224,6 +218,7 @@ def test_grib_vs_netcdf(
         "--backend",
         "serial",
     ]
+
     run_command_direct(args)
     compare_tracks(serial_reference, out_file)
 
@@ -239,7 +234,7 @@ def test_legacy_regression(
         ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
         l_tol, c_tol, i_tol, count_tol = 1, 15.0, 500.0, 1
     elif varname == "vo":
-        ref_file = "data/test/tracks/era5_vo_2.5x2.5_1e-5_v0.0.2_imilast.txt"
+        ref_file = "data/test/tracks/era5_vo_2.5x2.5_1e-4_v0.0.2_imilast.txt"
         # algorithmic improvements lead to slight differences, but should still be close
         l_tol, c_tol, i_tol, count_tol = 5, 15.0, 1.0, 100
     else:

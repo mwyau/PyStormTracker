@@ -220,6 +220,10 @@ class SimpleDetector:
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
 
+        # Set variable specific thresholds if not provided (still 0.0)
+        if threshold == 0.0 and self.requested_varname == "vo":
+            threshold = 1e-4
+
         time_array = self.get_time()
         lat, lon = self.lat, self.lon
         assert time_array is not None
