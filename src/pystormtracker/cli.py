@@ -22,7 +22,7 @@ def run_tracker(
     mode: Literal["min", "max"] = "min",
     backend: Backend = "serial",
     n_workers: int | None = None,
-    threshold: float = 0.0,
+    threshold: float | None = None,
     engine: str | None = None,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
@@ -88,7 +88,7 @@ def parse_args() -> Namespace:
         "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
     )
     parser.add_argument(
-        "-t", "--threshold", type=float, default=0.0, help="Detection threshold."
+        "-t", "--threshold", type=float, default=None, help="Detection threshold."
     )
     parser.add_argument(
         "-b",

@@ -213,16 +213,19 @@ class SimpleDetector:
     def detect(
         self,
         size: int = 5,
-        threshold: float = 0.0,
+        threshold: float | None = None,
         time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
     ) -> list[RawDetectionStep]:
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
 
-        # Set variable specific thresholds if not provided (still 0.0)
-        if threshold == 0.0 and self.requested_varname == "vo":
-            threshold = 1e-4
+        # Set variable specific thresholds if not provided
+        if threshold is None:
+            if self.requested_varname == "vo":
+                threshold = 1e-4
+            else:
+                threshold = 0.0
 
         time_array = self.get_time()
         lat, lon = self.lat, self.lon

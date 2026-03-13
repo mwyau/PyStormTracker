@@ -25,7 +25,7 @@ def _link_centers(
 def _detect_and_link(
     detector: SimpleDetector,
     size: int,
-    threshold: float,
+    threshold: float | None,
     time_chunk_size: int,
     mode: Literal["min", "max"],
 ) -> list[RawDetectionStep]:
@@ -49,7 +49,7 @@ class SimpleTracker:
         varname: str,
         time_range: TimeRange | None,
         mode: Literal["min", "max"],
-        threshold: float = 0.0,
+        threshold: float | None = None,
         engine: str | None = None,
     ) -> Tracks:
         import timeit
@@ -79,7 +79,7 @@ class SimpleTracker:
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
-        threshold: float = 0.0,
+        threshold: float | None = None,
         engine: str | None = None,
     ) -> Tracks:
         import timeit
