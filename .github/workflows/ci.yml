@@ -216,3 +216,10 @@ jobs:
        startsWith(github.ref, 'refs/tags/v'))
     uses: ./.github/workflows/docker-publish.yml
     secrets: inherit
+
+  pypi-publish:
+    name: pypi-publish
+    needs: [integration-tests]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    uses: ./.github/workflows/python-publish.yml
+    secrets: inherit
