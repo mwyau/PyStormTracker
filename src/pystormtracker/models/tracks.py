@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from .center import Center
 
 
-@dataclass
+@dataclass(slots=True)
 class TimeRange:
     """Metadata for the time range covered by a set of tracks."""
 
