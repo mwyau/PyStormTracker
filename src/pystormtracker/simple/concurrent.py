@@ -18,7 +18,7 @@ def run_simple_dask(
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     n_workers: int | None,
-    threshold: float = 0.0,
+    threshold: float | None = None,
     engine: str | None = None,
 ) -> Tracks:
     from dask.distributed import Client, LocalCluster
@@ -83,7 +83,7 @@ def run_simple_mpi(
     varname: str,
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
-    threshold: float = 0.0,
+    threshold: float | None = None,
     engine: str | None = None,
 ) -> Tracks:
     from mpi4py import MPI
