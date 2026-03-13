@@ -214,6 +214,13 @@ jobs:
       (startsWith(github.ref, 'refs/heads/main') ||
        startsWith(github.ref, 'refs/heads/release/') ||
        startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     uses: ./.github/workflows/docker-publish.yml
     secrets: inherit
 
@@ -221,5 +228,9 @@ jobs:
     name: pypi-publish
     needs: [integration-tests]
     if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/python-publish.yml
     secrets: inherit
