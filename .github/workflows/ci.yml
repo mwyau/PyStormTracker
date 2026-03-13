@@ -8,6 +8,10 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Dockerfile'
+      - '.github/workflows/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'ARCHITECTURE.md'
   push:
     branches:
       - main
@@ -20,6 +24,10 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Dockerfile'
+      - '.github/workflows/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'ARCHITECTURE.md'
   release:
     types: [published]
   workflow_dispatch:
