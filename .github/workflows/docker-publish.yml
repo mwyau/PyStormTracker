@@ -1,11 +1,7 @@
 name: Docker Publish
 
 on:
-  push:
-    branches:
-      - main
-  release:
-    types: [published]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -13,8 +9,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOCKER_HUB_REPO: docker.io/${{ vars.DOCKER_IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ vars.DOCKER_IMAGE_NAME }}
+  DOCKER_HUB_REPO: docker.io/${{ github.event_name == 'release' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ github.event_name == 'release' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
@@ -60,17 +56,17 @@ jobs:
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
           tags: |
-            # Always tag with short SHA
-            type=sha,format=short,prefix=
             # Tag with 'edge' only for main branch
-            type=edge,branch=main
-            # Branch tag for all branches except main
-            type=ref,event=branch,enable=${{ github.ref_name != 'main' }}
+            type=edge,branch=main,priority=700
             # Semver tags for releases (includes 'latest')
-            type=semver,pattern=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }}
+            type=semver,pattern=latest,priority=1000
+            type=semver,pattern={{version}},priority=900
+            type=semver,pattern={{major}}.{{minor}},priority=900
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }},priority=900
+            # Branch tag for all branches except main
+            type=ref,event=branch,enable=${{ github.ref_name != 'main' }},priority=600
+            # Always tag with short SHA
+            type=sha,format=short,prefix=,priority=100
 
       - name: Build and push Docker image
         id: push
