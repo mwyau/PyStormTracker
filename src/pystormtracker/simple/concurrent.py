@@ -107,9 +107,7 @@ def run_simple_mpi(
         print(f"    [MPI] Prep & Scatter time: {t_scatter - t0:.4f}s")
 
     t1 = timeit.default_timer()
-    raw_chunk = _detect_and_link(
-        detector, size=5, threshold=threshold, mode=mode
-    )
+    raw_chunk = _detect_and_link(detector, size=5, threshold=threshold, mode=mode)
     # t2 = timeit.default_timer()
     # print(f"    [MPI Rank {rank}] Task execution time: {t2 - t1:.4f}s")
 
