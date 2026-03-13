@@ -164,7 +164,7 @@ jobs:
 
   docker-build:
     name: docker-build
-    needs: [integration-tests]
+    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
     if: |
       github.event_name != 'pull_request' &&
       (startsWith(github.ref, 'refs/heads/main') ||
@@ -226,7 +226,7 @@ jobs:
 
   pypi-publish:
     name: pypi-publish
-    needs: [integration-tests]
+    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
     if: github.event_name == 'release' && github.event.action == 'published'
     permissions:
       contents: read
