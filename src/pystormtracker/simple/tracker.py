@@ -79,18 +79,12 @@ class SimpleTracker:
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
-        threshold: float | None = None,
+        threshold: float = 0.0,
         engine: str | None = None,
     ) -> Tracks:
         import timeit
 
         t0 = timeit.default_timer()
-
-        # Set variable specific thresholds if not provided
-        if threshold is None:
-            threshold = 0.0
-            if varname in ["vo", "vo850", "relative_vorticity"]:
-                threshold = 1e-5
 
         time_range = None
         if start_time is not None or end_time is not None:
