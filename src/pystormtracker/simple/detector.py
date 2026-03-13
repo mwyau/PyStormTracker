@@ -214,7 +214,6 @@ class SimpleDetector:
         self,
         size: int = 5,
         threshold: float | None = None,
-        time_chunk_size: int = 360,
         minmaxmode: Literal["min", "max"] = "min",
     ) -> list[RawDetectionStep]:
         if size % 2 != 1:

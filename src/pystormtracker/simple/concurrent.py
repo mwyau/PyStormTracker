@@ -53,7 +53,6 @@ def run_simple_dask(
                     d,
                     5,
                     threshold,
-                    360,
                     mode,
                 )
             )
@@ -109,7 +108,7 @@ def run_simple_mpi(
 
     t1 = timeit.default_timer()
     raw_chunk = _detect_and_link(
-        detector, size=5, threshold=threshold, time_chunk_size=360, mode=mode
+        detector, size=5, threshold=threshold, mode=mode
     )
     # t2 = timeit.default_timer()
     # print(f"    [MPI Rank {rank}] Task execution time: {t2 - t1:.4f}s")

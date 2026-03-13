@@ -26,14 +26,12 @@ def _detect_and_link(
     detector: SimpleDetector,
     size: int,
     threshold: float | None,
-    time_chunk_size: int,
     mode: Literal["min", "max"],
 ) -> list[RawDetectionStep]:
     """Worker task: Detects centers and returns raw results for central linking."""
     return detector.detect(
         size=size,
         threshold=threshold,
-        time_chunk_size=time_chunk_size,
         minmaxmode=mode,
     )
 
@@ -59,7 +57,7 @@ class SimpleTracker:
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
         raw_steps = _detect_and_link(
-            detector, size=5, threshold=threshold, time_chunk_size=360, mode=mode
+            detector, size=5, threshold=threshold, mode=mode
         )
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0:.4f}s")
