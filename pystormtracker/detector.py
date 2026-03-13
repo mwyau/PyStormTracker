@@ -230,7 +230,7 @@ class RectGrid(Grid):
                 return sorted(buffer)[8] - search_window[origin] > threshold
         elif search_window[origin] == search_window.max():
             if minmaxmode == 'max':
-                return sorted(buffer)[0] - search_window[origin] < -1*threshold
+                return search_window[origin] - sorted(buffer)[-9] > threshold
         return False
 
     def _local_extrema_filter(self, input, size, threshold=0., minmaxmode='min'):
@@ -253,8 +253,12 @@ class RectGrid(Grid):
         origin = (size*size)//2
         return buffer[origin] and buffer[origin] == buffer.max()
 
-    def _remove_dup_laplace(self, data, mask, size=5):
-        laplacian = np.multiply(laplace(data, mode='wrap'), mask)
+    def _remove_dup_laplace(self, data, mask, size=5, minmaxmode='min'):
+        if minmaxmode == 'min':
+            laplacian = np.multiply(laplace(data, mode='wrap'), mask)
+        else:
+            # For local maximum, Laplacian is negative. We want the most negative.
+            laplacian = np.multiply(-1*laplace(data, mode='wrap'), mask)
 
         return generic_filter(laplacian, self._local_max_laplace, size=size, mode='wrap',
                 extra_keywords={'size': size})
@@ -279,10 +283,16 @@ class RectGrid(Grid):
             ibuffer = it%chart_buffer
             if ibuffer == 0:
                 var = self.get_var(chart=(it,min(it+chart_buffer,len(time))))
-            chart = var[ibuffer,:,:]
+
+            if var.ndim == 3:
+                chart = var[ibuffer,:,:]
+            elif var.ndim == 4:
+                chart = var[ibuffer,0,:,:]
+            else:
+                raise ValueError, "Variable must have 3 or 4 dimensions"
 
             extrema = self._local_extrema_filter(chart, size, threshold=threshold, minmaxmode=minmaxmode)
-            extrema = self._remove_dup_laplace(chart, extrema, size=5)
+            extrema = self._remove_dup_laplace(chart, extrema, size=5, minmaxmode=minmaxmode)
 
             center_list = [Center(t, lat[i], lon[j], chart[i,j]) \
                     for i, j in np.transpose(extrema.nonzero())]

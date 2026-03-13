@@ -21,14 +21,14 @@ if __name__ == "__main__":
 
     argv = sys.argv[1:]
     try:
-        opts, args = getopt.getopt(argv,"hi:v:o:n:m:",["input=","var=","output=","num=","mode="])
+        opts, args = getopt.getopt(argv,"hi:v:o:n:m:t:",["input=","var=","output=","num=","mode=","threshold="])
     except getopt.GetoptError:
-        print("stormtracker.py -i <input file> -v <variable name> -o <output file>")
+        print("stormtracker.py -i <input file> -v <variable name> -o <output file> -t <threshold>")
         sys.exit(2)
 
     for opt, arg in opts:
         if opt == '-h':
-            print("stormtracker.py -i <input file> -v <variable name> -o <output file> -n <number of time steps>")
+            print("stormtracker.py -i <input file> -v <variable name> -o <output file> -n <number of time steps> -t <threshold>")
             sys.exit()
         elif opt in ("-i", "--input"):
             infile = arg
@@ -40,6 +40,8 @@ if __name__ == "__main__":
             trange = (0, int(arg))
         elif opt in ("-m", "--mode"):
             mode = arg
+        elif opt in ("-t", "--threshold"):
+            threshold = float(arg)
 
     timer = {}
 
@@ -65,7 +67,7 @@ if __name__ == "__main__":
     else:
         grid = RectGrid(pathname=infile, varname=var, trange=trange)
 
-    centers = grid.detect(minmaxmode=mode)
+    centers = grid.detect(minmaxmode=mode, threshold=threshold)
 
     if USE_MPI:
         comm.Barrier()
@@ -114,5 +116,5 @@ if __name__ == "__main__":
                     dt = datetime.utcfromtimestamp(c.time)
                     date_i10 = dt.strftime("%Y%m%d%H")
                     # Coords: 2 decimal places, Intensity: 4 decimal places
-                    f.write("00 %d %d %s %d %02d %02d %02d %.2f %.2f %.4f\n" % \
+                    f.write("00 %d %d %s %d %02d %02d %02d %.2f %.2f %.8g\n" % \
                         (it+1, isub+1, date_i10, dt.year, dt.month, dt.day, dt.hour, lon, c.lat, c.var))

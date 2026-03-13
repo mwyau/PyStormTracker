@@ -82,6 +82,9 @@ class Tracks(object):
 
     def append_center(self, centers):
 
+        if not centers:
+            return
+
         new_tail = []
 
         matched_index = self.match_center(centers)
