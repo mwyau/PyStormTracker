@@ -6,8 +6,9 @@ This document describes the modern, high-performance architecture of PyStormTrac
 
 PyStormTracker is built for scale and extensibility. The architecture is centered around three core principles:
 1.  **Unified API (Tracker Protocol):** A structural interface that allows the CLI and Python API to support multiple tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) interchangeably.
-2.  **Vectorization & JIT:** Heavy mathematical operations are offloaded to **Numba** JIT-compiled kernels and **NumPy** broadcasting, bypassing Python's loop overhead and Global Interpreter Lock (GIL).
-3.  **Hybrid Parallelism:** The architecture parallelizes the computationally intensive **Detection** phase while centralizing the **Linking** phase to ensure perfect serial-parallel consistency.
+2.  **Centralized Threshold Management:** The `SimpleDetector` is responsible for managing variable-specific detection thresholds (e.g., `1e-4` for vorticity), ensuring consistent behavior across different parallel backends.
+3.  **Vectorization & JIT:** Heavy mathematical operations are offloaded to **Numba** JIT-compiled kernels and **NumPy** broadcasting, bypassing Python's loop overhead and Global Interpreter Lock (GIL).
+4.  **Hybrid Parallelism:** The architecture parallelizes the computationally intensive **Detection** phase while centralizing the **Linking** phase to ensure perfect serial-parallel consistency.
 
 ---
 
