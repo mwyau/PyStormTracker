@@ -1,13 +1,23 @@
-```{include} ../README.md
-```
+# PyStormTracker: A High-Performance Cyclone Tracker in Python
 
-## Documentation
+```{toctree}
+:maxdepth: 2
+:caption: Getting Started
+
+readme
+```
 
 ```{toctree}
 :maxdepth: 2
 :caption: Technical Reference
 
 architecture
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Future Development
+
 roadmap
 ```
 
