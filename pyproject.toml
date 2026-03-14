@@ -31,6 +31,8 @@ dependencies = [
     "numpy>=1.24.0",
     "numba>=0.60.0",
     "xarray>=2024.9.0",
+    "matplotlib>=3.10.8",
+    "pandas>=3.0.1",
 ]
 
 [project.scripts]
@@ -68,6 +70,11 @@ docs = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pystormtracker"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/benchmark",
+]
 
 [dependency-groups]
 dev = [

@@ -12,6 +12,7 @@ readme
 :caption: Technical Reference
 
 architecture
+benchmark
 ```
 
 ```{toctree}
