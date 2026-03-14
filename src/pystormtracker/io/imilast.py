@@ -61,7 +61,7 @@ def read_imilast(filename: Path | str) -> Tracks:
     return obj
 
 
-def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 4) -> None:
+def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 6) -> None:
     """Exports tracks to an IMILAST format text file."""
     outfile_str = str(outfile)
     if not outfile_str.endswith(".txt"):
@@ -80,15 +80,18 @@ def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 4) 
             for step, center in enumerate(track, start=1):
                 try:
                     ts = (center.time - t0) / np.timedelta64(1, "s")
-                    dt = datetime.fromtimestamp(float(ts), tz=UTC)
+                    # Use integer timestamp for datetime to avoid float precision issues
+                    dt = datetime.fromtimestamp(int(ts), tz=UTC)
                     yyyymmddhh = dt.strftime("%Y%m%d%H")
                     yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
                 except Exception:
                     yyyymmddhh = "0000000000"
                     yyyy, mm, dd, hh = 0, 0, 0, 0
 
+                # Ensure intensity is formatted with enough precision for VO
                 val = next(iter(center.vars.values())) if center.vars else np.nan
                 var_val = f"{float(val):.{decimal_places}f}"
+
                 lon = center.lon
                 if lon > 180:
                     lon -= 360
