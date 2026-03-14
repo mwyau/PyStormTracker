@@ -33,3 +33,9 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 *   **Complete `HodgesTracker`:**
     *   *Current State:* Scaffolding added.
     *   *Action:* Integrate spherical distance math (e.g., `haversine` or Numba-compiled Vincenty formula). For track optimization (cost function minimization), port the original C logic using `scipy.optimize.linear_sum_assignment` which perfectly maps to the tracking assignment problem.
+
+## 5. Distribution & Ecosystem
+
+*   **Conda-forge Distribution:**
+    *   *Current State:* PyStormTracker is available on PyPI, Docker Hub, and GHCR.
+    *   *Action:* Create a feedstock for `conda-forge` to enable installation via `conda` or `mamba`, improving accessibility for the scientific community.
