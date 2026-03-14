@@ -51,7 +51,7 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- **Windows Users**: the `eccodeslib` GRIB helper library is only required on Linux/macOS.
+- **Windows Users**: the `eccodeslib` GRIB helper library is only required on Linux/macOS. (Note: GRIB/ecCodes support on Windows is currently experimental and untested).
 
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
