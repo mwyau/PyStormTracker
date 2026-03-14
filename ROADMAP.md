@@ -28,14 +28,14 @@ This document outlines the strategic plan for improving PyStormTracker's perform
     *   *Current State:* Xarray is primarily used as an I/O loader before dropping down to manual NumPy arrays, manual chunking, and custom MPI/Dask orchestration.
     *   *Action:* Wrap the `_numba_extrema_filter` inside `xr.apply_ufunc(..., dask="parallelized")`. This allows Xarray to natively handle chunking, distributed execution, and reassembly, potentially eliminating the need for manual orchestration code in `concurrent.py`.
 
-## 4. Feature Implementation
-
-*   **Complete `HodgesTracker`:**
-    *   *Current State:* Scaffolding added.
-    *   *Action:* Integrate spherical distance math (e.g., `haversine` or Numba-compiled Vincenty formula). For track optimization (cost function minimization), port the original C logic using `scipy.optimize.linear_sum_assignment` which perfectly maps to the tracking assignment problem.
-
-## 5. Distribution & Ecosystem
+## 4. Distribution & Ecosystem
 
 *   **Conda-forge Distribution:**
     *   *Current State:* PyStormTracker is available on PyPI, Docker Hub, and GHCR.
     *   *Action:* Create a feedstock for `conda-forge` to enable installation via `conda` or `mamba`, improving accessibility for the scientific community.
+
+## 5. Feature Implementation
+
+*   **Complete `HodgesTracker`:**
+    *   *Current State:* Scaffolding added.
+    *   *Action:* Integrate spherical distance math (e.g., `haversine` or Numba-compiled Vincenty formula). For track optimization (cost function minimization), port the original C logic using `scipy.optimize.linear_sum_assignment` which perfectly maps to the tracking assignment problem.
