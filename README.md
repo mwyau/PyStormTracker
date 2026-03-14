@@ -6,6 +6,8 @@
 [![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
 ![Python versions](https://img.shields.io/pypi/pyversions/PyStormTracker)
 ![License](https://img.shields.io/pypi/l/PyStormTracker)
+[![Docker](https://img.shields.io/badge/docker-xddd%2Fpystormtracker-blue?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
+[![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
 **PyStormTracker** is a high-performance Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm and provides a scalable framework for processing large-scale climate datasets like ERA5.
@@ -43,6 +45,7 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
+- **Windows Users**: the `eccodeslib` GRIB helper library is only required on Linux/macOS.
 
 ### From PyPI (Recommended)
 You can install the latest stable version of PyStormTracker directly from PyPI:
