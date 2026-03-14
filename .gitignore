@@ -71,3 +71,6 @@ target/
 
 # VSCode
 .vscode/
+
+# Git worktrees
+worktrees/
