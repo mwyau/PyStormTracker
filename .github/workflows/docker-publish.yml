@@ -1,7 +1,9 @@
 name: Docker Publish
 
 on:
-  workflow_call:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch:
 
 concurrency:
@@ -9,12 +11,18 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOCKER_HUB_REPO: docker.io/${{ github.event_name == 'release' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ github.event_name == 'release' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  # Publish to ORG on release, else to OWNER (personal) for merge to main/manual
+  DOCKER_HUB_REPO: docker.io/${{ (github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ (github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Only run if CI succeeded (for workflow_run) or if it's a release/manual trigger
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.event == 'release')) ||
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch'
     permissions:
       actions: read
       contents: write
@@ -26,7 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
           fetch-depth: 0
 
       - name: Set up QEMU
@@ -56,7 +64,7 @@ jobs:
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
           tags: |
-            # Tag with 'edge' only for main branch
+            # Tag with 'edge' only for main branch builds
             type=edge,branch=main,priority=700
             # Semver tags for releases (includes 'latest')
             type=semver,pattern=latest,priority=1000
