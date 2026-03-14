@@ -182,7 +182,10 @@ jobs:
 
       - name: Smoke test Docker image
         run: |
+          # Test CLI help
           docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
+          # Test library import
+          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} -c "import pystormtracker as pst; print('Import success')"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
@@ -193,24 +196,6 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-
-  docker-publish:
-    name: docker-publish
-    needs: [docker-build]
-    if: |
-      github.event_name != 'pull_request' &&
-      (startsWith(github.ref, 'refs/heads/main') ||
-       startsWith(github.ref, 'refs/heads/release/') ||
-       startsWith(github.ref, 'refs/tags/v'))
-    permissions:
-      actions: read
-      contents: write
-      packages: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    uses: ./.github/workflows/docker-publish.yml
-    secrets: inherit
 
   pypi-publish:
     name: pypi-publish
