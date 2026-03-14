@@ -2,12 +2,26 @@ name: CI
 
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/ci.yml'
   push:
     branches:
       - main
       - release/**
     tags:
       - v*
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/ci.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -153,11 +167,14 @@ jobs:
   docker-build:
     name: docker-build
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+    # Only run on merges to main, release branches, tags, releases, or manual dispatch
     if: |
       github.event_name != 'pull_request' &&
-      (startsWith(github.ref, 'refs/heads/main') ||
+      (github.ref == 'refs/heads/main' ||
        startsWith(github.ref, 'refs/heads/release/') ||
-       startsWith(github.ref, 'refs/tags/v'))
+       startsWith(github.ref, 'refs/tags/v') ||
+       github.event_name == 'release' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -182,7 +199,10 @@ jobs:
 
       - name: Smoke test Docker image
         run: |
+          # Test CLI help
           docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
+          # Test library import
+          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} -c "import pystormtracker as pst; print('Import success')"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
@@ -194,31 +214,26 @@ jobs:
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
 
-  docker-publish:
-    name: docker-publish
-    needs: [docker-build]
+  pypi-build:
+    name: pypi-build
+    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+    # Only run on merges to main, release branches, tags, releases, or manual dispatch
     if: |
       github.event_name != 'pull_request' &&
-      (startsWith(github.ref, 'refs/heads/main') ||
+      (github.ref == 'refs/heads/main' ||
        startsWith(github.ref, 'refs/heads/release/') ||
-       startsWith(github.ref, 'refs/tags/v'))
-    permissions:
-      actions: read
-      contents: write
-      packages: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    uses: ./.github/workflows/docker-publish.yml
-    secrets: inherit
-
-  pypi-publish:
-    name: pypi-publish
-    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
-    if: github.event_name == 'release' && github.event.action == 'published'
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/python-publish.yml
-    secrets: inherit
+       startsWith(github.ref, 'refs/tags/v') ||
+       github.event_name == 'release' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Build release distributions
+        run: uv build --wheel --sdist
