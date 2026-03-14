@@ -7,7 +7,6 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,11 +21,10 @@ jobs:
     # Only run if CI succeeded AND it was a release event.
     # Added head_repository check for security.
     if: |
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' && 
-       github.event.workflow_run.event == 'release' &&
-       github.event.workflow_run.head_repository.full_name == github.repository) ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_run' && 
+      github.event.workflow_run.conclusion == 'success' && 
+      github.event.workflow_run.event == 'release' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
       contents: read
       id-token: write
@@ -35,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Set up uv
@@ -75,8 +73,8 @@ jobs:
         id: get_version
         run: |
           # Strips 'v' prefix from tag_name (e.g. v0.2.1 -> 0.2.1)
-          # Use head_branch for workflow_run, or ref_name for dispatch
-          VERSION=${{ github.event.workflow_run.head_branch || github.ref_name }}
+          # In workflow_run for a release, head_branch contains the tag name.
+          VERSION=${{ github.event.workflow_run.head_branch }}
           echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
 
       - name: Retrieve release distributions
