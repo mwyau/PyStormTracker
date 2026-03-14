@@ -64,6 +64,18 @@ tracks.write("output.txt", format="imilast")
 
 ---
 
+## 4. Future Architectural Direction
+
+To further optimize scalability and memory efficiency for native-resolution climate datasets (e.g., 0.25° ERA5), the architecture is evolving towards deeper integration with the scientific Python ecosystem:
+
+*   **Idiomatic Xarray (`apply_ufunc`):** Transitioning away from custom MPI/Dask chunking in favor of Xarray's native `apply_ufunc(..., dask="parallelized")`. This delegates chunk management and distributed execution entirely to Xarray/Dask, reducing custom orchestration code.
+*   **Lazy Evaluation & Thread Topology:** Shifting from eager chunk-loading to lazy, frame-by-frame memory access to eliminate out-of-memory risks on large domains. Concurrently, strictly pinning Numba thread topologies to prevent CPU oversubscription in multi-process backends.
+*   **Tree-based Linking:** Upgrading the current NumPy-broadcasting linker to utilize C-level tree structures (e.g., `scipy.spatial.cKDTree`), breaking the $O(N^2)$ scaling barrier for extremely long or dense trajectory sequences.
+
+For more details on specific planned implementations, see the [Roadmap](ROADMAP.md).
+
+---
+
 ## Appendix: Evolution from Legacy Architecture
 
 The current architecture represents a fundamental shift from the legacy nested-object design used in earlier versions.
