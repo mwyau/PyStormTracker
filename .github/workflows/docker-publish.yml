@@ -18,10 +18,9 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # Only run if CI succeeded (for workflow_run) or if it's a release/manual trigger
+    # Only run if CI succeeded (for workflow_run) or if it's a manual trigger
     if: |
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.event == 'release')) ||
-      github.event_name == 'release' ||
       github.event_name == 'workflow_dispatch'
     permissions:
       actions: read
