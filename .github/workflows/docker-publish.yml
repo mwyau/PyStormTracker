@@ -66,6 +66,8 @@ jobs:
           images: |
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
+          # Fix: Tell the metadata action the real ref, otherwise it defaults to 'main'
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
           tags: |
             # Tag with 'edge' only for main branch builds
             type=edge,branch=main,priority=700

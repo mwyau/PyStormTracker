@@ -197,13 +197,3 @@ jobs:
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
 
-  pypi-publish:
-    name: pypi-publish
-    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
-    if: github.event_name == 'release' && github.event.action == 'published'
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/python-publish.yml
-    secrets: inherit
