@@ -76,6 +76,14 @@ For more details on specific planned implementations, see the [Roadmap](ROADMAP.
 
 ---
 
+## 5. Performance Benchmarks
+
+To quantify the efficiency gains of the modern array-backed JIT architecture, a comprehensive performance comparison was conducted between the legacy object-oriented system (`v0.3.3`) and the current implementation.
+
+Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](benchmark/BENCHMARK.md).
+
+---
+
 ## Appendix: Evolution from Legacy Architecture
 
 The current architecture represents a fundamental shift from the legacy nested-object design used in earlier versions.

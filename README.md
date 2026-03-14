@@ -18,7 +18,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 
 ## Features
 
-- **High-Performance Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution.
+- **High-Performance Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution. **Achieves up to 11.8x speedup in serial workloads.**
 - **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, running at raw C speeds while releasing the GIL for true multi-process execution.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
 - **Scalable Backends**: 
@@ -26,7 +26,13 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
   - **Dask**: Multi-process tree-reduction for local or distributed scaling.
   - **MPI**: High-performance distributed execution via `mpi4py`.
 - **Typed & Modern**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
-- **Interoperable**: Full support for the standard **IMILAST** intercomparison format.
+- **Interoperable**: Full support for the standard **IMILAST** intercomparison format (`.txt`) with human-readable datetime strings.
+
+<p align="center">
+  <img src="benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
+  <br>
+  <i>Significant performance gains in v0.4.0+ compared to the legacy v0.3.3 architecture on high-resolution ERA5 data.</i>
+</p>
 
 ## Technical Methodology
 

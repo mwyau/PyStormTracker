@@ -1,0 +1,17 @@
+.coverage
+.coverage.*
+.git
+.github
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.vscode/
+__pycache__/
+benchmark/
+data/test/
+docs/
+htmlcov/
+tests/
+uv.lock
+worktrees/
