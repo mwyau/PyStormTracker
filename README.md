@@ -87,6 +87,7 @@ stormtracker -i data.nc -v msl -o my_tracks
 | `--var` | `-v` | **Required.** Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
 | `--num` | `-n` | Number of time steps to process. |
+| `--threshold` | `-t` | Detection threshold (defaults: `1e-4` for `vo`, `0.0` otherwise). |
 | `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
 | `--backend` | `-b` | `serial` (default), `dask`, or `mpi`. |
 | `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
@@ -152,7 +153,9 @@ uv run mypy src/
 ### Tiered Testing
 To keep development cycles fast, testing is tiered:
 - **Fast Tests**: Default local runs (skips integration tests).
-- **Integration Tests**: ONLY long-running integration/regression tests.
+- **Integration Tests**: Integration and regression tests.
+  - **Local**: Runs "short" variants (60 time steps) to ensure backend consistency quickly.
+  - **CI**: Runs "full" (all time steps) variants, including legacy regressions.
 - **Full Suite**: Everything.
 
 **Run fast unit tests only (Default):**
@@ -160,7 +163,7 @@ To keep development cycles fast, testing is tiered:
 uv run pytest
 ```
 
-**Run ONLY integration tests:**
+**Run integration tests (Short variants locally):**
 ```bash
 uv run pytest --run-integration
 ```

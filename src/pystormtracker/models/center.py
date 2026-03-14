@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 
-@dataclass
+@dataclass(slots=True)
 class Center:
     """Represents a detected storm center at a specific time and location."""
 

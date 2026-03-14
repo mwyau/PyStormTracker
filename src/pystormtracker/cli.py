@@ -16,12 +16,13 @@ Backend = Literal["serial", "mpi", "dask"]
 def run_tracker(
     infile: str,
     varname: str,
-    outfile: str | None,
+    outfile: str,
     start_time: str | np.datetime64 | None = None,
     end_time: str | np.datetime64 | None = None,
     mode: Literal["min", "max"] = "min",
     backend: Backend = "serial",
     n_workers: int | None = None,
+    threshold: float | None = None,
     engine: str | None = None,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
@@ -38,6 +39,8 @@ def run_tracker(
         timer["total"] = timeit.default_timer()
 
     tracker = SimpleTracker()
+    # tracker.track should ideally return tracks and timing
+    # For now, we will rely on internal timing or modify it
     tracks = tracker.track(
         infile=infile,
         varname=varname,
@@ -46,30 +49,30 @@ def run_tracker(
         mode=mode,
         backend=backend,
         n_workers=n_workers,
+        threshold=threshold,
         engine=engine,
     )
 
     # Export Phase
     if rank == 0:
-        timer["total"] = timeit.default_timer() - timer["total"]
-        print(f"Total tracking time: {timer['total']:.4f}s")
-
-        if outfile is None:
-            print("Skipping export as outfile is None.")
-            return
-
         num_tracks = len(
             [t for t in tracks if len(t) >= 8 and t[0].abs_dist(t[-1]) >= 1000.0]
         )
         print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
 
+        timer["export"] = timeit.default_timer()
         tracks.write(outfile)
-        out_path = Path(outfile)
+        timer["export"] = timeit.default_timer() - timer["export"]
 
+        out_path = Path(outfile)
         final_outfile = (
             out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
         )
+        print(f"Export time: {timer['export']:.4f}s")
         print(f"Results exported to {final_outfile}")
+
+        timer["total"] = timeit.default_timer() - timer["total"]
+        print(f"Total time: {timer['total']:.4f}s")
 
 
 def parse_args() -> Namespace:
@@ -83,6 +86,9 @@ def parse_args() -> Namespace:
     parser.add_argument("-n", "--num", type=int, help="Number of time steps.")
     parser.add_argument(
         "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
+    )
+    parser.add_argument(
+        "-t", "--threshold", type=float, default=None, help="Detection threshold."
     )
     parser.add_argument(
         "-b",
@@ -133,6 +139,7 @@ def main() -> None:
         mode=args.mode,
         backend=args.backend,
         n_workers=args.workers,
+        threshold=args.threshold,
         engine=args.engine,
     )
 

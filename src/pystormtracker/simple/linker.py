@@ -101,42 +101,64 @@ class SimpleLinker:
         tail_lons = np.array([t[-1].lon for t in tail_tracks])
 
         dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
-        matched_indices = [-1] * num_centers
+        matched_indices = np.full(num_centers, -1, dtype=np.int64)
 
-        # Global greedy matching
+        # Global greedy matching with mutual-closest constraint
         while True:
             has_match = False
             for ic in range(num_centers):
-                if matched_indices[ic] == -1 and np.any(
-                    dist_matrix[:, ic] < self.threshold
-                ):
-                    it_match = int(np.argmin(dist_matrix[:, ic]))
-                    if dist_matrix[it_match, ic] >= self.threshold:
-                        continue
-
-                    # Mutual closest check
-                    if np.argmin(dist_matrix[it_match, :]) == ic:
-                        matched_indices[ic] = it_match
-                        dist_matrix[:, ic] = np.inf
-                        dist_matrix[it_match, :] = np.inf
-                        has_match = True
+                if matched_indices[ic] == -1:
+                    # Find closest tail for this center
+                    col = dist_matrix[:, ic]
+                    if np.any(col < self.threshold):
+                        it_match = int(np.argmin(col))
+                        # Check if this center is also the closest for that tail
+                        if np.argmin(dist_matrix[it_match, :]) == ic:
+                            matched_indices[ic] = it_match
+                            dist_matrix[:, ic] = np.inf
+                            dist_matrix[it_match, :] = np.inf
+                            has_match = True
             if not has_match:
                 break
 
+        # Prepare for bulk update
+        append_tids = []
+        append_times = []
+        append_lats = []
+        append_lons = []
+        append_vars: dict[str, list[float]] = {k: [] for k in vars_dict}
+
         new_tail_ids = set()
+
+        # Handle matches
         for ic in range(num_centers):
             it_match = matched_indices[ic]
-            c_vars = {k: float(v[ic]) for k, v in vars_dict.items()}
-            c = Center(time_val, float(new_lats[ic]), float(new_lons[ic]), c_vars)
-
             if it_match != -1:
                 t = tail_tracks[it_match]
-                t.append(c)
-                new_tail_ids.add(t.track_id)
+                tid = t.track_id
+                append_tids.append(tid)
+                append_times.append(time_val)
+                append_lats.append(new_lats[ic])
+                append_lons.append(new_lons[ic])
+                for k, v in vars_dict.items():
+                    append_vars[k].append(v[ic])
+                new_tail_ids.add(tid)
             else:
+                # Create new track
+                c_vars = {k: float(v[ic]) for k, v in vars_dict.items()}
+                c = Center(time_val, float(new_lats[ic]), float(new_lons[ic]), c_vars)
                 t = tracks.add_track([c])
                 tracks._head_ids.add(t.track_id)
                 new_tail_ids.add(t.track_id)
+
+        if append_tids:
+            tracks.bulk_append(
+                np.array(append_tids, dtype=np.int64),
+                np.array(append_times, dtype="datetime64[s]"),
+                np.array(append_lats, dtype=np.float64),
+                np.array(append_lons, dtype=np.float64),
+                {k: np.array(v, dtype=np.float64) for k, v in append_vars.items()},
+            )
 
         # Update tails: ONLY tracks that received a center at THIS time step
         tracks._tail_ids = new_tail_ids

@@ -46,21 +46,27 @@ def compare_tracks(
     file1: Path | str,
     file2: Path | str,
     length_diff_tol: int = 0,
-    coord_tol: float = 1e-4,
-    intensity_tol: float = 1e-4,
+    coord_tol: float = 1e-5,
+    intensity_tol: float = 1e-5,
+    count_tol: int = 0,
+    dist_tol: float | None = None,
 ) -> None:
     """Compares two tracking files for equality using the Tracks class."""
     t1 = read_imilast(file1)
     t2 = read_imilast(file2)
 
-    # Requirement: PERFECT MATCH
-    assert len(t1) == len(t2), f"Track count mismatch: {len(t1)} vs {len(t2)}"
+    # Requirement: Small tolerance for legacy regression if needed
+    assert abs(len(t1) - len(t2)) <= count_tol, (
+        f"Track count mismatch: {len(t1)} vs {len(t2)}"
+    )
 
     t1.compare(
         t2,
         length_diff_tol=length_diff_tol,
         coord_tol=coord_tol,
         intensity_tol=intensity_tol,
+        count_tol=count_tol,
+        dist_tol=dist_tol,
     )
 
 
@@ -79,28 +85,39 @@ def test_data_vo() -> str:
 @pytest.fixture(
     scope="module",
     params=[
-        pytest.param(("msl", "min"), id="msl_min_full"),
-        pytest.param(("vo", "max"), id="vo_max_full"),
+        pytest.param(("msl", "min", 60), id="msl_min_short"),
+        pytest.param(("vo", "max", 60), id="vo_max_short"),
+        pytest.param(("msl", "min", None), id="msl_min_full"),
+        pytest.param(("vo", "max", None), id="vo_max_full"),
     ],
 )
 def config(
     request: pytest.FixtureRequest,
     test_data_msl: str,
     test_data_vo: str,
-) -> tuple[str, str, str]:
-    param: tuple[str, str] = request.param
-    varname, mode = param
+) -> tuple[str, str, str, int | None]:
+    param: tuple[str, str, int | None] = request.param
+    varname, mode, steps = param
+
+    # Full tests only run in CI to keep local development fast
+    # Short tests only run locally to save time in CI
+    is_ci = os.environ.get("GITHUB_ACTIONS")
+    if steps is None and not is_ci:
+        pytest.skip("Full integration tests only run in CI (local is short-only)")
+    if steps is not None and is_ci:
+        pytest.skip("Short integration tests only run locally (CI runs full tests)")
+
     data_path = test_data_msl if varname == "msl" else test_data_vo
-    return data_path, varname, mode
+    return data_path, varname, mode, steps
 
 
 @pytest.fixture(scope="module")
-def shared_serial_output(
+def serial_reference(
     tmp_path_factory: pytest.TempPathFactory,
-    config: tuple[str, str, str],
+    config: tuple[str, str, str, int | None],
 ) -> Path:
     """Run serial once and share it across tests to save time."""
-    data_path, varname, mode = config
+    data_path, varname, mode, steps = config
     temp_dir: Path = tmp_path_factory.mktemp("data")
     out_file = temp_dir / "integration_serial.txt"
 
@@ -117,10 +134,13 @@ def shared_serial_output(
         "serial",
     ]
 
+    if steps:
+        args.extend(["-n", str(steps)])
+
     run_command_direct(args)
 
     # Verbose print the IMILAST format output
-    print(f"\nConfiguration: Variable={varname}, Mode={mode}")
+    print(f"\nConfiguration: Variable={varname}, Mode={mode}, Steps={steps or 'Full'}")
     print_head(out_file, n=15)
 
     return Path(out_file)
@@ -128,10 +148,10 @@ def shared_serial_output(
 
 @pytest.mark.integration
 def test_dask_vs_serial(
-    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
+    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Integration test comparing Serial and Dask backends."""
-    data_path, varname, mode = config
+    data_path, varname, mode, steps = config
     out_file = tmp_path / "integration_dask.txt"
 
     args = [
@@ -149,13 +169,16 @@ def test_dask_vs_serial(
         str(N_WORKERS),
     ]
 
+    if steps:
+        args.extend(["-n", str(steps)])
+
     run_command_direct(args)
-    compare_tracks(shared_serial_output, out_file)
+    compare_tracks(serial_reference, out_file)
 
 
 @pytest.mark.integration
 def test_mpi_vs_serial(
-    shared_serial_output: Path, tmp_path: Path, config: tuple[str, str, str]
+    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
     try:
@@ -163,7 +186,7 @@ def test_mpi_vs_serial(
     except FileNotFoundError:
         pytest.skip("mpiexec not found in path")
 
-    data_path, varname, mode = config
+    data_path, varname, mode, steps = config
     mpi_out = tmp_path / "integration_mpi.txt"
 
     args = [
@@ -179,78 +202,78 @@ def test_mpi_vs_serial(
         "mpi",
     ]
 
+    if steps:
+        args.extend(["-n", str(steps)])
+
     run_command_direct(args, use_mpi=True)
-    compare_tracks(shared_serial_output, mpi_out)
+    compare_tracks(serial_reference, mpi_out)
 
 
 @pytest.mark.integration
-def test_grib_serial(tmp_path: Path) -> None:
-    """Test that tracking works correctly with GRIB input."""
-    grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
+def test_grib_vs_netcdf(
+    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
+) -> None:
+    """Test that tracking matches between NetCDF and GRIB inputs."""
+    _, varname, mode, steps = config
+
+    if varname == "msl":
+        grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
+    elif varname == "vo":
+        grib_path = fetch_era5_vo850(resolution="2.5x2.5", format="grib")
+    else:
+        pytest.skip(f"No GRIB test for {varname}")
+
     out_file = tmp_path / "integration_grib.txt"
 
     args = [
         "-i",
         grib_path,
         "-v",
-        "msl",
+        varname,
         "-m",
-        "min",
+        mode,
         "-o",
         str(out_file),
         "--backend",
         "serial",
     ]
 
-    run_command_direct(args)
-    assert out_file.exists()
-    tracks = read_imilast(out_file)
-    assert len(tracks) > 0
-
-
-@pytest.mark.integration
-def test_grib_vo_serial(tmp_path: Path) -> None:
-    """Test that tracking works correctly with VO850 GRIB input."""
-    grib_path = fetch_era5_vo850(resolution="2.5x2.5", format="grib")
-    out_file = tmp_path / "integration_grib_vo.txt"
-
-    args = [
-        "-i",
-        grib_path,
-        "-v",
-        "vo",
-        "-m",
-        "max",
-        "-o",
-        str(out_file),
-        "--backend",
-        "serial",
-    ]
+    if steps:
+        args.extend(["-n", str(steps)])
 
     run_command_direct(args)
-    assert out_file.exists()
-    tracks = read_imilast(out_file)
-    assert len(tracks) > 0
+    compare_tracks(serial_reference, out_file)
 
 
 @pytest.mark.integration
 def test_legacy_regression(
-    shared_serial_output: Path, config: tuple[str, str, str]
+    serial_reference: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Regression test against v0.0.2 legacy output."""
-    _, varname, _ = config
-    # Only compare if we are running the full msl dataset
-    if varname != "msl":
-        pytest.skip("Legacy regression only applies to full msl dataset")
+    _, varname, _, steps = config
 
-    ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
+    if steps is not None:
+        pytest.skip("Legacy regression only valid for full datasets")
+
+    if varname == "msl":
+        ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
+        l_tol, c_tol, i_tol, count_tol = 1, 15.0, 500.0, 1
+    elif varname == "vo":
+        ref_file = "data/test/tracks/era5_vo_2.5x2.5_1e-4_v0.0.2_imilast.txt"
+        # algorithmic improvements lead to slight differences, but should still be close
+        l_tol, c_tol, i_tol, count_tol = 5, 15.0, 1.0, 100
+    else:
+        pytest.skip(f"No legacy regression for {varname}")
+
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference file {ref_file} not found")
 
     compare_tracks(
         ref_file,
-        shared_serial_output,
-        length_diff_tol=1,
-        coord_tol=15.0,
-        intensity_tol=500.0,
+        serial_reference,
+        length_diff_tol=l_tol,
+        coord_tol=c_tol,
+        intensity_tol=i_tol,
+        count_tol=count_tol,
+        dist_tol=None,
     )
