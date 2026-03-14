@@ -2,12 +2,26 @@ name: CI
 
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/ci.yml'
   push:
     branches:
       - main
       - release/**
     tags:
       - v*
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/ci.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -153,6 +167,14 @@ jobs:
   docker-build:
     name: docker-build
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+    # Only run on merges to main, release branches, tags, releases, or manual dispatch
+    if: |
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' ||
+       startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/tags/v') ||
+       github.event_name == 'release' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -195,6 +217,14 @@ jobs:
   pypi-build:
     name: pypi-build
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+    # Only run on merges to main, release branches, tags, releases, or manual dispatch
+    if: |
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' ||
+       startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/tags/v') ||
+       github.event_name == 'release' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
