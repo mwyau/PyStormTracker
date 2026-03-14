@@ -25,3 +25,6 @@ html_extra_path = ["IntercomparisonProtocol.pdf"]
 
 # -- MyST Parser configuration -----------------------------------------------
 myst_heading_anchors = 3
+myst_enable_extensions = [
+    "dollarmath",
+]
