@@ -74,3 +74,9 @@ target/
 
 # Git worktrees
 worktrees/
+
+# Modern Python Environments & Caches
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
