@@ -16,9 +16,6 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 
 ## 2. CI/CD & Testing
 
-*   **Validate Cross-Platform GRIB Support:**
-    *   *Current State:* GRIB support is documented for Windows, but CI only runs on Ubuntu (amd64/arm64).
-    *   *Action:* Expand the `integration-tests` matrix in `.github/workflows/ci.yml` to include `windows-latest` and `macos-latest` to guarantee Xarray + `cfgrib` + `eccodes` resolution.
 *   **Implement Performance Regression Testing:**
     *   *Current State:* No automated guardrails against JIT performance degradation.
     *   *Action:* Integrate `pytest-benchmark` with a deterministic synthetic dataset fixture. Add a CI job that fails if Numba execution time drops significantly compared to `main`.
