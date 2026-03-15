@@ -130,7 +130,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["pystormtracker"]
+source = ["src/pystormtracker"]
 omit = ["tests/*", "**/__init__.py"]
 
 [tool.coverage.paths]
