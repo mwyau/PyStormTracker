@@ -12,17 +12,23 @@ from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
 from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
-N_WORKERS = 4
+N_WORKERS = 2
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     """Utility to run the tracker directly via function calls or MPI subprocess."""
     if use_mpi:
         base_cmd = f"{sys.executable} -m pystormtracker.cli"
-        full_cmd = (
-            f"mpiexec --oversubscribe -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
-        )
-        subprocess.run(full_cmd, shell=True, check=True, capture_output=True)
+        full_cmd = f"mpiexec -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
+        try:
+            subprocess.run(
+                full_cmd, shell=True, check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"MPI Command failed: {e.cmd}")
+            print(f"Stdout: {e.stdout}")
+            print(f"Stderr: {e.stderr}")
+            raise
         return
 
     # Direct function call for Serial/Dask backends
@@ -82,32 +88,43 @@ def test_data_vo() -> str:
     return fetch_era5_vo850(resolution="2.5x2.5")
 
 
-@pytest.fixture(
-    scope="module",
-    params=[
-        pytest.param(("msl", "min", 60), id="msl_min_short"),
-        pytest.param(("vo", "max", 60), id="vo_max_short"),
-        pytest.param(("msl", "min", None), id="msl_min_full"),
-        pytest.param(("vo", "max", None), id="vo_max_full"),
-    ],
-)
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Custom parameterization to filter tests dynamically."""
+    if "config_params" in metafunc.fixturenames:
+        raw_params = [
+            ("msl", "min", 60, "msl_min_short"),
+            ("vo", "max", 60, "vo_max_short"),
+            ("msl", "min", None, "msl_min_full"),
+            ("vo", "max", None, "vo_max_full"),
+        ]
+
+        # Filter out 'short' variants for legacy regression as they have
+        # no reference data
+        if metafunc.function.__name__ == "test_legacy_regression":
+            raw_params = [p for p in raw_params if p[2] is None]
+
+        params = [pytest.param((p[0], p[1], p[2]), id=p[3]) for p in raw_params]
+
+        metafunc.parametrize("config_params", params, scope="module")
+
+
+@pytest.fixture(scope="module")
 def config(
     request: pytest.FixtureRequest,
+    config_params: tuple[str, str, int | None],
     test_data_msl: str,
     test_data_vo: str,
 ) -> tuple[str, str, str, int | None]:
-    param: tuple[str, str, int | None] = request.param
-    varname, mode, steps = param
-
-    # Full tests only run in CI to keep local development fast
-    # Short tests only run locally to save time in CI
-    is_ci = os.environ.get("GITHUB_ACTIONS")
-    if steps is None and not is_ci:
-        pytest.skip("Full integration tests only run in CI (local is short-only)")
-    if steps is not None and is_ci:
-        pytest.skip("Short integration tests only run locally (CI runs full tests)")
-
+    varname, mode, steps = config_params
     data_path = test_data_msl if varname == "msl" else test_data_vo
+
+    # Full tests only run in CI or when --run-all is explicitly passed
+    is_ci = os.environ.get("GITHUB_ACTIONS")
+    run_all = request.config.getoption("--run-all")
+
+    if steps is None and not (is_ci or run_all):
+        pytest.skip("Full integration tests only run in CI or with --run-all")
+
     return data_path, varname, mode, steps
 
 
@@ -214,6 +231,12 @@ def test_grib_vs_netcdf(
     serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Test that tracking matches between NetCDF and GRIB inputs."""
+    import xarray as xr
+
+    # Check if cfgrib engine is available
+    if "cfgrib" not in xr.backends.list_engines():
+        pytest.skip("cfgrib engine not available (ecCodes likely missing)")
+
     _, varname, mode, steps = config
 
     if varname == "msl":
@@ -250,10 +273,7 @@ def test_legacy_regression(
     serial_reference: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Regression test against v0.0.2 legacy output."""
-    _, varname, _, steps = config
-
-    if steps is not None:
-        pytest.skip("Legacy regression only valid for full datasets")
+    _, varname, _, _ = config
 
     if varname == "msl":
         ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
