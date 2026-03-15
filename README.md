@@ -10,9 +10,9 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-**PyStormTracker** is a high-performance Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm and provides a scalable framework for processing large-scale climate datasets like ERA5.
+**PyStormTracker** is a high-performance Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and provides a scalable framework for processing large-scale climate datasets like ERA5.
 
-The project is currently being expanded to include a Python port of the adaptive constraints tracking algorithm from **Hodges (1999)** and Accumulated Track Activity metrics.
+The project is currently being expanded to include a Python port of the adaptive constraints tracking algorithm from **Hodges (1999)** (originally in C) and the Accumulated Track Activity metrics from **Yau and Chang (2020)** (originally in Matlab).
 
 Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently process large-scale climate datasets.
 
@@ -195,8 +195,8 @@ If you use this software in your research, please cite the following:
  - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, [https://doi.org/10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
  - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [https://doi.org/10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
-   - **IMILAST Intercomparison Protocol**: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
-   - **IMILAST Data Download**: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
+   - IMILAST Intercomparison Protocol: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
+   - IMILAST Data Download: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
 
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
 
