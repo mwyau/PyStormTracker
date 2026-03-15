@@ -13,5 +13,4 @@ data/test/
 docs/
 htmlcov/
 tests/
-uv.lock
 worktrees/
