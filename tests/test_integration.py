@@ -80,32 +80,40 @@ def test_data_vo() -> str:
     return fetch_era5_vo850(resolution="2.5x2.5")
 
 
-@pytest.fixture(
-    scope="module",
-    params=[
-        pytest.param(("msl", "min", 60), id="msl_min_short"),
-        pytest.param(("vo", "max", 60), id="vo_max_short"),
-        pytest.param(("msl", "min", None), id="msl_min_full"),
-        pytest.param(("vo", "max", None), id="vo_max_full"),
-    ],
-)
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Custom parameterization to filter tests dynamically."""
+    if "config_params" in metafunc.fixturenames:
+        params = [
+            pytest.param(("msl", "min", 60), id="msl_min_short"),
+            pytest.param(("vo", "max", 60), id="vo_max_short"),
+            pytest.param(("msl", "min", None), id="msl_min_full"),
+            pytest.param(("vo", "max", None), id="vo_max_full"),
+        ]
+
+        # Filter out 'short' variants for legacy regression as they have no reference data
+        if metafunc.function.__name__ == "test_legacy_regression":
+            params = [p for p in params if p.values[0][2] is None]
+
+        metafunc.parametrize("config_params", params, scope="module")
+
+
+@pytest.fixture(scope="module")
 def config(
     request: pytest.FixtureRequest,
+    config_params: tuple[str, str, int | None],
     test_data_msl: str,
     test_data_vo: str,
 ) -> tuple[str, str, str, int | None]:
-    param: tuple[str, str, int | None] = request.param
-    varname, mode, steps = param
-
-    # Full tests only run in CI to keep local development fast
-    # Short tests only run locally to save time in CI
-    is_ci = os.environ.get("GITHUB_ACTIONS")
-    if steps is None and not is_ci:
-        pytest.skip("Full integration tests only run in CI (local is short-only)")
-    if steps is not None and is_ci:
-        pytest.skip("Short integration tests only run locally (CI runs full tests)")
-
+    varname, mode, steps = config_params
     data_path = test_data_msl if varname == "msl" else test_data_vo
+
+    # Full tests only run in CI or when --run-all is explicitly passed
+    is_ci = os.environ.get("GITHUB_ACTIONS")
+    run_all = request.config.getoption("--run-all")
+
+    if steps is None and not (is_ci or run_all):
+        pytest.skip("Full integration tests only run in CI or with --run-all")
+
     return data_path, varname, mode, steps
 
 
@@ -254,10 +262,7 @@ def test_legacy_regression(
     serial_reference: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Regression test against v0.0.2 legacy output."""
-    _, varname, _, steps = config
-
-    if steps is not None:
-        pytest.skip("Legacy regression only valid for full datasets")
+    _, varname, _, _ = config
 
     if varname == "msl":
         ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
