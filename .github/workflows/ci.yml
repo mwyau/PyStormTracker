@@ -110,17 +110,19 @@ jobs:
         if: ${{ matrix.min-deps }}
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
-        if: matrix.python-version != '3.14' || matrix.min-deps
+        if: matrix.python-version != '3.13' || matrix.min-deps
         run: uv run pytest -vv
 
       - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.14' && !matrix.min-deps
-        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+        if: matrix.python-version == '3.13' && !matrix.min-deps
+        run: uv run pytest -vv --cov=src/pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.14' && !matrix.min-deps
+        if: matrix.python-version == '3.13' && !matrix.min-deps
         uses: codecov/codecov-action@v5
         with:
+          files: ./coverage.xml
+          flags: unit
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
@@ -132,10 +134,10 @@ jobs:
         include:
           - arch: amd64
             os: ubuntu-24.04
-            python-version: "3.14"
+            python-version: "3.13"
           - arch: arm64
             os: ubuntu-24.04-arm
-            python-version: "3.14"
+            python-version: "3.13"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -156,12 +158,14 @@ jobs:
 
       - name: Run Integration Tests with Coverage
         if: matrix.arch == 'amd64'
-        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration.py --run-integration
+        run: uv run pytest -vv --cov=src/pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration.py --run-integration
 
       - name: Upload coverage reports to Codecov
         if: matrix.arch == 'amd64'
         uses: codecov/codecov-action@v5
         with:
+          files: ./coverage.xml
+          flags: integration
           token: ${{ secrets.CODECOV_TOKEN }}
 
   docker-build:
