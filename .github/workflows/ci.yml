@@ -110,15 +110,15 @@ jobs:
         if: ${{ matrix.min-deps }}
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
-        if: matrix.python-version != '3.14' || matrix.min-deps
+        if: matrix.python-version != '3.13' || matrix.min-deps
         run: uv run pytest -vv
 
       - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.14' && !matrix.min-deps
+        if: matrix.python-version == '3.13' && !matrix.min-deps
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.14' && !matrix.min-deps
+        if: matrix.python-version == '3.13' && !matrix.min-deps
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
