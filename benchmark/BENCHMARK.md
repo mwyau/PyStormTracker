@@ -10,7 +10,7 @@ This document provides a detailed breakdown of execution time (in seconds) compa
 - **Execution**: Component timings (Detection, Linking, Export, IO/Overhead) were extracted from the CLI.
 
 ## Resolution: 2.5x2.5
-![2.5x2.5 Breakdown](benchmark_2_5x2_5_breakdown.png)
+![2.5x2.5 Breakdown](https://raw.githubusercontent.com/mwyau/PyStormTracker/main/benchmark/benchmark_2_5x2_5_breakdown.png)
 
 | Version | Backend | Workers | Det (s) | Link (s) | Exp (s) | IO (s) | Total (s) |
 |---|---|---|---|---|---|---|---|
@@ -30,7 +30,7 @@ This document provides a detailed breakdown of execution time (in seconds) compa
 | v0.4.0 | MPI | 8 | 1.92 | 1.10 | 0.36 | 0.08 | **11.68** |
 
 ## Resolution: 0.25x0.25
-![0.25x0.25 Breakdown](benchmark_0_25x0_25_breakdown.png)
+![0.25x0.25 Breakdown](https://raw.githubusercontent.com/mwyau/PyStormTracker/main/benchmark/benchmark_0_25x0_25_breakdown.png)
 
 | Version | Backend | Workers | Det (s) | Link (s) | Exp (s) | IO (s) | Total (s) |
 |---|---|---|---|---|---|---|---|
