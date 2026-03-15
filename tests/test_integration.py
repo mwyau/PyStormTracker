@@ -12,7 +12,7 @@ from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
 from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
 
-N_WORKERS = 4
+N_WORKERS = 2
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
@@ -20,7 +20,15 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     if use_mpi:
         base_cmd = f"{sys.executable} -m pystormtracker.cli"
         full_cmd = f"mpiexec -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
-        subprocess.run(full_cmd, shell=True, check=True, capture_output=True)
+        try:
+            subprocess.run(
+                full_cmd, shell=True, check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"MPI Command failed: {e.cmd}")
+            print(f"Stdout: {e.stdout}")
+            print(f"Stderr: {e.stderr}")
+            raise
         return
 
     # Direct function call for Serial/Dask backends
@@ -83,16 +91,21 @@ def test_data_vo() -> str:
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Custom parameterization to filter tests dynamically."""
     if "config_params" in metafunc.fixturenames:
-        params = [
-            pytest.param(("msl", "min", 60), id="msl_min_short"),
-            pytest.param(("vo", "max", 60), id="vo_max_short"),
-            pytest.param(("msl", "min", None), id="msl_min_full"),
-            pytest.param(("vo", "max", None), id="vo_max_full"),
+        raw_params = [
+            ("msl", "min", 60, "msl_min_short"),
+            ("vo", "max", 60, "vo_max_short"),
+            ("msl", "min", None, "msl_min_full"),
+            ("vo", "max", None, "vo_max_full"),
         ]
 
-        # Filter out 'short' variants for legacy regression as they have no reference data
+        # Filter out 'short' variants for legacy regression as they have
+        # no reference data
         if metafunc.function.__name__ == "test_legacy_regression":
-            params = [p for p in params if p.values[0][2] is None]
+            raw_params = [p for p in raw_params if p[2] is None]
+
+        params = [
+            pytest.param((p[0], p[1], p[2]), id=p[3]) for p in raw_params
+        ]
 
         metafunc.parametrize("config_params", params, scope="module")
 
