@@ -5,7 +5,7 @@ import numpy as np
 
 with open("benchmark_detailed_v0.3.3.json") as f:
     v3 = json.load(f)
-with open("benchmark_detailed_v0.4.0.dev.json") as f:
+with open("benchmark_detailed_v0.4.0.json") as f:
     v4 = json.load(f)
 
 resolutions = ["2.5x2.5", "0.25x0.25"]
@@ -24,7 +24,7 @@ md_lines = [
     "",
     "This document provides a detailed breakdown of execution time (in seconds) "
     "comparing the legacy nested-object architecture (`v0.3.3`) and the modern, "
-    "Numba JIT-compiled array architecture (`v0.4.0.dev`).",
+    "Numba JIT-compiled array architecture (`v0.4.0`).",
     "",
     "## Methodology",
     "- **Hardware**: AMD Ryzen 7 5800X (16 Threads), 48GB WSL Memory Limit.",
@@ -89,7 +89,7 @@ for res in resolutions:
             f"**{t3['wall']:.2f}** |"
         )
         md_lines.append(
-            f"| v0.4.0.dev | {b.upper()} | {w} | {t4['detection']:.2f} | "
+            f"| v0.4.0 | {b.upper()} | {w} | {t4['detection']:.2f} | "
             f"{t4['linking']:.2f} | {t4['export']:.2f} | {t4['io_overhead']:.2f} | "
             f"**{t4['wall']:.2f}** |"
         )
@@ -149,7 +149,7 @@ for res in resolutions:
         edgecolor="white",
     )
 
-    # v0.4.0.dev stacked bars
+    # v0.4.0 stacked bars
     ax.bar(
         x + width / 2,
         v4_det,
