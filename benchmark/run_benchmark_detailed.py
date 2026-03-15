@@ -49,7 +49,7 @@ def parse_output(output: str, version: str) -> dict[str, float]:
         # v0.3.3 might not explicitly log export time in all contexts, fallback to 0
 
     else:
-        # v0.4.0.dev format:
+        # v0.4.0 format:
         # [Serial] Detection time: X.XXXXs
         # [Serial] Linking time: X.XXXXs
         # [Dask] Cluster setup time: X.XXXXs
