@@ -15,6 +15,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "integration: marks tests as integration (skipped by default, run with --run-integration)",
+    )
+
+
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
