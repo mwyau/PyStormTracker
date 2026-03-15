@@ -29,7 +29,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 - **Interoperable**: Full support for the standard **IMILAST** intercomparison format (`.txt`) with human-readable datetime strings.
 
 <p align="center">
-  <img src="benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
+  <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
   <br>
   <i>Significant performance gains in v0.4.0+ compared to the legacy v0.3.3 architecture on high-resolution ERA5 data.</i>
 </p>
