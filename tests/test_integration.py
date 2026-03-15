@@ -103,9 +103,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         if metafunc.function.__name__ == "test_legacy_regression":
             raw_params = [p for p in raw_params if p[2] is None]
 
-        params = [
-            pytest.param((p[0], p[1], p[2]), id=p[3]) for p in raw_params
-        ]
+        params = [pytest.param((p[0], p[1], p[2]), id=p[3]) for p in raw_params]
 
         metafunc.parametrize("config_params", params, scope="module")
 
