@@ -21,7 +21,7 @@ def run_simple_dask(
     threshold: float | None = None,
     engine: str | None = None,
 ) -> Tracks:
-    from dask.distributed import Client, LocalCluster
+    import dask
 
     if n_workers is None or n_workers <= 0:
         n_workers = os.cpu_count() or 4
@@ -29,45 +29,38 @@ def run_simple_dask(
     detector_obj = SimpleDetector(
         pathname=infile, varname=varname, time_range=time_range, engine=engine
     )
-    detectors = detector_obj.split(n_workers)
+
+    # Decouple task chunks from worker count to prevent OOM on high-res data.
+    # We aim to split the total dataset evenly among the workers.
+    times = detector_obj.get_time()
+    total_steps = len(times) if times is not None else 1
+
+    max_chunk_size = max(1, total_steps // n_workers)
+    # Ensure we at least split into n_workers tasks
+    n_splits = max(n_workers, (total_steps + max_chunk_size - 1) // max_chunk_size)
+
+    detectors = detector_obj.split(n_splits)
 
     t0 = timeit.default_timer()
-    # Use processes=True to ensure Xarray/HDF5 locking doesn't serialize I/O
-    with (
-        LocalCluster(
-            n_workers=n_workers,
-            threads_per_worker=1,
-            processes=True,
-            dashboard_address=None,
-        ) as cluster,
-        Client(cluster) as client,
-    ):
-        t1 = timeit.default_timer()
-        print(f"    [Dask] Cluster setup time: {t1 - t0:.4f}s")
+    t1 = timeit.default_timer()
+    print(f"    [Dask] Setup time: {t1 - t0:.4f}s")
+    print(
+        f"    [Dask] Splitting {total_steps} steps into {n_splits} "
+        f"tasks (across {n_workers} threads)"
+    )
 
-        futures = []
-        for d in detectors:
-            futures.append(
-                client.submit(
-                    _detect_and_link,
-                    d,
-                    5,
-                    threshold,
-                    mode,
-                )
-            )
+    tasks = [dask.delayed(_detect_and_link)(d, 5, threshold, mode) for d in detectors]
 
-        # Gather results from all workers
-        all_raw_chunks: list[list[RawDetectionStep]] = client.gather(futures)
+    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
 
-        # Flatten chunks into a single sequence of steps
-        # They are gathered in the order of the futures list (sorted by split)
-        all_raw_steps: list[RawDetectionStep] = [
-            step for chunk in all_raw_chunks for step in chunk
-        ]
+    # Flatten chunks into a single sequence of steps
+    # They are gathered in the order of the futures list (sorted by split)
+    all_raw_steps: list[RawDetectionStep] = [
+        step for chunk in all_raw_chunks for step in chunk
+    ]
 
-        t2 = timeit.default_timer()
-        print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
+    t2 = timeit.default_timer()
+    print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
 
     # Centralized linking guarantees bit-wise identity with Serial
     t3 = timeit.default_timer()
