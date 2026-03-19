@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import warnings
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
-import pyshtools as pysh
+import pyshtools as pysh  # type: ignore[import-untyped]
 import xarray as xr
 
 
@@ -38,7 +38,7 @@ def _filter_sh_frame(frame: np.ndarray, lmin: int, lmax: int) -> np.ndarray:
             coeffs_filtered.coeffs[:, l_val, :] = 0.0
 
     filtered_grid = coeffs_filtered.expand()
-    out = filtered_grid.to_array()
+    out = cast(np.ndarray, filtered_grid.to_array())
 
     if pad_pole:
         return out[:, :-1]
@@ -69,7 +69,7 @@ def apply_sh_filter(
         raise ValueError("Input DataArray must have 'lat' and 'lon' dimensions.")
 
     kwargs = {"lmin": lmin, "lmax": lmax}
-    dask_mode = "forbidden"
+    dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 
     if backend == "dask":
         if not data.chunks:
@@ -109,15 +109,18 @@ def apply_sh_filter(
                 stacklevel=2,
             )
 
-    filtered = xr.apply_ufunc(
-        _filter_sh_frame,
-        data,
-        input_core_dims=[["lat", "lon"]],
-        output_core_dims=[["lat", "lon"]],
-        vectorize=True,
-        kwargs=kwargs,
-        dask=dask_mode,
-        output_dtypes=[data.dtype],
+    filtered = cast(
+        xr.DataArray,
+        xr.apply_ufunc(
+            _filter_sh_frame,
+            data,
+            input_core_dims=[["lat", "lon"]],
+            output_core_dims=[["lat", "lon"]],
+            vectorize=True,
+            kwargs=kwargs,
+            dask=dask_mode,
+            output_dtypes=[data.dtype],
+        ),
     )
 
     filtered.attrs.update(data.attrs)
