@@ -77,7 +77,9 @@ def run_tracker(
 
 def parse_args() -> Namespace:
     """Parses command line arguments."""
-    parser = ArgumentParser(description="PyStormTracker: A High-Performance Cyclone Tracker in Python")
+    parser = ArgumentParser(
+        description="PyStormTracker: A High-Performance Cyclone Tracker in Python"
+    )
     parser.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
     parser.add_argument("-v", "--var", required=True, help="Variable to track.")
     parser.add_argument(
