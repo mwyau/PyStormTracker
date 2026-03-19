@@ -4,11 +4,14 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+    branches:
+      - main
+      - 'release/**'
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   # Publish to ORG on release or dispatch from tag, else to OWNER (personal) for merge to main/manual
@@ -23,8 +26,7 @@ jobs:
     if: |
       (github.event_name == 'workflow_run' && 
        github.event.workflow_run.conclusion == 'success' && 
-       github.event.workflow_run.head_repository.full_name == github.repository &&
-       (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.event == 'release')) ||
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
       github.event_name == 'workflow_dispatch'
     permissions:
       actions: read
