@@ -25,7 +25,7 @@ def run_simple_dask(
     import dask
 
     if n_workers is None or n_workers <= 0:
-        n_workers = os.cpu_count() or 4
+        n_workers = min(os.cpu_count() or 1, 4)
 
     detector_obj = SimpleDetector(
         pathname=infile, varname=varname, time_range=time_range, engine=engine
@@ -54,9 +54,12 @@ def run_simple_dask(
         f"tasks (across {n_workers} threads)"
     )
 
-    tasks = [dask.delayed(_detect_and_link)(d, 5, threshold, mode) for d in detectors]
+    tasks = [
+        dask.delayed(_detect_and_link)(d, 5, threshold, mode)  # type: ignore[attr-defined]
+        for d in detectors
+    ]
 
-    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
+    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)  # type: ignore[attr-defined]
 
     # Flatten chunks into a single sequence of steps
     # They are gathered in the order of the futures list (sorted by split)
