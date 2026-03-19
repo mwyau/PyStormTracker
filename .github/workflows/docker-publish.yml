@@ -6,11 +6,11 @@ on:
     types: [completed]
     branches:
       - main
-      - 'v*'
+      - 'v[0-9]*'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: ${{ !(github.event.workflow_run.event == 'release' || github.ref_type == 'tag') }}
 
 env:
@@ -22,10 +22,11 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     # Only run if CI succeeded (for workflow_run) or if it's a manual trigger.
-    # Added head_repository check for security in trusted context.
+    # Exclude PR events to avoid double triggers/publishing.
     if: |
       (github.event_name == 'workflow_run' && 
        github.event.workflow_run.conclusion == 'success' && 
+       github.event.workflow_run.event != 'pull_request' &&
        github.event.workflow_run.head_repository.full_name == github.repository) ||
       github.event_name == 'workflow_dispatch'
     permissions:
