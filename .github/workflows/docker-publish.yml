@@ -11,9 +11,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Publish to ORG on release, else to OWNER (personal) for merge to main/manual
-  DOCKER_HUB_REPO: docker.io/${{ (github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ (github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  # Publish to ORG on release or dispatch from tag, else to OWNER (personal) for merge to main/manual
+  DOCKER_HUB_REPO: docker.io/${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release') || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release') || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
@@ -69,13 +69,15 @@ jobs:
           # Fix: Tell the metadata action the real ref, otherwise it defaults to 'main'
           ref: ${{ github.event.workflow_run.head_branch || github.ref }}
           tags: |
+            # Tag with 'latest' for main branch (used for personal repo/edge)
+            type=raw,value=latest,enable=${{ github.event.workflow_run.head_branch == 'main' || github.ref == 'refs/heads/main' }},priority=1000
             # Tag with 'edge' only for main branch builds
-            type=edge,branch=main,priority=700
+            type=edge,branch=main,priority=900
             # Semver tags for releases (includes 'latest')
             type=semver,pattern=latest,priority=1000
-            type=semver,pattern={{version}},priority=900
-            type=semver,pattern={{major}}.{{minor}},priority=900
-            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }},priority=900
+            type=semver,pattern={{version}},priority=800
+            type=semver,pattern={{major}}.{{minor}},priority=700
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }},priority=700
             # Branch tag for all branches except main
             type=ref,event=branch,enable=${{ github.ref_name != 'main' }},priority=600
             # Always tag with short SHA
