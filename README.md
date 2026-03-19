@@ -172,6 +172,14 @@ uv run ruff format .
 uv run mypy src/
 ```
 
+### Git Hooks (Recommended)
+You can set up a pre-push git hook to automatically run `ruff` linting and formatting checks before every `git push`. This ensures all code adheres to the project's quality standards before being shared.
+
+To install the pre-push hook:
+```bash
+printf '#!/bin/bash\nuv run ruff check . && uv run ruff format --check .' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+```
+
 ### Tiered Testing
 To keep development cycles fast, testing is tiered:
 - **Fast Tests**: Default local runs (skips integration tests).
