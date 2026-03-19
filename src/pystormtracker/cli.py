@@ -22,6 +22,7 @@ def run_tracker(
     mode: Literal["min", "max"] = "min",
     backend: Backend = "serial",
     n_workers: int | None = None,
+    max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
 ) -> None:
@@ -49,6 +50,7 @@ def run_tracker(
         mode=mode,
         backend=backend,
         n_workers=n_workers,
+        max_chunk_size=max_chunk_size,
         threshold=threshold,
         engine=engine,
     )
@@ -107,6 +109,13 @@ def parse_args() -> Namespace:
         help="Number of workers for Dask. Defaults to number of CPU cores.",
     )
     parser.add_argument(
+        "-c",
+        "--chunk-size",
+        type=int,
+        default=60,
+        help="Maximum time steps per chunk for Dask. Defaults to 60.",
+    )
+    parser.add_argument(
         "-e",
         "--engine",
         choices=["h5netcdf", "netcdf4", "cfgrib"],
@@ -141,6 +150,7 @@ def main() -> None:
         mode=args.mode,
         backend=args.backend,
         n_workers=args.workers,
+        max_chunk_size=args.chunk_size,
         threshold=args.threshold,
         engine=args.engine,
     )
