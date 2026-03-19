@@ -18,6 +18,7 @@ def run_simple_dask(
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     n_workers: int | None,
+    max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
 ) -> Tracks:
@@ -35,7 +36,11 @@ def run_simple_dask(
     times = detector_obj.get_time()
     total_steps = len(times) if times is not None else 1
 
-    max_chunk_size = max(1, total_steps // n_workers)
+    if max_chunk_size is None or max_chunk_size <= 0:
+        max_chunk_size = 60
+    else:
+        max_chunk_size = max(1, max_chunk_size)
+
     # Ensure we at least split into n_workers tasks
     n_splits = max(n_workers, (total_steps + max_chunk_size - 1) // max_chunk_size)
 

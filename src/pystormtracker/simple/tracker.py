@@ -75,6 +75,7 @@ class SimpleTracker:
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
+        max_chunk_size: int | None = None,
         threshold: float | None = None,
         engine: str | None = None,
     ) -> Tracks:
@@ -109,6 +110,7 @@ class SimpleTracker:
                 time_range,
                 mode,
                 n_workers,
+                max_chunk_size=max_chunk_size,
                 threshold=threshold,
                 engine=engine,
             )
