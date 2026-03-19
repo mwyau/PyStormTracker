@@ -6,12 +6,12 @@ on:
     types: [completed]
     branches:
       - main
-      - 'release/**'
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !(github.event.workflow_run.event == 'release' || github.ref_type == 'tag') }}
 
 env:
   # Publish to ORG on release or dispatch from tag, else to OWNER (personal) for merge to main/manual
