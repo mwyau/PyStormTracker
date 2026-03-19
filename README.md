@@ -51,17 +51,17 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- **Windows Users**: the `eccodeslib` GRIB helper library is only required on Linux/macOS. (Note: GRIB/ecCodes support on Windows is currently experimental and untested).
+- **Windows**: GRIB support is experimental and untested.
 
-### From PyPI (Recommended)
+### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
 
-Using `pip` (standard):
+Using `pip`:
 ```bash
 pip install PyStormTracker
 ```
 
-Using `uv` (recommended):
+Using `uv`:
 ```bash
 # For use as a CLI tool
 uv tool install PyStormTracker
@@ -70,8 +70,21 @@ uv tool install PyStormTracker
 uv add PyStormTracker
 ```
 
+### From Conda-Forge
+You can also install PyStormTracker from `conda-forge`:
+
+Using `mamba`:
+```bash
+mamba install -c conda-forge pystormtracker
+```
+
+Using `conda`:
+```bash
+conda install -c conda-forge pystormtracker
+```
+
 ### From Source
-Install with `uv` (Recommended):
+Install with `uv`:
 ```bash
 git clone https://github.com/mwyau/PyStormTracker.git
 cd PyStormTracker
@@ -139,7 +152,7 @@ Sample datasets for testing and benchmarking are hosted in the [PyStormTracker-D
 ## Development
 
 ### Setup
-Using `uv` is the recommended way to set up your environment:
+Using `uv` to set up your development environment:
 ```bash
 # Install dependencies and sync virtual environment
 uv sync
