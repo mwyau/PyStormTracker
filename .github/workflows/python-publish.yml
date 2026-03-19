@@ -8,10 +8,10 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches:
-      - 'v*'
+      - 'v[0-9]*'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -21,10 +21,11 @@ jobs:
   release-build:
     runs-on: ubuntu-latest
     # Only run if CI succeeded AND it was a release event.
-    # Added head_repository check for security.
+    # Exclude PRs to avoid accidental triggers/publishing.
     if: |
       github.event_name == 'workflow_run' && 
       github.event.workflow_run.conclusion == 'success' && 
+      github.event.workflow_run.event != 'pull_request' &&
       github.event.workflow_run.event == 'release' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
