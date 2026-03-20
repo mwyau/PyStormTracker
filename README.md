@@ -115,15 +115,22 @@ stormtracker -i data.nc -v msl -o my_tracks
 | `--format` | `-f` | Output format: `imilast` (default) or `hodges`. |
 | `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
 | `--threshold` | `-t` | Intensity threshold for feature detection. |
+| `--num` | `-n` | Number of time steps to process. |
+| **Performance** | | |
+| `--backend` | `-b` | `serial` (default), `dask`, or `mpi`. |
+| `--workers` | `-w` | Number of parallel workers (defaults to CPU cores). |
+| `--chunk-size` | `-c` | Steps per chunk for Dask/RSPLICE (default 60). |
+| `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
 | **Hodges-Specific** | | |
 | `--zone` | | Path to `zone.dat` for regional search radii. |
 | `--adapt` | | Path to `adapt.dat` for adaptive smoothness. |
 | `--min-points` | | Minimum grid points per object (noise filter). |
-| `--min-lifetime`| | Minimum time steps for a valid track. |
-| **Performance** | | |
-| `--backend` | `-b` | `serial` (default), `dask`, or `mpi`. |
-| `--workers` | `-w` | Number of parallel workers. |
-| `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
+| `--w1`, `--w2` | | Cost weights for direction (0.2) and speed (0.8). |
+| `--dmax` | | Max search radius in degrees (default 5.0). |
+| `--phimax` | | Smoothness penalty (default 0.5). |
+| `--iterations` | | Max MGE optimization passes (default 3). |
+| `--min-lifetime`| | Minimum time steps for a valid track (default 3). |
+| `--max-missing` | | Max consecutive missing frames (default 0). |
 
 ### Python API
 
