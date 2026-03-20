@@ -4,8 +4,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.center import Center
+from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange, Tracks
-from .detector import RawDetectionStep
 
 
 def haversine_matrix(

@@ -5,7 +5,8 @@ from typing import Literal
 import numpy as np
 
 from ..models import TimeRange, Tracks
-from .detector import RawDetectionStep, SimpleDetector
+from ..models.tracker import RawDetectionStep
+from .detector import SimpleDetector
 from .linker import SimpleLinker
 
 

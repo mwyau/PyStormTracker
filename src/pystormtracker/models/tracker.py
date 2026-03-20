@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, TypeAlias, runtime_checkable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .tracks import Tracks
+
+# Type alias for a single time step's raw detection arrays
+RawDetectionStep: TypeAlias = tuple[
+    np.datetime64,
+    NDArray[np.float64],
+    NDArray[np.float64],
+    dict[str, NDArray[np.float64]],
+]
 
 
 @runtime_checkable
@@ -23,5 +32,7 @@ class Tracker(Protocol):
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
+        max_chunk_size: int | None = None,
+        threshold: float | None = None,
         engine: str | None = None,
     ) -> Tracks: ...

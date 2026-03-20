@@ -67,6 +67,7 @@ def test_parse_args() -> None:
         assert args.var == "msl"
         assert args.output == "output.txt"
         assert args.num == 10
+        assert args.algorithm == "simple"
         assert args.mode == "max"
         assert args.backend == "serial"
         assert args.workers == 4

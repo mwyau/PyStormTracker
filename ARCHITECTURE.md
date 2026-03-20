@@ -28,10 +28,18 @@ Data loading is encapsulated in a dedicated `DataLoader` class (`io/loader.py`).
 *   **Variable Mapping**: Automatically maps common variable aliases (e.g., `msl`/`slp`, `vo`/`rv`) and coordinate names (`latitude`/`lat`), allowing the same tracking logic to work across different data providers.
 *   **Contiguous I/O**: Performs single-block contiguous reads from disk, bypassing HDF5 lock contention.
 
-### 2.3 Vectorized Linker (`SimpleLinker`)
-Trajectory construction uses NumPy broadcasting to calculate Haversine distance matrices between existing track tails and new storm centers. By sorting points spatially before matching, the Linker ensures deterministic, greedy nearest-neighbor linking.
+### 2.3 Heuristic Tracking Implementation (SimpleTracker)
+Trajectory construction in the heuristic tracker uses NumPy broadcasting to calculate Haversine distance matrices between existing track tails and new storm centers. By sorting points spatially before matching, the Linker ensures deterministic, greedy nearest-neighbor linking.
 
-### 2.4 Parallel Pipeline (Gather-then-Link)
+### 2.4 Optimization-Based Tracking Implementation (HodgesTracker)
+The `HodgesTracker` implements the industry-standard TRACK algorithm (Hodges 1994, 1995, 1999). Unlike the heuristic tracker, it uses a global optimization approach:
+*   **Modified Greedy Exchange (MGE)**: An iterative algorithm that swaps points between tracks to minimize a total cost function.
+*   **Spherical Cost Function**: A mathematical model that penalizes changes in track direction (directional smoothness) and speed.
+*   **Adaptive Constraints**: Dynamically adjusts search radii ($d_{max}$) and smoothness limits ($\psi_{max}$) based on regional zones and track velocity.
+*   **Sub-grid Refinement**: Fits a local quadratic surface to each extremum to identify feature centers with precision higher than the grid resolution.
+
+### 2.5 Parallel Pipeline (Gather-then-Link)
+
 To ensure that parallel results are bit-wise identical to serial runs, PyStormTracker uses a hybrid parallel strategy:
 1.  **Parallel Detection**: Assigned time chunks are distributed across Dask or MPI workers. Each worker runs Numba kernels to find centers and returns raw coordinate arrays.
 2.  **Centralized Linking**: The main process gathers the raw detections from all workers and performs a single sequential link. 

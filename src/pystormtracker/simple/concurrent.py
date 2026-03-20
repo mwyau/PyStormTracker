@@ -8,7 +8,8 @@ if TYPE_CHECKING:
     from mpi4py import MPI
 
 from ..models import TimeRange, Tracks
-from .detector import RawDetectionStep, SimpleDetector
+from ..models.tracker import RawDetectionStep
+from .detector import SimpleDetector
 from .tracker import _detect_and_link, _link_centers
 
 
