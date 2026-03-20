@@ -4,11 +4,12 @@ import warnings
 from typing import Literal, cast
 
 import numpy as np
+from numpy.typing import NDArray
 import pyshtools as pysh  # type: ignore[import-untyped]
 import xarray as xr
 
 
-def _filter_sh_frame(frame: np.ndarray, lmin: int, lmax: int) -> np.ndarray:
+def _filter_sh_frame(frame: NDArray[np.float64], lmin: int, lmax: int) -> NDArray[np.float64]:
     """Filters a single 2D frame using spherical harmonics."""
     nlat, nlon = frame.shape
     pad_pole = False
@@ -38,7 +39,7 @@ def _filter_sh_frame(frame: np.ndarray, lmin: int, lmax: int) -> np.ndarray:
             coeffs_filtered.coeffs[:, l_val, :] = 0.0
 
     filtered_grid = coeffs_filtered.expand()
-    out = cast(np.ndarray, filtered_grid.to_array())
+    out = cast(NDArray[np.float64], filtered_grid.to_array())
 
     if pad_pole:
         return out[:, :-1]
