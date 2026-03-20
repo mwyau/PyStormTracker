@@ -4,15 +4,14 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 
 ## 1. Performance & Scalability
 
-*   **Fix OOM Risks (Lazy Loading):**
-    *   *Current State:* The `SimpleDetector` eagerly loads entire assigned time slices into memory (`full_var = self.get_var()`).
-    *   *Action:* Refactor `get_var()` to yield frames lazily. Iterate over the xarray dataset loading only the current frame needed to compute extrema, preventing Out-Of-Memory errors on native-resolution (e.g., 0.25°) datasets.
 *   **Prevent CPU Oversubscription (Numba vs. Dask/MPI):**
     *   *Current State:* Dask/MPI orchestrates processes, but Numba kernels lack explicit thread constraints. If `parallel=True` is used in Numba, it will oversubscribe CPU cores and cause thrashing.
     *   *Action:* Explicitly control thread topology inside worker tasks (e.g., `numba.set_num_threads(1)` when scaling via Dask/MPI processes).
 *   **Vectorize the `SimpleLinker`:**
     *   *Current State:* Linking is currently sequential, resulting in an $O(N^2)$ bottleneck as trajectory counts scale.
     *   *Action:* Leverage `scipy.spatial.cKDTree` for nearest-neighbor lookups across time steps to convert spatial proximity searches to highly optimized C-level trees.
+*   **Manage Memory Pressure (Chunking) (Completed):** 
+    *   Implemented time-chunking (default 60 steps) across backends to prevent memory exhaustion on large datasets. This maintains optimal block-IO performance by avoiding frame-by-frame lazy loading which can cause high metadata/locking overhead.
 *   **Array-Backed Data Model (Completed):** 
     *   Transitioned from nested Python objects to flat, C-contiguous NumPy arrays for trajectories and centers.
     *   Zero-copy serialization for high-performance parallel execution.
@@ -33,7 +32,7 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 
 *   **Idiomatic Xarray Integration (`apply_ufunc`):**
     *   *Current State:* Xarray is primarily used as an I/O loader before dropping down to manual NumPy arrays, manual chunking, and custom MPI/Dask orchestration.
-    *   *Action:* Wrap the `_numba_extrema_filter` inside `xr.apply_ufunc(..., dask="parallelized")`. This allows Xarray to natively handle chunking, distributed execution, and reassembly, potentially eliminating the need for manual orchestration code in `concurrent.py`.
+    *   *Action:* Wrap the core Numba filters inside `xr.apply_ufunc(..., dask="parallelized")`. This allows Xarray to natively handle chunking, distributed execution, and reassembly, potentially eliminating the need for manual orchestration code in `concurrent.py`.
 *   **Distributed Backends (Completed):** 
     *   Native support for Dask (local scaling) and MPI (distributed scaling).
     *   Perfect bit-wise identity between Serial and Parallel results.
@@ -43,9 +42,8 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 
 ## 4. Distribution & Ecosystem
 
-*   **Conda-forge Distribution:**
-    *   *Current State:* PyStormTracker is available on PyPI, Docker Hub, and GHCR.
-    *   *Action:* Create a feedstock for `conda-forge` to enable installation via `conda` or `mamba`, improving accessibility for the scientific community.
+*   **Conda-forge Distribution (Completed):**
+    *   PyStormTracker is now available on `conda-forge`, enabling easy installation via `conda` or `mamba`.
 
 ## 5. Feature Implementation
 
