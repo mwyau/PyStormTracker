@@ -7,14 +7,6 @@ from ..models.center import Center
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
 from ..utils.geo import geod_dist
-from .kernels import (
-    _break_track,
-    _initial_break_pass,
-    _mge_iteration,
-    get_regional_dmax,
-)
-
-
 from .constants import (
     DMAX_DEFAULT,
     ITERATIONS_DEFAULT,
@@ -25,6 +17,12 @@ from .constants import (
     STANDARD_ZONES,
     W1_DEFAULT,
     W2_DEFAULT,
+)
+from .kernels import (
+    _break_track,
+    _initial_break_pass,
+    _mge_iteration,
+    get_regional_dmax,
 )
 
 
