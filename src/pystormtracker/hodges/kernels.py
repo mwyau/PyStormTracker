@@ -229,3 +229,78 @@ def geod_dev(
     phi = w1 * (1.0 - dot_t) + w2 * (1.0 - 2.0 * np.sqrt(alpha1 * alpha2) / (alpha1 + alpha2))
     
     return max(0.0, phi)
+
+
+@nb.njit(cache=True)
+def get_regional_dmax(lat: float, lon: float, zones: NDArray[np.float64], default_dmax: float) -> float:
+    """
+    Returns dmax for a given lat/lon based on regional zones.
+    zones array shape (n_zones, 5): [lon_min, lon_max, lat_min, lat_max, dmax]
+    """
+    if zones.shape[0] == 0:
+        return default_dmax
+        
+    for i in range(zones.shape[0]):
+        lon_min, lon_max, lat_min, lat_max, dmax = zones[i]
+        
+        # Latitude check
+        if lat < lat_min or lat > lat_max:
+            continue
+            
+        # Longitude check (periodic)
+        in_lon = False
+        if lon_min > lon_max: # Wraps around
+            if lon >= lon_min or lon <= lon_max:
+                in_lon = True
+        else:
+            if lon >= lon_min and lon <= lon_max:
+                in_lon = True
+                
+        if in_lon:
+            return dmax
+            
+    return default_dmax
+
+
+@nb.njit(cache=True)
+def get_adaptive_phimax(
+    mean_dist: float, 
+    adapt_thresholds: NDArray[np.float64], 
+    adapt_values: NDArray[np.float64],
+    default_phimax: float
+) -> float:
+    """
+    Returns phimax based on adaptive smoothness piecewise linear function.
+    adapt_thresholds: shape (4,) distances in degrees.
+    adapt_values: shape (4,) phi values.
+    """
+    if adapt_thresholds.shape[0] < 4:
+        return default_phimax
+        
+    # thresholds are in degrees, convert mean_dist from radians to degrees if needed
+    # (assuming mean_dist passed in degrees here for simplicity, or we convert it)
+    
+    d = mean_dist
+    
+    if d < adapt_thresholds[0]:
+        return adapt_values[0]
+    
+    if d >= adapt_thresholds[3]:
+        return adapt_values[3]
+        
+    if d >= adapt_thresholds[0] and d < adapt_thresholds[1]:
+        # Interpolate 0 and 1
+        slope = (adapt_values[1] - adapt_values[0]) / (adapt_thresholds[1] - adapt_thresholds[0])
+        return adapt_values[0] + slope * (d - adapt_thresholds[0])
+        
+    if d >= adapt_thresholds[1] and d < adapt_thresholds[2]:
+        # Interpolate 1 and 2
+        slope = (adapt_values[2] - adapt_values[1]) / (adapt_thresholds[2] - adapt_thresholds[1])
+        return adapt_values[1] + slope * (d - adapt_thresholds[1])
+        
+    if d >= adapt_thresholds[2] and d < adapt_thresholds[3]:
+        # Interpolate 2 and 3
+        slope = (adapt_values[3] - adapt_values[2]) / (adapt_thresholds[3] - adapt_thresholds[2])
+        return adapt_values[2] + slope * (d - adapt_thresholds[2])
+        
+    return default_phimax

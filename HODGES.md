@@ -1,54 +1,45 @@
-# Plan: Hodges Tracker Integration (Final)
+# Architecture: Hodges (TRACK) Tracker Implementation
 
-Integrate the Hodges (TRACK) adaptive constraints tracking algorithm (Hodges 1994, 1995, 1999) as a native Python/Numba implementation in `PyStormTracker`.
+This document describes the architecture and mathematical implementation of the Hodges tracking algorithm in `PyStormTracker`, providing parity with the industry-standard TRACK software (Hodges 1994, 1995, 1999).
 
-## Objective
-Implement the Modified Greedy Exchange (MGE) algorithm with adaptive constraints, ensuring bit-wise conceptual parity with the original TRACK C implementation while leveraging Pythonic data structures and Numba performance.
+## 1. Overview
+The Hodges tracker identifies and links atmospheric features using a spherical cost function optimization approach known as **Modified Greedy Exchange (MGE)**. It is specifically designed to handle features with varying speeds and directions using adaptive constraints.
 
-## Configurable Parameters (Matching TRACK)
-- `w1`, `w2`: Weights for the cost function (default: 0.2, 0.8). $w_1$ for direction, $w_2$ for speed.
-- `dmax`: Maximum displacement distance (geodesic degrees).
-- `phimax`: Penalty value for phantom points in the cost function.
-- `min_lifetime`: Minimum number of time steps for a track to be considered valid (post-processing).
-- `n_iterations`: Number of forward/backward MGE passes (default: 3).
+## 2. Core Components
 
-## Core Components
+### 2.1 Preprocessing (`preprocessing/taper.py`)
+- **`TaperFilter`**: Applies a cosine taper to the edges of the spatial domain. This minimizes "ringing" artifacts during subsequent spherical harmonic filtering, which is common in TRACK workflows.
 
-### 1. Data Structures
-- **Feature Points**: (lat, lon, value) with conversion to (x, y, z) unit cartesian coordinates.
-- **Track Matrix**: A 2D array of shape `(n_tracks, n_frames)` storing indices to feature points. A special index (e.g., `-1`) represents a **phantom point**.
+### 2.2 Feature Detection (`hodges/detector.py` & `hodges/kernels.py`)
+- **Extrema Detection**: Identifies local minima or maxima within a specified search window, handling longitude periodicity.
+- **Sub-grid Refinement**: For each grid-level extremum, a 2D quadratic surface is fitted to its 3x3 neighborhood:
+  $f(y, x) = ay^2 + bx^2 + cyx + dy + ex + f$
+  The refined center $(y_{ref}, x_{ref})$ is found where the partial derivatives $\frac{\partial f}{\partial y} = \frac{\partial f}{\partial x} = 0$.
+- **Validation**: Refined positions must remain within the original grid cell; otherwise, the algorithm falls back to the grid center.
 
-### 2. Hodges Detector (`src/pystormtracker/hodges/detector.py`)
-- **Extrema Detection**: Use the Numba kernel for local min/max.
-- **Sub-grid Refinement**: Implement local quadratic interpolation (fitting a 2D second-order polynomial to the 3x3 neighborhood of an extremum) to refine (lat, lon) coordinates, as per TRACK's `adjust_fpt.c`.
+### 2.3 Spherical Geometry (`hodges/kernels.py`)
+- **Geodesic Distance**: Calculated using the Haversine formula or the dot product of unit cartesian vectors.
+- **Cost Function ($\psi$)**: Measures the deviation over three consecutive points ($P_{k-1}, P_k, P_{k+1}$):
+  $\psi = w_1(1 - \mathbf{\hat{T}}_1 \cdot \mathbf{\hat{T}}_2) + w_2 \left( 1 - \frac{2\sqrt{d_1 d_2}}{d_1 + d_2} \right)$
+  - The first term represents **directional smoothness** (dot product of tangent vectors at the central point $P_k$).
+  - The second term represents **speed consistency** (ratio of distances).
+  - Default weights: $w_1 = 0.2$, $w_2 = 0.8$.
 
-### 3. Hodges Linker (`src/pystormtracker/hodges/linker.py`)
-- **Initialization**: 
-    - Seed tracks using nearest-neighbor logic across all frames.
-    - Pad tracks with phantom points to ensure all tracks span the full time range.
+### 2.4 Linking & Optimization (`hodges/linker.py`)
+- **Initialization**: Tracks are seeded using a nearest-neighbor approach across all frames. Tracks are padded with **phantom points** (placeholders) so that every track matrix entry has a value, enabling global optimization.
 - **Modified Greedy Exchange (MGE)**:
-    - **Forward Pass**: From $k=1$ to $n-1$, attempt to swap point $k+1$ between all pairs of tracks $(i, j)$.
-    - **Backward Pass**: From $k=n-2$ down to $0$, attempt to swap point $k-1$ between all pairs of tracks $(i, j)$.
-    - **Swap Condition**: A swap is made if:
-        1. Both resulting tracks satisfy $d < d_{max}$.
-        2. Both resulting tracks satisfy $\psi < \psi_{max}$ (if 3 real points exist).
-        3. The total cost $\Xi$ for the pair $(i, j)$ is reduced.
-- **Adaptive Constraints**:
-    - $d_{max}$ and $\psi_{max}$ are updated based on the mean displacement of the track.
+  - **Forward Pass**: Iterates from $k=1$ to $n-1$, attempting to swap point $k+1$ between all pairs of tracks $(i, j)$.
+  - **Backward Pass**: Iterates from $k=n-2$ down to $0$, attempting to swap point $k-1$ between all pairs of tracks.
+  - **Swap Condition**: A swap is executed if the total cost $\Xi = \text{cost}_i + \text{cost}_j$ is reduced and both resulting tracks satisfy the displacement and smoothness constraints.
 
-### 4. Spherical Geometry Kernels (`src/pystormtracker/hodges/kernels.py`)
-- **`geod_dev`**: Implementation of the spherical cost function using tangent vector projections.
-- **`subgrid_refine`**: Numba-optimized local quadratic refinement.
-- **`mge_swap_logic`**: Numba-accelerated inner loop for the $O(N_{tracks}^2)$ exchange step.
+### 2.5 Adaptive Constraints
+- **Regional Search Radius ($d_{max}$)**: Supports latitude/longitude zones. The effective $d_{max}$ for a pair of points is the average of the $d_{max}$ values assigned to their respective zones.
+- **Adaptive Smoothness ($\psi_{max}$)**: A piecewise linear function adjusts the upper-bound smoothness penalty based on the mean displacement of the track triplet. Slower systems are subject to stricter smoothness constraints.
 
-### 5. Integration (`src/pystormtracker/hodges/tracker.py`)
-- **Full Workflow**:
-    1. **Preprocessing**: Apply `TaperFilter` and `SphericalHarmonicFilter` if configured.
-    2. **Detection**: Extract refined feature points for all time steps.
-    3. **Linking**: Initialize and optimize tracks using MGE.
-    4. **Post-processing**: Prune tracks based on `min_lifetime` and intensity.
+## 3. Configuration & Compatibility
+The `HodgesTracker` can be configured programmatically or by loading standard TRACK configuration files:
+- **`zone.dat`**: Defines regional $d_{max}$ zones.
+- **`adapt.dat`**: Defines the 4-point linear interpolation for $\psi_{max}$.
 
-## Verification
-1.  **Unit Tests**: Verify the cost function against manual calculations for known trajectories.
-2.  **Comparison**: Use the provided `pyTRACK` wrapper to run the reference C implementation on the same data and compare output tracks.
-3.  **Synthetic Tests**: Test robustness against "track crossing" scenarios and accelerating features.
+## 4. Performance
+All heavy mathematical loops, including distance matrices, quadratic fits, and the $O(N_{tracks}^2)$ MGE exchange loops, are implemented as **Numba-optimized JIT kernels** to ensure high performance even with large numbers of feature points.
