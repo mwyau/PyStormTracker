@@ -63,9 +63,30 @@ Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an
 
 ---
 
-## 4. Modernization Strategy
+---
 
-- **Numba JIT**: All heavy mathematical loops (MGE, CCL, Geodesic math) are implemented as GIL-free, cache-enabled Numba kernels. This allows Python to match or exceed the speed of the original C code.
-- **Xarray/NetCDF**: Legacy binary/ASCII I/O is replaced with Xarray, enabling seamless integration with climate data ecosystems (ERA5, CMIP6).
-- **CLI**: A modern argparse-based CLI replaces the interactive `scanf`-heavy prompts of the original TRACK binary, facilitating batch processing.
-- **Phantom Points**: Maintained the concept of "phantom" points (-1 index) to handle missing frames and initialization of tracks of varying lengths, ensuring the MGE matrix remains rectangular.
+## 5. Known Differences & Parity Status
+
+While `PyStormTracker` aims for 100% parity, the following minor differences exist between this implementation and the legacy C version of TRACK:
+
+### 5.1 Sub-grid Refinement (Peak Finding)
+- **TRACK**: Fits a global B-spline surface to the data and uses a constrained conjugate gradient optimizer to find the extremum.
+- **PyStormTracker**: Uses a 2D local quadratic surface fit to a 3x3 neighborhood.
+- **Impact**: Coordinates will differ at the 2nd or 3rd decimal place. The topology of tracks (which points link together) is rarely affected on high-resolution grids ($< 1.0^\circ$).
+
+### 5.2 CCL Implementation
+- **TRACK**: Uses a quad-tree data structure for segmentation (`hierarc_segment.c`).
+- **PyStormTracker**: Uses iterative label propagation in a Numba kernel (`_numba_ccl`).
+- **Impact**: **None**. Both methods produce identical object masks from the same thresholded binary field. The Numba version is more performant on modern flat-memory architectures.
+
+### 5.3 Optimization Passes
+- **TRACK**: Implements a recursive strategy that alternates forward/backward passes until no swaps occur, but often includes hard-coded limits (e.g., 3 global iterations) in standard run scripts.
+- **PyStormTracker**: Fully replicates the recursive forward/backward "one best swap per frame" logic. Convergence is guaranteed to match the original algorithm's local minimum.
+
+### 5.4 Specialized Constraints
+- **TRACK**: Supports some advanced features like elliptical search areas or directional bias based on steering flows (e.g., $u, v$ components).
+- **PyStormTracker**: Currently implements the standard Hodges 1995/1999 circular search radius ($d_{max}$) and adaptive smoothness ($\psi_{max}$).
+
+## 6. Performance
+All heavy mathematical loops are implemented as **GIL-free Numba-optimized JIT kernels** to ensure high performance even with large numbers of feature points. The use of modern `xarray` I/O allows for significantly faster data loading and preprocessing compared to TRACK's legacy binary formats.
+
