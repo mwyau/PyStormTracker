@@ -97,3 +97,7 @@ While `PyStormTracker` aims for 100% parity, the following minor differences exi
 ## 6. Performance
 All heavy mathematical loops are implemented as **GIL-free Numba-optimized JIT kernels** to ensure high performance even with large numbers of feature points. The use of modern `xarray` I/O allows for significantly faster data loading and preprocessing compared to TRACK's legacy binary formats.
 
+---
+
+**Note**: Preservation of the architectural information and design rationale in this document is preferred unless explicitly obsoleted by new implementations.
+

@@ -29,6 +29,9 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 - **Typed & Modern**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
 - **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
 
+> [!NOTE]
+> Existing technical documentation and design context in this repository should be maintained unless explicitly obsoleted by new feature implementations.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
   <br>

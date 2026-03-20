@@ -27,3 +27,6 @@ Foundational mandates and engineering standards for `PyStormTracker`. These take
 - **Native Xarray**: Replace legacy binary/ASCII logic with coordinate-aware Xarray NetCDF/GRIB handling.
 - **Centralized Data**: Use `src/pystormtracker/utils/data.py` (`CACHED_DATA`) for all remote asset fetching.
 - **TOC Style**: Documentation titles in `index.md` MUST follow `PyStormTracker [Name]` and avoid colons.
+
+## 3. General Guidelines
+- **Documentation Persistence**: Avoid deleting existing technical documentation, architectural context, or design rationale unless it is explicitly obsoleted by new changes. Historical context should be preserved to aid future parity maintenance.
