@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import timeit
-from argparse import ArgumentParser, Namespace
+from argparse import Namespace
 from pathlib import Path
 from typing import Literal
 
@@ -30,6 +31,15 @@ def run_tracker(
     engine: str | None = None,
     algorithm: Algorithm = "simple",
     output_format: str = "imilast",
+    # Hodges-specific
+    min_points: int = 1,
+    w1: float | None = None,
+    w2: float | None = None,
+    dmax: float | None = None,
+    phimax: float | None = None,
+    n_iterations: int | None = None,
+    min_lifetime: int | None = None,
+    max_missing: int | None = None,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -44,7 +54,28 @@ def run_tracker(
     if rank == 0:
         timer["total"] = timeit.default_timer()
 
-    tracker: Tracker = SimpleTracker() if algorithm == "simple" else HodgesTracker()
+    tracker: Tracker
+    if algorithm == "simple":
+        tracker = SimpleTracker()
+    else:
+        # Pass only provided values to use tracker defaults
+        hodges_kwargs: dict[str, float | int] = {}
+        if w1 is not None:
+            hodges_kwargs["w1"] = w1
+        if w2 is not None:
+            hodges_kwargs["w2"] = w2
+        if dmax is not None:
+            hodges_kwargs["dmax"] = dmax
+        if phimax is not None:
+            hodges_kwargs["phimax"] = phimax
+        if n_iterations is not None:
+            hodges_kwargs["n_iterations"] = n_iterations
+        if min_lifetime is not None:
+            hodges_kwargs["min_lifetime"] = min_lifetime
+        if max_missing is not None:
+            hodges_kwargs["max_missing"] = max_missing
+
+        tracker = HodgesTracker(**hodges_kwargs)  # type: ignore[arg-type]
 
     tracks = tracker.track(
         infile=infile,
@@ -57,6 +88,7 @@ def run_tracker(
         max_chunk_size=max_chunk_size,
         threshold=threshold,
         engine=engine,
+        min_points=min_points,
     )
 
     # Export Phase
@@ -81,63 +113,131 @@ def run_tracker(
 
 def parse_args() -> Namespace:
     """Parses command line arguments."""
-    parser = ArgumentParser(
-        description="PyStormTracker: A High-Performance Cyclone Tracker in Python"
+    parser = argparse.ArgumentParser(
+        description="PyStormTracker: A High-Performance Cyclone Tracker in Python",
+        formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=40),
     )
-    parser.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
-    parser.add_argument("-v", "--var", required=True, help="Variable to track.")
-    parser.add_argument(
+
+    # 1. Required Arguments
+    required = parser.add_argument_group("Required Arguments")
+    required.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
+    required.add_argument(
+        "-v", "--var", required=True, help="Variable to track (e.g., 'vo', 'msl')."
+    )
+    required.add_argument(
         "-o", "--output", required=True, help="Output track file (.txt)."
     )
-    parser.add_argument("-n", "--num", type=int, help="Number of time steps.")
-    parser.add_argument(
+
+    # 2. General Tracking Options
+    general = parser.add_argument_group("General Tracking Options")
+    general.add_argument(
         "-a",
         "--algorithm",
         choices=["simple", "hodges"],
         default="simple",
         help="Tracking algorithm. Default is 'simple'.",
     )
-    parser.add_argument(
+    general.add_argument(
         "-f",
         "--format",
         choices=["imilast", "hodges"],
         default="imilast",
         help="Output format. Default is 'imilast'.",
     )
-    parser.add_argument(
-        "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
+    general.add_argument(
+        "-m",
+        "--mode",
+        choices=["min", "max"],
+        default="min",
+        help="Detection mode: 'min' for cyclones in SLP, 'max' for vorticity.",
     )
-    parser.add_argument(
-        "-t", "--threshold", type=float, default=None, help="Detection threshold."
+    general.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=None,
+        help="Intensity threshold for features.",
     )
-    parser.add_argument(
+    general.add_argument(
+        "-n", "--num", type=int, help="Number of time steps to process."
+    )
+
+    # 3. Performance & Parallelism
+    perf = parser.add_argument_group("Performance & Parallelism")
+    perf.add_argument(
         "-b",
         "--backend",
         choices=["serial", "mpi", "dask"],
         default="serial",
         help="Parallel backend. Default is 'serial'.",
     )
-    parser.add_argument(
+    perf.add_argument(
         "-w",
         "--workers",
         type=int,
         default=None,
-        help="Number of workers for Dask. Defaults to number of CPU cores.",
+        help="Number of workers for Dask. Defaults to CPU cores.",
     )
-    parser.add_argument(
+    perf.add_argument(
         "-c",
         "--chunk-size",
         type=int,
         default=60,
-        help="Maximum time steps per chunk for Dask. Defaults to 60.",
+        help="Steps per chunk for Dask/RSPLICE. Default 60.",
     )
-    parser.add_argument(
+    perf.add_argument(
         "-e",
         "--engine",
         choices=["h5netcdf", "netcdf4", "cfgrib"],
         default=None,
-        help="Xarray engine to use for reading the input file.",
+        help="Xarray engine for reading input.",
     )
+
+    # 4. Hodges (TRACK) Specific Options
+    hodges = parser.add_argument_group("Hodges (TRACK) Algorithm Options")
+    hodges.add_argument(
+        "--min-points",
+        type=int,
+        default=1,
+        help="Min grid points per object (noise filter).",
+    )
+    hodges.add_argument(
+        "--w1", type=float, default=None, help="Cost weight for direction. Default 0.2."
+    )
+    hodges.add_argument(
+        "--w2", type=float, default=None, help="Cost weight for speed. Default 0.8."
+    )
+    hodges.add_argument(
+        "--dmax",
+        type=float,
+        default=None,
+        help="Max search radius in degrees. Default 6.5.",
+    )
+    hodges.add_argument(
+        "--phimax",
+        type=float,
+        default=None,
+        help="Smoothness penalty (static). Default 0.5.",
+    )
+    hodges.add_argument(
+        "--iterations",
+        type=int,
+        default=None,
+        help="Max MGE optimization passes. Default 3.",
+    )
+    hodges.add_argument(
+        "--min-lifetime",
+        type=int,
+        default=None,
+        help="Min steps for a valid track. Default 3.",
+    )
+    hodges.add_argument(
+        "--max-missing",
+        type=int,
+        default=None,
+        help="Max consecutive missing frames. Default 0.",
+    )
+
     return parser.parse_args()
 
 
@@ -180,6 +280,15 @@ def main() -> None:
         engine=args.engine,
         algorithm=args.algorithm,
         output_format=args.format,
+        # Hodges-specific
+        min_points=args.min_points,
+        w1=args.w1,
+        w2=args.w2,
+        dmax=args.dmax,
+        phimax=args.phimax,
+        n_iterations=args.iterations,
+        min_lifetime=args.min_lifetime,
+        max_missing=args.max_missing,
     )
 
 

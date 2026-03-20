@@ -10,9 +10,7 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-**PyStormTracker** is a high-performance Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and provides a scalable framework for processing large-scale climate datasets like ERA5.
-
-The project is currently being expanded to include a Python port of the adaptive constraints tracking algorithm from **Hodges (1999)** (originally in C) and the Accumulated Track Activity metrics from **Yau and Chang (2020)** (originally in Matlab).
+**PyStormTracker** is a high-performance Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and the "Hodges (TRACK)" algorithm with adaptive constraints described in **Hodges (1999)**. It provides a scalable framework for processing large-scale climate datasets like ERA5.
 
 Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently process large-scale climate datasets.
 
@@ -20,13 +18,16 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 
 - **High-Performance Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution. **Achieves up to 11.8x speedup in serial workloads.**
 - **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, running at raw C speeds while releasing the GIL for true multi-process execution.
+- **Multiple Algorithms**:
+  - **Simple (Default)**: Fast, heuristic linking optimized for modern resolutions.
+  - **Hodges (TRACK)**: 100% algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
 - **Scalable Backends**: 
   - **Serial (Default)**: Standard sequential execution.
   - **Dask**: Multi-process tree-reduction for local or distributed scaling.
   - **MPI**: High-performance distributed execution via `mpi4py`.
 - **Typed & Modern**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
-- **Interoperable**: Full support for the standard **IMILAST** intercomparison format (`.txt`) with human-readable datetime strings.
+- **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
@@ -105,15 +106,31 @@ stormtracker -i data.nc -v msl -o my_tracks
 
 | Argument | Short | Description |
 | :--- | :--- | :--- |
-| `--input` | `-i` | **Required.** Path to the input NetCDF/GRIB file. |
-| `--var` | `-v` | **Required.** Variable name to track (e.g., `msl`, `vo`). |
-| `--output` | `-o` | **Required.** Path to the output track file (appends `.txt` if missing). |
+| **Required** | | |
+| `--input` | `-i` | Path to the input NetCDF/GRIB file. |
+| `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
+| `--output` | `-o` | Path to the output track file. |
+| **General** | | |
+| `--algorithm` | `-a` | `simple` (default) or `hodges`. |
+| `--format` | `-f` | Output format: `imilast` (default) or `hodges`. |
+| `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
+| `--threshold` | `-t` | Intensity threshold for feature detection. |
 | `--num` | `-n` | Number of time steps to process. |
-| `--threshold` | `-t` | Detection threshold (defaults: `1e-4` for `vo`, `0.0` otherwise). |
-| `--mode` | `-m` | `min` (default) for low pressure, `max` for vorticity/high pressure. |
+| **Performance** | | |
 | `--backend` | `-b` | `serial` (default), `dask`, or `mpi`. |
-| `--workers` | `-w` | Number of Dask workers (defaults to CPU core count). |
-| `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`, `cfgrib`). |
+| `--workers` | `-w` | Number of parallel workers (defaults to CPU cores). |
+| `--chunk-size` | `-c` | Steps per chunk for Dask/RSPLICE (default 60). |
+| `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
+| **Hodges-Specific** | | |
+| `--zone` | | Path to `zone.dat` for regional search radii. |
+| `--adapt` | | Path to `adapt.dat` for adaptive smoothness. |
+| `--min-points` | | Minimum grid points per object (noise filter). |
+| `--w1`, `--w2` | | Cost weights for direction (0.2) and speed (0.8). |
+| `--dmax` | | Max search radius in degrees (default 5.0). |
+| `--phimax` | | Smoothness penalty (default 0.5). |
+| `--iterations` | | Max MGE optimization passes (default 3). |
+| `--min-lifetime`| | Minimum time steps for a valid track (default 3). |
+| `--max-missing` | | Max consecutive missing frames (default 0). |
 
 ### Python API
 
@@ -122,19 +139,23 @@ You can easily integrate PyStormTracker into your own scripts or Jupyter Noteboo
 ```python
 import pystormtracker as pst
 
-# 1. Instantiate the tracker (defaults to Serial backend)
-tracker = pst.SimpleTracker()
+# 1. Instantiate the tracker (Simple or Hodges)
+# tracker = pst.SimpleTracker()
+tracker = pst.HodgesTracker.from_config(
+    dmax=5.0, 
+    phimax=0.5, 
+    n_iterations=3
+)
 
 # 2. Run the tracking algorithm. Returns an array-backed Tracks object.
 tracks = tracker.track(
     infile="data.nc", 
-    varname="msl", 
-    mode="min",
-    start_time="2025-01-01",   # Optional: limit by start date
-    end_time="2025-01-31",     # Optional: limit by end date
-    backend="dask",            # Optional: use 'serial', 'dask', or 'mpi'
-    n_workers=4
+    varname="vo", 
+    mode="max",
+    threshold=1e-4,
+    backend="serial"
 )
+```
 
 # 3. Analyze the results programmatically
 for track in tracks:

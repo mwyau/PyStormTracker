@@ -4,23 +4,23 @@
 :maxdepth: 2
 :caption: Getting Started
 
-readme
+PyStormTracker <readme>
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: Technical Reference
 
-architecture
-hodges
-benchmark
+PyStormTracker Architecture <architecture>
+PyStormTracker Hodges Implementation <hodges>
+PyStormTracker Benchmark Report <benchmark>
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: Future Development
 
-roadmap
+PyStormTracker Roadmap <roadmap>
 ```
 
 ## Resources

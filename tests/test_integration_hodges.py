@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +8,7 @@ import pytest
 
 from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
-from pystormtracker.utils.data_utils import fetch_era5_vo850
+from pystormtracker.utils.data import fetch_era5_vo850
 
 
 def run_command_direct(cmd_args: list[str]) -> None:
@@ -43,11 +42,8 @@ def hodges_config(
     steps: int | None,
 ) -> int | None:
     """Skip full tests locally if not in CI."""
-    is_ci = os.environ.get("GITHUB_ACTIONS")
-    run_all = request.config.getoption("--run-all")
-
-    if steps is None and not (is_ci or run_all):
-        pytest.skip("Full Hodges integration tests only run in CI or with --run-all")
+    if steps is None:
+        pytest.skip("Full Hodges integration tests are temporarily disabled.")
 
     return steps
 

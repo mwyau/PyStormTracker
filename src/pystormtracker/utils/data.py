@@ -5,7 +5,7 @@ import pooch  # type: ignore[import-untyped]
 DATA_RELEASE_VERSION = "v0.1.1-data"
 
 # Define a central repository of data files
-GOOD_DATA = pooch.create(
+CACHED_DATA = pooch.create(
     path=pooch.os_cache("pystormtracker"),
     base_url=(
         f"https://github.com/mwyau/PyStormTracker-Data/"
@@ -58,7 +58,7 @@ def fetch_era5_msl(
         raise ValueError("Format must be either 'nc' or 'grib'")
 
     ext = "nc" if format == "nc" else "grib"
-    return str(GOOD_DATA.fetch(f"era5_msl_2025-2026_{season}_{resolution}.{ext}"))
+    return str(CACHED_DATA.fetch(f"era5_msl_2025-2026_{season}_{resolution}.{ext}"))
 
 
 def fetch_era5_vo850(
@@ -85,4 +85,4 @@ def fetch_era5_vo850(
         raise ValueError("Format must be either 'nc' or 'grib'")
 
     ext = "nc" if format == "nc" else "grib"
-    return str(GOOD_DATA.fetch(f"era5_vo850_2025-2026_{season}_{resolution}.{ext}"))
+    return str(CACHED_DATA.fetch(f"era5_vo850_2025-2026_{season}_{resolution}.{ext}"))

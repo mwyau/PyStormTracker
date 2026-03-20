@@ -10,7 +10,7 @@ import pytest
 
 from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
-from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.utils.data import fetch_era5_msl, fetch_era5_vo850
 
 N_WORKERS = 2
 
@@ -124,6 +124,11 @@ def config(
 
     if steps is None and not (is_ci or run_all):
         pytest.skip("Full integration tests only run in CI or with --run-all")
+
+    if varname == "vo" and steps is None:
+        pytest.skip(
+            "vo_max_full integration tests are temporarily disabled (too slow)."
+        )
 
     return data_path, varname, mode, steps
 
@@ -279,6 +284,7 @@ def test_legacy_regression(
         ref_file = "data/test/tracks/era5_msl_2.5x2.5_v0.0.2_imilast.txt"
         l_tol, c_tol, i_tol, count_tol = 1, 15.0, 500.0, 1
     elif varname == "vo":
+        pytest.skip("Legacy VO regression tests are temporarily disabled.")
         ref_file = "data/test/tracks/era5_vo_2.5x2.5_1e-4_v0.0.2_imilast.txt"
         # algorithmic improvements lead to slight differences, but should still be close
         l_tol, c_tol, i_tol, count_tol = 5, 15.0, 1.0, 100

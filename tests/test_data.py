@@ -4,10 +4,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.utils.data import fetch_era5_msl, fetch_era5_vo850
 
 
-@patch("pystormtracker.utils.data_utils.GOOD_DATA")
+@patch("pystormtracker.utils.data.CACHED_DATA")
 def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.nc"
 
@@ -17,7 +17,7 @@ def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.assert_called_once_with("era5_msl_2025-2026_djf_2.5x2.5.nc")
 
 
-@patch("pystormtracker.utils.data_utils.GOOD_DATA")
+@patch("pystormtracker.utils.data.CACHED_DATA")
 def test_fetch_era5_msl_grib(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.grib"
 
@@ -42,7 +42,7 @@ def test_fetch_era5_msl_invalid_format() -> None:
         fetch_era5_msl(format="txt")
 
 
-@patch("pystormtracker.utils.data_utils.GOOD_DATA")
+@patch("pystormtracker.utils.data.CACHED_DATA")
 def test_fetch_era5_vo850_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/vo850.nc"
 

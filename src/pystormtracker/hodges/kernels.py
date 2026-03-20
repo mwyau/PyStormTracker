@@ -7,69 +7,6 @@ from numpy.typing import NDArray
 from ..utils.geo import DEGTORAD, geod_dist
 
 
-@nb.njit(parallel=True, cache=True, nogil=True)  # type: ignore[untyped-decorator]
-def _numba_hodges_extrema(
-    frame: NDArray[np.float64],
-    size: int,
-    threshold: float,
-    is_min: bool,
-) -> NDArray[np.float64]:
-    """
-    Finds local extrema in a 2D frame.
-
-    Handles longitude periodicity (assumed last dimension).
-    Used as the first step in the Hodges detection algorithm.
-
-    Args:
-        frame: 2D array of meteorological data (e.g., vorticity).
-        size: Diameter of the search window for local extrema.
-        threshold: Intensity threshold for candidates.
-        is_min: If True, searches for minima; otherwise maxima.
-
-    Returns:
-        A binary 2D mask where 1.0 indicates an extremum.
-    """
-    ny, nx = frame.shape
-    extrema = np.zeros_like(frame)
-    half = size // 2
-
-    for i in nb.prange(ny):
-        for j in range(nx):
-            val = frame[i, j]
-            if is_min:
-                if val > threshold:
-                    continue
-            else:
-                if val < threshold:
-                    continue
-
-            is_extrema = True
-            for di in range(-half, half + 1):
-                ni = i + di
-                if ni < 0 or ni >= ny:
-                    continue
-                for dj in range(-half, half + 1):
-                    if di == 0 and dj == 0:
-                        continue
-                    nj = (j + dj) % nx
-                    nval = frame[ni, nj]
-                    if is_min:
-                        if nval < val:
-                            is_extrema = False
-                            break
-                    else:
-                        if nval > val:
-                            is_extrema = False
-                            break
-                if not is_extrema:
-                    break
-
-            if is_extrema:
-                extrema[i, j] = 1.0
-
-    return extrema
-
-
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
 def _numba_get_centers(
     extrema: NDArray[np.float64],
@@ -672,3 +609,230 @@ def _initial_break_pass(
     for i in range(len(new_tracks_list)):
         out[i] = new_tracks_list[i]
     return out
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _break_track(
+    tracks: NDArray[np.int64],
+    track_idx: int,
+    k: int,
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    zones: NDArray[np.float64],
+    default_dmax: float,
+    forward: bool,
+) -> NDArray[np.int64]:
+    """
+    Breaks a track at frame k if the displacement to the next/previous point
+    violates the search radius constraint.
+
+    This matches the TRACK 'track_fail' behavior.
+
+    Args:
+        tracks: The track matrix.
+        track_idx: Index of the track to check.
+        k: Frame index where the potential break starts.
+        features_lat, features_lon: Coordinate arrays.
+        zones: Regional dmax definitions.
+        default_dmax: Default search radius.
+        forward: If True, check k to k+1; otherwise k to k-1.
+
+    Returns:
+        The updated track matrix (potentially with a new row).
+    """
+    n_tracks, n_frames = tracks.shape
+    deg_to_rad = np.pi / 180.0
+
+    target_k = k + 1 if forward else k - 1
+    if target_k < 0 or target_k >= n_frames:
+        return tracks
+
+    idx1 = tracks[track_idx, k]
+    idx2 = tracks[track_idx, target_k]
+
+    if idx1 == -1 or idx2 == -1:
+        return tracks
+
+    lat1, lon1 = features_lat[idx1], features_lon[idx1]
+    lat2, lon2 = features_lat[idx2], features_lon[idx2]
+
+    dmax_eff = 0.5 * (
+        get_regional_dmax(lat1, lon1, zones, default_dmax)
+        + get_regional_dmax(lat2, lon2, zones, default_dmax)
+    )
+
+    if geod_dist(lat1, lon1, lat2, lon2) > dmax_eff * deg_to_rad:
+        # Violation! Break the track.
+        new_tr = np.full(n_frames, -1, dtype=np.int64)
+        if forward:
+            # Move k+1 onwards to a new track
+            new_tr[target_k:] = tracks[track_idx, target_k:]
+            tracks[track_idx, target_k:] = -1
+        else:
+            # Move k-1 backwards to a new track
+            new_tr[:k] = tracks[track_idx, :k]
+            tracks[track_idx, :k] = -1
+
+        # Append new track as a new row
+        # (Numba cannot easily resize the matrix, so we return a new one)
+        out = np.zeros((n_tracks + 1, n_frames), dtype=np.int64)
+        out[:n_tracks] = tracks
+        out[n_tracks] = new_tr
+        return out
+
+    return tracks
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _numba_ccl(
+    binary_mask: NDArray[np.float64],
+) -> tuple[NDArray[np.int32], int]:
+    """
+    8-connectivity Connected Component Labeling (CCL) in Numba.
+    Uses iterative label propagation for compatibility with JIT.
+
+    Args:
+        binary_mask: Binary 2D array (1.0 for object, 0.0 for background).
+
+    Returns:
+        (labeled_mask, num_objects)
+    """
+    ny, nx = binary_mask.shape
+    labels = np.zeros((ny, nx), dtype=np.int32)
+    label_count = 0
+
+    # Initial labeling
+    for i in range(ny):
+        for j in range(nx):
+            if binary_mask[i, j] > 0:
+                label_count += 1
+                labels[i, j] = label_count
+
+    if label_count == 0:
+        return labels, 0
+
+    # Iterative propagation until convergence
+    changed = True
+    while changed:
+        changed = False
+        # Forward pass
+        for i in range(ny):
+            for j in range(nx):
+                if labels[i, j] == 0:
+                    continue
+                cur = labels[i, j]
+                # 8-neighbors with longitude wrapping
+                for di in range(-1, 2):
+                    ni = i + di
+                    if ni < 0 or ni >= ny:
+                        continue
+                    for dj in range(-1, 2):
+                        nj = (j + dj) % nx
+                        if labels[ni, nj] > 0 and labels[ni, nj] < cur:
+                            cur = labels[ni, nj]
+                if cur != labels[i, j]:
+                    labels[i, j] = cur
+                    changed = True
+
+        # Backward pass
+        for i in range(ny - 1, -1, -1):
+            for j in range(nx - 1, -1, -1):
+                if labels[i, j] == 0:
+                    continue
+                cur = labels[i, j]
+                for di in range(-1, 2):
+                    ni = i + di
+                    if ni < 0 or ni >= ny:
+                        continue
+                    for dj in range(-1, 2):
+                        nj = (j + dj) % nx
+                        if labels[ni, nj] > 0 and labels[ni, nj] < cur:
+                            cur = labels[ni, nj]
+                if cur != labels[i, j]:
+                    labels[i, j] = cur
+                    changed = True
+
+    # Compact labels
+    unique_labels = np.unique(labels)
+    unique_labels = unique_labels[unique_labels > 0]
+    num_objects = len(unique_labels)
+    label_map = np.zeros(label_count + 1, dtype=np.int32)
+    for i in range(num_objects):
+        label_map[unique_labels[i]] = i + 1
+
+    for i in range(ny):
+        for j in range(nx):
+            labels[i, j] = label_map[labels[i, j]]
+
+    return labels, num_objects
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _numba_object_extrema(
+    frame: NDArray[np.float64],
+    labeled_mask: NDArray[np.int32],
+    num_objects: int,
+    size: int,
+    is_min: bool,
+    min_points: int,
+) -> NDArray[np.float64]:
+    """
+    Finds local extrema within thresholded objects.
+
+    Matches TRACK's object-based feature identification.
+
+    Args:
+        frame: 2D data frame.
+        labeled_mask: Labeled object mask from _numba_ccl.
+        num_objects: Total number of objects.
+        size: Local search diameter.
+        is_min: True for minima, False for maxima.
+        min_points: Minimum number of grid points in an object to be processed.
+
+    Returns:
+        Binary mask of detected extrema.
+    """
+    ny, nx = frame.shape
+    extrema = np.zeros_like(frame)
+    half = size // 2
+
+    # Calculate object sizes
+    object_sizes = np.zeros(num_objects + 1, dtype=np.int32)
+    for i in range(ny):
+        for j in range(nx):
+            if labeled_mask[i, j] > 0:
+                object_sizes[labeled_mask[i, j]] += 1
+
+    for i in range(ny):
+        for j in range(nx):
+            obj_id = labeled_mask[i, j]
+            if obj_id == 0 or object_sizes[obj_id] < min_points:
+                continue
+
+            val = frame[i, j]
+            is_extrema = True
+            for di in range(-half, half + 1):
+                ni = i + di
+                if ni < 0 or ni >= ny:
+                    continue
+                for dj in range(-half, half + 1):
+                    if di == 0 and dj == 0:
+                        continue
+                    nj = (j + dj) % nx
+                    nval = frame[ni, nj]
+
+                    if is_min:
+                        if nval < val:
+                            is_extrema = False
+                            break
+                    else:
+                        if nval > val:
+                            is_extrema = False
+                            break
+                if not is_extrema:
+                    break
+
+            if is_extrema:
+                extrema[i, j] = 1.0
+
+    return extrema

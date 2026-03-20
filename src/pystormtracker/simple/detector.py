@@ -214,7 +214,7 @@ class SimpleDetector:
 
         # Set variable specific thresholds if not provided
         if threshold is None:
-            threshold = 1e-4 if self.requested_varname == "vo" else 0.0
+            threshold = 1e-5 if self.requested_varname == "vo" else 0.0
 
         time_array = self.get_time()
         lat, lon = self.lat, self.lon

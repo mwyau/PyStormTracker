@@ -33,6 +33,7 @@ Trajectory construction in the heuristic tracker uses NumPy broadcasting to calc
 
 ### 2.4 Optimization-Based Tracking Implementation (HodgesTracker)
 The `HodgesTracker` implements the industry-standard TRACK algorithm (Hodges 1994, 1995, 1999). Unlike the heuristic tracker, it uses a global optimization approach:
+*   **Object-Based Detection**: Features are identified using a multi-stage pipeline: `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`. This ensures only significant meteorological features are tracked.
 *   **Modified Greedy Exchange (MGE)**: An iterative algorithm that swaps points between tracks to minimize a total cost function.
 *   **Spherical Cost Function**: A mathematical model that penalizes changes in track direction (directional smoothness) and speed.
 *   **Adaptive Constraints**: Dynamically adjusts search radii ($d_{max}$) and smoothness limits ($\psi_{max}$) based on regional zones and track velocity.
@@ -102,4 +103,5 @@ The current architecture represents a fundamental shift from the legacy nested-o
 | **Parallelism** | Threads (bottlenecked by GIL). | Processes/MPI (true concurrent I/O). |
 | **Linking Strategy** | Tree-reduction (prone to boundary splits). | Parallel Detect + Centralized Link (perfect matching). |
 | **Linker** | $O(N^2)$ nested Python loops. | Vectorized NumPy matrix broadcasting. |
+| **Algorithms** | Simple heuristic only. | Dual: Simple + Hodges (TRACK) Parity. |
 | **I/O** | Many small lazy-loaded chunks. | Contiguous shared `DataLoader`. |
