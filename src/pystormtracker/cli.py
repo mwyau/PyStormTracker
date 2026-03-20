@@ -7,10 +7,12 @@ from typing import Literal
 
 import numpy as np
 
+from .hodges.tracker import HodgesTracker
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
 
 Backend = Literal["serial", "mpi", "dask"]
+Algorithm = Literal["simple", "hodges"]
 
 
 def run_tracker(
@@ -25,6 +27,8 @@ def run_tracker(
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
+    algorithm: Algorithm = "hodges",
+    output_format: str = "imilast",
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -39,9 +43,11 @@ def run_tracker(
     if rank == 0:
         timer["total"] = timeit.default_timer()
 
-    tracker = SimpleTracker()
-    # tracker.track should ideally return tracks and timing
-    # For now, we will rely on internal timing or modify it
+    if algorithm == "simple":
+        tracker = SimpleTracker()
+    else:
+        tracker = HodgesTracker()
+
     tracks = tracker.track(
         infile=infile,
         varname=varname,
@@ -57,13 +63,11 @@ def run_tracker(
 
     # Export Phase
     if rank == 0:
-        num_tracks = len(
-            [t for t in tracks if len(t) >= 8 and t[0].abs_dist(t[-1]) >= 1000.0]
-        )
-        print(f"Number of long tracks (>= 8 steps, >= 1000km): {num_tracks}")
+        num_tracks = len(tracks)
+        print(f"Total number of tracks: {num_tracks}")
 
         timer["export"] = timeit.default_timer()
-        tracks.write(outfile)
+        tracks.write(outfile, format=output_format)
         timer["export"] = timeit.default_timer() - timer["export"]
 
         out_path = Path(outfile)
@@ -88,6 +92,20 @@ def parse_args() -> Namespace:
         "-o", "--output", required=True, help="Output track file (.txt)."
     )
     parser.add_argument("-n", "--num", type=int, help="Number of time steps.")
+    parser.add_argument(
+        "-a",
+        "--algorithm",
+        choices=["simple", "hodges"],
+        default="hodges",
+        help="Tracking algorithm. Default is 'hodges'.",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["imilast", "hodges"],
+        default="imilast",
+        help="Output format. Default is 'imilast'.",
+    )
     parser.add_argument(
         "-m", "--mode", choices=["min", "max"], default="min", help="Detection mode."
     )
@@ -132,9 +150,17 @@ def main() -> None:
 
     if args.num is not None:
         # Determine actual times for the first n steps
-        detector_preview = SimpleDetector(
-            pathname=args.input, varname=args.var, engine=args.engine
-        )
+        from .hodges.detector import HodgesDetector
+
+        if args.algorithm == "simple":
+            detector_preview = SimpleDetector(
+                pathname=args.input, varname=args.var, engine=args.engine
+            )
+        else:
+            detector_preview = HodgesDetector(
+                pathname=args.input, varname=args.var, engine=args.engine
+            )
+
         times = detector_preview.get_time()
         assert times is not None
         num = min(args.num, len(times))
@@ -153,6 +179,8 @@ def main() -> None:
         max_chunk_size=args.chunk_size,
         threshold=args.threshold,
         engine=args.engine,
+        algorithm=args.algorithm,
+        output_format=args.format,
     )
 
 

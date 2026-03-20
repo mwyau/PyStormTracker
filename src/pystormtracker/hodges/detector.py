@@ -85,8 +85,13 @@ class HodgesDetector:
 
         if frame_idx is not None:
             data = data.isel({time_dim: frame_idx})
+            # Ensure 2D spatial frame
+            return np.asarray(data.values).reshape((data.shape[-2], data.shape[-1]))
 
-        return np.asarray(data.values)
+        # Ensure (time, lat, lon)
+        return np.asarray(data.values).reshape(
+            (data.shape[0], data.shape[-2], data.shape[-1])
+        )
 
     def get_time(self) -> NDArray[np.datetime64]:
         self._ensure_open()
