@@ -44,5 +44,7 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 *   **Preprocessing (Completed):** 
     *   Added support for spectral filtering (e.g., T42/T63 truncation) using `pyshtools` and `SphericalHarmonicFilter`.
     *   Added `TaperFilter` for boundary smoothing.
+*   **HodgesTracker Refinement:** 
+    *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with the original TRACK software (replacing the current local quadratic proxy).
 *   **Postprocessing (Track Metrics):**
     *   *Action:* Implement Accumulated Track Activity (ATA) and other storm track metrics from **Yau and Chang (2020)** to provide physically meaningful analysis of detected trajectories.

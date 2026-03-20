@@ -7,17 +7,7 @@ from ..models.center import Center
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
 from ..utils.geo import geod_dist
-from .constants import (
-    DMAX_DEFAULT,
-    ITERATIONS_DEFAULT,
-    MISSING_DEFAULT,
-    PHIMAX_DEFAULT,
-    STANDARD_ADAPT_THRESHOLDS,
-    STANDARD_ADAPT_VALUES,
-    STANDARD_ZONES,
-    W1_DEFAULT,
-    W2_DEFAULT,
-)
+from . import constants
 from .kernels import (
     _break_track,
     _initial_break_pass,
@@ -37,15 +27,15 @@ class HodgesLinker:
 
     def __init__(
         self,
-        w1: float = W1_DEFAULT,
-        w2: float = W2_DEFAULT,
-        dmax: float = DMAX_DEFAULT,
-        phimax: float = PHIMAX_DEFAULT,
-        n_iterations: int = ITERATIONS_DEFAULT,
-        max_missing: int = MISSING_DEFAULT,
-        zones: NDArray[np.float64] = STANDARD_ZONES,
-        adapt_thresholds: NDArray[np.float64] = STANDARD_ADAPT_THRESHOLDS,
-        adapt_values: NDArray[np.float64] = STANDARD_ADAPT_VALUES,
+        w1: float = constants.W1_DEFAULT,
+        w2: float = constants.W2_DEFAULT,
+        dmax: float = constants.DMAX_DEFAULT,
+        phimax: float = constants.PHIMAX_DEFAULT,
+        n_iterations: int = constants.ITERATIONS_DEFAULT,
+        max_missing: int = constants.MISSING_DEFAULT,
+        zones: NDArray[np.float64] = constants.TRACK_ZONES,
+        adapt_thresholds: NDArray[np.float64] = constants.ADAPT_THRESHOLDS,
+        adapt_values: NDArray[np.float64] = constants.ADAPT_VALUES,
     ) -> None:
         """
         Initialize the MGE linker.
