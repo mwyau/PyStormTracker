@@ -30,6 +30,7 @@ dependencies = [
     "numpy>=1.24.0",
     "numba>=0.60.0",
     "xarray>=2024.9.0",
+    "pyshtools>=4.13.1",
 ]
 
 [project.scripts]
@@ -83,6 +84,7 @@ dev = [
     "ruff>=0.15.5",
     "matplotlib>=3.10.8",
     "pandas>=3.0.1",
+    "cartopy>=0.25.0",
 ]
 
 [tool.ruff]

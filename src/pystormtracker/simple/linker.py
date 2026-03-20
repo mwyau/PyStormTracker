@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ..models.center import Center
 from ..models.tracks import TimeRange, Tracks
@@ -8,8 +9,11 @@ from .detector import RawDetectionStep
 
 
 def haversine_matrix(
-    lats1: np.ndarray, lons1: np.ndarray, lats2: np.ndarray, lons2: np.ndarray
-) -> np.ndarray:
+    lats1: NDArray[np.float64],
+    lons1: NDArray[np.float64],
+    lats2: NDArray[np.float64],
+    lons2: NDArray[np.float64],
+) -> NDArray[np.float64]:
     """Vectorized Haversine distance calculation returning a distance matrix in km."""
     R = 6367.0
     DEGTORAD = np.pi / 180.0

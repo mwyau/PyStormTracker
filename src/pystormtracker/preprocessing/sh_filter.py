@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import warnings
+from typing import Literal, cast
+
+import numpy as np
+import pyshtools as pysh  # type: ignore[import-untyped]
+import xarray as xr
+from numpy.typing import NDArray
+
+
+def _filter_sh_frame(
+    frame: NDArray[np.float64], lmin: int, lmax: int
+) -> NDArray[np.float64]:
+    """Filters a single 2D frame using spherical harmonics."""
+    nlat, nlon = frame.shape
+    pad_pole = False
+
+    # Check for expected regular lat-lon grid shapes (Driscoll-Healy)
+    if nlon == 2 * (nlat - 1):
+        pad_pole = True
+        frame_proc = frame[:-1, :]
+    elif nlon == 2 * nlat:
+        frame_proc = frame
+    else:
+        raise ValueError(
+            f"Unsupported shape for SH filter: {frame.shape}. "
+            f"Expected nlon=2*(nlat-1) or nlon=2*nlat for regular lat-lon grid."
+        )
+
+    grid = pysh.SHGrid.from_array(frame_proc, grid="DH")
+    coeffs = grid.expand()
+
+    # Filter operations
+    coeffs_filtered = coeffs.copy()
+    for l_val in range(min(lmin, coeffs_filtered.lmax + 1)):
+        coeffs_filtered.coeffs[:, l_val, :] = 0.0
+
+    if lmax < coeffs_filtered.lmax:
+        for l_val in range(lmax + 1, coeffs_filtered.lmax + 1):
+            coeffs_filtered.coeffs[:, l_val, :] = 0.0
+
+    filtered_grid = coeffs_filtered.expand()
+    out = cast(NDArray[np.float64], filtered_grid.to_array())
+
+    if pad_pole:
+        return out[:, :-1]
+    else:
+        return out[:-1, :-1]
+
+
+class SphericalHarmonicFilter:
+    """
+    Spherical harmonic bandpass filter for lat-lon grid data.
+    """
+
+    def __init__(self, lmin: int = 5, lmax: int = 42) -> None:
+        """
+        Initialize the filter with wave number bounds.
+
+        Args:
+            lmin (int): Minimum total wave number to retain.
+            lmax (int): Maximum total wave number to retain.
+        """
+        self.lmin = lmin
+        self.lmax = lmax
+
+    def filter(
+        self,
+        data: xr.DataArray,
+        backend: Literal["serial", "mpi", "dask"] = "serial",
+    ) -> xr.DataArray:
+        """
+        Applies the filter to the input DataArray.
+
+        Args:
+            data (xr.DataArray): Input data with dimensions containing 'lat' and 'lon'.
+            backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+
+        Returns:
+            xr.DataArray: The filtered data.
+        """
+        return apply_sh_filter(data, self.lmin, self.lmax, backend=backend)
+
+
+def apply_sh_filter(
+    data: xr.DataArray,
+    lmin: int = 5,
+    lmax: int = 42,
+    backend: Literal["serial", "mpi", "dask"] = "serial",
+) -> xr.DataArray:
+    """
+    Applies a spherical harmonic bandpass filter to the input data.
+
+    Args:
+        data (xr.DataArray): Input data with dimensions containing 'lat' and 'lon'.
+        lmin (int): Minimum total wave number to retain. Defaults to 5.
+        lmax (int): Maximum total wave number to retain. Defaults to 42.
+        backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+
+    Returns:
+        xr.DataArray: The filtered data. If 'mpi', the returned DataArray
+        may be a subset corresponding to the MPI rank's chunk.
+    """
+    if "lat" not in data.dims or "lon" not in data.dims:
+        raise ValueError("Input DataArray must have 'lat' and 'lon' dimensions.")
+
+    kwargs = {"lmin": lmin, "lmax": lmax}
+    dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
+
+    if backend == "dask":
+        if not data.chunks:
+            warnings.warn(
+                "Backend is 'dask' but data is not chunked. Proceeding serially.",
+                stacklevel=2,
+            )
+        else:
+            dask_mode = "parallelized"
+    elif backend == "mpi":
+        try:
+            from mpi4py import MPI
+
+            comm = MPI.COMM_WORLD
+            rank = comm.Get_rank()
+            size = comm.Get_size()
+
+            # Find the time dimension to split across
+            time_dims = [d for d in data.dims if d not in ("lat", "lon")]
+            if time_dims:
+                time_dim = time_dims[0]
+                total_len = len(data[time_dim])
+                chunk_size = total_len // size
+                remainder = total_len % size
+
+                s_idx = rank * chunk_size + min(rank, remainder)
+                e_idx = (rank + 1) * chunk_size + min(rank + 1, remainder)
+
+                if s_idx < e_idx:
+                    data = data.isel({time_dim: slice(s_idx, e_idx)})
+                else:
+                    # Empty slice for this rank
+                    data = data.isel({time_dim: slice(0, 0)})
+        except ImportError:
+            warnings.warn(
+                "mpi4py not installed. Proceeding serially.",
+                stacklevel=2,
+            )
+
+    filtered = cast(
+        xr.DataArray,
+        xr.apply_ufunc(
+            _filter_sh_frame,
+            data,
+            input_core_dims=[["lat", "lon"]],
+            output_core_dims=[["lat", "lon"]],
+            vectorize=True,
+            kwargs=kwargs,
+            dask=dask_mode,
+            output_dtypes=[data.dtype],
+        ),
+    )
+
+    filtered.attrs.update(data.attrs)
+    filtered.name = f"{data.name}_sh_filtered" if data.name else "sh_filtered"
+    return filtered
