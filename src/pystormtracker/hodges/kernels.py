@@ -4,8 +4,9 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
+from ..utils.geo import DEGTORAD, geod_dist
+
 R_EARTH = 6367.0  # Radius of Earth in km
-DEGTORAD = np.pi / 180.0
 
 
 @nb.njit(parallel=True, cache=True)
@@ -149,24 +150,6 @@ def subgrid_refine(
     ref_val = z[1, 1] + 0.5 * (f_y * dy + f_x * dx)
     
     return ref_lat, ref_lon, ref_val
-
-
-@nb.njit(cache=True)
-def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculates the geodesic distance (angular separation) in radians."""
-    phi1 = lat1 * DEGTORAD
-    phi2 = lat2 * DEGTORAD
-    lam1 = lon1 * DEGTORAD
-    lam2 = lon2 * DEGTORAD
-    
-    # Dot product of unit vectors
-    dot = np.sin(phi1) * np.sin(phi2) + np.cos(phi1) * np.cos(phi2) * np.cos(lam1 - lam2)
-    
-    # Clamp for precision
-    if dot > 1.0: dot = 1.0
-    if dot < -1.0: dot = -1.0
-    
-    return np.arccos(dot)
 
 
 @nb.njit(cache=True)

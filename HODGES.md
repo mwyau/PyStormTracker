@@ -24,28 +24,25 @@ The Hodges tracker identifies and links atmospheric features using a spherical c
   - The first term represents **directional smoothness** (dot product of tangent vectors at the central point $P_k$).
   - The second term represents **speed consistency** (ratio of distances).
   - Default weights: $w_1 = 0.2$, $w_2 = 0.8$.
+- **Phantom Handling**: If $P_{k-1}$ is a phantom, cost is 0. If $P_{k-1}$ is real but $P_k$ or $P_{k+1}$ are phantoms, cost is `phimax`.
 
 ### 2.4 Linking & Optimization (`hodges/linker.py`)
-- **Initialization**: Tracks are seeded using a nearest-neighbor approach across all frames. Tracks are padded with **phantom points** (placeholders) so that every track matrix entry has a value, enabling global optimization.
+- **Initialization**: Tracks are seeded using a nearest-neighbor approach. Tracks are padded with **phantom points** (placeholders) to enable global optimization.
 - **Modified Greedy Exchange (MGE)**:
-  - **Forward Pass**: Iterates from $k=1$ to $n-1$, attempting to swap point $k+1$ between all pairs of tracks $(i, j)$.
-  - **Backward Pass**: Iterates from $k=n-2$ down to $0$, attempting to swap point $k-1$ between all pairs of tracks.
-  - **Swap Condition**: A swap is executed if the total cost $\Xi = \text{cost}_i + \text{cost}_j$ is reduced and both resulting tracks satisfy the displacement and smoothness constraints.
+  - **Forward Pass**: Iterates from $k=1$ to $n-1$. For each time step, it identifies the **best swap** (largest gain in cost reduction) among all track pairs and executes it.
+  - **Backward Pass**: Iterates from $k=n-2$ down to $0$, performing best-swap optimization.
+  - **Convergence**: Passes repeat until no further gains are possible.
+- **Displacement Logic**: If one point in a pair is a phantom, the displacement is assumed to be `dmax` (matching original TRACK behavior).
 
 ### 2.5 Adaptive Constraints
 - **Regional Search Radius ($d_{max}$)**: Supports latitude/longitude zones. The effective $d_{max}$ for a pair of points is the average of the $d_{max}$ values assigned to their respective zones.
 - **Adaptive Smoothness ($\psi_{max}$)**: A piecewise linear function adjusts the upper-bound smoothness penalty based on the mean displacement of the track triplet. Slower systems are subject to stricter smoothness constraints.
+- **`max_missing`**: Limits the number of consecutive phantom points allowed in a track.
 
 ## 3. Configuration & Compatibility
 The `HodgesTracker` can be configured programmatically or by loading standard TRACK configuration files:
 - **`zone.dat`**: Defines regional $d_{max}$ zones.
 - **`adapt.dat`**: Defines the 4-point linear interpolation for $\psi_{max}$.
 
-## 5. TODO: Functional Parity Enhancements
-To achieve 100% functional parity with TRACK, the following features are planned:
-- **`RUNDATIN` Logic**: Implement `max_missing` (maximum consecutive phantom points) to prevent tracks from jumping large temporal gaps.
-- **`RSPLICE` (Segmented Tracking)**: Implement overlapping time-window processing and track splicing for long time series.
-- **`specfilt.in` Presets**: Add helper methods to `HodgesTracker` to apply standard spectral filters (e.g., T42, T63) using the existing `SphericalHarmonicFilter`.
-
-## 6. Performance
+## 4. Performance
 All heavy mathematical loops, including distance matrices, quadratic fits, and the $O(N_{tracks}^2)$ MGE exchange loops, are implemented as **Numba-optimized JIT kernels** to ensure high performance even with large numbers of feature points.
