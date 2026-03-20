@@ -83,13 +83,15 @@ class HodgesDetector:
         time_dim, _, _ = self._loader.get_coords()
 
         if self.time_range:
-            data = self._data.sel({time_dim: slice(self.time_range.start, self.time_range.end)})
+            data = self._data.sel(
+                {time_dim: slice(self.time_range.start, self.time_range.end)}
+            )
         else:
             data = self._data
 
         if frame_idx is not None:
             data = data.isel({time_dim: frame_idx})
-        
+
         return np.asarray(data.values)
 
     def get_time(self) -> NDArray[np.datetime64]:
@@ -97,7 +99,9 @@ class HodgesDetector:
         ds = self._loader.ensure_open()
         time_dim, _, _ = self._loader.get_coords()
         if self.time_range:
-            times = ds[time_dim].sel({time_dim: slice(self.time_range.start, self.time_range.end)})
+            times = ds[time_dim].sel(
+                {time_dim: slice(self.time_range.start, self.time_range.end)}
+            )
         else:
             times = ds[time_dim]
         return np.asarray(times.values).astype("datetime64[s]")
@@ -124,17 +128,19 @@ class HodgesDetector:
             frame = full_var[it]
             extrema = _numba_hodges_extrema(frame, size, threshold, is_min)
             r_idx, c_idx, _ = _numba_get_centers(extrema, frame)
-            
+
             refined_lats = np.zeros(len(r_idx))
             refined_lons = np.zeros(len(r_idx))
             refined_vals = np.zeros(len(r_idx))
-            
+
             for i in range(len(r_idx)):
                 rlat, rlon, rval = subgrid_refine(frame, r_idx[i], c_idx[i], lat, lon)
                 refined_lats[i] = rlat
                 refined_lons[i] = rlon
                 refined_vals[i] = rval
-            
-            raw_results.append((t, refined_lats, refined_lons, {self.varname: refined_vals}))
-            
+
+            raw_results.append(
+                (t, refined_lats, refined_lons, {self.varname: refined_vals})
+            )
+
         return raw_results

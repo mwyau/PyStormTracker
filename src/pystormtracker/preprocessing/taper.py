@@ -21,7 +21,9 @@ class TaperFilter:
         """
         self.n_points = n_points
 
-    def filter(self, data: xr.DataArray | NDArray[np.float64]) -> xr.DataArray | NDArray[np.float64]:
+    def filter(
+        self, data: xr.DataArray | NDArray[np.float64]
+    ) -> xr.DataArray | NDArray[np.float64]:
         """
         Applies a cosine taper to the edges of the input data.
 
