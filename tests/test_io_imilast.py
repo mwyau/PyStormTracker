@@ -28,7 +28,7 @@ def test_write_imilast_content(tmp_path: Path) -> None:
         ),
         lats=np.array([10.0, 11.0]),
         lons=np.array([190.0, 20.0]),
-        vars_dict={"Intensity1": np.array([1000.0, 990.0])}
+        vars_dict={"Intensity1": np.array([1000.0, 990.0])},
     )
 
     outfile = tmp_path / "test_content.txt"
@@ -51,8 +51,8 @@ def test_read_imilast_different_time_formats(tmp_path: Path) -> None:
         "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n"
         "90 1 3\n"
         "00 1 1 2025120100 2025 12 01 00 10.0 20.0 1000.0\n"
-        f"00 1 2 {t_06}.0 2025 12 01 06 11.0 21.0 990.0\n" # Add .0 to avoid length 10
-        "00 1 3 2025-12-01T12:00:00 2025 12 01 12 12.0 22.0 980.0\n" # iso-like
+        f"00 1 2 {t_06}.0 2025 12 01 06 11.0 21.0 990.0\n"  # Add .0 to avoid length 10
+        "00 1 3 2025-12-01T12:00:00 2025 12 01 12 12.0 22.0 980.0\n"  # iso-like
     )
     infile = tmp_path / "test_read.txt"
     infile.write_text(content)
@@ -68,12 +68,7 @@ def test_read_imilast_different_time_formats(tmp_path: Path) -> None:
 
 
 def test_read_imilast_empty_lines(tmp_path: Path) -> None:
-    content = (
-        "99 00,...\n"
-        "\n"
-        "90 1 1\n"
-        "00 1 1 2025120100 2025 12 01 00 10.0 20.0 1000.0\n"
-    )
+    content = "99 00,...\n\n90 1 1\n00 1 1 2025120100 2025 12 01 00 10.0 20.0 1000.0\n"
     infile = tmp_path / "test_empty.txt"
     infile.write_text(content)
     tracks = read_imilast(infile)
@@ -89,7 +84,7 @@ def test_write_imilast_exception_handling(tmp_path: Path) -> None:
         times=np.array(["NaT"], dtype="datetime64[s]"),
         lats=np.array([0.0]),
         lons=np.array([0.0]),
-        vars_dict={"Intensity1": np.array([1000.0])}
+        vars_dict={"Intensity1": np.array([1000.0])},
     )
 
     outfile = tmp_path / "test_nat.txt"

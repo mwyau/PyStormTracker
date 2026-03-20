@@ -29,7 +29,7 @@ def test_numba_extrema_filter_plateau() -> None:
     # Plateaus should be handled (rank filtering)
     data = np.ones((10, 10), dtype=np.float64) * 100.0
     data[5, 5] = 90.0
-    data[5, 6] = 90.0 # Plateau
+    data[5, 6] = 90.0  # Plateau
 
     out = _numba_extrema_filter(data, size=3, threshold=5.0, is_min=True)
     # Both 90.0 points are flagged because for both,
@@ -43,7 +43,7 @@ def test_numba_extrema_filter_plateau() -> None:
 
 def test_numba_laplace_masked() -> None:
     data = np.zeros((5, 5), dtype=np.float64)
-    data[2, 2] = -1.0 # Minimum
+    data[2, 2] = -1.0  # Minimum
 
     mask = np.zeros((5, 5), dtype=np.float64)
     mask[2, 2] = 1.0
