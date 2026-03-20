@@ -19,11 +19,23 @@ class HodgesTracker(Tracker):
     A tracker implementing the Hodges (TRACK) algorithm with adaptive constraints.
     """
 
+    # Standard TRACK legacy defaults (Hodges 1999)
+    STANDARD_ZONES = np.array(
+        [
+            [0.0, 360.0, -90.0, -20.0, 6.5],
+            [0.0, 360.0, -20.0, 20.0, 3.0],
+            [0.0, 360.0, 20.0, 90.0, 6.5],
+        ],
+        dtype=np.float64,
+    )
+    STANDARD_ADAPT_THRESHOLDS = np.array([1.0, 2.0, 5.0, 8.0], dtype=np.float64)
+    STANDARD_ADAPT_VALUES = np.array([1.0, 0.3, 0.1, 0.0], dtype=np.float64)
+
     def __init__(
         self,
         w1: float = 0.2,
         w2: float = 0.8,
-        dmax: float = 5.0,
+        dmax: float = 6.5,
         phimax: float = 0.5,
         n_iterations: int = 3,
         min_lifetime: int = 3,
@@ -31,6 +43,7 @@ class HodgesTracker(Tracker):
         zones: NDArray[np.float64] | None = None,
         adapt_thresholds: NDArray[np.float64] | None = None,
         adapt_values: NDArray[np.float64] | None = None,
+        use_standard_constraints: bool = True,
     ) -> None:
         """
         Initialize the Hodges Tracker.
@@ -46,6 +59,8 @@ class HodgesTracker(Tracker):
             zones: Regional dmax zones [lon_min, lon_max, lat_min, lat_max, dmax].
             adapt_thresholds: Adaptive smoothness distance thresholds (4 points).
             adapt_values: Adaptive smoothness phi values (4 points).
+            use_standard_constraints: If True, use legacy standard zones/adaptive
+                values if None provided.
         """
         self.w1 = w1
         self.w2 = w2
@@ -55,54 +70,20 @@ class HodgesTracker(Tracker):
         self.min_lifetime = min_lifetime
         self.max_missing = max_missing
 
-        self.zones = zones
-        self.adapt_thresholds = adapt_thresholds
-        self.adapt_values = adapt_values
+        if zones is None and use_standard_constraints:
+            self.zones = self.STANDARD_ZONES
+        else:
+            self.zones = zones
 
-    @classmethod
-    def from_config(
-        cls,
-        zone_file: str | None = None,
-        adapt_file: str | None = None,
-        **kwargs: float | int | str | None,
-    ) -> HodgesTracker:
-        """
-        Creates a HodgesTracker instance loading regional/adaptive constraints.
-        """
-        tracker = cls(**kwargs)  # type: ignore[arg-type]
-        if zone_file:
-            tracker.load_zones(zone_file)
-        if adapt_file:
-            tracker.load_adaptive_smoothness(adapt_file)
-        return tracker
+        if adapt_thresholds is None and use_standard_constraints:
+            self.adapt_thresholds = self.STANDARD_ADAPT_THRESHOLDS
+        else:
+            self.adapt_thresholds = adapt_thresholds
 
-    def load_zones(self, filename: str) -> None:
-        """Loads regional dmax zones from a TRACK-style zone.dat file."""
-        with open(filename) as f:
-            lines = f.readlines()
-            if not lines:
-                return
-            n_zones = int(lines[0].strip())
-            zones = []
-            for i in range(1, n_zones + 1):
-                # Format: lon_min lon_max lat_min lat_max dmax
-                zones.append([float(x) for x in lines[i].split()])
-            self.zones = np.array(zones, dtype=np.float64)
-
-    def load_adaptive_smoothness(self, filename: str) -> None:
-        """Loads adaptive smoothness parameters from TRACK-style adapt.dat file."""
-        with open(filename) as f:
-            lines = f.readlines()
-            if len(lines) < 2:
-                return
-            # Line 1: distance thresholds
-            self.adapt_thresholds = np.array(
-                [float(x) for x in lines[0].split()], dtype=np.float64
-            )
-            # Line 2: phi values
-            self.adapt_values = np.array(
-                [float(x) for x in lines[1].split()], dtype=np.float64
-            )
+        if adapt_values is None and use_standard_constraints:
+            self.adapt_values = self.STANDARD_ADAPT_VALUES
+        else:
+            self.adapt_values = adapt_values
 
     def preprocess_standard_track(
         self, data: xr.DataArray, truncation: int = 42, taper_points: int = 10

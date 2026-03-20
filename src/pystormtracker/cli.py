@@ -32,12 +32,10 @@ def run_tracker(
     algorithm: Algorithm = "simple",
     output_format: str = "imilast",
     # Hodges-specific
-    zone_file: str | None = None,
-    adapt_file: str | None = None,
     min_points: int = 1,
     w1: float = 0.2,
     w2: float = 0.8,
-    dmax: float = 5.0,
+    dmax: float = 6.5,
     phimax: float = 0.5,
     n_iterations: int = 3,
     min_lifetime: int = 3,
@@ -60,9 +58,7 @@ def run_tracker(
     if algorithm == "simple":
         tracker = SimpleTracker()
     else:
-        tracker = HodgesTracker.from_config(
-            zone_file=zone_file,
-            adapt_file=adapt_file,
+        tracker = HodgesTracker(
             w1=w1,
             w2=w2,
             dmax=dmax,
@@ -190,10 +186,6 @@ def parse_args() -> Namespace:
 
     # 4. Hodges (TRACK) Specific Options
     hodges = parser.add_argument_group("Hodges (TRACK) Algorithm Options")
-    hodges.add_argument("--zone", help="Path to TRACK zone.dat file (regional dmax).")
-    hodges.add_argument(
-        "--adapt", help="Path to TRACK adapt.dat file (adaptive smoothness)."
-    )
     hodges.add_argument(
         "--min-points",
         type=int,
@@ -209,8 +201,8 @@ def parse_args() -> Namespace:
     hodges.add_argument(
         "--dmax",
         type=float,
-        default=5.0,
-        help="Max search radius in degrees. Default 5.0.",
+        default=6.5,
+        help="Max search radius in degrees. Default 6.5.",
     )
     hodges.add_argument(
         "--phimax",
@@ -280,8 +272,6 @@ def main() -> None:
         algorithm=args.algorithm,
         output_format=args.format,
         # Hodges-specific
-        zone_file=args.zone,
-        adapt_file=args.adapt,
         min_points=args.min_points,
         w1=args.w1,
         w2=args.w2,
