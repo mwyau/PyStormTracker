@@ -134,16 +134,19 @@ def subgrid_refine(
     if abs(dy) > 1.0 or abs(dx) > 1.0:
         return lat[r], lon[c], frame[r, c]
         
-    # Interpolate lat/lon
-    # Handle lat spacing
-    dlat = lat[r+1] - lat[r] if r < ny - 1 else lat[r] - lat[r-1]
-    # Handle lon spacing (assuming regular)
-    dlon = lon[1] - lon[0] if nx > 1 else 0.0
-    if cp < cm: # Wrapped
-         dlon = (lon[cp] + 360.0 - lon[cm]) / 2.0
-    
-    ref_lat = lat[r] + dy * dlat
-    ref_lon = lon[c] + dx * dlon
+    # Interpolate lat/lon precisely using neighbor intervals
+    if dy > 0:
+        ref_lat = lat[r] + dy * (lat[r+1] - lat[r])
+    else:
+        ref_lat = lat[r] + abs(dy) * (lat[r-1] - lat[r])
+        
+    if dx > 0:
+        lon_next = lon[cp] if cp > c else lon[cp] + 360.0
+        ref_lon = lon[c] + dx * (lon_next - lon[c])
+    else:
+        lon_prev = lon[cm] if cm < c else lon[cm] - 360.0
+        ref_lon = lon[c] + abs(dx) * (lon_prev - lon[c])
+        
     if ref_lon >= 360.0: ref_lon -= 360.0
     if ref_lon < 0.0: ref_lon += 360.0
     

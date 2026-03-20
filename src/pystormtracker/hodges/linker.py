@@ -93,10 +93,11 @@ def _mge_iteration(
     adapt_thresholds: NDArray[np.float64],
     adapt_values: NDArray[np.float64],
     max_missing: int,
-) -> bool:
+) -> tuple[int, int]:
     """
     A single MGE iteration step at frame k.
     Finds the BEST swap among all track pairs at this time step.
+    Returns (best_i, best_j) or (-1, -1) if no swap improves cost.
     """
     n_tracks = tracks.shape[0]
     best_gain = 1e-8 # Tolerance
@@ -123,8 +124,6 @@ def _mge_iteration(
             if p_i_orig == p_j_orig: continue
             
             # 1. Check displacement constraints
-            # Displacement for i: dist(k, target_k)
-            # TRACK logic: if either is phantom, dist = dmax (valid)
             valid_swap = True
             
             # For track i
@@ -194,15 +193,7 @@ def _mge_iteration(
             tracks[i, target_k] = p_i_orig
             tracks[j, target_k] = p_j_orig
             
-    if best_i != -1:
-        # Perform the BEST swap found
-        p_i = tracks[best_i, target_k]
-        p_j = tracks[best_j, target_k]
-        tracks[best_i, target_k] = p_j
-        tracks[best_j, target_k] = p_i
-        return True
-        
-    return False
+    return best_i, best_j
 
 
 @nb.njit(cache=True)
@@ -367,16 +358,28 @@ class HodgesLinker:
             changed = False
             # Forward Pass
             for k in range(1, n_frames - 1):
-                if _mge_iteration(track_matrix, features_lat, features_lon, k, True,
-                                  self.w1, self.w2, self.dmax, self.phimax,
-                                  self.zones, self.adapt_thresholds, self.adapt_values, self.max_missing):
-                    changed = True
+                while True:
+                    best_i, best_j = _mge_iteration(
+                        track_matrix, features_lat, features_lon, k, True,
+                        self.w1, self.w2, self.dmax, self.phimax,
+                        self.zones, self.adapt_thresholds, self.adapt_values, self.max_missing
+                    )
+                    if best_i != -1:
+                        changed = True
+                    else:
+                        break
             # Backward Pass
             for k in range(n_frames - 2, 0, -1):
-                if _mge_iteration(track_matrix, features_lat, features_lon, k, False,
-                                  self.w1, self.w2, self.dmax, self.phimax,
-                                  self.zones, self.adapt_thresholds, self.adapt_values, self.max_missing):
-                    changed = True
+                while True:
+                    best_i, best_j = _mge_iteration(
+                        track_matrix, features_lat, features_lon, k, False,
+                        self.w1, self.w2, self.dmax, self.phimax,
+                        self.zones, self.adapt_thresholds, self.adapt_values, self.max_missing
+                    )
+                    if best_i != -1:
+                        changed = True
+                    else:
+                        break
             if not changed: break
 
         # 4. Convert track_matrix back to Tracks model
