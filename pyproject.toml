@@ -84,6 +84,7 @@ dev = [
     "ruff>=0.15.5",
     "matplotlib>=3.10.8",
     "pandas>=3.0.1",
+    "cartopy>=0.25.0",
 ]
 
 [tool.ruff]
