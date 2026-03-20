@@ -37,7 +37,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -51,7 +50,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -65,7 +63,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -92,7 +89,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -139,7 +135,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -182,7 +177,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -231,7 +225,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
