@@ -8,6 +8,7 @@ from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
 from ..utils.geo import geod_dist
 from .kernels import (
+    _break_track,
     _initial_break_pass,
     _mge_iteration,
     get_regional_dmax,
@@ -190,60 +191,106 @@ class HodgesLinker:
         # 4. MGE Optimization (Iterate until convergence)
         for _ in range(self.n_iterations):
             changed = False
-            # Forward Pass: optimize from start to end
+            # Forward Pass: one best swap per frame
             for k in range(1, n_frames - 1):
-                while True:
-                    best_i, best_j = _mge_iteration(
-                        track_matrix,
-                        features_lat,
-                        features_lon,
-                        k,
-                        True,
-                        self.w1,
-                        self.w2,
-                        self.dmax,
-                        self.phimax,
-                        self.zones,
-                        self.adapt_thresholds,
-                        self.adapt_values,
-                        self.max_missing,
-                    )
-                    if best_i != -1:
-                        # Apply swap
-                        p_i = track_matrix[best_i, k + 1]
-                        p_j = track_matrix[best_j, k + 1]
-                        track_matrix[best_i, k + 1] = p_j
-                        track_matrix[best_j, k + 1] = p_i
-                        changed = True
-                    else:
-                        break
-            # Backward Pass: optimize from end to start
+                best_i, best_j = _mge_iteration(
+                    track_matrix,
+                    features_lat,
+                    features_lon,
+                    k,
+                    True,
+                    self.w1,
+                    self.w2,
+                    self.dmax,
+                    self.phimax,
+                    self.zones,
+                    self.adapt_thresholds,
+                    self.adapt_values,
+                    self.max_missing,
+                )
+                if best_i != -1:
+                    # Apply swap
+                    p_i = track_matrix[best_i, k + 1]
+                    p_j = track_matrix[best_j, k + 1]
+                    track_matrix[best_i, k + 1] = p_j
+                    track_matrix[best_j, k + 1] = p_i
+                    changed = True
+
+                    # Track Fail Check (Post-swap displacement violation)
+                    # If swapping p_i/p_j at k+1 causes displacement violation
+                    # at k+1 to k+2, break track
+                    if k + 2 < n_frames:
+                        track_matrix = _break_track(
+                            track_matrix,
+                            best_i,
+                            k + 1,
+                            features_lat,
+                            features_lon,
+                            self.zones,
+                            self.dmax,
+                            True,
+                        )
+                        track_matrix = _break_track(
+                            track_matrix,
+                            best_j,
+                            k + 1,
+                            features_lat,
+                            features_lon,
+                            self.zones,
+                            self.dmax,
+                            True,
+                        )
+
+            # Backward Pass: one best swap per frame
             for k in range(n_frames - 2, 0, -1):
-                while True:
-                    best_i, best_j = _mge_iteration(
-                        track_matrix,
-                        features_lat,
-                        features_lon,
-                        k,
-                        False,
-                        self.w1,
-                        self.w2,
-                        self.dmax,
-                        self.phimax,
-                        self.zones,
-                        self.adapt_thresholds,
-                        self.adapt_values,
-                        self.max_missing,
-                    )
-                    if best_i != -1:
-                        # Apply swap
-                        p_i = track_matrix[best_i, k - 1]
-                        p_j = track_matrix[best_j, k - 1]
-                        track_matrix[best_i, k - 1] = p_j
-                        track_matrix[best_j, k - 1] = p_i
-                        changed = True
-                    else:
-                        break
+                best_i, best_j = _mge_iteration(
+                    track_matrix,
+                    features_lat,
+                    features_lon,
+                    k,
+                    False,
+                    self.w1,
+                    self.w2,
+                    self.dmax,
+                    self.phimax,
+                    self.zones,
+                    self.adapt_thresholds,
+                    self.adapt_values,
+                    self.max_missing,
+                )
+                if best_i != -1:
+                    # Apply swap
+                    p_i = track_matrix[best_i, k - 1]
+                    p_j = track_matrix[best_j, k - 1]
+                    track_matrix[best_i, k - 1] = p_j
+                    track_matrix[best_j, k - 1] = p_i
+                    changed = True
+
+                    # Track Fail Check (Post-swap displacement violation)
+                    # If swapping at k-1 causes displacement violation at k-1 to k-2,
+                    # break track
+                    if k - 2 >= 0:
+                        track_matrix = _break_track(
+                            track_matrix,
+                            best_i,
+                            k - 1,
+                            features_lat,
+                            features_lon,
+                            self.zones,
+                            self.dmax,
+                            False,
+                        )
+                        track_matrix = _break_track(
+                            track_matrix,
+                            best_j,
+                            k - 1,
+                            features_lat,
+                            features_lon,
+                            self.zones,
+                            self.dmax,
+                            False,
+                        )
+
             if not changed:
                 break
 

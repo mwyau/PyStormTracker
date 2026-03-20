@@ -178,11 +178,25 @@ class HodgesTracker(Tracker):
         threshold: float | None = None,
         engine: str | None = None,
         overlap: int = 3,
+        min_points: int = 1,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """
         Runs the Hodges tracking algorithm.
         Supports time-chunking (RSPLICE) if max_chunk_size is provided.
+
+        Args:
+            infile: Path to the input data file.
+            varname: Variable name to track.
+            start_time, end_time: Time range for tracking.
+            mode: Search for 'min' or 'max' extrema.
+            backend: Processing backend (serial, mpi, dask).
+            n_workers: Number of parallel workers.
+            max_chunk_size: Number of steps per time chunk.
+            threshold: Intensity threshold for detection.
+            engine: Data loading engine (netcdf4, h5netcdf, etc).
+            overlap: Overlap between chunks for splicing.
+            min_points: Minimum grid points per object.
         """
         # Set default times if not provided
         if start_time is None or end_time is None:
@@ -195,7 +209,15 @@ class HodgesTracker(Tracker):
 
         if max_chunk_size is None:
             return self._track_single_chunk(
-                infile, varname, start_time, end_time, mode, threshold, engine, **kwargs
+                infile,
+                varname,
+                start_time,
+                end_time,
+                mode,
+                threshold,
+                engine,
+                min_points=min_points,
+                **kwargs,
             )
 
         # 1. Determine time chunks
@@ -220,7 +242,15 @@ class HodgesTracker(Tracker):
             t_end = times[end_idx - 1]
 
             chunk_res = self._track_single_chunk(
-                infile, varname, t_start, t_end, mode, threshold, engine, **kwargs
+                infile,
+                varname,
+                t_start,
+                t_end,
+                mode,
+                threshold,
+                engine,
+                min_points=min_points,
+                **kwargs,
             )
             tracks_all.append(chunk_res)
 
@@ -239,6 +269,7 @@ class HodgesTracker(Tracker):
         mode: Literal["min", "max"] = "min",
         threshold: float | None = None,
         engine: str | None = None,
+        min_points: int = 1,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         # 1. Detection
@@ -255,7 +286,9 @@ class HodgesTracker(Tracker):
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 
-        detections = detector.detect(size=size, threshold=threshold, minmaxmode=mode)
+        detections = detector.detect(
+            size=size, threshold=threshold, minmaxmode=mode, min_points=min_points
+        )
 
         # 2. Linking (MGE with adaptive constraints)
         linker = HodgesLinker(

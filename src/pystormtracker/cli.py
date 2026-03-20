@@ -30,6 +30,17 @@ def run_tracker(
     engine: str | None = None,
     algorithm: Algorithm = "simple",
     output_format: str = "imilast",
+    # Hodges-specific
+    zone_file: str | None = None,
+    adapt_file: str | None = None,
+    min_points: int = 1,
+    w1: float = 0.2,
+    w2: float = 0.8,
+    dmax: float = 5.0,
+    phimax: float = 0.5,
+    n_iterations: int = 3,
+    min_lifetime: int = 3,
+    max_missing: int = 0,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -44,7 +55,21 @@ def run_tracker(
     if rank == 0:
         timer["total"] = timeit.default_timer()
 
-    tracker: Tracker = SimpleTracker() if algorithm == "simple" else HodgesTracker()
+    tracker: Tracker
+    if algorithm == "simple":
+        tracker = SimpleTracker()
+    else:
+        tracker = HodgesTracker.from_config(
+            zone_file=zone_file,
+            adapt_file=adapt_file,
+            w1=w1,
+            w2=w2,
+            dmax=dmax,
+            phimax=phimax,
+            n_iterations=n_iterations,
+            min_lifetime=min_lifetime,
+            max_missing=max_missing,
+        )
 
     tracks = tracker.track(
         infile=infile,
@@ -57,6 +82,7 @@ def run_tracker(
         max_chunk_size=max_chunk_size,
         threshold=threshold,
         engine=engine,
+        min_points=min_points,
     )
 
     # Export Phase
@@ -138,6 +164,35 @@ def parse_args() -> Namespace:
         default=None,
         help="Xarray engine to use for reading the input file.",
     )
+    # Hodges-specific
+    parser.add_argument(
+        "--zone", help="Path to TRACK-style zone.dat file for regional dmax."
+    )
+    parser.add_argument(
+        "--adapt", help="Path to TRACK-style adapt.dat file for adaptive smoothness."
+    )
+    parser.add_argument(
+        "--min-points", type=int, default=1, help="Minimum points per object."
+    )
+    parser.add_argument(
+        "--w1", type=float, default=0.2, help="Cost weight for direction."
+    )
+    parser.add_argument("--w2", type=float, default=0.8, help="Cost weight for speed.")
+    parser.add_argument(
+        "--dmax", type=float, default=5.0, help="Default search radius."
+    )
+    parser.add_argument(
+        "--phimax", type=float, default=0.5, help="Smoothness penalty (static)."
+    )
+    parser.add_argument(
+        "--iterations", type=int, default=3, help="Number of MGE iterations."
+    )
+    parser.add_argument(
+        "--lifetime", type=int, default=3, help="Minimum track lifetime."
+    )
+    parser.add_argument(
+        "--max-missing", type=int, default=0, help="Max consecutive missing frames."
+    )
     return parser.parse_args()
 
 
@@ -180,6 +235,17 @@ def main() -> None:
         engine=args.engine,
         algorithm=args.algorithm,
         output_format=args.format,
+        # Hodges-specific
+        zone_file=args.zone,
+        adapt_file=args.adapt,
+        min_points=args.min_points,
+        w1=args.w1,
+        w2=args.w2,
+        dmax=args.dmax,
+        phimax=args.phimax,
+        n_iterations=args.iterations,
+        min_lifetime=args.lifetime,
+        max_missing=args.max_missing,
     )
 
 

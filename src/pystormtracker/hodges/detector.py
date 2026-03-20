@@ -10,13 +10,18 @@ from numpy.typing import NDArray
 from ..io.loader import DataLoader
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange
-from .kernels import _numba_get_centers, _numba_hodges_extrema, subgrid_refine
+from .kernels import (
+    _numba_ccl,
+    _numba_get_centers,
+    _numba_object_extrema,
+    subgrid_refine,
+)
 
 
 class HodgesDetector:
     """
     Feature detector based on the Hodges (TRACK) logic.
-    Identifies local extrema (min/max) and applies thresholding.
+    Identifies local extrema (min/max) within thresholded objects.
     """
 
     def __init__(
@@ -110,9 +115,16 @@ class HodgesDetector:
         size: int = 5,
         threshold: float | None = None,
         minmaxmode: Literal["min", "max"] = "min",
+        min_points: int = 1,
     ) -> list[RawDetectionStep]:
         """
         Runs the feature detection on the selected time steps.
+
+        Args:
+            size: Diameter of local search window for extrema.
+            threshold: Intensity threshold for objects.
+            minmaxmode: Whether to search for local minima or maxima.
+            min_points: Minimum number of grid points in an object to be processed.
         """
         if threshold is None:
             threshold = 1.0e-4 if self.requested_varname == "vo" else 0.0
@@ -125,7 +137,19 @@ class HodgesDetector:
         raw_results: list[RawDetectionStep] = []
         for it, t in enumerate(times):
             frame = full_var[it]
-            extrema = _numba_hodges_extrema(frame, size, threshold, is_min)
+
+            # 1. Threshold and Segment (CCL)
+            binary_mask = (
+                (frame <= threshold) if is_min else (frame >= threshold)
+            ).astype(np.float64)
+            labeled_mask, num_objects = _numba_ccl(binary_mask)
+
+            # 2. Find Extrema within objects
+            extrema = _numba_object_extrema(
+                frame, labeled_mask, num_objects, size, is_min, min_points
+            )
+
+            # 3. Extract and Refine
             r_idx, c_idx, _ = _numba_get_centers(extrema, frame)
 
             refined_lats = np.zeros(len(r_idx))

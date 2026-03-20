@@ -79,6 +79,9 @@ class SimpleTracker:
         max_chunk_size: int | None = None,
         threshold: float | None = None,
         engine: str | None = None,
+        overlap: int = 3,
+        min_points: int = 1,
+        **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
 
