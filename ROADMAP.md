@@ -36,10 +36,13 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 
 ## 5. Feature Implementation
 
-*   **Complete `HodgesTracker`:**
-    *   *Current State:* Scaffolding added.
-    *   *Action:* Integrate spherical distance math (e.g., `haversine` or Numba-compiled Vincenty formula). For track optimization (cost function minimization), port the original C logic using `scipy.optimize.linear_sum_assignment` which perfectly maps to the tracking assignment problem.
-*   **Preprocessing (Spherical Harmonics Filtering):**
-    *   *Action:* Add support for spectral filtering (e.g., T42/T63 truncation) using `pyshtools` to remove small-scale noise from high-resolution fields before tracking.
+*   **HodgesTracker Integration (Completed):** 
+    *   Native Python/Numba implementation of the Modified Greedy Exchange (MGE) algorithm.
+    *   Spherical geodesic cost functions and adaptive constraints ($d_{max}$, $\psi_{max}$).
+    *   Sub-grid refinement using local quadratic surface fitting.
+    *   Track-matching splicing for segmented time-series processing.
+*   **Preprocessing (Completed):** 
+    *   Added support for spectral filtering (e.g., T42/T63 truncation) using `pyshtools` and `SphericalHarmonicFilter`.
+    *   Added `TaperFilter` for boundary smoothing.
 *   **Postprocessing (Track Metrics):**
     *   *Action:* Implement Accumulated Track Activity (ATA) and other storm track metrics from **Yau and Chang (2020)** to provide physically meaningful analysis of detected trajectories.
