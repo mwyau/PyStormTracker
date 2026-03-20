@@ -8,6 +8,7 @@ from typing import Literal
 import numpy as np
 
 from .hodges.tracker import HodgesTracker
+from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
 
@@ -43,10 +44,7 @@ def run_tracker(
     if rank == 0:
         timer["total"] = timeit.default_timer()
 
-    if algorithm == "simple":
-        tracker = SimpleTracker()
-    else:
-        tracker = HodgesTracker()
+    tracker: Tracker = SimpleTracker() if algorithm == "simple" else HodgesTracker()
 
     tracks = tracker.track(
         infile=infile,
@@ -152,6 +150,7 @@ def main() -> None:
         # Determine actual times for the first n steps
         from .hodges.detector import HodgesDetector
 
+        detector_preview: SimpleDetector | HodgesDetector
         if args.algorithm == "simple":
             detector_preview = SimpleDetector(
                 pathname=args.input, varname=args.var, engine=args.engine

@@ -174,14 +174,15 @@ class HodgesTracker(Tracker):
         mode: Literal["min", "max"] = "min",
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
+        max_chunk_size: int | None = None,
+        threshold: float | None = None,
         engine: str | None = None,
-        chunk_size: int | None = None,
         overlap: int = 3,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """
         Runs the Hodges tracking algorithm.
-        Supports time-chunking (RSPLICE) if chunk_size is provided.
+        Supports time-chunking (RSPLICE) if max_chunk_size is provided.
         """
         # Set default times if not provided
         if start_time is None or end_time is None:
@@ -192,9 +193,9 @@ class HodgesTracker(Tracker):
             if end_time is None:
                 end_time = full_times[-1]
 
-        if chunk_size is None:
+        if max_chunk_size is None:
             return self._track_single_chunk(
-                infile, varname, start_time, end_time, mode, engine, **kwargs
+                infile, varname, start_time, end_time, mode, threshold, engine, **kwargs
             )
 
         # 1. Determine time chunks
@@ -213,13 +214,13 @@ class HodgesTracker(Tracker):
 
         start_idx = 0
         while start_idx < n_steps:
-            end_idx = min(start_idx + chunk_size, n_steps)
+            end_idx = min(start_idx + max_chunk_size, n_steps)
 
             t_start = times[start_idx]
             t_end = times[end_idx - 1]
 
             chunk_res = self._track_single_chunk(
-                infile, varname, t_start, t_end, mode, engine, **kwargs
+                infile, varname, t_start, t_end, mode, threshold, engine, **kwargs
             )
             tracks_all.append(chunk_res)
 
@@ -236,6 +237,7 @@ class HodgesTracker(Tracker):
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
         mode: Literal["min", "max"] = "min",
+        threshold: float | None = None,
         engine: str | None = None,
         **kwargs: float | int | str | None,
     ) -> Tracks:
@@ -252,7 +254,6 @@ class HodgesTracker(Tracker):
         )
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
-        threshold = cast(float | None, kwargs.get("threshold"))
 
         detections = detector.detect(size=size, threshold=threshold, minmaxmode=mode)
 

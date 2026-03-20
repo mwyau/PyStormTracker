@@ -147,11 +147,11 @@ jobs:
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
         if: matrix.arch != 'amd64'
-        run: uv run pytest -vv tests/test_integration.py --run-integration
+        run: uv run pytest -vv tests/test_integration_*.py --run-integration
 
       - name: Run Integration Tests with Coverage
         if: matrix.arch == 'amd64'
-        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration.py --run-integration
+        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration_*.py --run-integration
 
       - name: Upload coverage reports to Codecov
         if: matrix.arch == 'amd64'

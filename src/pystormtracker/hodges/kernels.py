@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 import numba as nb
 import numpy as np
 from numpy.typing import NDArray
@@ -250,7 +248,7 @@ def geod_dev(
         1.0 - 2.0 * np.sqrt(alpha1 * alpha2) / (alpha1 + alpha2)
     )
 
-    return cast(float, max(0.0, phi))
+    return float(max(0.0, phi))
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
@@ -286,7 +284,7 @@ def get_regional_dmax(
                 in_lon = True
 
         if in_lon:
-            return cast(float, dmax)
+            return float(dmax)
 
     return default_dmax
 
@@ -316,28 +314,28 @@ def get_adaptive_phimax(
     d = mean_dist
 
     if d < adapt_thresholds[0]:
-        return cast(float, adapt_values[0])
+        return float(adapt_values[0])
 
     if d >= adapt_thresholds[3]:
-        return cast(float, adapt_values[3])
+        return float(adapt_values[3])
 
     if d >= adapt_thresholds[0] and d < adapt_thresholds[1]:
         slope = (adapt_values[1] - adapt_values[0]) / (
             adapt_thresholds[1] - adapt_thresholds[0]
         )
-        return cast(float, adapt_values[0] + slope * (d - adapt_thresholds[0]))
+        return float(adapt_values[0] + slope * (d - adapt_thresholds[0]))
 
     if d >= adapt_thresholds[1] and d < adapt_thresholds[2]:
         slope = (adapt_values[2] - adapt_values[1]) / (
             adapt_thresholds[2] - adapt_thresholds[1]
         )
-        return cast(float, adapt_values[1] + slope * (d - adapt_thresholds[1]))
+        return float(adapt_values[1] + slope * (d - adapt_thresholds[1]))
 
     if d >= adapt_thresholds[2] and d < adapt_thresholds[3]:
         slope = (adapt_values[3] - adapt_values[2]) / (
             adapt_thresholds[3] - adapt_thresholds[2]
         )
-        return cast(float, adapt_values[2] + slope * (d - adapt_thresholds[2]))
+        return float(adapt_values[2] + slope * (d - adapt_thresholds[2]))
 
     return default_phimax
 
@@ -386,7 +384,7 @@ def _get_cost(
     lat2 = features_lat[p2_idx]
     lon2 = features_lon[p2_idx]
 
-    return cast(float, geod_dev(lat0, lon0, lat1, lon1, lat2, lon2, w1, w2))
+    return float(geod_dev(lat0, lon0, lat1, lon1, lat2, lon2, w1, w2))
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]

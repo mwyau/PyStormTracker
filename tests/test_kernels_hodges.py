@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from pystormtracker.hodges.kernels import (
     geod_dev,
@@ -12,7 +11,7 @@ from pystormtracker.hodges.kernels import (
 from pystormtracker.utils.geo import geod_dist
 
 
-def test_geod_dist():
+def test_geod_dist() -> None:
     # 0 distance
     assert geod_dist(0.0, 0.0, 0.0, 0.0) == 0.0
     # 90 degrees
@@ -21,7 +20,7 @@ def test_geod_dist():
     assert np.allclose(geod_dist(0.0, 0.0, 0.0, 180.0), np.pi)
 
 
-def test_geod_dev():
+def test_geod_dev() -> None:
     # Straight line, constant speed -> cost should be 0
     # p0=(0,0), p1=(0,1), p2=(0,2)
     cost = geod_dev(0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.2, 0.8)
@@ -41,7 +40,7 @@ def test_geod_dev():
     assert np.allclose(cost, expected)
 
 
-def test_get_regional_dmax():
+def test_get_regional_dmax() -> None:
     zones = np.array(
         [
             [0.0, 360.0, -90.0, -20.0, 6.5],
@@ -57,7 +56,7 @@ def test_get_regional_dmax():
     assert get_regional_dmax(0.0, 0.0, np.zeros((0, 5)), 5.0) == 5.0
 
 
-def test_get_adaptive_phimax():
+def test_get_adaptive_phimax() -> None:
     thresholds = np.array([1.0, 2.0, 5.0, 8.0])
     values = np.array([1.0, 0.3, 0.1, 0.0])
 
@@ -72,7 +71,7 @@ def test_get_adaptive_phimax():
     assert np.allclose(get_adaptive_phimax(1.5, thresholds, values, 0.5), 0.65)
 
 
-def test_subgrid_refine():
+def test_subgrid_refine() -> None:
     # Create a 3x3 with a peak at center
     frame = np.array([[0.0, 0.5, 0.0], [0.5, 1.0, 0.5], [0.0, 0.5, 0.0]])
     lat = np.array([10.0, 11.0, 12.0])
