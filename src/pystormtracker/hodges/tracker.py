@@ -10,6 +10,18 @@ from ..models.tracker import Tracker
 from ..models.tracks import TimeRange, Tracks
 from ..preprocessing.sh_filter import SphericalHarmonicFilter
 from ..preprocessing.taper import TaperFilter
+from .constants import (
+    DMAX_DEFAULT,
+    ITERATIONS_DEFAULT,
+    LIFETIME_DEFAULT,
+    MISSING_DEFAULT,
+    PHIMAX_DEFAULT,
+    STANDARD_ADAPT_THRESHOLDS,
+    STANDARD_ADAPT_VALUES,
+    STANDARD_ZONES,
+    W1_DEFAULT,
+    W2_DEFAULT,
+)
 from .detector import HodgesDetector
 from .linker import HodgesLinker
 
@@ -19,27 +31,15 @@ class HodgesTracker(Tracker):
     A tracker implementing the Hodges (TRACK) algorithm with adaptive constraints.
     """
 
-    # Standard TRACK legacy defaults (Hodges 1999)
-    STANDARD_ZONES = np.array(
-        [
-            [0.0, 360.0, -90.0, -20.0, 6.5],
-            [0.0, 360.0, -20.0, 20.0, 3.0],
-            [0.0, 360.0, 20.0, 90.0, 6.5],
-        ],
-        dtype=np.float64,
-    )
-    STANDARD_ADAPT_THRESHOLDS = np.array([1.0, 2.0, 5.0, 8.0], dtype=np.float64)
-    STANDARD_ADAPT_VALUES = np.array([1.0, 0.3, 0.1, 0.0], dtype=np.float64)
-
     def __init__(
         self,
-        w1: float = 0.2,
-        w2: float = 0.8,
-        dmax: float = 6.5,
-        phimax: float = 0.5,
-        n_iterations: int = 3,
-        min_lifetime: int = 3,
-        max_missing: int = 0,
+        w1: float = W1_DEFAULT,
+        w2: float = W2_DEFAULT,
+        dmax: float = DMAX_DEFAULT,
+        phimax: float = PHIMAX_DEFAULT,
+        n_iterations: int = ITERATIONS_DEFAULT,
+        min_lifetime: int = LIFETIME_DEFAULT,
+        max_missing: int = MISSING_DEFAULT,
         zones: NDArray[np.float64] | None = None,
         adapt_thresholds: NDArray[np.float64] | None = None,
         adapt_values: NDArray[np.float64] | None = None,
@@ -70,18 +70,27 @@ class HodgesTracker(Tracker):
         self.min_lifetime = min_lifetime
         self.max_missing = max_missing
 
-        if zones is None and use_standard_constraints:
-            self.zones = self.STANDARD_ZONES
+        if zones is None:
+            if use_standard_constraints:
+                self.zones = STANDARD_ZONES
+            else:
+                self.zones = np.zeros((0, 5), dtype=np.float64)
         else:
             self.zones = zones
 
-        if adapt_thresholds is None and use_standard_constraints:
-            self.adapt_thresholds = self.STANDARD_ADAPT_THRESHOLDS
+        if adapt_thresholds is None:
+            if use_standard_constraints:
+                self.adapt_thresholds = STANDARD_ADAPT_THRESHOLDS
+            else:
+                self.adapt_thresholds = np.zeros(0, dtype=np.float64)
         else:
             self.adapt_thresholds = adapt_thresholds
 
-        if adapt_values is None and use_standard_constraints:
-            self.adapt_values = self.STANDARD_ADAPT_VALUES
+        if adapt_values is None:
+            if use_standard_constraints:
+                self.adapt_values = STANDARD_ADAPT_VALUES
+            else:
+                self.adapt_values = np.zeros(0, dtype=np.float64)
         else:
             self.adapt_values = adapt_values
 

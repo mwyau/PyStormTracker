@@ -14,26 +14,31 @@ def test_hodges_tracker_init() -> None:
     assert tracker.min_lifetime == 5
 
 
-def test_hodges_tracker_from_config(tmp_path: Path) -> None:
-    # Create dummy zone.dat
-    zone_file = tmp_path / "zone.dat"
-    zone_file.write_text("1\n0.0 360.0 -90.0 90.0 5.5\n")
+def test_hodges_tracker_standard_defaults() -> None:
+    tracker = HodgesTracker()
+    assert tracker.dmax == 6.5
+    assert tracker.zones is not None
+    assert len(tracker.zones) == 3
+    assert tracker.adapt_thresholds is not None
+    assert len(tracker.adapt_thresholds) == 4
 
-    # Create dummy adapt.dat
-    adapt_file = tmp_path / "adapt.dat"
-    adapt_file.write_text("1.0 2.0 3.0 4.0\n1.0 0.5 0.2 0.1\n")
 
-    tracker = HodgesTracker.from_config(
-        zone_file=str(zone_file), adapt_file=str(adapt_file), w1=0.4
+def test_hodges_tracker_override_constraints() -> None:
+    custom_zones = np.array([[0.0, 360.0, -90.0, 90.0, 10.0]], dtype=np.float64)
+    custom_thresholds = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
+    custom_values = np.array([1.0, 0.5, 0.2, 0.1], dtype=np.float64)
+
+    tracker = HodgesTracker(
+        zones=custom_zones,
+        adapt_thresholds=custom_thresholds,
+        adapt_values=custom_values,
+        use_standard_constraints=False,
     )
 
-    assert tracker.w1 == 0.4
     assert tracker.zones is not None
-    assert tracker.zones[0, 4] == 5.5
-    assert tracker.adapt_thresholds is not None
-    assert tracker.adapt_thresholds[0] == 1.0
-    assert tracker.adapt_values is not None
-    assert tracker.adapt_values[1] == 0.5
+    assert tracker.zones[0, 4] == 10.0
+    assert np.array_equal(tracker.adapt_thresholds, custom_thresholds)
+    assert np.array_equal(tracker.adapt_values, custom_values)
 
 
 @patch("pystormtracker.hodges.detector.HodgesDetector.detect")

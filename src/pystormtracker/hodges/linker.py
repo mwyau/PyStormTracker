@@ -15,6 +15,19 @@ from .kernels import (
 )
 
 
+from .constants import (
+    DMAX_DEFAULT,
+    ITERATIONS_DEFAULT,
+    MISSING_DEFAULT,
+    PHIMAX_DEFAULT,
+    STANDARD_ADAPT_THRESHOLDS,
+    STANDARD_ADAPT_VALUES,
+    STANDARD_ZONES,
+    W1_DEFAULT,
+    W2_DEFAULT,
+)
+
+
 class HodgesLinker:
     """
     Implements the Modified Greedy Exchange (MGE) tracking algorithm.
@@ -26,15 +39,15 @@ class HodgesLinker:
 
     def __init__(
         self,
-        w1: float = 0.2,
-        w2: float = 0.8,
-        dmax: float = 5.0,
-        phimax: float = 0.5,
-        n_iterations: int = 10,
-        max_missing: int = 0,
-        zones: NDArray[np.float64] | None = None,
-        adapt_thresholds: NDArray[np.float64] | None = None,
-        adapt_values: NDArray[np.float64] | None = None,
+        w1: float = W1_DEFAULT,
+        w2: float = W2_DEFAULT,
+        dmax: float = DMAX_DEFAULT,
+        phimax: float = PHIMAX_DEFAULT,
+        n_iterations: int = ITERATIONS_DEFAULT,
+        max_missing: int = MISSING_DEFAULT,
+        zones: NDArray[np.float64] = STANDARD_ZONES,
+        adapt_thresholds: NDArray[np.float64] = STANDARD_ADAPT_THRESHOLDS,
+        adapt_values: NDArray[np.float64] = STANDARD_ADAPT_VALUES,
     ) -> None:
         """
         Initialize the MGE linker.
@@ -54,24 +67,9 @@ class HodgesLinker:
         self.phimax = phimax
         self.n_iterations = n_iterations
         self.max_missing = max_missing
-
-        # Ensure Numba-compatible contiguous arrays
-        if zones is None:
-            self.zones = np.zeros((0, 5), dtype=np.float64)
-        else:
-            self.zones = np.ascontiguousarray(zones, dtype=np.float64)
-
-        if adapt_thresholds is None:
-            self.adapt_thresholds = np.zeros(0, dtype=np.float64)
-        else:
-            self.adapt_thresholds = np.ascontiguousarray(
-                adapt_thresholds, dtype=np.float64
-            )
-
-        if adapt_values is None:
-            self.adapt_values = np.zeros(0, dtype=np.float64)
-        else:
-            self.adapt_values = np.ascontiguousarray(adapt_values, dtype=np.float64)
+        self.zones = zones
+        self.adapt_thresholds = adapt_thresholds
+        self.adapt_values = adapt_values
 
     def link(self, detections: list[RawDetectionStep]) -> Tracks:
         """

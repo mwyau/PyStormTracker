@@ -33,13 +33,13 @@ def run_tracker(
     output_format: str = "imilast",
     # Hodges-specific
     min_points: int = 1,
-    w1: float = 0.2,
-    w2: float = 0.8,
-    dmax: float = 6.5,
-    phimax: float = 0.5,
-    n_iterations: int = 3,
-    min_lifetime: int = 3,
-    max_missing: int = 0,
+    w1: float | None = None,
+    w2: float | None = None,
+    dmax: float | None = None,
+    phimax: float | None = None,
+    n_iterations: int | None = None,
+    min_lifetime: int | None = None,
+    max_missing: int | None = None,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -58,15 +58,24 @@ def run_tracker(
     if algorithm == "simple":
         tracker = SimpleTracker()
     else:
-        tracker = HodgesTracker(
-            w1=w1,
-            w2=w2,
-            dmax=dmax,
-            phimax=phimax,
-            n_iterations=n_iterations,
-            min_lifetime=min_lifetime,
-            max_missing=max_missing,
-        )
+        # Pass only provided values to use tracker defaults
+        hodges_kwargs: dict[str, float | int] = {}
+        if w1 is not None:
+            hodges_kwargs["w1"] = w1
+        if w2 is not None:
+            hodges_kwargs["w2"] = w2
+        if dmax is not None:
+            hodges_kwargs["dmax"] = dmax
+        if phimax is not None:
+            hodges_kwargs["phimax"] = phimax
+        if n_iterations is not None:
+            hodges_kwargs["n_iterations"] = n_iterations
+        if min_lifetime is not None:
+            hodges_kwargs["min_lifetime"] = min_lifetime
+        if max_missing is not None:
+            hodges_kwargs["max_missing"] = max_missing
+
+        tracker = HodgesTracker(**hodges_kwargs)  # type: ignore[arg-type]
 
     tracks = tracker.track(
         infile=infile,
@@ -193,39 +202,39 @@ def parse_args() -> Namespace:
         help="Min grid points per object (noise filter).",
     )
     hodges.add_argument(
-        "--w1", type=float, default=0.2, help="Cost weight for direction. Default 0.2."
+        "--w1", type=float, default=None, help="Cost weight for direction. Default 0.2."
     )
     hodges.add_argument(
-        "--w2", type=float, default=0.8, help="Cost weight for speed. Default 0.8."
+        "--w2", type=float, default=None, help="Cost weight for speed. Default 0.8."
     )
     hodges.add_argument(
         "--dmax",
         type=float,
-        default=6.5,
+        default=None,
         help="Max search radius in degrees. Default 6.5.",
     )
     hodges.add_argument(
         "--phimax",
         type=float,
-        default=0.5,
+        default=None,
         help="Smoothness penalty (static). Default 0.5.",
     )
     hodges.add_argument(
         "--iterations",
         type=int,
-        default=3,
+        default=None,
         help="Max MGE optimization passes. Default 3.",
     )
     hodges.add_argument(
         "--min-lifetime",
         type=int,
-        default=3,
+        default=None,
         help="Min steps for a valid track. Default 3.",
     )
     hodges.add_argument(
         "--max-missing",
         type=int,
-        default=0,
+        default=None,
         help="Max consecutive missing frames. Default 0.",
     )
 

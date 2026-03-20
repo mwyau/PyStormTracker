@@ -127,7 +127,10 @@ class HodgesDetector:
             min_points: Minimum number of grid points in an object to be processed.
         """
         if threshold is None:
-            threshold = 1.0e-4 if self.requested_varname == "vo" else 0.0
+            # Standard thresholds based on Hodges (1994, 1995, 1999)
+            # Vo: 1.0e-5 is common for weak systems, 3.0e-5 for more intense.
+            # MSL: Usually local minima search with no strict global threshold (use 0.0 or high value).
+            threshold = 1.0e-5 if self.requested_varname == "vo" else 0.0
 
         times = self.get_time()
         lat, lon = self.lat, self.lon

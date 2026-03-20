@@ -13,7 +13,11 @@ def test_hodges_linker_init() -> None:
 
 
 def test_hodges_linker_link_straight() -> None:
-    linker = HodgesLinker()
+    linker = HodgesLinker(
+        zones=np.zeros((0, 5), dtype=np.float64),
+        adapt_thresholds=np.zeros(0, dtype=np.float64),
+        adapt_values=np.zeros(0, dtype=np.float64),
+    )
 
     # Create two detections moving in a straight line
     # T0: (0,0) and (10,10)
@@ -68,7 +72,12 @@ def test_hodges_linker_link_crossing() -> None:
     Test that MGE correctly resolves track crossing which
     nearest-neighbor might fail.
     """
-    linker = HodgesLinker(dmax=15.0)
+    linker = HodgesLinker(
+        dmax=15.0,
+        zones=np.zeros((0, 5), dtype=np.float64),
+        adapt_thresholds=np.zeros(0, dtype=np.float64),
+        adapt_values=np.zeros(0, dtype=np.float64),
+    )
 
     t0 = np.datetime64("2025-12-01T00:00:00")
     t1 = np.datetime64("2025-12-01T06:00:00")
