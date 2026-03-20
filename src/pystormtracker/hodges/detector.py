@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Literal
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.loader import DataLoader
+from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange
 from .kernels import _numba_get_centers, _numba_hodges_extrema, subgrid_refine
-
-RawDetectionStep: TypeAlias = tuple[
-    np.datetime64,
-    NDArray[np.float64],
-    NDArray[np.float64],
-    dict[str, NDArray[np.float64]],
-]
 
 
 class HodgesDetector:

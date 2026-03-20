@@ -7,9 +7,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.center import Center
+from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
 from ..utils.geo import geod_dist
-from .detector import RawDetectionStep
 from .kernels import (
     geod_dev,
     get_adaptive_phimax,

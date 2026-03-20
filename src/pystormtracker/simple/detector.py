@@ -2,28 +2,21 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import ClassVar, Literal, TypeAlias
+from typing import ClassVar, Literal
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.loader import DataLoader
-from ..models.tracks import TimeRange
+from ..models import TimeRange
+from ..models.tracker import RawDetectionStep
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
     _numba_laplace_masked,
     _numba_remove_dup,
 )
-
-# Type alias for a single time step's raw detection arrays
-RawDetectionStep: TypeAlias = tuple[
-    np.datetime64,
-    NDArray[np.float64],
-    NDArray[np.float64],
-    dict[str, NDArray[np.float64]],
-]
 
 
 class SimpleDetector:
