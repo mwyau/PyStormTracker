@@ -4,12 +4,14 @@ import warnings
 from typing import Literal, cast
 
 import numpy as np
-from numpy.typing import NDArray
 import pyshtools as pysh  # type: ignore[import-untyped]
 import xarray as xr
+from numpy.typing import NDArray
 
 
-def _filter_sh_frame(frame: NDArray[np.float64], lmin: int, lmax: int) -> NDArray[np.float64]:
+def _filter_sh_frame(
+    frame: NDArray[np.float64], lmin: int, lmax: int
+) -> NDArray[np.float64]:
     """Filters a single 2D frame using spherical harmonics."""
     nlat, nlon = frame.shape
     pad_pole = False
@@ -45,6 +47,40 @@ def _filter_sh_frame(frame: NDArray[np.float64], lmin: int, lmax: int) -> NDArra
         return out[:, :-1]
     else:
         return out[:-1, :-1]
+
+
+class SphericalHarmonicFilter:
+    """
+    Spherical harmonic bandpass filter for lat-lon grid data.
+    """
+
+    def __init__(self, lmin: int = 5, lmax: int = 42) -> None:
+        """
+        Initialize the filter with wave number bounds.
+
+        Args:
+            lmin (int): Minimum total wave number to retain.
+            lmax (int): Maximum total wave number to retain.
+        """
+        self.lmin = lmin
+        self.lmax = lmax
+
+    def filter(
+        self,
+        data: xr.DataArray,
+        backend: Literal["serial", "mpi", "dask"] = "serial",
+    ) -> xr.DataArray:
+        """
+        Applies the filter to the input DataArray.
+
+        Args:
+            data (xr.DataArray): Input data with dimensions containing 'lat' and 'lon'.
+            backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+
+        Returns:
+            xr.DataArray: The filtered data.
+        """
+        return apply_sh_filter(data, self.lmin, self.lmax, backend=backend)
 
 
 def apply_sh_filter(
