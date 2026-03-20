@@ -63,7 +63,7 @@ def test_sh_filter_lat_reverse() -> None:
 def test_sh_filter_numpy_ndarray() -> None:
     # Test passing a raw numpy array (must be 73x144 for 2.5 degree)
     data = np.random.rand(73, 144)
-    
+
     filt = SphericalHarmonicFilter(lmin=5, lmax=42)
     filtered = filt.filter(data)
 
@@ -74,7 +74,7 @@ def test_sh_filter_numpy_ndarray() -> None:
 def test_sh_filter_numpy_ndarray_3d() -> None:
     # Test passing a 3D numpy array (T, 73, 144)
     data = np.random.rand(3, 73, 144)
-    
+
     filt = SphericalHarmonicFilter(lmin=5, lmax=42)
     filtered = filt.filter(data)
 

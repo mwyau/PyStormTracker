@@ -61,7 +61,7 @@ def _filter_sh_frame(
 
         return out
     except Exception as e:
-        raise ValueError(f"Unsupported shape for SH filter: {frame.shape}. {e}")
+        raise ValueError(f"Unsupported shape for SH filter: {frame.shape}. {e}") from e
 
 
 class SphericalHarmonicFilter:

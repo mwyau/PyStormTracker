@@ -4,27 +4,28 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from pystormtracker.io.imilast import read_imilast, write_imilast
 from pystormtracker.models.tracks import Tracks
 
 
-def test_write_imilast_filename_extension(tmp_path):
+def test_write_imilast_filename_extension(tmp_path: Path) -> None:
     tracks = Tracks()
     outfile = tmp_path / "test"
     write_imilast(tracks, outfile)
     assert Path(str(outfile) + ".txt").exists()
 
 
-def test_write_imilast_content(tmp_path):
+def test_write_imilast_content(tmp_path: Path) -> None:
     tracks = Tracks()
     t1_time = np.datetime64("2025-12-01T00:00:00")
     # IMILAST longitude is typically -180 to 180 or 0 to 360.
     # write_imilast converts > 180 to negative.
     tracks.bulk_append(
         tids=np.array([1, 1], dtype=np.int64),
-        times=np.array([t1_time, t1_time + np.timedelta64(6, "h")], dtype="datetime64[s]"),
+        times=np.array(
+            [t1_time, t1_time + np.timedelta64(6, "h")], dtype="datetime64[s]"
+        ),
         lats=np.array([10.0, 11.0]),
         lons=np.array([190.0, 20.0]),
         vars_dict={"Intensity1": np.array([1000.0, 990.0])}
@@ -43,7 +44,7 @@ def test_write_imilast_content(tmp_path):
     assert " 20.00 11.00 990.00" in lines[3]
 
 
-def test_read_imilast_different_time_formats(tmp_path):
+def test_read_imilast_different_time_formats(tmp_path: Path) -> None:
     # Avoid 10-digit timestamps that conflict with YYYYMMDDHH
     t_06 = int(datetime(2025, 12, 1, 6, tzinfo=UTC).timestamp())
     content = (
@@ -66,7 +67,7 @@ def test_read_imilast_different_time_formats(tmp_path):
     assert track[2].time == np.datetime64("2025-12-01T12:00:00")
 
 
-def test_read_imilast_empty_lines(tmp_path):
+def test_read_imilast_empty_lines(tmp_path: Path) -> None:
     content = (
         "99 00,...\n"
         "\n"
@@ -79,7 +80,7 @@ def test_read_imilast_empty_lines(tmp_path):
     assert len(tracks) == 1
 
 
-def test_write_imilast_exception_handling(tmp_path):
+def test_write_imilast_exception_handling(tmp_path: Path) -> None:
     """Test handling of invalid times during writing."""
     tracks = Tracks()
     # np.datetime64('NaT') might trigger exception in datetime.fromtimestamp
