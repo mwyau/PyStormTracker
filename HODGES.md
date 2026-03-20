@@ -41,5 +41,11 @@ The `HodgesTracker` can be configured programmatically or by loading standard TR
 - **`zone.dat`**: Defines regional $d_{max}$ zones.
 - **`adapt.dat`**: Defines the 4-point linear interpolation for $\psi_{max}$.
 
-## 4. Performance
+## 5. TODO: Functional Parity Enhancements
+To achieve 100% functional parity with TRACK, the following features are planned:
+- **`RUNDATIN` Logic**: Implement `max_missing` (maximum consecutive phantom points) to prevent tracks from jumping large temporal gaps.
+- **`RSPLICE` (Segmented Tracking)**: Implement overlapping time-window processing and track splicing for long time series.
+- **`specfilt.in` Presets**: Add helper methods to `HodgesTracker` to apply standard spectral filters (e.g., T42, T63) using the existing `SphericalHarmonicFilter`.
+
+## 6. Performance
 All heavy mathematical loops, including distance matrices, quadratic fits, and the $O(N_{tracks}^2)$ MGE exchange loops, are implemented as **Numba-optimized JIT kernels** to ensure high performance even with large numbers of feature points.

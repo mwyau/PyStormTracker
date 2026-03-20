@@ -176,6 +176,7 @@ class HodgesLinker:
         dmax: float = 5.0,
         phimax: float = 0.5,
         n_iterations: int = 3,
+        max_missing: int = 0,
         zones: NDArray[np.float64] | None = None,
         adapt_thresholds: NDArray[np.float64] | None = None,
         adapt_values: NDArray[np.float64] | None = None,
@@ -185,6 +186,7 @@ class HodgesLinker:
         self.dmax = dmax
         self.phimax = phimax
         self.n_iterations = n_iterations
+        self.max_missing = max_missing
         
         # Ensure Numba-compatible arrays
         if zones is None:
@@ -306,15 +308,26 @@ class HodgesLinker:
         times = [d[0] for d in detections]
         for t_idx in range(track_matrix.shape[0]):
             centers = []
+            consecutive_missing = 0
+            
             for k in range(n_frames):
                 f_idx = track_matrix[t_idx, k]
                 if f_idx != -1:
+                    # If we have a gap larger than max_missing, split the track
+                    if consecutive_missing > self.max_missing and centers:
+                        tracks.add_track(centers)
+                        centers = []
+                    
                     centers.append(Center(
                         time=times[k],
                         lat=features_lat[f_idx],
                         lon=features_lon[f_idx],
                         vars={varname: float(features_val[f_idx])}
                     ))
+                    consecutive_missing = 0
+                else:
+                    consecutive_missing += 1
+                    
             if centers:
                 tracks.add_track(centers)
                 
