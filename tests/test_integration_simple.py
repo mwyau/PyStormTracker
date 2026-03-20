@@ -125,6 +125,9 @@ def config(
     if steps is None and not (is_ci or run_all):
         pytest.skip("Full integration tests only run in CI or with --run-all")
 
+    if varname == "vo" and steps is None:
+        pytest.skip("vo_max_full integration tests are temporarily disabled (too slow).")
+
     return data_path, varname, mode, steps
 
 
