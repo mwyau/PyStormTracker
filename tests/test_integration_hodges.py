@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -23,12 +24,42 @@ def test_data_vo() -> str:
     return str(fetch_era5_vo850(resolution="2.5x2.5"))
 
 
-@pytest.mark.integration
-def test_hodges_serial_integration(test_data_vo: str, tmp_path: Path) -> None:
-    """Basic integration test for the Hodges tracker via CLI."""
-    out_file = tmp_path / "hodges_tracks.txt"
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Custom parameterization for Hodges integration tests."""
+    if "steps" in metafunc.fixturenames:
+        # 60 steps for 'short', None for 'full'
+        raw_params = [
+            (60, "short"),
+            (None, "full"),
+        ]
 
-    # Use vo which is more robust for tracking in short time slices
+        params = [pytest.param(p[0], id=p[1]) for p in raw_params]
+        metafunc.parametrize("steps", params, scope="module")
+
+
+@pytest.fixture(scope="module")
+def hodges_config(
+    request: pytest.FixtureRequest,
+    steps: int | None,
+) -> int | None:
+    """Skip full tests locally if not in CI."""
+    is_ci = os.environ.get("GITHUB_ACTIONS")
+    run_all = request.config.getoption("--run-all")
+
+    if steps is None and not (is_ci or run_all):
+        pytest.skip("Full Hodges integration tests only run in CI or with --run-all")
+
+    return steps
+
+
+@pytest.mark.integration
+def test_hodges_serial_integration(
+    test_data_vo: str, tmp_path: Path, hodges_config: int | None
+) -> None:
+    """Basic integration test for the Hodges tracker via CLI."""
+    steps = hodges_config
+    out_file = tmp_path / f"hodges_tracks_{steps or 'full'}.txt"
+
     args = [
         "-i",
         test_data_vo,
@@ -42,11 +73,12 @@ def test_hodges_serial_integration(test_data_vo: str, tmp_path: Path) -> None:
         str(out_file),
         "-a",
         "hodges",
-        "-n",
-        "10",  # Just 10 steps for speed
         "--format",
         "imilast",
     ]
+
+    if steps:
+        args.extend(["-n", str(steps)])
 
     run_command_direct(args)
 
@@ -58,7 +90,7 @@ def test_hodges_serial_integration(test_data_vo: str, tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_hodges_output_format(test_data_vo: str, tmp_path: Path) -> None:
-    """Test the Hodges (TRACK) ASCII output format."""
+    """Test the Hodges (TRACK) ASCII output format (Short)."""
     out_file = tmp_path / "hodges_native.txt"
 
     args = [

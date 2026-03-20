@@ -193,7 +193,7 @@ class HodgesLinker:
             # Forward Pass: optimize from start to end
             for k in range(1, n_frames - 1):
                 while True:
-                    best_i, _ = _mge_iteration(
+                    best_i, best_j = _mge_iteration(
                         track_matrix,
                         features_lat,
                         features_lon,
@@ -209,13 +209,18 @@ class HodgesLinker:
                         self.max_missing,
                     )
                     if best_i != -1:
+                        # Apply swap
+                        p_i = track_matrix[best_i, k + 1]
+                        p_j = track_matrix[best_j, k + 1]
+                        track_matrix[best_i, k + 1] = p_j
+                        track_matrix[best_j, k + 1] = p_i
                         changed = True
                     else:
                         break
             # Backward Pass: optimize from end to start
             for k in range(n_frames - 2, 0, -1):
                 while True:
-                    best_i, _ = _mge_iteration(
+                    best_i, best_j = _mge_iteration(
                         track_matrix,
                         features_lat,
                         features_lon,
@@ -231,6 +236,11 @@ class HodgesLinker:
                         self.max_missing,
                     )
                     if best_i != -1:
+                        # Apply swap
+                        p_i = track_matrix[best_i, k - 1]
+                        p_j = track_matrix[best_j, k - 1]
+                        track_matrix[best_i, k - 1] = p_j
+                        track_matrix[best_j, k - 1] = p_i
                         changed = True
                     else:
                         break

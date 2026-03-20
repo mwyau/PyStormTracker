@@ -28,7 +28,7 @@ def run_tracker(
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
-    algorithm: Algorithm = "hodges",
+    algorithm: Algorithm = "simple",
     output_format: str = "imilast",
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
@@ -94,8 +94,8 @@ def parse_args() -> Namespace:
         "-a",
         "--algorithm",
         choices=["simple", "hodges"],
-        default="hodges",
-        help="Tracking algorithm. Default is 'hodges'.",
+        default="simple",
+        help="Tracking algorithm. Default is 'simple'.",
     )
     parser.add_argument(
         "-f",

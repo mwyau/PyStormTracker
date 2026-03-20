@@ -585,7 +585,7 @@ def _mge_iteration(
 
             # Revert swap for next pair check
             tracks[i, target_k] = p_i_orig
-            tracks[j, target_k] = p_i_orig
+            tracks[j, target_k] = p_j_orig
 
     return best_i, best_j
 
