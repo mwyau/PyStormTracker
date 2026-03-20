@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
+from numpy.typing import NDArray
 
 from pystormtracker.io.imilast import read_imilast, write_imilast
 from pystormtracker.models.center import Center
@@ -63,11 +66,13 @@ def test_tracks_head_tail() -> None:
 
 
 def test_tracks_init_with_data() -> None:
-    t_id = np.array([1])
-    t_time = np.array(["2025-12-01T00:00:00"], dtype="datetime64[s]")
-    t_lat = np.array([0.0])
-    t_lon = np.array([0.0])
-    t_vars = {"msl": np.array([0.0])}
+    t_id: NDArray[np.int64] = np.array([1])
+    t_time: NDArray[np.datetime64] = np.array(
+        ["2025-12-01T00:00:00"], dtype="datetime64[s]"
+    )
+    t_lat: NDArray[np.float64] = np.array([0.0])
+    t_lon: NDArray[np.float64] = np.array([0.0])
+    t_vars: dict[str, NDArray[np.float64]] = {"msl": np.array([0.0])}
 
     t = Tracks(track_ids=t_id, times=t_time, lats=t_lat, lons=t_lon, vars_dict=t_vars)
     assert len(t) == 1
@@ -209,10 +214,12 @@ def test_tracks_empty_track() -> None:
 
 
 def test_tracks_init_no_vars() -> None:
-    t_id = np.array([1])
-    t_time = np.array(["2025-12-01T00:00:00"], dtype="datetime64[s]")
-    t_lat = np.array([0.0])
-    t_lon = np.array([0.0])
+    t_id: NDArray[np.int64] = np.array([1])
+    t_time: NDArray[np.datetime64] = np.array(
+        ["2025-12-01T00:00:00"], dtype="datetime64[s]"
+    )
+    t_lat: NDArray[np.float64] = np.array([0.0])
+    t_lon: NDArray[np.float64] = np.array([0.0])
 
     t = Tracks(track_ids=t_id, times=t_time, lats=t_lat, lons=t_lon)
     assert len(t) == 1
@@ -221,24 +228,26 @@ def test_tracks_init_no_vars() -> None:
 
 def test_tracks_bulk_append() -> None:
     t = Tracks()
-    t_id = np.array([1, 2])
-    t_time = np.array(
+    t_id: NDArray[np.int64] = np.array([1, 2])
+    t_time: NDArray[np.datetime64] = np.array(
         ["2025-12-01T00:00:00", "2025-12-01T00:00:00"], dtype="datetime64[s]"
     )
-    t_lat = np.array([0.0, 1.0])
-    t_lon = np.array([0.0, 1.0])
-    t_vars = {"msl": np.array([0.0, 1.0])}
+    t_lat: NDArray[np.float64] = np.array([0.0, 1.0])
+    t_lon: NDArray[np.float64] = np.array([0.0, 1.0])
+    t_vars: dict[str, NDArray[np.float64]] = {"msl": np.array([0.0, 1.0])}
 
     t.bulk_append(t_id, t_time, t_lat, t_lon, t_vars)
     assert len(t) == 2
     assert t[1][0].vars["msl"] == 1.0
 
     # Bulk append with missing var to test NaN filling
-    t_id2 = np.array([3])
-    t_time2 = np.array(["2025-12-01T06:00:00"], dtype="datetime64[s]")
-    t_lat2 = np.array([2.0])
-    t_lon2 = np.array([2.0])
-    t_vars2 = {"new_var": np.array([2.0])}
+    t_id2: NDArray[np.int64] = np.array([3])
+    t_time2: NDArray[np.datetime64] = np.array(
+        ["2025-12-01T06:00:00"], dtype="datetime64[s]"
+    )
+    t_lat2: NDArray[np.float64] = np.array([2.0])
+    t_lon2: NDArray[np.float64] = np.array([2.0])
+    t_vars2: dict[str, NDArray[np.float64]] = {"new_var": np.array([2.0])}
 
     t.bulk_append(t_id2, t_time2, t_lat2, t_lon2, t_vars2)
     assert len(t) == 3
