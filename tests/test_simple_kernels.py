@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 
 from pystormtracker.simple.kernels import (
     _numba_extrema_filter,
@@ -12,7 +13,7 @@ from pystormtracker.simple.kernels import (
 
 def test_numba_extrema_filter() -> None:
     # Create a 10x10 data with a clear minimum
-    data = np.ones((10, 10), dtype=np.float64) * 100.0
+    data: NDArray[np.float64] = np.ones((10, 10), dtype=np.float64) * 100.0
     data[5, 5] = 90.0
 
     # Test for local minimum with size 3, threshold 5
@@ -27,7 +28,7 @@ def test_numba_extrema_filter() -> None:
 
 def test_numba_extrema_filter_plateau() -> None:
     # Plateaus should be handled (rank filtering)
-    data = np.ones((10, 10), dtype=np.float64) * 100.0
+    data: NDArray[np.float64] = np.ones((10, 10), dtype=np.float64) * 100.0
     data[5, 5] = 90.0
     data[5, 6] = 90.0  # Plateau
 
@@ -42,10 +43,10 @@ def test_numba_extrema_filter_plateau() -> None:
 
 
 def test_numba_laplace_masked() -> None:
-    data = np.zeros((5, 5), dtype=np.float64)
+    data: NDArray[np.float64] = np.zeros((5, 5), dtype=np.float64)
     data[2, 2] = -1.0  # Minimum
 
-    mask = np.zeros((5, 5), dtype=np.float64)
+    mask: NDArray[np.float64] = np.zeros((5, 5), dtype=np.float64)
     mask[2, 2] = 1.0
 
     # Laplace: up + down + left + right - 4*center
@@ -57,7 +58,7 @@ def test_numba_laplace_masked() -> None:
 
 def test_numba_remove_dup_tie_breaking() -> None:
     # Create two duplicate intensity points
-    laplacian = np.zeros((10, 10), dtype=np.float64)
+    laplacian: NDArray[np.float64] = np.zeros((10, 10), dtype=np.float64)
     laplacian[5, 5] = 10.0
     laplacian[5, 6] = 10.0
 
@@ -69,11 +70,11 @@ def test_numba_remove_dup_tie_breaking() -> None:
 
 
 def test_numba_get_centers() -> None:
-    extrema = np.zeros((10, 10), dtype=np.float64)
+    extrema: NDArray[np.float64] = np.zeros((10, 10), dtype=np.float64)
     extrema[2, 2] = 1.0
     extrema[8, 8] = 1.0
 
-    frame = np.random.rand(10, 10)
+    frame: NDArray[np.float64] = np.random.rand(10, 10)
 
     r, c, vals = _numba_get_centers(extrema, frame)
     assert len(r) == 2

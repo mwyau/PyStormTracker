@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+from numpy.typing import NDArray
 
 from pystormtracker.io.imilast import read_imilast, write_imilast
 from pystormtracker.models.tracks import Tracks
@@ -21,14 +22,22 @@ def test_write_imilast_content(tmp_path: Path) -> None:
     t1_time = np.datetime64("2025-12-01T00:00:00")
     # IMILAST longitude is typically -180 to 180 or 0 to 360.
     # write_imilast converts > 180 to negative.
+    tids: NDArray[np.int64] = np.array([1, 1], dtype=np.int64)
+    times: NDArray[np.datetime64] = np.array(
+        [t1_time, t1_time + np.timedelta64(6, "h")], dtype="datetime64[s]"
+    )
+    lats: NDArray[np.float64] = np.array([10.0, 11.0])
+    lons: NDArray[np.float64] = np.array([190.0, 20.0])
+    vars_dict: dict[str, NDArray[np.float64]] = {
+        "Intensity1": np.array([1000.0, 990.0])
+    }
+
     tracks.bulk_append(
-        tids=np.array([1, 1], dtype=np.int64),
-        times=np.array(
-            [t1_time, t1_time + np.timedelta64(6, "h")], dtype="datetime64[s]"
-        ),
-        lats=np.array([10.0, 11.0]),
-        lons=np.array([190.0, 20.0]),
-        vars_dict={"Intensity1": np.array([1000.0, 990.0])},
+        tids=tids,
+        times=times,
+        lats=lats,
+        lons=lons,
+        vars_dict=vars_dict,
     )
 
     outfile = tmp_path / "test_content.txt"
@@ -79,12 +88,18 @@ def test_write_imilast_exception_handling(tmp_path: Path) -> None:
     """Test handling of invalid times during writing."""
     tracks = Tracks()
     # np.datetime64('NaT') might trigger exception in datetime.fromtimestamp
+    tids: NDArray[np.int64] = np.array([1], dtype=np.int64)
+    times: NDArray[np.datetime64] = np.array(["NaT"], dtype="datetime64[s]")
+    lats: NDArray[np.float64] = np.array([0.0])
+    lons: NDArray[np.float64] = np.array([0.0])
+    vars_dict: dict[str, NDArray[np.float64]] = {"Intensity1": np.array([1000.0])}
+
     tracks.bulk_append(
-        tids=np.array([1], dtype=np.int64),
-        times=np.array(["NaT"], dtype="datetime64[s]"),
-        lats=np.array([0.0]),
-        lons=np.array([0.0]),
-        vars_dict={"Intensity1": np.array([1000.0])},
+        tids=tids,
+        times=times,
+        lats=lats,
+        lons=lons,
+        vars_dict=vars_dict,
     )
 
     outfile = tmp_path / "test_nat.txt"
