@@ -122,10 +122,8 @@ stormtracker -i data.nc -v msl -o my_tracks
 | `--chunk-size` | `-c` | Steps per chunk for Dask/RSPLICE (default 60). |
 | `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
 | **Hodges-Specific** | | |
-| `--zone` | | Path to `zone.dat` for regional search radii. |
-| `--adapt` | | Path to `adapt.dat` for adaptive smoothness. |
-| `--min-points` | | Minimum grid points per object (noise filter). |
-| `--w1`, `--w2` | | Cost weights for direction (0.2) and speed (0.8). |
+| `--min-points` | | Minimum grid points per object (default 1). |
+| `--w1`, `--w2` | | Cost weights for direction (0.2) and speed (default 0.8). |
 | `--dmax` | | Max search radius in degrees (default 5.0). |
 | `--phimax` | | Smoothness penalty (default 0.5). |
 | `--iterations` | | Max MGE optimization passes (default 3). |
@@ -141,19 +139,13 @@ import pystormtracker as pst
 
 # 1. Instantiate the tracker (Simple or Hodges)
 # tracker = pst.SimpleTracker()
-tracker = pst.HodgesTracker.from_config(
-    dmax=5.0, 
-    phimax=0.5, 
-    n_iterations=3
-)
+tracker = pst.HodgesTracker()
 
 # 2. Run the tracking algorithm. Returns an array-backed Tracks object.
 tracks = tracker.track(
     infile="data.nc", 
     varname="vo", 
-    mode="max",
-    threshold=1e-4,
-    backend="serial"
+    mode="max"
 )
 ```
 
