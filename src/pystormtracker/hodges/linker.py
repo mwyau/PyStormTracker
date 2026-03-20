@@ -205,6 +205,61 @@ def _mge_iteration(
     return False
 
 
+@nb.njit(cache=True)
+def _initial_break_pass(
+    tracks: NDArray[np.int64],
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    w1: float,
+    w2: float,
+    phimax: float,
+    adapt_thresholds: NDArray[np.float64],
+    adapt_values: NDArray[np.float64],
+) -> NDArray[np.int64]:
+    """
+    Identifies tracks that violate smoothness constraints after initial linking
+    and breaks them into separate tracks.
+    """
+    n_tracks, n_frames = tracks.shape
+    new_tracks_list = []
+    rad_to_deg = 180.0 / np.pi
+
+    for i in range(n_tracks):
+        current_track = tracks[i]
+        last_break = 0
+        for k in range(1, n_frames - 1):
+            if current_track[k-1] != -1 and current_track[k] != -1 and current_track[k+1] != -1:
+                cost = geod_dev(features_lat[current_track[k-1]], features_lon[current_track[k-1]],
+                                features_lat[current_track[k]], features_lon[current_track[k]],
+                                features_lat[current_track[k+1]], features_lon[current_track[k+1]],
+                                w1, w2)
+                
+                d1 = geod_dist(features_lat[current_track[k-1]], features_lon[current_track[k-1]],
+                               features_lat[current_track[k]], features_lon[current_track[k]])
+                d2 = geod_dist(features_lat[current_track[k]], features_lon[current_track[k]],
+                               features_lat[current_track[k+1]], features_lon[current_track[k+1]])
+                phi_max = get_adaptive_phimax(0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax)
+                
+                if cost > phi_max:
+                    # Break track at point k
+                    # Save part from last_break to k
+                    new_tr = np.full(n_frames, -1, dtype=np.int64)
+                    new_tr[last_break:k+1] = current_track[last_break:k+1]
+                    new_tracks_list.append(new_tr)
+                    last_break = k + 1
+        
+        # Add remaining part
+        new_tr = np.full(n_frames, -1, dtype=np.int64)
+        new_tr[last_break:] = current_track[last_break:]
+        new_tracks_list.append(new_tr)
+        
+    # Convert list to 2D array
+    out = np.full((len(new_tracks_list), n_frames), -1, dtype=np.int64)
+    for i in range(len(new_tracks_list)):
+        out[i] = new_tracks_list[i]
+    return out
+
+
 class HodgesLinker:
     """
     Implements the Modified Greedy Exchange (MGE) tracking algorithm.
@@ -301,7 +356,13 @@ class HodgesLinker:
                 track_matrix = np.vstack((track_matrix, new_rows))
                 current_n_tracks += len(unlinked)
 
-        # 3. MGE Optimization (Iterate until convergence or max iterations)
+        # 3. Initial Smoothness Breaking Pass
+        track_matrix = _initial_break_pass(
+            track_matrix, features_lat, features_lon,
+            self.w1, self.w2, self.phimax, self.adapt_thresholds, self.adapt_values
+        )
+
+        # 4. MGE Optimization (Iterate until convergence or max iterations)
         for _ in range(self.n_iterations):
             changed = False
             # Forward Pass

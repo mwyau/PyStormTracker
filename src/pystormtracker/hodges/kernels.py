@@ -209,7 +209,8 @@ def geod_dev(
     
     # 3. Combined cost
     # Smoothness (direction) + Speed variation
-    phi = w1 * (1.0 - dot_t) + w2 * (1.0 - 2.0 * np.sqrt(alpha1 * alpha2) / (alpha1 + alpha2))
+    # The 0.5 factor in the directional term ensures the cost is normalized to [0, 1] if w1+w2=1
+    phi = 0.5 * w1 * (1.0 - dot_t) + w2 * (1.0 - 2.0 * np.sqrt(alpha1 * alpha2) / (alpha1 + alpha2))
     
     return max(0.0, phi)
 

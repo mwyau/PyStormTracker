@@ -123,22 +123,52 @@ class HodgesTracker(Tracker):
     def _splice_tracks(self, tracks_all: list[Tracks], overlap: int) -> Tracks:
         """
         Splices tracks from multiple overlapping time chunks.
-        Matching logic: if tracks in chunk N end at same time/lat/lon as tracks in chunk N+1.
+        Matching logic: if tracks in chunk N end with same points as start of chunk N+1.
         """
         if not tracks_all:
             return Tracks()
         
-        final_tracks = Tracks()
-        # Simply combining for now, a more sophisticated splicing based on overlap 
-        # could be implemented here if bit-wise parity with TRACK's splicer is needed.
-        # TRACK's splicer typically looks for track pieces that share at least 
-        # 'overlap' points.
+        final_tracks = tracks_all[0]
         
-        for chunk_tracks in tracks_all:
-            for track in chunk_tracks:
-                final_tracks.append(track)
+        for i in range(1, len(tracks_all)):
+            next_chunk = tracks_all[i]
+            # Match final_tracks tails with next_chunk heads
+            # A simple matching based on last/first point match
+            # (In PyStormTracker, we can use Track objects for easy comparison)
+            
+            matched_next_indices = set()
+            
+            # Convert final_tracks to a list of current tails for matching
+            current_tails = list(final_tracks)
+            
+            for tr_tail in current_tails:
+                last_pt = tr_tail[-1]
                 
-        # TODO: Implement point-matching splicing for overlapping windows
+                for idx_next, tr_next in enumerate(next_chunk):
+                    if idx_next in matched_next_indices:
+                        continue
+                    
+                    first_pt = tr_next[0]
+                    
+                    # Match if time, lat, lon are identical
+                    if (last_pt.time == first_pt.time and 
+                        abs(last_pt.lat - first_pt.lat) < 1e-5 and 
+                        abs(last_pt.lon - first_pt.lon) < 1e-5):
+                        
+                        # Splice: extend tr_tail with everything from tr_next AFTER the first point
+                        # In the array-backed model, we append points to the existing track_id
+                        # skipping the first point of tr_next because it overlaps with last_pt
+                        for j in range(1, len(tr_next)):
+                            tr_tail.append(tr_next[j])
+                            
+                        matched_next_indices.add(idx_next)
+                        break
+            
+            # Add unmatched tracks from next_chunk as new tracks
+            for idx_next, tr_next in enumerate(next_chunk):
+                if idx_next not in matched_next_indices:
+                    final_tracks.append(tr_next)
+                    
         return final_tracks
 
     def track(
