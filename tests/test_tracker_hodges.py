@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
-from pathlib import Path
 
 from pystormtracker.hodges.tracker import HodgesTracker
 
