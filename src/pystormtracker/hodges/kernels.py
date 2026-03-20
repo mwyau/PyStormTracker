@@ -18,7 +18,18 @@ def _numba_hodges_extrema(
 ) -> NDArray[np.float64]:
     """
     Finds local extrema in a 2D frame.
+
     Handles longitude periodicity (assumed last dimension).
+    Used as the first step in the Hodges detection algorithm.
+
+    Args:
+        frame: 2D array of meteorological data (e.g., vorticity).
+        size: Diameter of the search window for local extrema.
+        threshold: Intensity threshold for candidates.
+        is_min: If True, searches for minima; otherwise maxima.
+
+    Returns:
+        A binary 2D mask where 1.0 indicates an extremum.
     """
     ny, nx = frame.shape
     extrema = np.zeros_like(frame)
@@ -66,7 +77,16 @@ def _numba_get_centers(
     extrema: NDArray[np.float64],
     frame: NDArray[np.float64],
 ) -> tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.float64]]:
-    """Extracts coordinates and values of detected extrema."""
+    """
+    Extracts the grid indices and values of detected extrema.
+
+    Args:
+        extrema: Binary mask from extrema detection.
+        frame: The original data frame.
+
+    Returns:
+        A tuple of (row_indices, col_indices, values).
+    """
     idx = np.where(extrema > 0)
     r_idx = idx[0]
     c_idx = idx[1]
@@ -85,18 +105,28 @@ def subgrid_refine(
     lon: NDArray[np.float64],
 ) -> tuple[float, float, float]:
     """
-    Refines the extremum position using local quadratic interpolation.
-    Fits f(y, x) = a*y^2 + b*x^2 + c*y*x + d*y + e*x + f
-    Returns (refined_lat, refined_lon, refined_val).
+    Refines an extremum position using local quadratic interpolation.
+
+    Fits f(y, x) = a*y^2 + b*x^2 + c*y*x + d*y + e*x + f to a 3x3 neighborhood.
+    The refined center is where partial derivatives are zero.
+    This provides sub-grid precision without the need for global B-splines
+    (which would require Cholesky pre-processing as seen in original TRACK).
+
+    Args:
+        frame: 2D data frame.
+        r, c: Row and column index of the grid-level extremum.
+        lat, lon: Coordinate arrays.
+
+    Returns:
+        (refined_lat, refined_lon, refined_intensity).
     """
     ny, nx = frame.shape
 
-    # Boundary check for 3x3 neighborhood
+    # Boundary check: need 3x3 neighborhood
     if r < 1 or r >= ny - 1:
         return lat[r], lon[c], frame[r, c]
 
-    # Extract 3x3 neighborhood
-    # Longitude is periodic
+    # Extract 3x3 neighborhood with longitude wrapping
     cm = (c - 1) % nx
     cp = (c + 1) % nx
 
@@ -111,30 +141,26 @@ def subgrid_refine(
     z[2, 1] = frame[r + 1, c]
     z[2, 2] = frame[r + 1, cp]
 
-    # Coefficients of the quadratic surface (simple finite differences)
-    # d2f/dy2
+    # Use finite differences to find quadratic surface coefficients
     f_yy = z[0, 1] - 2 * z[1, 1] + z[2, 1]
-    # d2f/dx2
     f_xx = z[1, 0] - 2 * z[1, 1] + z[1, 2]
-    # d2f/dy dx
     f_yx = 0.25 * (z[2, 2] - z[2, 0] - z[0, 2] + z[0, 0])
-    # df/dy
     f_y = 0.5 * (z[2, 1] - z[0, 1])
-    # df/dx
     f_x = 0.5 * (z[1, 2] - z[1, 0])
 
     det = f_yy * f_xx - f_yx**2
     if abs(det) < 1e-10:
         return lat[r], lon[c], frame[r, c]
 
+    # Offset from grid center
     dy = (f_yx * f_x - f_xx * f_y) / det
     dx = (f_yx * f_y - f_yy * f_x) / det
 
-    # If refinement is too far (> 1 grid point), fallback to grid center
+    # Validation: refined point must remain within the grid cell
     if abs(dy) > 1.0 or abs(dx) > 1.0:
         return lat[r], lon[c], frame[r, c]
 
-    # Interpolate lat/lon precisely using neighbor intervals
+    # Precision interpolation using local grid intervals
     if dy > 0:
         ref_lat = lat[r] + dy * (lat[r + 1] - lat[r])
     else:
@@ -170,19 +196,26 @@ def geod_dev(
 ) -> float:
     """
     Spherical cost function (Hodges 1995, 1999).
-    Calculates the deviation over three consecutive points.
+
+    Measures track deviation over three consecutive points.
+    Directional term is normalized by 0.5 to keep total cost in [0, 1].
+
+    Args:
+        p0, p1, p2: Triplets of lat/lon coordinates.
+        w1, w2: Weights for direction and speed consistency.
+
+    Returns:
+        The calculated cost (smoothness penalty).
     """
-    # 1. Distances (angular)
     alpha1 = geod_dist(p0_lat, p0_lon, p1_lat, p1_lon)
     alpha2 = geod_dist(p1_lat, p1_lon, p2_lat, p2_lon)
 
     if alpha1 <= 0.0 and alpha2 <= 0.0:
         return 0.0
     if alpha1 <= 0.0 or alpha2 <= 0.0:
-        return w2  # Penalty for zero speed
+        return w2
 
-    # 2. Tangent vector deviation
-    # Convert to unit cartesian
+    # Tangent vector calculation via vector products
     x0 = np.cos(p0_lat * DEGTORAD) * np.cos(p0_lon * DEGTORAD)
     y0 = np.cos(p0_lat * DEGTORAD) * np.sin(p0_lon * DEGTORAD)
     z0 = np.sin(p0_lat * DEGTORAD)
@@ -195,30 +228,24 @@ def geod_dev(
     y2 = np.cos(p2_lat * DEGTORAD) * np.sin(p2_lon * DEGTORAD)
     z2 = np.sin(p2_lat * DEGTORAD)
 
-    # Dot product p0.p1 and p2.p1
     dot01 = x0 * x1 + y0 * y1 + z0 * z1
     dot21 = x2 * x1 + y2 * y1 + z2 * z1
 
     s1 = np.sin(alpha1)
     s2 = np.sin(alpha2)
 
-    # Tangent vectors at p1
-    # T1 = (p0 - (p0.p1)p1) / sin(alpha1)
+    # Unit tangent vectors at p1
     t1x = (x0 - dot01 * x1) / s1
     t1y = (y0 - dot01 * y1) / s1
     t1z = (z0 - dot01 * z1) / s1
 
-    # T2 = (p2.p1)p1 - p2 / sin(alpha2) (direction reversed to align)
     t2x = (dot21 * x1 - x2) / s2
     t2y = (dot21 * y1 - y2) / s2
     t2z = (dot21 * z1 - z2) / s2
 
-    # Dot product of tangent vectors
     dot_t = t1x * t2x + t1y * t2y + t1z * t2z
 
-    # 3. Combined cost
-    # Smoothness (direction) + Speed variation
-    # The 0.5 factor in the directional term ensures the cost is normalized to [0, 1]
+    # Combined cost: direction smoothness + speed consistency
     phi = 0.5 * w1 * (1.0 - dot_t) + w2 * (
         1.0 - 2.0 * np.sqrt(alpha1 * alpha2) / (alpha1 + alpha2)
     )
@@ -231,8 +258,15 @@ def get_regional_dmax(
     lat: float, lon: float, zones: NDArray[np.float64], default_dmax: float
 ) -> float:
     """
-    Returns dmax for a given lat/lon based on regional zones.
-    zones array shape (n_zones, 5): [lon_min, lon_max, lat_min, lat_max, dmax]
+    Looks up the regional search radius (dmax) for a point.
+
+    Args:
+        lat, lon: Coordinates of the point.
+        zones: Array of zones [lon_min, lon_max, lat_min, lat_max, dmax].
+        default_dmax: Value to return if no zone is matched.
+
+    Returns:
+        The applicable dmax value.
     """
     if zones.shape[0] == 0:
         return default_dmax
@@ -240,13 +274,11 @@ def get_regional_dmax(
     for i in range(zones.shape[0]):
         lon_min, lon_max, lat_min, lat_max, dmax = zones[i]
 
-        # Latitude check
         if lat < lat_min or lat > lat_max:
             continue
 
-        # Longitude check (periodic)
         in_lon = False
-        if lon_min > lon_max:  # Wraps around
+        if lon_min > lon_max:  # Longitude wrap-around
             if lon >= lon_min or lon <= lon_max:
                 in_lon = True
         else:
@@ -267,15 +299,19 @@ def get_adaptive_phimax(
     default_phimax: float,
 ) -> float:
     """
-    Returns phimax based on adaptive smoothness piecewise linear function.
-    adapt_thresholds: shape (4,) distances in degrees.
-    adapt_values: shape (4,) phi values.
+    Calculates dynamic smoothness limit based on track speed.
+
+    Args:
+        mean_dist: Average displacement over three frames.
+        adapt_thresholds: Distance thresholds from adapt.dat.
+        adapt_values: Smoothness values from adapt.dat.
+        default_phimax: Value if adaptive logic is disabled.
+
+    Returns:
+        The dynamic phimax limit.
     """
     if adapt_thresholds.shape[0] < 4:
         return default_phimax
-
-    # thresholds are in degrees, convert mean_dist from radians to degrees if needed
-    # (assuming mean_dist passed in degrees here for simplicity, or we convert it)
 
     d = mean_dist
 
@@ -286,24 +322,355 @@ def get_adaptive_phimax(
         return cast(float, adapt_values[3])
 
     if d >= adapt_thresholds[0] and d < adapt_thresholds[1]:
-        # Interpolate 0 and 1
         slope = (adapt_values[1] - adapt_values[0]) / (
             adapt_thresholds[1] - adapt_thresholds[0]
         )
         return cast(float, adapt_values[0] + slope * (d - adapt_thresholds[0]))
 
     if d >= adapt_thresholds[1] and d < adapt_thresholds[2]:
-        # Interpolate 1 and 2
         slope = (adapt_values[2] - adapt_values[1]) / (
             adapt_thresholds[2] - adapt_thresholds[1]
         )
         return cast(float, adapt_values[1] + slope * (d - adapt_thresholds[1]))
 
     if d >= adapt_thresholds[2] and d < adapt_thresholds[3]:
-        # Interpolate 2 and 3
         slope = (adapt_values[3] - adapt_values[2]) / (
             adapt_thresholds[3] - adapt_thresholds[2]
         )
         return cast(float, adapt_values[2] + slope * (d - adapt_thresholds[2]))
 
     return default_phimax
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _get_cost(
+    tracks: NDArray[np.int64],
+    k: int,
+    track_idx: int,
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    w1: float,
+    w2: float,
+    phimax: float,
+) -> float:
+    """
+    Calculates the cost for a track at step k using points k-1, k, k+1.
+
+    Args:
+        tracks: Track matrix [n_tracks, n_frames].
+        k: Current frame index.
+        track_idx: Index of the track to evaluate.
+        features_lat, features_lon: Flat arrays of all feature coordinates.
+        w1, w2: Weights for cost function.
+        phimax: Static penalty for links involving phantom points.
+
+    Returns:
+        The computed cost for the track triplet.
+    """
+    p0_idx = tracks[track_idx, k - 1]
+    p1_idx = tracks[track_idx, k]
+    p2_idx = tracks[track_idx, k + 1]
+
+    # If first point is phantom, triplet has no cost
+    if p0_idx == -1:
+        return 0.0
+
+    # If subsequent points are phantom, apply static penalty
+    if p1_idx == -1 or p2_idx == -1:
+        return phimax
+
+    lat0 = features_lat[p0_idx]
+    lon0 = features_lon[p0_idx]
+    lat1 = features_lat[p1_idx]
+    lon1 = features_lon[p1_idx]
+    lat2 = features_lat[p2_idx]
+    lon2 = features_lon[p2_idx]
+
+    return cast(float, geod_dev(lat0, lon0, lat1, lon1, lat2, lon2, w1, w2))
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _check_max_missing(track: NDArray[np.int64], max_missing: int) -> bool:
+    """
+    Checks if a track exceeds the maximum allowed consecutive missing frames.
+
+    Args:
+        track: Array of feature indices for a single track.
+        max_missing: Limit on consecutive phantoms (-1 for unlimited).
+
+    Returns:
+        True if the track is valid under the constraint.
+    """
+    if max_missing < 0:
+        return True
+
+    current_missing = 0
+    first_real = -1
+    last_real = -1
+    for i in range(len(track)):
+        if track[i] != -1:
+            if first_real == -1:
+                first_real = i
+            last_real = i
+
+    if first_real == -1:
+        return True
+
+    # Only count gaps between real start and end
+    for i in range(first_real, last_real + 1):
+        if track[i] == -1:
+            current_missing += 1
+            if current_missing > max_missing:
+                return False
+        else:
+            current_missing = 0
+    return True
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _mge_iteration(
+    tracks: NDArray[np.int64],
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    k: int,
+    forward: bool,
+    w1: float,
+    w2: float,
+    default_dmax: float,
+    phimax: float,
+    zones: NDArray[np.float64],
+    adapt_thresholds: NDArray[np.float64],
+    adapt_values: NDArray[np.float64],
+    max_missing: int,
+) -> tuple[int, int]:
+    """
+    A single MGE iteration step at frame k.
+
+    Iterates through all possible track pairs and identifies the single BEST
+    swap that reduces the total cost while satisfying all constraints.
+
+    Args:
+        tracks: Track matrix.
+        features_lat, features_lon: Feature coordinate arrays.
+        k: Current frame index.
+        forward: If True, optimizes point k+1; otherwise k-1.
+        w1, w2: Cost weights.
+        default_dmax: Default search radius.
+        phimax: Phantom penalty.
+        zones: Regional dmax definitions.
+        adapt_thresholds, adapt_values: Adaptive smoothness definitions.
+        max_missing: Missing frame limit.
+
+    Returns:
+        (best_i, best_j) indices of the track pair to swap, or (-1, -1).
+    """
+    n_tracks = tracks.shape[0]
+    best_gain = 1e-8
+    best_i = -1
+    best_j = -1
+
+    # Target frame to swap
+    target_k = k + 1 if forward else k - 1
+
+    rad_to_deg = 180.0 / np.pi
+    deg_to_rad = np.pi / 180.0
+
+    # Cache current costs
+    costs = np.zeros(n_tracks)
+    for i in range(n_tracks):
+        costs[i] = _get_cost(tracks, k, i, features_lat, features_lon, w1, w2, phimax)
+
+    for i in range(n_tracks):
+        for j in range(i + 1, n_tracks):
+            p_i_orig = tracks[i, target_k]
+            p_j_orig = tracks[j, target_k]
+
+            if p_i_orig == p_j_orig:
+                continue
+
+            # 1. Displacement Check
+            valid_swap = True
+            idx_i_k = tracks[i, k]
+            if idx_i_k != -1 and p_j_orig != -1:
+                lat_k, lon_k = features_lat[idx_i_k], features_lon[idx_i_k]
+                lat_t, lon_t = features_lat[p_j_orig], features_lon[p_j_orig]
+                dmax_i = 0.5 * (
+                    get_regional_dmax(lat_k, lon_k, zones, default_dmax)
+                    + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
+                )
+                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_i * deg_to_rad:
+                    valid_swap = False
+
+            idx_j_k = tracks[j, k]
+            if valid_swap and idx_j_k != -1 and p_i_orig != -1:
+                lat_k, lon_k = features_lat[idx_j_k], features_lon[idx_j_k]
+                lat_t, lon_t = features_lat[p_i_orig], features_lon[p_i_orig]
+                dmax_j = 0.5 * (
+                    get_regional_dmax(lat_k, lon_k, zones, default_dmax)
+                    + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
+                )
+                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_j * deg_to_rad:
+                    valid_swap = False
+
+            if not valid_swap:
+                continue
+
+            # 2. Max Missing Check
+            tracks[i, target_k] = p_j_orig
+            tracks[j, target_k] = p_i_orig
+
+            if not _check_max_missing(tracks[i], max_missing) or not _check_max_missing(
+                tracks[j], max_missing
+            ):
+                tracks[i, target_k] = p_i_orig
+                tracks[j, target_k] = p_j_orig
+                continue
+
+            # 3. Cost Gain Calculation
+            new_cost_i = _get_cost(
+                tracks, k, i, features_lat, features_lon, w1, w2, phimax
+            )
+            new_cost_j = _get_cost(
+                tracks, k, j, features_lat, features_lon, w1, w2, phimax
+            )
+
+            # 4. Dynamic Smoothness Check
+            if tracks[i, k - 1] != -1 and tracks[i, k] != -1 and tracks[i, k + 1] != -1:
+                d1 = geod_dist(
+                    features_lat[tracks[i, k - 1]],
+                    features_lon[tracks[i, k - 1]],
+                    features_lat[tracks[i, k]],
+                    features_lon[tracks[i, k]],
+                )
+                d2 = geod_dist(
+                    features_lat[tracks[i, k]],
+                    features_lon[tracks[i, k]],
+                    features_lat[tracks[i, k + 1]],
+                    features_lon[tracks[i, k + 1]],
+                )
+                phi_max_i = get_adaptive_phimax(
+                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
+                )
+                if new_cost_i > phi_max_i:
+                    valid_swap = False
+
+            if (
+                valid_swap
+                and tracks[j, k - 1] != -1
+                and tracks[j, k] != -1
+                and tracks[j, k + 1] != -1
+            ):
+                d1 = geod_dist(
+                    features_lat[tracks[j, k - 1]],
+                    features_lon[tracks[j, k - 1]],
+                    features_lat[tracks[j, k]],
+                    features_lon[tracks[j, k]],
+                )
+                d2 = geod_dist(
+                    features_lat[tracks[j, k]],
+                    features_lon[tracks[j, k]],
+                    features_lat[tracks[j, k + 1]],
+                    features_lon[tracks[j, k + 1]],
+                )
+                phi_max_j = get_adaptive_phimax(
+                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
+                )
+                if new_cost_j > phi_max_j:
+                    valid_swap = False
+
+            if valid_swap:
+                gain = (costs[i] + costs[j]) - (new_cost_i + new_cost_j)
+                if gain > best_gain:
+                    best_gain = gain
+                    best_i = i
+                    best_j = j
+
+            # Revert swap for next pair check
+            tracks[i, target_k] = p_i_orig
+            tracks[j, target_k] = p_i_orig
+
+    return best_i, best_j
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _initial_break_pass(
+    tracks: NDArray[np.int64],
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    w1: float,
+    w2: float,
+    phimax: float,
+    adapt_thresholds: NDArray[np.float64],
+    adapt_values: NDArray[np.float64],
+) -> NDArray[np.int64]:
+    """
+    Identifies tracks that violate smoothness constraints after initial linking
+    and breaks them into separate tracks.
+
+    Args:
+        tracks: Track matrix after nearest-neighbor linking.
+        features_lat, features_lon: Coordinate arrays.
+        w1, w2: Cost weights.
+        phimax: Phantom penalty.
+        adapt_thresholds, adapt_values: Adaptive smoothness definitions.
+
+    Returns:
+        A new track matrix with broken tracks appended as new rows.
+    """
+    n_tracks, n_frames = tracks.shape
+    new_tracks_list = []
+    rad_to_deg = 180.0 / np.pi
+
+    for i in range(n_tracks):
+        current_track = tracks[i]
+        last_break = 0
+        for k in range(1, n_frames - 1):
+            if (
+                current_track[k - 1] != -1
+                and current_track[k] != -1
+                and current_track[k + 1] != -1
+            ):
+                cost = geod_dev(
+                    features_lat[current_track[k - 1]],
+                    features_lon[current_track[k - 1]],
+                    features_lat[current_track[k]],
+                    features_lon[current_track[k]],
+                    features_lat[current_track[k + 1]],
+                    features_lon[current_track[k + 1]],
+                    w1,
+                    w2,
+                )
+
+                d1 = geod_dist(
+                    features_lat[current_track[k - 1]],
+                    features_lon[current_track[k - 1]],
+                    features_lat[current_track[k]],
+                    features_lon[current_track[k]],
+                )
+                d2 = geod_dist(
+                    features_lat[current_track[k]],
+                    features_lon[current_track[k]],
+                    features_lat[current_track[k + 1]],
+                    features_lon[current_track[k + 1]],
+                )
+                phi_max = get_adaptive_phimax(
+                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
+                )
+
+                if cost > phi_max:
+                    # Break track at point k
+                    new_tr = np.full(n_frames, -1, dtype=np.int64)
+                    new_tr[last_break : k + 1] = current_track[last_break : k + 1]
+                    new_tracks_list.append(new_tr)
+                    last_break = k + 1
+
+        # Add remaining part
+        new_tr = np.full(n_frames, -1, dtype=np.int64)
+        new_tr[last_break:] = current_track[last_break:]
+        new_tracks_list.append(new_tr)
+
+    # Convert list to 2D array
+    out = np.full((len(new_tracks_list), n_frames), -1, dtype=np.int64)
+    for i in range(len(new_tracks_list)):
+        out[i] = new_tracks_list[i]
+    return out

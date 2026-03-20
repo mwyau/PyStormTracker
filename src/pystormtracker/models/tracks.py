@@ -424,5 +424,9 @@ class Tracks:
             from ..io.imilast import write_imilast
 
             write_imilast(self, outfile)
+        elif format.lower() == "hodges":
+            from ..io.hodges import write_hodges
+
+            write_hodges(self, str(outfile))
         else:
             raise ValueError(f"Unsupported output format: {format}")

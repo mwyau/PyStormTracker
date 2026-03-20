@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
-import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
@@ -11,302 +8,19 @@ from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
 from ..utils.geo import geod_dist
 from .kernels import (
-    geod_dev,
-    get_adaptive_phimax,
+    _initial_break_pass,
+    _mge_iteration,
     get_regional_dmax,
 )
-
-
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
-def _get_cost(
-    tracks: NDArray[np.int64],
-    k: int,
-    track_idx: int,
-    features_lat: NDArray[np.float64],
-    features_lon: NDArray[np.float64],
-    w1: float,
-    w2: float,
-    phimax: float,
-) -> float:
-    """Calculates the cost for a track at step k using points k-1, k, k+1."""
-    p0_idx = tracks[track_idx, k - 1]
-    p1_idx = tracks[track_idx, k]
-    p2_idx = tracks[track_idx, k + 1]
-
-    if p0_idx == -1:
-        return 0.0
-
-    if p1_idx == -1 or p2_idx == -1:
-        return phimax
-
-    lat0 = features_lat[p0_idx]
-    lon0 = features_lon[p0_idx]
-    lat1 = features_lat[p1_idx]
-    lon1 = features_lon[p1_idx]
-    lat2 = features_lat[p2_idx]
-    lon2 = features_lon[p2_idx]
-
-    return cast(float, geod_dev(lat0, lon0, lat1, lon1, lat2, lon2, w1, w2))
-
-
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
-def _check_max_missing(track: NDArray[np.int64], max_missing: int) -> bool:
-    """Checks if a track exceeds the maximum allowed consecutive missing frames."""
-    if max_missing < 0:
-        return True
-
-    current_missing = 0
-    first_real = -1
-    last_real = -1
-    for i in range(len(track)):
-        if track[i] != -1:
-            if first_real == -1:
-                first_real = i
-            last_real = i
-
-    if first_real == -1:
-        return True
-
-    for i in range(first_real, last_real + 1):
-        if track[i] == -1:
-            current_missing += 1
-            if current_missing > max_missing:
-                return False
-        else:
-            current_missing = 0
-    return True
-
-
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
-def _mge_iteration(
-    tracks: NDArray[np.int64],
-    features_lat: NDArray[np.float64],
-    features_lon: NDArray[np.float64],
-    k: int,
-    forward: bool,
-    w1: float,
-    w2: float,
-    default_dmax: float,
-    phimax: float,
-    zones: NDArray[np.float64],
-    adapt_thresholds: NDArray[np.float64],
-    adapt_values: NDArray[np.float64],
-    max_missing: int,
-) -> tuple[int, int]:
-    """
-    A single MGE iteration step at frame k.
-    Finds the BEST swap among all track pairs at this time step.
-    Returns (best_i, best_j) or (-1, -1) if no swap improves cost.
-    """
-    n_tracks = tracks.shape[0]
-    best_gain = 1e-8  # Tolerance
-    best_i = -1
-    best_j = -1
-
-    # Target frame to swap
-    target_k = k + 1 if forward else k - 1
-
-    rad_to_deg = 180.0 / np.pi
-    deg_to_rad = np.pi / 180.0
-
-    # Cache costs for the current state at k
-    costs = np.zeros(n_tracks)
-    for i in range(n_tracks):
-        costs[i] = _get_cost(tracks, k, i, features_lat, features_lon, w1, w2, phimax)
-
-    for i in range(n_tracks):
-        for j in range(i + 1, n_tracks):
-            # Points currently at target_k
-            p_i_orig = tracks[i, target_k]
-            p_j_orig = tracks[j, target_k]
-
-            if p_i_orig == p_j_orig:
-                continue
-
-            # 1. Check displacement constraints
-            valid_swap = True
-
-            # For track i
-            idx_i_k = tracks[i, k]
-            if idx_i_k != -1 and p_j_orig != -1:
-                lat_k, lon_k = features_lat[idx_i_k], features_lon[idx_i_k]
-                lat_t, lon_t = features_lat[p_j_orig], features_lon[p_j_orig]
-                dmax_i = 0.5 * (
-                    get_regional_dmax(lat_k, lon_k, zones, default_dmax)
-                    + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
-                )
-                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_i * deg_to_rad:
-                    valid_swap = False
-
-            # For track j
-            idx_j_k = tracks[j, k]
-            if valid_swap and idx_j_k != -1 and p_i_orig != -1:
-                lat_k, lon_k = features_lat[idx_j_k], features_lon[idx_j_k]
-                lat_t, lon_t = features_lat[p_i_orig], features_lon[p_i_orig]
-                dmax_j = 0.5 * (
-                    get_regional_dmax(lat_k, lon_k, zones, default_dmax)
-                    + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
-                )
-                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_j * deg_to_rad:
-                    valid_swap = False
-
-            if not valid_swap:
-                continue
-
-            # 2. Check max_missing constraint
-            tracks[i, target_k] = p_j_orig
-            tracks[j, target_k] = p_i_orig
-
-            if not _check_max_missing(tracks[i], max_missing) or not _check_max_missing(
-                tracks[j], max_missing
-            ):
-                tracks[i, target_k] = p_i_orig
-                tracks[j, target_k] = p_j_orig
-                continue
-
-            # 3. Calculate potential costs after swap
-            new_cost_i = _get_cost(
-                tracks, k, i, features_lat, features_lon, w1, w2, phimax
-            )
-            new_cost_j = _get_cost(
-                tracks, k, j, features_lat, features_lon, w1, w2, phimax
-            )
-
-            # 4. Check dynamic smoothness constraints
-            if tracks[i, k - 1] != -1 and tracks[i, k] != -1 and tracks[i, k + 1] != -1:
-                d1 = geod_dist(
-                    features_lat[tracks[i, k - 1]],
-                    features_lon[tracks[i, k - 1]],
-                    features_lat[tracks[i, k]],
-                    features_lon[tracks[i, k]],
-                )
-                d2 = geod_dist(
-                    features_lat[tracks[i, k]],
-                    features_lon[tracks[i, k]],
-                    features_lat[tracks[i, k + 1]],
-                    features_lon[tracks[i, k + 1]],
-                )
-                phi_max_i = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
-                )
-                if new_cost_i > phi_max_i:
-                    valid_swap = False
-
-            if (
-                valid_swap
-                and tracks[j, k - 1] != -1
-                and tracks[j, k] != -1
-                and tracks[j, k + 1] != -1
-            ):
-                d1 = geod_dist(
-                    features_lat[tracks[j, k - 1]],
-                    features_lon[tracks[j, k - 1]],
-                    features_lat[tracks[j, k]],
-                    features_lon[tracks[j, k]],
-                )
-                d2 = geod_dist(
-                    features_lat[tracks[j, k]],
-                    features_lon[tracks[j, k]],
-                    features_lat[tracks[j, k + 1]],
-                    features_lon[tracks[j, k + 1]],
-                )
-                phi_max_j = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
-                )
-                if new_cost_j > phi_max_j:
-                    valid_swap = False
-
-            if valid_swap:
-                gain = (costs[i] + costs[j]) - (new_cost_i + new_cost_j)
-                if gain > best_gain:
-                    best_gain = gain
-                    best_i = i
-                    best_j = j
-
-            # Revert swap for next pair check
-            tracks[i, target_k] = p_i_orig
-            tracks[j, target_k] = p_i_orig
-
-    return best_i, best_j
-
-
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
-def _initial_break_pass(
-    tracks: NDArray[np.int64],
-    features_lat: NDArray[np.float64],
-    features_lon: NDArray[np.float64],
-    w1: float,
-    w2: float,
-    phimax: float,
-    adapt_thresholds: NDArray[np.float64],
-    adapt_values: NDArray[np.float64],
-) -> NDArray[np.int64]:
-    """
-    Identifies tracks that violate smoothness constraints after initial linking
-    and breaks them into separate tracks.
-    """
-    n_tracks, n_frames = tracks.shape
-    new_tracks_list = []
-    rad_to_deg = 180.0 / np.pi
-
-    for i in range(n_tracks):
-        current_track = tracks[i]
-        last_break = 0
-        for k in range(1, n_frames - 1):
-            if (
-                current_track[k - 1] != -1
-                and current_track[k] != -1
-                and current_track[k + 1] != -1
-            ):
-                cost = geod_dev(
-                    features_lat[current_track[k - 1]],
-                    features_lon[current_track[k - 1]],
-                    features_lat[current_track[k]],
-                    features_lon[current_track[k]],
-                    features_lat[current_track[k + 1]],
-                    features_lon[current_track[k + 1]],
-                    w1,
-                    w2,
-                )
-
-                d1 = geod_dist(
-                    features_lat[current_track[k - 1]],
-                    features_lon[current_track[k - 1]],
-                    features_lat[current_track[k]],
-                    features_lon[current_track[k]],
-                )
-                d2 = geod_dist(
-                    features_lat[current_track[k]],
-                    features_lon[current_track[k]],
-                    features_lat[current_track[k + 1]],
-                    features_lon[current_track[k + 1]],
-                )
-                phi_max = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
-                )
-
-                if cost > phi_max:
-                    # Break track at point k
-                    new_tr = np.full(n_frames, -1, dtype=np.int64)
-                    new_tr[last_break : k + 1] = current_track[last_break : k + 1]
-                    new_tracks_list.append(new_tr)
-                    last_break = k + 1
-
-        # Add remaining part
-        new_tr = np.full(n_frames, -1, dtype=np.int64)
-        new_tr[last_break:] = current_track[last_break:]
-        new_tracks_list.append(new_tr)
-
-    # Convert list to 2D array
-    out = np.full((len(new_tracks_list), n_frames), -1, dtype=np.int64)
-    for i in range(len(new_tracks_list)):
-        out[i] = new_tracks_list[i]
-    return out
 
 
 class HodgesLinker:
     """
     Implements the Modified Greedy Exchange (MGE) tracking algorithm.
+
+    The MGE algorithm (Hodges 1999) optimizes trajectories by iteratively
+    swapping feature points between tracks to minimize a global smoothness cost.
+    It supports adaptive search radii and smoothness constraints.
     """
 
     def __init__(
@@ -321,6 +35,18 @@ class HodgesLinker:
         adapt_thresholds: NDArray[np.float64] | None = None,
         adapt_values: NDArray[np.float64] | None = None,
     ) -> None:
+        """
+        Initialize the MGE linker.
+
+        Args:
+            w1, w2: Weights for the cost function.
+            dmax: Default maximum displacement (degrees).
+            phimax: Penalty for phantom points in the cost function.
+            n_iterations: Maximum number of MGE passes.
+            max_missing: Maximum consecutive phantom points allowed.
+            zones: Regional dmax definitions.
+            adapt_thresholds, adapt_values: Piecewise linear adaptive smoothness.
+        """
         self.w1 = w1
         self.w2 = w2
         self.dmax = dmax
@@ -328,7 +54,7 @@ class HodgesLinker:
         self.n_iterations = n_iterations
         self.max_missing = max_missing
 
-        # Ensure Numba-compatible arrays
+        # Ensure Numba-compatible contiguous arrays
         if zones is None:
             self.zones = np.zeros((0, 5), dtype=np.float64)
         else:
@@ -347,11 +73,20 @@ class HodgesLinker:
             self.adapt_values = np.ascontiguousarray(adapt_values, dtype=np.float64)
 
     def link(self, detections: list[RawDetectionStep]) -> Tracks:
+        """
+        Links raw detections into trajectories using MGE optimization.
+
+        Args:
+            detections: List of (time, lats, lons, values) for each frame.
+
+        Returns:
+            A Tracks object containing the optimized trajectories.
+        """
         n_frames = len(detections)
         if n_frames < 2:
             return Tracks()
 
-        # 1. Flatten features and store offsets
+        # 1. Flatten features and store offsets for mapping to track matrix
         all_lats: list[float] = []
         all_lons: list[float] = []
         all_vals: list[float] = []
@@ -369,7 +104,8 @@ class HodgesLinker:
         features_lon = np.array(all_lons, dtype=np.float64)
         features_val = np.array(all_vals, dtype=np.float64)
 
-        # 2. Initial Linking (Nearest Neighbor)
+        # 2. Initial Linking (Greedy Nearest Neighbor)
+        # Seed tracks with points from the first frame
         n_init = step_offsets[1]
         track_matrix = np.full((n_init, n_frames), -1, dtype=np.int64)
         for i in range(n_init):
@@ -382,6 +118,7 @@ class HodgesLinker:
             features_kp1 = np.arange(step_offsets[k + 1], step_offsets[k + 2])
             used_kp1 = np.zeros(len(features_kp1), dtype=bool)
 
+            # Match existing track tails to features in the next frame
             for t_idx in range(current_n_tracks):
                 idx_k = track_matrix[t_idx, k]
                 if idx_k == -1:
@@ -392,6 +129,8 @@ class HodgesLinker:
                 for f_idx, f_global in enumerate(features_kp1):
                     if used_kp1[f_idx]:
                         continue
+
+                    # Determine effective dmax based on zones
                     dmax_eff = 0.5 * (
                         get_regional_dmax(
                             features_lat[idx_k],
@@ -406,6 +145,7 @@ class HodgesLinker:
                             self.dmax,
                         )
                     )
+
                     dist = geod_dist(
                         features_lat[idx_k],
                         features_lon[idx_k],
@@ -419,7 +159,7 @@ class HodgesLinker:
                     track_matrix[t_idx, k + 1] = features_kp1[best_feat]
                     used_kp1[best_feat] = True
 
-            # Features in k+1 not linked become new tracks
+            # Unlinked features start new tracks
             unlinked_indices = []
             for i in range(len(features_kp1)):
                 if not used_kp1[i]:
@@ -435,6 +175,7 @@ class HodgesLinker:
                 current_n_tracks += len(unlinked_indices)
 
         # 3. Initial Smoothness Breaking Pass
+        # Breaks tracks that violate adaptive smoothness right after linking
         track_matrix = _initial_break_pass(
             track_matrix,
             features_lat,
@@ -446,10 +187,10 @@ class HodgesLinker:
             self.adapt_values,
         )
 
-        # 4. MGE Optimization (Iterate until convergence or max iterations)
+        # 4. MGE Optimization (Iterate until convergence)
         for _ in range(self.n_iterations):
             changed = False
-            # Forward Pass
+            # Forward Pass: optimize from start to end
             for k in range(1, n_frames - 1):
                 while True:
                     best_i, _ = _mge_iteration(
@@ -471,7 +212,7 @@ class HodgesLinker:
                         changed = True
                     else:
                         break
-            # Backward Pass
+            # Backward Pass: optimize from end to start
             for k in range(n_frames - 2, 0, -1):
                 while True:
                     best_i, _ = _mge_iteration(
@@ -496,7 +237,7 @@ class HodgesLinker:
             if not changed:
                 break
 
-        # 5. Convert track_matrix back to Tracks model
+        # 5. Convert track_matrix back to PyStormTracker's Tracks model
         tracks = Tracks()
         times = [d[0] for d in detections]
         for t_idx in range(track_matrix.shape[0]):
@@ -505,7 +246,7 @@ class HodgesLinker:
             for k in range(n_frames):
                 f_idx = track_matrix[t_idx, k]
                 if f_idx != -1:
-                    # If we have a gap larger than max_missing, split the track
+                    # Enforce max_missing if tracks were merged during MGE
                     if consecutive_missing > self.max_missing and centers:
                         tracks.add_track(centers)
                         centers = []
