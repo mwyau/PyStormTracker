@@ -6,10 +6,10 @@ import sys
 import time
 
 try:
-    from pystormtracker.utils.data_utils import fetch_era5_msl
+    from pystormtracker.utils.data import fetch_era5_msl
 except ImportError:
     sys.path.insert(0, os.path.abspath("src"))
-    from pystormtracker.utils.data_utils import fetch_era5_msl
+    from pystormtracker.utils.data import fetch_era5_msl
 
 
 def parse_output(output: str, version: str) -> dict[str, float]:

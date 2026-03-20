@@ -670,7 +670,7 @@ def _break_track(
             tracks[track_idx, target_k:] = -1
         else:
             # Move k-1 backwards to a new track
-            new_tr[: k] = tracks[track_idx, :k]
+            new_tr[:k] = tracks[track_idx, :k]
             tracks[track_idx, :k] = -1
 
         # Append new track as a new row

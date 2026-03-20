@@ -10,7 +10,7 @@ import pytest
 
 from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
-from pystormtracker.utils.data_utils import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.utils.data import fetch_era5_msl, fetch_era5_vo850
 
 N_WORKERS = 2
 

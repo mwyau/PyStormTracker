@@ -63,6 +63,13 @@ Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an
 
 ---
 
+## 4. Modernization Strategy
+
+- **Numba JIT**: All heavy mathematical loops (MGE, CCL, Geodesic math) are implemented as GIL-free, cache-enabled Numba kernels. This allows Python to match or exceed the speed of the original C code.
+- **Xarray/NetCDF**: Legacy binary/ASCII I/O is replaced with Xarray, enabling seamless integration with climate data ecosystems (ERA5, CMIP6).
+- **CLI**: A modern argparse-based CLI replaces the interactive `scanf`-heavy prompts of the original TRACK binary, facilitating HPC batch processing.
+- **Phantom Points**: Maintained the concept of "phantom" points (-1 index) to handle missing frames and initialization of tracks of varying lengths, ensuring the MGE matrix remains rectangular.
+
 ---
 
 ## 5. Known Differences & Parity Status

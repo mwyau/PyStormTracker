@@ -50,6 +50,7 @@ class SimpleTracker:
         mode: Literal["min", "max"],
         threshold: float | None = None,
         engine: str | None = None,
+        **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
 
@@ -57,7 +58,10 @@ class SimpleTracker:
         detector = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
-        raw_steps = _detect_and_link(detector, size=5, threshold=threshold, mode=mode)
+        size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+        raw_steps = _detect_and_link(
+            detector, size=size, threshold=threshold, mode=mode
+        )
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0:.4f}s")
 
@@ -103,7 +107,13 @@ class SimpleTracker:
             from .concurrent import run_simple_mpi
 
             tracks = run_simple_mpi(
-                infile, varname, time_range, mode, threshold=threshold, engine=engine
+                infile,
+                varname,
+                time_range,
+                mode,
+                threshold=threshold,
+                engine=engine,
+                **kwargs,
             )
         elif backend == "dask":
             from .concurrent import run_simple_dask
@@ -117,10 +127,17 @@ class SimpleTracker:
                 max_chunk_size=max_chunk_size,
                 threshold=threshold,
                 engine=engine,
+                **kwargs,
             )
         else:
             tracks = self._detect_serial(
-                infile, varname, time_range, mode, threshold=threshold, engine=engine
+                infile,
+                varname,
+                time_range,
+                mode,
+                threshold=threshold,
+                engine=engine,
+                **kwargs,
             )
 
         t_end = timeit.default_timer()

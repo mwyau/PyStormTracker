@@ -22,6 +22,7 @@ def run_simple_dask(
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
+    **kwargs: float | int | str | None,
 ) -> Tracks:
     import dask
 
@@ -55,8 +56,9 @@ def run_simple_dask(
         f"tasks (across {n_workers} threads)"
     )
 
+    size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
     tasks = [
-        dask.delayed(_detect_and_link)(d, 5, threshold, mode)  # type: ignore[attr-defined]
+        dask.delayed(_detect_and_link)(d, size, threshold, mode)  # type: ignore[attr-defined]
         for d in detectors
     ]
 
@@ -86,6 +88,7 @@ def run_simple_mpi(
     mode: Literal["min", "max"],
     threshold: float | None = None,
     engine: str | None = None,
+    **kwargs: float | int | str | None,
 ) -> Tracks:
     from mpi4py import MPI
 
@@ -109,7 +112,10 @@ def run_simple_mpi(
         print(f"    [MPI] Prep & Scatter time: {t_scatter - t0:.4f}s")
 
     t1 = timeit.default_timer()
-    raw_chunk = _detect_and_link(detector, size=5, threshold=threshold, mode=mode)
+    ext_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+    raw_chunk = _detect_and_link(
+        detector, size=ext_size, threshold=threshold, mode=mode
+    )
     # t2 = timeit.default_timer()
     # print(f"    [MPI Rank {rank}] Task execution time: {t2 - t1:.4f}s")
 
