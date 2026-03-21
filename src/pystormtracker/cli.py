@@ -40,7 +40,7 @@ def run_tracker(
     algorithm: Algorithm = "simple",
     output_format: str = "imilast",
     # Hodges-specific
-    min_points: int = 1,
+    min_points: int = constants.MIN_POINTS_DEFAULT,
     w1: float | None = None,
     w2: float | None = None,
     dmax: float | None = None,
@@ -51,6 +51,7 @@ def run_tracker(
     filter: bool = True,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
+    taper_points: int = constants.TAPER_DEFAULT,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}

@@ -48,7 +48,7 @@ class SimpleTracker:
         data: xr.DataArray,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = 10,
+        taper_points: int = constants.TAPER_DEFAULT,
     ) -> xr.DataArray:
         """
         Applies standard spectral preprocessing.
@@ -126,6 +126,7 @@ class SimpleTracker:
         filter: bool = True,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
+        taper_points: int = constants.TAPER_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit

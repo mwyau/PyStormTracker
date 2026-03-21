@@ -88,7 +88,7 @@ class HodgesTracker(Tracker):
         data: xr.DataArray,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = 10,
+        taper_points: int = constants.TAPER_DEFAULT,
     ) -> xr.DataArray:
         """
         Applies standard TRACK preprocessing: Tapering -> Spherical Harmonic Filter.
@@ -165,7 +165,7 @@ class HodgesTracker(Tracker):
         threshold: float | None = None,
         engine: str | None = None,
         overlap: int = 3,
-        min_points: int = 1,
+        min_points: int = constants.MIN_POINTS_DEFAULT,
         filter: bool = True,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
@@ -243,7 +243,7 @@ class HodgesTracker(Tracker):
         data: xr.DataArray,
         mode: Literal["min", "max"] = "min",
         threshold: float | None = None,
-        min_points: int = 1,
+        min_points: int = constants.MIN_POINTS_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         # 1. Detection
