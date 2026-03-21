@@ -31,6 +31,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Force a generic architecture for SHTns builds to ensure portability across CI runners
+  CFLAGS: "-O3 -march=x86-64"
+
 jobs:
   ruff-lint:
     runs-on: ubuntu-24.04
