@@ -221,18 +221,28 @@ class SimpleDetector:
             if s_idx >= e_idx:
                 continue
 
-            detectors.append(
-                SimpleDetector(
-                    self.pathname,
-                    self.requested_varname,
-                    time_range=TimeRange(
-                        start=time_values[s_idx], end=time_values[e_idx - 1]
-                    ),
-                    global_start_idx=s_idx,
-                    global_total_steps=total_len,
-                    engine=self._loader.engine,
+            if self.pathname == Path("in-memory") and self._data is not None:
+                # Preserve in-memory data for split detectors
+                new_obj = SimpleDetector.from_xarray(self._data)
+                new_obj.time_range = TimeRange(
+                    start=time_values[s_idx], end=time_values[e_idx - 1]
                 )
-            )
+                new_obj.global_start_idx = s_idx
+                new_obj.global_total_steps = total_len
+                detectors.append(new_obj)
+            else:
+                detectors.append(
+                    SimpleDetector(
+                        self.pathname,
+                        self.requested_varname,
+                        time_range=TimeRange(
+                            start=time_values[s_idx], end=time_values[e_idx - 1]
+                        ),
+                        global_start_idx=s_idx,
+                        global_total_steps=total_len,
+                        engine=self._loader.engine,
+                    )
+                )
         return detectors
 
     def detect(
