@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Universal Preprocessing Defaults
-TAPER_POINTS_DEFAULT = 10
+TAPER_POINTS_DEFAULT = 0
 LMIN_DEFAULT = 5
 LMAX_DEFAULT = 42
 
