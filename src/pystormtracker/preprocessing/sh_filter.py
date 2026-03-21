@@ -169,7 +169,7 @@ def apply_sh_filter(
     Applies a spherical harmonic bandpass filter to the input data using SHTns.
 
     Args:
-        data (xr.DataArray): Input data with dimensions containing 'lat' and 'lon'.
+        data (xr.DataArray): Input data with lat/lon dimensions.
         lmin (int): Minimum total wave number to retain. Defaults to 5.
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
@@ -178,23 +178,32 @@ def apply_sh_filter(
     Returns:
         xr.DataArray: The filtered data.
     """
-    if "lat" not in data.dims or "lon" not in data.dims:
-        raise ValueError("Input DataArray must have 'lat' and 'lon' dimensions.")
+    from ..io.loader import DataLoader
+
+    # Identify spatial dimensions
+    lat_dim = next((c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None)
+    lon_dim = next((c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None)
+
+    if not lat_dim or not lon_dim:
+        raise ValueError(
+            f"Input DataArray must have latitude and longitude dimensions. "
+            f"Found: {list(data.dims)}"
+        )
 
     kwargs = {"lmin": lmin, "lmax": lmax, "lat_reverse": lat_reverse}
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 
-    if backend == "dask":
-        if not data.chunks:
-            warnings.warn(
-                "Backend is 'dask' but data is not chunked. Proceeding serially.",
-                stacklevel=2,
-            )
-        else:
+    if data.chunks:
+        # If data is chunked, we must allow or parallelize dask handling
+        if backend == "dask":
             # Prevent OpenMP oversubscription when Dask is handling parallelism
             os.environ.setdefault("OMP_NUM_THREADS", "1")
             dask_mode = "parallelized"
-    elif backend == "mpi":
+        else:
+            # For serial or MPI with chunked data, use 'allowed' to run on chunks
+            dask_mode = "allowed"
+
+    if backend == "mpi":
         try:
             from mpi4py import MPI
 
@@ -206,7 +215,7 @@ def apply_sh_filter(
             size = comm.Get_size()
 
             # Find the time dimension to split across
-            time_dims = [d for d in data.dims if d not in ("lat", "lon")]
+            time_dims = [d for d in data.dims if d not in (lat_dim, lon_dim)]
             if time_dims:
                 time_dim = time_dims[0]
                 total_len = len(data[time_dim])
@@ -214,7 +223,7 @@ def apply_sh_filter(
                 remainder = total_len % size
 
                 s_idx = rank * chunk_size + min(rank, remainder)
-                e_idx = (rank + 1) * chunk_size + min(rank, remainder)
+                e_idx = (rank + 1) * chunk_size + min(rank + 1, remainder)
 
                 if s_idx < e_idx:
                     data = data.isel({time_dim: slice(s_idx, e_idx)})
@@ -231,8 +240,8 @@ def apply_sh_filter(
         xr.apply_ufunc(
             _filter_shtns_frame,
             data,
-            input_core_dims=[["lat", "lon"]],
-            output_core_dims=[["lat", "lon"]],
+            input_core_dims=[[lat_dim, lon_dim]],
+            output_core_dims=[[lat_dim, lon_dim]],
             vectorize=True,
             kwargs=kwargs,
             dask=dask_mode,

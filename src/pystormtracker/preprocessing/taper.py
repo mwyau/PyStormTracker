@@ -58,19 +58,29 @@ class TaperFilter:
 
     def _filter_xarray(self, data: xr.DataArray) -> xr.DataArray:
         """Applies tapering to an xarray DataArray."""
-        if "lat" not in data.dims or "lon" not in data.dims:
-            raise ValueError("Input DataArray must have 'lat' and 'lon' dimensions.")
+        from ..io.loader import DataLoader
 
-        ny = len(data.lat)
-        nx = len(data.lon)
+        # Identify dimensions
+        coords = data.coords
+        lat_dim = next((c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None)
+        lon_dim = next((c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None)
+
+        if not lat_dim or not lon_dim:
+            raise ValueError(
+                f"Input DataArray must have latitude and longitude dimensions. "
+                f"Found: {list(data.dims)}"
+            )
+
+        ny = len(data[lat_dim])
+        nx = len(data[lon_dim])
         taper_y = self._get_taper(ny)
         taper_x = self._get_taper(nx)
 
         # Mask as a DataArray for easy broadcasting
         mask = xr.DataArray(
             np.outer(taper_y, taper_x),
-            dims=("lat", "lon"),
-            coords={"lat": data.lat, "lon": data.lon},
+            dims=(lat_dim, lon_dim),
+            coords={lat_dim: data[lat_dim], lon_dim: data[lon_dim]},
         )
 
         return data * mask

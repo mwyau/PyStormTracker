@@ -156,6 +156,38 @@ class SimpleDetector:
             times = ds[time_dim]
         return np.asarray(times.values).astype("datetime64[s]")
 
+    def get_xarray(
+        self,
+        start_time: str | np.datetime64 | None = None,
+        end_time: str | np.datetime64 | None = None,
+    ) -> xr.DataArray:
+        """Returns the requested data range as an xarray DataArray."""
+        self._ensure_open()
+        assert self._data is not None
+        time_dim, _, _ = self._loader.get_coords()
+
+        if start_time and end_time:
+            return self._data.sel({time_dim: slice(start_time, end_time)})
+        elif self.time_range:
+            return self._data.sel(
+                {time_dim: slice(self.time_range.start, self.time_range.end)}
+            )
+        return self._data
+
+    @classmethod
+    def from_xarray(cls, data: xr.DataArray) -> SimpleDetector:
+        """Creates a detector from an existing xarray DataArray."""
+        obj = cls.__new__(cls)
+        obj.requested_varname = str(data.name) if data.name else "var"
+        obj.varname = obj.requested_varname
+        obj._data = data
+        obj._loader = DataLoader(pathname="in-memory", data=data)
+        obj.pathname = Path("in-memory")
+        obj.time_range = None
+        obj.global_start_idx = 0
+        obj.global_total_steps = None
+        return obj
+
     def split(self, num: int) -> list[SimpleDetector]:
         self._ensure_open()
         time_name, _, _ = self._loader.get_coords()

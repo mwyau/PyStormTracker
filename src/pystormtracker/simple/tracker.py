@@ -42,6 +42,34 @@ class SimpleTracker:
     A tracker implementing the PyStormTracker simple parallel algorithm.
     """
 
+    def preprocess_standard_track(
+        self,
+        data: xr.DataArray,
+        lmin: int = 5,
+        lmax: int = 42,
+        taper_points: int = 10,
+    ) -> xr.DataArray:
+        """
+        Applies standard spectral preprocessing.
+        """
+        from ..preprocessing.sh_filter import SphericalHarmonicFilter
+        from ..preprocessing.taper import TaperFilter
+
+        # Ensure data is loaded into memory for spectral filtering
+        if data.chunks:
+            data = data.compute()
+
+        # 1. Tapering
+        if taper_points > 0:
+            taper = TaperFilter(n_points=taper_points)
+            data = taper.filter(data)
+
+        # 2. Spectral Filtering
+        sh_filter = SphericalHarmonicFilter(lmin=lmin, lmax=lmax)
+        data = sh_filter.filter(data)
+
+        return data
+
     def _detect_serial(
         self,
         infile: str,
@@ -50,14 +78,23 @@ class SimpleTracker:
         mode: Literal["min", "max"],
         threshold: float | None = None,
         engine: str | None = None,
+        filter: bool = True,
+        lmin: int = 5,
+        lmax: int = 42,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
 
         t0 = timeit.default_timer()
-        detector = SimpleDetector(
+        detector_peek = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
+        data_xr = detector_peek.get_xarray()
+
+        if filter:
+            data_xr = self.preprocess_standard_track(data_xr, lmin=lmin, lmax=lmax)
+
+        detector = SimpleDetector.from_xarray(data_xr)
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
         raw_steps = _detect_and_link(
             detector, size=size, threshold=threshold, mode=mode
@@ -66,7 +103,7 @@ class SimpleTracker:
         print(f"    [Serial] Detection time: {t1 - t0:.4f}s")
 
         t2 = timeit.default_timer()
-        tracks = _link_centers(raw_steps, time_range=detector.time_range)
+        tracks = _link_centers(raw_steps, time_range=detector_peek.time_range)
         t3 = timeit.default_timer()
         print(f"    [Serial] Linking time: {t3 - t2:.4f}s")
         return tracks
@@ -85,6 +122,9 @@ class SimpleTracker:
         engine: str | None = None,
         overlap: int = 3,
         min_points: int = 1,
+        filter: bool = True,
+        lmin: int = 5,
+        lmax: int = 42,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -113,6 +153,9 @@ class SimpleTracker:
                 mode,
                 threshold=threshold,
                 engine=engine,
+                filter=filter,
+                lmin=lmin,
+                lmax=lmax,
                 **kwargs,
             )
         elif backend == "dask":
@@ -127,6 +170,9 @@ class SimpleTracker:
                 max_chunk_size=max_chunk_size,
                 threshold=threshold,
                 engine=engine,
+                filter=filter,
+                lmin=lmin,
+                lmax=lmax,
                 **kwargs,
             )
         else:
@@ -137,6 +183,9 @@ class SimpleTracker:
                 mode,
                 threshold=threshold,
                 engine=engine,
+                filter=filter,
+                lmin=lmin,
+                lmax=lmax,
                 **kwargs,
             )
 

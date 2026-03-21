@@ -47,6 +47,9 @@ def run_tracker(
     n_iterations: int | None = None,
     min_lifetime: int | None = None,
     max_missing: int | None = None,
+    filter: bool = True,
+    lmin: int = 5,
+    lmax: int = 42,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -133,6 +136,9 @@ def run_tracker(
         threshold=threshold,
         engine=engine,
         min_points=min_points,
+        filter=filter,
+        lmin=lmin,
+        lmax=lmax,
     )
 
     # Export Phase
@@ -198,6 +204,23 @@ def parse_args() -> Namespace:
         default=None,
         help="Intensity threshold for features.",
     )
+
+    # Filtering Options (Mutually Exclusive)
+    filter_group = general.add_mutually_exclusive_group()
+    filter_group.add_argument(
+        "--filter-range",
+        type=str,
+        default="5-42",
+        help="Spectral filter range (min-max). Default '5-42'.",
+    )
+    filter_group.add_argument(
+        "--no-filter",
+        action="store_false",
+        dest="filter",
+        help="Disable default T5-42 spectral filtering.",
+    )
+    parser.set_defaults(filter=True)
+
     general.add_argument(
         "-n", "--num", type=int, help="Number of time steps to process."
     )
@@ -306,6 +329,17 @@ def main() -> None:
         start_time = times[0]
         end_time = times[num - 1]
 
+    lmin, lmax = 5, 42
+    if args.filter and args.filter_range:
+        try:
+            parts = args.filter_range.split("-")
+            if len(parts) == 2:
+                lmin, lmax = int(parts[0]), int(parts[1])
+            elif len(parts) == 1:
+                lmax = int(parts[0])
+        except ValueError:
+            print(f"Warning: Could not parse filter-range '{args.filter_range}'. Using 5-42.")
+
     run_tracker(
         infile=args.input,
         varname=args.var,
@@ -329,7 +363,11 @@ def main() -> None:
         n_iterations=args.iterations,
         min_lifetime=args.min_lifetime,
         max_missing=args.max_missing,
+        filter=args.filter,
+        lmin=lmin,
+        lmax=lmax,
     )
+
 
 
 if __name__ == "__main__":

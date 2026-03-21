@@ -22,6 +22,9 @@ def run_simple_dask(
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
+    filter: bool = True,
+    lmin: int = 5,
+    lmax: int = 42,
     **kwargs: float | int | str | None,
 ) -> Tracks:
     import dask
@@ -29,12 +32,19 @@ def run_simple_dask(
     if n_workers is None or n_workers <= 0:
         n_workers = min(os.cpu_count() or 1, 4)
 
-    detector_obj = SimpleDetector(
+    detector_peek = SimpleDetector(
         pathname=infile, varname=varname, time_range=time_range, engine=engine
     )
+    data_xr = detector_peek.get_xarray()
+
+    if filter:
+        from .tracker import SimpleTracker
+
+        data_xr = SimpleTracker().preprocess_standard_track(data_xr, lmin=lmin, lmax=lmax)
+
+    detector_obj = SimpleDetector.from_xarray(data_xr)
 
     # Decouple task chunks from worker count to prevent OOM on high-res data.
-    # We aim to split the total dataset evenly among the workers.
     times = detector_obj.get_time()
     total_steps = len(times) if times is not None else 1
 
@@ -65,7 +75,6 @@ def run_simple_dask(
     all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)  # type: ignore[attr-defined]
 
     # Flatten chunks into a single sequence of steps
-    # They are gathered in the order of the futures list (sorted by split)
     all_raw_steps: list[RawDetectionStep] = [
         step for chunk in all_raw_chunks for step in chunk
     ]
@@ -88,6 +97,9 @@ def run_simple_mpi(
     mode: Literal["min", "max"],
     threshold: float | None = None,
     engine: str | None = None,
+    filter: bool = True,
+    lmin: int = 5,
+    lmax: int = 42,
     **kwargs: float | int | str | None,
 ) -> Tracks:
     from mpi4py import MPI
@@ -99,9 +111,19 @@ def run_simple_mpi(
 
     t0 = timeit.default_timer()
     if rank == root:
-        detector_obj = SimpleDetector(
+        detector_peek = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
+        data_xr = detector_peek.get_xarray()
+
+        if filter:
+            from .tracker import SimpleTracker
+
+            data_xr = SimpleTracker().preprocess_standard_track(
+                data_xr, lmin=lmin, lmax=lmax
+            )
+
+        detector_obj = SimpleDetector.from_xarray(data_xr)
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
     else:
         detectors = None
@@ -116,8 +138,6 @@ def run_simple_mpi(
     raw_chunk = _detect_and_link(
         detector, size=ext_size, threshold=threshold, mode=mode
     )
-    # t2 = timeit.default_timer()
-    # print(f"    [MPI Rank {rank}] Task execution time: {t2 - t1:.4f}s")
 
     # Gather all raw chunks at root
     all_raw_chunks = comm.gather(raw_chunk, root=root)
@@ -135,5 +155,5 @@ def run_simple_mpi(
         print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
         return tracks
 
-    # Non-root ranks return empty Tracks (orchestrated by cli.py)
+    # Non-root ranks return empty Tracks
     return Tracks()
