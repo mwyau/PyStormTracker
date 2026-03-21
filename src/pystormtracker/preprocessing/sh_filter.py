@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Literal, cast, overload
 
 import numpy as np
-import shtns
+import shtns  # type: ignore[import-untyped]
 import xarray as xr
 from numpy.typing import NDArray
 
@@ -44,7 +44,7 @@ def _filter_shtns_frame(
             f"Unsupported shape for SH filter: {frame.shape}. "
             f"Grid resolution (lmax={grid_lmax}) is too low for lmin={lmin}."
         )
-    
+
     # Ensure frame is contiguous for SHTns C-routines
     frame = np.ascontiguousarray(frame, dtype=np.float64)
 
