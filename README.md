@@ -10,6 +10,10 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
+<p align="center">
+  <img src="docs/era5_msl_nh.png" width="600" alt="PyStormTracker Example">
+</p>
+
 **PyStormTracker** is a Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and the "Hodges (TRACK)" algorithm with adaptive constraints described in **Hodges (1999)**. It provides a scalable framework for processing large-scale climate datasets like ERA5.
 
 Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently process large-scale climate datasets.
