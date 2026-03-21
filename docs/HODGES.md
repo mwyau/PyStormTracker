@@ -23,7 +23,7 @@ Original TRACK identifies "objects" (contiguous clusters of grid points exceedin
 
 ### 1.3 Connected Component Labeling (CCL)
 **Design Choice**: Implemented `_numba_ccl` using **iterative label propagation** rather than TRACK's quad-tree approach.
-- **References**: `hierarc_segment.c`, `form_objects.c`.
+- **References**: *Hodges 1994*, Section 3; `hierarc_segment.c`, `form_objects.c`.
 
 **Parity Status**: **Identical**. Both methods produce identical object masks. The Numba version is more efficient on flat-memory architectures and avoids the pointer-based recursion of the original C code.
 
@@ -40,20 +40,20 @@ Original TRACK identifies "objects" (contiguous clusters of grid points exceedin
 ### 2.1 Spherical Cost Function ($\psi$)
 **Mathematical Formula**:
 $$\psi = 0.5 w_1 [1 - \mathbf{\hat{T}}_1 \cdot \mathbf{\hat{T}}_2] + w_2 \left[ 1 - \frac{2\sqrt{d_1 d_2}}{d_1 + d_2} \right]$$
-- **References**: *Hodges 1995*; `geod_dev.c`, `devn.c`.
+- **References**: *Hodges 1999*, Section 3, Equation 6; `geod_dev.c`, `devn.c`.
 
 **Reasoning**: 
 The $0.5$ factor applied to the directional weight $w_1$ normalizes the term (range 0 to 2) to [0, 1], ensuring that if $w_1 + w_2 = 1$, the total cost $\psi$ is also bounded by 1.0.
 
 ### 2.2 Modified Greedy Exchange (MGE Optimization)
 **Design Choice**: Implemented alternating forward/backward passes with **one best swap per frame**.
-- **References**: *Hodges 1999*, Section 2; `fel_mge.c`, `mge_tracks.c`, `initialize_mge.c`.
+- **References**: *Hodges 1999*, Appendix; `fel_mge.c`, `mge_tracks.c`, `initialize_mge.c`.
 
 **Parity Status**: **Identical**. This implementation fully replicates the recursive "one best swap per frame" logic. Convergence is guaranteed to match the original algorithm's local minimum.
 
 ### 2.3 Physical Constraints & Track Breaking
 **Design Choice**: Integrated displacement checks directly into the MGE passes.
-- **References**: `track_fail.c`, `ub_disp.c`.
+- **References**: *Hodges 1999*, Appendix; `track_fail.c`, `ub_disp.c`.
 
 **Reasoning**: 
 Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an exchange causes a point to exceed the maximum displacement ($d_{max}$). This implementation checks this after each swap, ensuring optimization never creates impossible physical links.
@@ -64,13 +64,13 @@ Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an
 
 ### 3.1 Regional $d_{max}$ (Zones)
 **Implementation**: Passed via `zones` argument during tracker initialization.
-- **References**: *Hodges 1999*, Section 3a; `read_zones.c`.
+- **References**: *Hodges 1999*, Section 5, Table 1; `read_zones.c`.
 
 **Reasoning**: Storms move faster in the extratropics than the tropics. Applying a single $d_{max}$ globally either misses fast mid-latitude storms or creates noise in the tropics.
 
 ### 3.2 Speed-Dependent Smoothness (Adaptive $\psi_{max}$)
 **Implementation**: Passed via `adapt_thresholds` and `adapt_values` arguments during tracker initialization.
-- **References**: *Hodges 1999*, Section 3b; `read_adptp.c`.
+- **References**: *Hodges 1999*, Section 5, Table 1; `read_adptp.c`.
 
 **Reasoning**: As displacement (speed) increases, the directional constraint must become stricter. `PyStormTracker` uses piecewise linear interpolation between the 4 provided threshold/value pairs, matching the logic found in `read_adptp.c`.
 
