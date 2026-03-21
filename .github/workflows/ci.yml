@@ -36,30 +36,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - name: Lint with Ruff
-        run: uv run ruff check .
+      - uses: astral-sh/ruff-action@v3
 
   ruff-format:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - uses: astral-sh/ruff-action@v3
         with:
-          fetch-depth: 0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - name: Check formatting with Ruff
-        run: uv run ruff format --check .
+          args: format --check
 
   mypy-typecheck:
     runs-on: ubuntu-24.04
+    env:
+      CFLAGS: "-O3 -march=x86-64"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -69,7 +59,7 @@ jobs:
         with:
           enable-cache: true
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev libfftw3-dev
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Type check with Mypy
@@ -78,6 +68,8 @@ jobs:
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
     runs-on: ubuntu-24.04
+    env:
+      CFLAGS: "-O3 -march=x86-64"
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +88,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev libfftw3-dev
       - name: Install dependencies
         if: ${{ !matrix.min-deps }}
         run: uv sync --frozen --group dev
@@ -122,6 +114,8 @@ jobs:
   integration-tests:
     name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    env:
+      CFLAGS: ${{ matrix.cflags }}
     strategy:
       fail-fast: false
       matrix:
@@ -129,9 +123,11 @@ jobs:
           - arch: amd64
             os: ubuntu-24.04
             python-version: "3.13"
+            cflags: "-O3 -march=x86-64"
           - arch: arm64
             os: ubuntu-24.04-arm
             python-version: "3.13"
+            cflags: "-O3"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -142,7 +138,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev
+        run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev libfftw3-dev
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
