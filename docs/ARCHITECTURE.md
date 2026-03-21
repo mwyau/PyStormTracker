@@ -89,7 +89,7 @@ For more details on specific planned implementations, see the [Roadmap](ROADMAP.
 
 To quantify the efficiency gains of the modern array-backed JIT architecture, a comprehensive performance comparison was conducted between the legacy object-oriented system (`v0.3.3`) and the current implementation.
 
-Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](benchmark/BENCHMARK.md).
+Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](BENCHMARK.md).
 
 ---
 

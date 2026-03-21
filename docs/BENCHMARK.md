@@ -1,4 +1,4 @@
-# PyStormTracker Benchmark Report
+# PyStormTracker Benchmark
 
 This document provides a detailed breakdown of execution time (in seconds) comparing the legacy nested-object architecture (`v0.3.3`) and the modern, Numba JIT-compiled array architecture (`v0.4.0`).
 

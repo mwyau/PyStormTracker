@@ -1,2 +1,0 @@
-```{include} ../benchmark/BENCHMARK.md
-```
