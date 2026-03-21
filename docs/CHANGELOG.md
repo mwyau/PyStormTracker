@@ -74,6 +74,7 @@
 
 ## v0.3.2 - 2026-03-09
 ### CI/CD
+- Added support for **ARM64** Docker images.
 - Migrated project management to `uv` for deterministic builds and faster dependency resolution.
 - Optimized Docker layer caching for significantly faster image deployments.
 
@@ -95,7 +96,7 @@
 
 ### Refactoring
 - **Xarray Native**: Migrated detection pipeline to use Xarray for coordinate-aware processing.
-- **Strict Typing**: Achieved 100% `mypy` compliance and enforced Python 3.12+ standards.
+- **Strict Typing**: Achieved 100% `mypy` compliance and dropped support for **Python 3.10** (enforced Python 3.11+ standards).
 
 ### Infrastructure
 - Added Read the Docs documentation scaffolding.
