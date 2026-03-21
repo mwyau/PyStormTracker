@@ -55,6 +55,9 @@ netcdf4 = [
 pre = [
     "shtns>=3.7.3",
 ]
+hodges = [
+    "shtns>=3.7.3",
+]
 all = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",

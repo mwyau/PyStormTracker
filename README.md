@@ -64,16 +64,24 @@ You can install the latest stable version of PyStormTracker directly from PyPI:
 
 Using `pip`:
 ```bash
+# Standard installation
 pip install PyStormTracker
+
+# With optional components
+pip install PyStormTracker[hodges]  # Includes SHTns for Hodges algorithm
+pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
+pip install PyStormTracker[grib]    # Includes GRIB support
+pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
+pip install PyStormTracker[all]     # Includes all optional components
 ```
 
 Using `uv`:
 ```bash
 # For use as a CLI tool
-uv tool install PyStormTracker
+uv tool install PyStormTracker --with hodges,mpi
 
 # For use as a library in your project
-uv add PyStormTracker
+uv add PyStormTracker --extra hodges,mpi
 ```
 
 ### From Conda-Forge
@@ -104,7 +112,7 @@ uv sync
 Once installed, you can use the `stormtracker` command directly:
 
 ```bash
-stormtracker -i data.nc -v msl -o my_tracks
+stormtracker -i data.nc -v msl -o my_tracks.txt
 ```
 
 #### Command Line Arguments
@@ -155,11 +163,14 @@ tracks = tracker.track(
 ```
 
 # 3. Analyze the results programmatically
+```
 for track in tracks:
     if len(track) >= 8:
         print(f"Track {track.track_id} lived for {len(track)} steps.")
+```
 
 # 4. Export results
+```
 tracks.write("output.txt", format="imilast")
 ```
 
@@ -232,8 +243,6 @@ If you use this software in your research, please cite the following:
 - **Schaeffer, N.**, 2013: Efficient spherical harmonic transforms aimed at pseudospectral numerical simulations. *Geochem. Geophys. Geosyst.*, **14**, 751–758, [https://doi.org/10.1002/ggge.20071](https://doi.org/10.1002/ggge.20071).
 
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
-
-- **Hodges, K. I.**, 1996: Spherical Nonparametric Estimators Applied to the UGAMP Model Integration for AMIP. *Mon. Wea. Rev.*, **124**, 2914–2932, [https://doi.org/10.1175/1520-0493(1996)124<2914:SNEATT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1996)124<2914:SNEATT>2.0.CO;2).
 
 - **Hodges, K. I.**, 1995: Feature Tracking on the Unit Sphere. *Mon. Wea. Rev.*, **123**, 3458–3465, [https://doi.org/10.1175/1520-0493(1995)123<3458:FTOTUS>2.0.CO;2](https://doi.org/10.1175/1520-0493(1995)123<3458:FTOTUS>2.0.CO;2).
 
