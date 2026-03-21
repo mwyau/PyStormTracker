@@ -52,11 +52,18 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
     ]
 
     tracker = HodgesTracker(min_lifetime=2)
-    # Patch get_time to avoid file opening
-    with patch(
-        "pystormtracker.hodges.detector.HodgesDetector.get_time", return_value=[t0, t1]
+    # Patch get_time and get_xarray to avoid file opening
+    with (
+        patch(
+            "pystormtracker.hodges.detector.HodgesDetector.get_time",
+            return_value=[t0, t1],
+        ),
+        patch(
+            "pystormtracker.hodges.detector.HodgesDetector.get_xarray",
+            return_value=MagicMock(),
+        ),
     ):
-        tracks = tracker.track("dummy.nc", "msl")
+        tracks = tracker.track("dummy.nc", "msl", filter=False)
 
     assert len(tracks) == 1
     assert len(tracks[0]) == 2

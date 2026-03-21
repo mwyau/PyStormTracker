@@ -7,7 +7,7 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..models.tracker import Tracker
-from ..models.tracks import TimeRange, Tracks
+from ..models.tracks import Tracks
 from ..preprocessing.sh_filter import SphericalHarmonicFilter
 from ..preprocessing.taper import TaperFilter
 from . import constants
@@ -84,18 +84,26 @@ class HodgesTracker(Tracker):
             self.adapt_values = adapt_values
 
     def preprocess_standard_track(
-        self, data: xr.DataArray, truncation: int = 42, taper_points: int = 10
+        self,
+        data: xr.DataArray,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
+        taper_points: int = constants.TAPER_DEFAULT,
     ) -> xr.DataArray:
         """
         Applies standard TRACK preprocessing: Tapering -> Spherical Harmonic Filter.
         """
+        # Ensure data is loaded into memory for spectral filtering
+        if data.chunks:
+            data = data.compute()
+
         # 1. Tapering
         if taper_points > 0:
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
 
         # 2. Spectral Filtering
-        sh_filter = SphericalHarmonicFilter(lmin=5, lmax=truncation)
+        sh_filter = SphericalHarmonicFilter(lmin=lmin, lmax=lmax)
         data = sh_filter.filter(data)
 
         return data
@@ -157,7 +165,11 @@ class HodgesTracker(Tracker):
         threshold: float | None = None,
         engine: str | None = None,
         overlap: int = 3,
-        min_points: int = 1,
+        min_points: int = constants.MIN_POINTS_DEFAULT,
+        filter: bool = True,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
+        taper_points: int = constants.TAPER_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """
@@ -176,58 +188,46 @@ class HodgesTracker(Tracker):
             engine: Data loading engine (netcdf4, h5netcdf, etc).
             overlap: Overlap between chunks for splicing.
             min_points: Minimum grid points per object.
+            filter: If True, apply spectral filtering.
+            lmin, lmax: Spectral truncation range (default T5-42).
         """
-        # Set default times if not provided
+        # 1. Load and optionally filter data
+        detector_peek = HodgesDetector(infile, varname, engine=engine)
         if start_time is None or end_time is None:
-            detector_peek = HodgesDetector(infile, varname, engine=engine)
             full_times = detector_peek.get_time()
             if start_time is None:
                 start_time = full_times[0]
             if end_time is None:
                 end_time = full_times[-1]
 
+        data_xr = detector_peek.get_xarray(start_time, end_time)
+
+        if filter:
+            data_xr = self.preprocess_standard_track(data_xr, lmin=lmin, lmax=lmax)
+
         if max_chunk_size is None:
-            return self._track_single_chunk(
-                infile,
-                varname,
-                start_time,
-                end_time,
+            return self._track_single_chunk_from_data(
+                data_xr,
                 mode,
                 threshold,
-                engine,
                 min_points=min_points,
                 **kwargs,
             )
 
-        # 1. Determine time chunks
-        detector = HodgesDetector(
-            infile,
-            varname,
-            time_range=TimeRange(
-                start=np.datetime64(start_time), end=np.datetime64(end_time)
-            ),
-            engine=engine,
-        )
-        times = detector.get_time()
-
-        n_steps = len(times)
+        # 2. Time-chunking logic (RSPLICE-style)
+        time_dim = detector_peek._loader.get_coords()[0]
+        n_steps = data_xr.sizes[time_dim]
         tracks_all = []
 
         start_idx = 0
         while start_idx < n_steps:
             end_idx = min(start_idx + max_chunk_size, n_steps)
+            chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
 
-            t_start = times[start_idx]
-            t_end = times[end_idx - 1]
-
-            chunk_res = self._track_single_chunk(
-                infile,
-                varname,
-                t_start,
-                t_end,
+            chunk_res = self._track_single_chunk_from_data(
+                chunk_data,
                 mode,
                 threshold,
-                engine,
                 min_points=min_points,
                 **kwargs,
             )
@@ -239,29 +239,16 @@ class HodgesTracker(Tracker):
 
         return self._splice_tracks(tracks_all, overlap)
 
-    def _track_single_chunk(
+    def _track_single_chunk_from_data(
         self,
-        infile: str,
-        varname: str,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
+        data: xr.DataArray,
         mode: Literal["min", "max"] = "min",
         threshold: float | None = None,
-        engine: str | None = None,
-        min_points: int = 1,
+        min_points: int = constants.MIN_POINTS_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         # 1. Detection
-        detector = HodgesDetector(
-            pathname=infile,
-            varname=varname,
-            time_range=TimeRange(
-                start=np.datetime64(start_time), end=np.datetime64(end_time)
-            )
-            if start_time
-            else None,
-            engine=engine,
-        )
+        detector = HodgesDetector.from_xarray(data)
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 

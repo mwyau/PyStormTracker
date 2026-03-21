@@ -8,6 +8,7 @@ from typing import Literal
 
 import numpy as np
 
+from .hodges import constants
 from .hodges.tracker import HodgesTracker
 from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
@@ -39,7 +40,7 @@ def run_tracker(
     algorithm: Algorithm = "simple",
     output_format: str = "imilast",
     # Hodges-specific
-    min_points: int = 1,
+    min_points: int = constants.MIN_POINTS_DEFAULT,
     w1: float | None = None,
     w2: float | None = None,
     dmax: float | None = None,
@@ -47,6 +48,10 @@ def run_tracker(
     n_iterations: int | None = None,
     min_lifetime: int | None = None,
     max_missing: int | None = None,
+    filter: bool = True,
+    lmin: int = constants.LMIN_DEFAULT,
+    lmax: int = constants.LMAX_DEFAULT,
+    taper_points: int = constants.TAPER_DEFAULT,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -133,6 +138,9 @@ def run_tracker(
         threshold=threshold,
         engine=engine,
         min_points=min_points,
+        filter=filter,
+        lmin=lmin,
+        lmax=lmax,
     )
 
     # Export Phase
@@ -198,6 +206,27 @@ def parse_args() -> Namespace:
         default=None,
         help="Intensity threshold for features.",
     )
+
+    # Filtering Options (Mutually Exclusive)
+    filter_group = general.add_mutually_exclusive_group()
+    filter_group.add_argument(
+        "--filter-range",
+        type=str,
+        default=f"{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}",
+        help=(
+            f"Spectral filter range (min-max). "
+            f"Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'."
+        ),
+    )
+    filter_group.add_argument(
+        "--no-filter",
+        action="store_false",
+        dest="filter",
+        default=None,
+        help="Disable default T5-42 spectral filtering.",
+    )
+    # Default is determined in main() based on algorithm
+
     general.add_argument(
         "-n", "--num", type=int, help="Number of time steps to process."
     )
@@ -306,6 +335,23 @@ def main() -> None:
         start_time = times[0]
         end_time = times[num - 1]
 
+    if args.filter is None:
+        args.filter = args.algorithm != "simple"
+
+    lmin, lmax = constants.LMIN_DEFAULT, constants.LMAX_DEFAULT
+    if args.filter and args.filter_range:
+        try:
+            parts = args.filter_range.split("-")
+            if len(parts) == 2:
+                lmin, lmax = int(parts[0]), int(parts[1])
+            elif len(parts) == 1:
+                lmax = int(parts[0])
+        except ValueError:
+            print(
+                f"Warning: Could not parse filter-range '{args.filter_range}'. "
+                f"Using {constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}."
+            )
+
     run_tracker(
         infile=args.input,
         varname=args.var,
@@ -329,6 +375,9 @@ def main() -> None:
         n_iterations=args.iterations,
         min_lifetime=args.min_lifetime,
         max_missing=args.max_missing,
+        filter=args.filter,
+        lmin=lmin,
+        lmax=lmax,
     )
 
 

@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..models import constants as model_constants
+
 # Standard TRACK legacy defaults (Hodges 1994, 1995, 1999)
 W1_DEFAULT = 0.2
 W2_DEFAULT = 0.8
 DMAX_DEFAULT = 6.5
 PHIMAX_DEFAULT = 0.5
 ITERATIONS_DEFAULT = 3
-LIFETIME_DEFAULT = 3
-MISSING_DEFAULT = 0
+LIFETIME_DEFAULT = model_constants.MIN_LIFETIME_DEFAULT
+MISSING_DEFAULT = model_constants.MAX_MISSING_DEFAULT
+
+# Spectral Filter defaults (T5-42)
+LMIN_DEFAULT = model_constants.LMIN_DEFAULT
+LMAX_DEFAULT = model_constants.LMAX_DEFAULT
+TAPER_DEFAULT = model_constants.TAPER_POINTS_DEFAULT
+
+# Hodges Object-based detection defaults
+MIN_POINTS_DEFAULT = 1
 
 # Regional dmax zones [lon_min, lon_max, lat_min, lat_max, dmax]
 TRACK_ZONES = np.array(

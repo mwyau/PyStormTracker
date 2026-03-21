@@ -25,10 +25,17 @@ class DataLoader:
         "time": ["time", "valid_time"],
     }
 
-    def __init__(self, pathname: str | Path, engine: str | None = None) -> None:
+    def __init__(
+        self,
+        pathname: str | Path,
+        engine: str | None = None,
+        data: xr.DataArray | None = None,
+    ) -> None:
         self.pathname = Path(pathname)
         self.engine = engine
         self._ds: xr.Dataset | None = None
+        if data is not None:
+            self._ds = data.to_dataset() if isinstance(data, xr.DataArray) else data
 
     def ensure_open(self) -> xr.Dataset:
         """Ensures the xarray dataset is open and returns it."""
