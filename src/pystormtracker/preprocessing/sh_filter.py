@@ -21,7 +21,8 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
     actual_lmax = min(lmax, grid_lmax)
     mmax = min(actual_lmax, nlon // 2 - 1)
 
-    sh = shtns.sht(actual_lmax, mmax)
+    # Use 4pi normalization to match pyshtools default and Hodges TRACK.
+    sh = shtns.sht(actual_lmax, mmax, norm=shtns.sht_fourpi)
     # shtns.sht_reg_poles is the standard equidistant latitude grid including poles.
     # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
     sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
