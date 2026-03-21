@@ -8,13 +8,12 @@ This document outlines the strategic plan for improving PyStormTracker's perform
     *   *Current State:* Dask/MPI orchestrates processes, but Numba kernels lack explicit thread constraints. If `parallel=True` is used in Numba, it will oversubscribe CPU cores and cause thrashing.
     *   *Action:* Explicitly control thread topology inside worker tasks (e.g., `numba.set_num_threads(1)` when scaling via Dask/MPI processes).
 *   **Vectorize the `SimpleLinker`:**
-    *   *Current State:* Linking is currently sequential, resulting in an $O(N^2)$ bottleneck as trajectory counts scale.
+    *   *Current State:* Linking uses a vectorized Haversine matrix but remains $O(N \times M)$, which can be a bottleneck as trajectory counts scale.
     *   *Action:* Leverage `scipy.spatial.cKDTree` for nearest-neighbor lookups across time steps to convert spatial proximity searches to highly optimized C-level trees.
 *   **Manage Memory Pressure (Chunking) (Completed):** 
-    *   Implemented time-chunking (default 60 steps) across backends to prevent memory exhaustion on large datasets. This maintains optimal block-IO performance by avoiding frame-by-frame lazy loading which can cause high metadata/locking overhead.
+    *   Implemented time-chunking across backends to prevent memory exhaustion on large datasets. This maintains optimal block-IO performance by avoiding metadata/locking overhead.
 *   **Array-Backed Data Model (Completed):** 
     *   Transitioned from nested Python objects to flat, C-contiguous NumPy arrays for trajectories and centers.
-    *   Zero-copy serialization for high-performance parallel execution.
 *   **JIT-Optimized Kernels (Completed):** 
     *   Implemented core mathematical filters (Laplacian, Extrema, MGE, CCL) in GIL-free Numba JIT.
 
@@ -31,31 +30,28 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 ## 3. Architecture
 
 *   **Idiomatic Xarray Integration (`apply_ufunc`):**
-    *   *Current State:* Xarray is primarily used as an I/O loader before dropping down to manual NumPy arrays, manual chunking, and custom MPI/Dask orchestration.
-    *   *Action:* Wrap the core Numba filters inside `xr.apply_ufunc(..., dask="parallelized")`. This allows Xarray to natively handle chunking, distributed execution, and reassembly, potentially eliminating the need for manual orchestration code in `concurrent.py`.
+    *   *Current State:* Xarray is primarily used as an I/O loader before dropping down to NumPy arrays and manual parallel orchestration.
+    *   *Action:* Wrap core Numba filters inside `xr.apply_ufunc(..., dask="parallelized")`. This allows Xarray to natively handle chunking and distributed execution.
 *   **Distributed Backends (Completed):** 
-    *   Native support for Dask (local scaling) and MPI (distributed scaling).
-    *   Perfect bit-wise identity between Serial and Parallel results.
+    *   Native support for Dask and MPI backends with **automatic environment detection** and fallback logic.
 *   **Modern CLI & API (Completed):** 
-    *   Grouped, logical command-line interface.
+    *   Grouped, logical command-line interface with auto-configuration of parallel workers.
     *   Flexible `Tracker` Protocol for cross-algorithm support.
 
 ## 4. Distribution & Ecosystem
 
+*   **Modular Dependencies (Completed):**
+    *   Optional dependency groups (e.g., `[hodges]`, `[mpi]`, `[grib]`) to minimize build-time requirements and simplify installation in constrained environments like ReadTheDocs.
 *   **Conda-forge Distribution (Completed):**
-    *   PyStormTracker is now available on `conda-forge`, enabling easy installation via `conda` or `mamba`.
+    *   Available on `conda-forge` for easy cross-platform installation.
 
 ## 5. Feature Implementation
 
 *   **HodgesTracker Integration (Completed):** 
-    *   Native Python/Numba implementation of the Modified Greedy Exchange (MGE) algorithm.
-    *   Spherical geodesic cost functions and adaptive constraints ($d_{max}$, $\psi_{max}$).
-    *   Object-based detection pipeline (Threshold -> CCL -> Filter -> Extrema).
-    *   Unified legacy standards (constants.py).
+    *   Native Python/Numba implementation of the Modified Greedy Exchange (MGE) algorithm with algorithmic parity to TRACK-1.5.2.
 *   **Preprocessing (Completed):** 
-    *   Added support for spectral filtering (e.g., T42/T63 truncation) using `pyshtools` and `SphericalHarmonicFilter`.
-    *   Added `TaperFilter` for boundary smoothing.
+    *   Added support for spectral filtering (e.g., T42 truncation) using `shtns` and `SphericalHarmonicFilter`. `shtns` was chosen for its computational efficiency in iterative transforms.
 *   **HodgesTracker Refinement (In Progress):** 
-    *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with the original TRACK software.
+    *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with original TRACK software.
 *   **Postprocessing (Track Metrics):**
-    *   *Action:* Implement Accumulated Track Activity (ATA) and other storm track metrics from **Yau and Chang (2020)** to provide physically meaningful analysis of detected trajectories.
+    *   *Action:* Implement Accumulated Track Activity (ATA) and other storm track metrics from **Yau and Chang (2020)**.

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import timeit
 from argparse import Namespace
-from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -17,6 +17,13 @@ Backend = Literal["serial", "mpi", "dask"]
 Algorithm = Literal["simple", "hodges"]
 
 
+def is_mpi_env() -> bool:
+    """Detects if the current process is running in an MPI environment."""
+    # Common MPI environment variables
+    mpi_vars = ["OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "MV2_COMM_WORLD_SIZE"]
+    return any(v in os.environ for v in mpi_vars)
+
+
 def run_tracker(
     infile: str,
     varname: str,
@@ -24,7 +31,7 @@ def run_tracker(
     start_time: str | np.datetime64 | None = None,
     end_time: str | np.datetime64 | None = None,
     mode: Literal["min", "max"] = "min",
-    backend: Backend = "serial",
+    backend: Backend | None = None,
     n_workers: int | None = None,
     max_chunk_size: int | None = None,
     threshold: float | None = None,
@@ -43,16 +50,53 @@ def run_tracker(
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
-    use_mpi = backend == "mpi"
+
+    # 1. Backend Auto-detection
+    detected_backend: Backend = "serial"
+    if backend:
+        detected_backend = backend
+    elif is_mpi_env():
+        detected_backend = "mpi"
+    elif n_workers is not None:
+        detected_backend = "dask"
+
+    use_mpi = detected_backend == "mpi"
 
     rank = 0
     if use_mpi:
-        from mpi4py import MPI
+        if not is_mpi_env():
+            print(
+                "Warning: MPI backend selected but no MPI environment detected "
+                "(e.g., OMPI_COMM_WORLD_SIZE not set)."
+            )
+            print("Ensure you are running with 'mpirun' or 'mpiexec'.")
 
-        rank = MPI.COMM_WORLD.Get_rank()
+        try:
+            from mpi4py import MPI
+
+            rank = MPI.COMM_WORLD.Get_rank()
+            if n_workers is None:
+                n_workers = MPI.COMM_WORLD.Get_size()
+        except ImportError:
+            if backend == "mpi":
+                raise ImportError(
+                    "mpi4py is required for MPI backend. "
+                    "Install it with 'pip install PyStormTracker[mpi]'."
+                ) from None
+            # If auto-detected but not installed, fallback to serial or dask
+            if is_mpi_env():
+                print(
+                    "Warning: MPI environment detected but mpi4py is not installed. "
+                    "Falling back."
+                )
+            detected_backend = "dask" if n_workers else "serial"
+            use_mpi = False
 
     if rank == 0:
         timer["total"] = timeit.default_timer()
+        print(f"Using backend: {detected_backend}")
+        if n_workers:
+            print(f"Workers: {n_workers}")
 
     tracker: Tracker
     if algorithm == "simple":
@@ -83,7 +127,7 @@ def run_tracker(
         start_time=start_time,
         end_time=end_time,
         mode=mode,
-        backend=backend,
+        backend=detected_backend,
         n_workers=n_workers,
         max_chunk_size=max_chunk_size,
         threshold=threshold,
@@ -100,12 +144,8 @@ def run_tracker(
         tracks.write(outfile, format=output_format)
         timer["export"] = timeit.default_timer() - timer["export"]
 
-        out_path = Path(outfile)
-        final_outfile = (
-            out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
-        )
         print(f"Export time: {timer['export']:.4f}s")
-        print(f"Results exported to {final_outfile}")
+        print(f"Results exported to {outfile}")
 
         timer["total"] = timeit.default_timer() - timer["total"]
         print(f"Total time: {timer['total']:.4f}s")
@@ -168,15 +208,15 @@ def parse_args() -> Namespace:
         "-b",
         "--backend",
         choices=["serial", "mpi", "dask"],
-        default="serial",
-        help="Parallel backend. Default is 'serial'.",
+        default=None,
+        help="Parallel backend. Auto-detected by default.",
     )
     perf.add_argument(
         "-w",
         "--workers",
         type=int,
         default=None,
-        help="Number of workers for Dask. Defaults to CPU cores.",
+        help="Number of workers. Auto-detected for MPI. Sets Dask if not MPI.",
     )
     perf.add_argument(
         "-c",

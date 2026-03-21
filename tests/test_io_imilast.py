@@ -10,11 +10,11 @@ from pystormtracker.io.imilast import read_imilast, write_imilast
 from pystormtracker.models.tracks import Tracks
 
 
-def test_write_imilast_filename_extension(tmp_path: Path) -> None:
+def test_write_imilast_no_auto_extension(tmp_path: Path) -> None:
     tracks = Tracks()
     outfile = tmp_path / "test"
     write_imilast(tracks, outfile)
-    assert Path(str(outfile) + ".txt").exists()
+    assert outfile.exists()
 
 
 def test_write_imilast_content(tmp_path: Path) -> None:

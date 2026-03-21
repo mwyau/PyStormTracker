@@ -64,8 +64,6 @@ def read_imilast(filename: Path | str) -> Tracks:
 def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 6) -> None:
     """Exports tracks to an IMILAST format text file."""
     outfile_str = str(outfile)
-    if not outfile_str.endswith(".txt"):
-        outfile_str += ".txt"
 
     with open(outfile_str, "w", newline="") as f:
         header = (

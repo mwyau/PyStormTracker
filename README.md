@@ -10,36 +10,36 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-**PyStormTracker** is a high-performance Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and the "Hodges (TRACK)" algorithm with adaptive constraints described in **Hodges (1999)**. It provides a scalable framework for processing large-scale climate datasets like ERA5.
+**PyStormTracker** is a Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and the "Hodges (TRACK)" algorithm with adaptive constraints described in **Hodges (1999)**. It provides a scalable framework for processing large-scale climate datasets like ERA5.
 
 Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently process large-scale climate datasets.
 
 ## Features
 
-- **High-Performance Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution. **Achieves up to 11.8x speedup in serial workloads.**
-- **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, running at raw C speeds while releasing the GIL for true multi-process execution.
+- **Vectorized Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution. **Achieves up to 11.8x speedup in serial workloads.**
+- **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, executing with C-level efficiency while releasing the GIL for multi-process execution.
 - **Multiple Algorithms**:
-  - **Simple (Default)**: Fast, heuristic linking optimized for modern resolutions.
-  - **Hodges (TRACK)**: 100% algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization.
+  - **Simple (Default)**: Fast, heuristic linking optimized for higher resolutions.
+  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
 - **Scalable Backends**: 
-  - **Serial (Default)**: Standard sequential execution.
-  - **Dask**: Multi-process tree-reduction for local or distributed scaling.
-  - **MPI**: High-performance distributed execution via `mpi4py`.
-- **Typed & Modern**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
+  - **Serial**: Standard sequential execution. Default fallback.
+  - **Dask**: Multi-process scaling for local or distributed environments. Selected if `--workers` is provided without MPI.
+  - **MPI**: High-performance distributed execution via `mpi4py`. Selected automatically in MPI environments.
+- **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
 - **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
   <br>
-  <i>Significant performance gains in v0.4.0+ compared to the legacy v0.3.3 architecture on high-resolution ERA5 data.</i>
+  <i>Significant performance gains in v0.4.0+ compared to the v0.3.3 architecture on high-resolution ERA5 data.</i>
 </p>
 
 ## Technical Methodology
 
-PyStormTracker treats meteorological fields as 2D images and leverages JIT-compiled Numba loops for high-performance feature detection:
+PyStormTracker treats meteorological fields as 2D images and leverages JIT-compiled Numba loops for feature detection:
 
-- **Local Extrema Detection**: Employs an optimized sliding window filter to efficiently identify local minima (e.g., cyclones) or maxima (e.g., anticyclones, vorticity).
+- **Local Extrema Detection**: Employs an optimized sliding window filter to identify local minima (e.g., cyclones) or maxima (e.g., anticyclones, vorticity).
 - **Intensity & Refinement**: Applies the discrete **Laplacian operator** to measure the "sharpness" of the field at each candidate center. This metric resolves duplicate detections, ensuring only the most physically intense point is retained when adjacent pixels are flagged.
 - **Trajectory Linking**: Connects detected centers across consecutive time steps into continuous trajectories using a vectorized nearest-neighbor heuristic linking strategy.
 
@@ -52,23 +52,36 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- **Windows**: GRIB support is experimental and untested.
+- (Optional) **SHTns build dependencies**: Required for the spherical harmonic filter (`pip install PyStormTracker[pre]`):
+  - `gcc`
+  - `make`
+  - `libc6-dev`
+  - `libfftw3-dev`
+- **Windows**: GRIB support is experimental and untested. SHTns is not supported on Windows.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
 
 Using `pip`:
 ```bash
+# Standard installation
 pip install PyStormTracker
+
+# With optional components
+pip install PyStormTracker[hodges]  # Includes SHTns for Hodges algorithm
+pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
+pip install PyStormTracker[grib]    # Includes GRIB support
+pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
+pip install PyStormTracker[all]     # Includes all optional components
 ```
 
 Using `uv`:
 ```bash
 # For use as a CLI tool
-uv tool install PyStormTracker
+uv tool install PyStormTracker --with hodges,mpi
 
 # For use as a library in your project
-uv add PyStormTracker
+uv add PyStormTracker --extra hodges,mpi
 ```
 
 ### From Conda-Forge
@@ -99,7 +112,7 @@ uv sync
 Once installed, you can use the `stormtracker` command directly:
 
 ```bash
-stormtracker -i data.nc -v msl -o my_tracks
+stormtracker -i data.nc -v msl -o my_tracks.txt
 ```
 
 #### Command Line Arguments
@@ -109,7 +122,7 @@ stormtracker -i data.nc -v msl -o my_tracks
 | **Required** | | |
 | `--input` | `-i` | Path to the input NetCDF/GRIB file. |
 | `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
-| `--output` | `-o` | Path to the output track file. |
+| `--output` | `-o` | Path to the output track file (e.g., `tracks.txt`). |
 | **General** | | |
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
 | `--format` | `-f` | Output format: `imilast` (default) or `hodges`. |
@@ -117,8 +130,8 @@ stormtracker -i data.nc -v msl -o my_tracks
 | `--threshold` | `-t` | Intensity threshold for feature detection. |
 | `--num` | `-n` | Number of time steps to process. |
 | **Performance** | | |
-| `--backend` | `-b` | `serial` (default), `dask`, or `mpi`. |
-| `--workers` | `-w` | Number of parallel workers (defaults to CPU cores). |
+| `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |
+| `--workers` | `-w` | Number of parallel workers. Auto-detected for MPI; sets Dask if not MPI. |
 | `--chunk-size` | `-c` | Steps per chunk for Dask/RSPLICE (default 60). |
 | `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
 | **Hodges-Specific** | | |
@@ -150,11 +163,14 @@ tracks = tracker.track(
 ```
 
 # 3. Analyze the results programmatically
+```
 for track in tracks:
     if len(track) >= 8:
         print(f"Track {track.track_id} lived for {len(track)} steps.")
+```
 
 # 4. Export results
+```
 tracks.write("output.txt", format="imilast")
 ```
 
@@ -218,13 +234,19 @@ If you use this software in your research, please cite the following:
 
 ## References
 
- - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, [https://doi.org/10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
+- **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, [https://doi.org/10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
- - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [https://doi.org/10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
-   - IMILAST Intercomparison Protocol: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
-   - IMILAST Data Download: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
+- **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [https://doi.org/10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
+  - IMILAST Intercomparison Protocol: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
+  - IMILAST Data Download: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
+
+- **Schaeffer, N.**, 2013: Efficient spherical harmonic transforms aimed at pseudospectral numerical simulations. *Geochem. Geophys. Geosyst.*, **14**, 751–758, [https://doi.org/10.1002/ggge.20071](https://doi.org/10.1002/ggge.20071).
 
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
+
+- **Hodges, K. I.**, 1995: Feature Tracking on the Unit Sphere. *Mon. Wea. Rev.*, **123**, 3458–3465, [https://doi.org/10.1175/1520-0493(1995)123<3458:FTOTUS>2.0.CO;2](https://doi.org/10.1175/1520-0493(1995)123<3458:FTOTUS>2.0.CO;2).
+
+- **Hodges, K. I.**, 1994: A General Method for Tracking Analysis and Its Application to Meteorological Data. *Mon. Wea. Rev.*, **122**, 2573–2586, [https://doi.org/10.1175/1520-0493(1994)122<2573:AGMFTA>2.0.CO;2](https://doi.org/10.1175/1520-0493(1994)122<2573:AGMFTA>2.0.CO;2).
 
 ## License
 

@@ -1,6 +1,6 @@
-# PyStormTracker Benchmark Report
+# PyStormTracker Benchmark
 
-This document provides a detailed breakdown of execution time (in seconds) comparing the legacy nested-object architecture (`v0.3.3`) and the modern, Numba JIT-compiled array architecture (`v0.4.0`).
+This document provides a detailed breakdown of execution time (in seconds) comparing the legacy nested-object architecture (`v0.3.3`) and the current, Numba JIT-compiled array architecture (`v0.4.0`).
 
 ## Methodology
 - **Hardware**: AMD Ryzen 7 5800X (16 Threads), 48GB WSL Memory Limit.
