@@ -37,5 +37,9 @@ class Tracker(Protocol):
         engine: str | None = None,
         overlap: int = 3,
         min_points: int = 1,
+        filter: bool = True,
+        lmin: int = 5,
+        lmax: int = 42,
+        taper_points: int = 0,
         **kwargs: float | int | str | None,
     ) -> Tracks: ...

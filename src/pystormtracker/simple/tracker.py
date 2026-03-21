@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 import numpy as np
+import xarray as xr
 
 from ..hodges import constants
 from ..models import TimeRange, Tracks
@@ -60,10 +61,12 @@ class SimpleTracker:
         if data.chunks:
             data = data.compute()
 
+        from typing import cast
+
         # 1. Tapering
         if taper_points > 0:
             taper = TaperFilter(n_points=taper_points)
-            data = taper.filter(data)
+            data = cast(xr.DataArray, taper.filter(data))
 
         # 2. Spectral Filtering
         sh_filter = SphericalHarmonicFilter(lmin=lmin, lmax=lmax)
@@ -79,7 +82,7 @@ class SimpleTracker:
         mode: Literal["min", "max"],
         threshold: float | None = None,
         engine: str | None = None,
-        filter: bool = True,
+        filter: bool = False,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         **kwargs: float | int | str | None,
@@ -123,7 +126,7 @@ class SimpleTracker:
         engine: str | None = None,
         overlap: int = 3,
         min_points: int = 1,
-        filter: bool = True,
+        filter: bool = False,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,

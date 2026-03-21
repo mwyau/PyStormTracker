@@ -7,7 +7,7 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..models.tracker import Tracker
-from ..models.tracks import TimeRange, Tracks
+from ..models.tracks import Tracks
 from ..preprocessing.sh_filter import SphericalHarmonicFilter
 from ..preprocessing.taper import TaperFilter
 from . import constants
@@ -169,6 +169,7 @@ class HodgesTracker(Tracker):
         filter: bool = True,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
+        taper_points: int = constants.TAPER_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """

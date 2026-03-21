@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+
 from ..models import constants as model_constants
 
 # Standard TRACK legacy defaults (Hodges 1994, 1995, 1999)

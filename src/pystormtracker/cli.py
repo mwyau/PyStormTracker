@@ -213,15 +213,19 @@ def parse_args() -> Namespace:
         "--filter-range",
         type=str,
         default=f"{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}",
-        help=f"Spectral filter range (min-max). Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'.",
+        help=(
+            f"Spectral filter range (min-max). "
+            f"Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'."
+        ),
     )
     filter_group.add_argument(
         "--no-filter",
         action="store_false",
         dest="filter",
+        default=None,
         help="Disable default T5-42 spectral filtering.",
     )
-    parser.set_defaults(filter=True)
+    # Default is determined in main() based on algorithm
 
     general.add_argument(
         "-n", "--num", type=int, help="Number of time steps to process."
@@ -330,6 +334,9 @@ def main() -> None:
         num = min(args.num, len(times))
         start_time = times[0]
         end_time = times[num - 1]
+
+    if args.filter is None:
+        args.filter = args.algorithm != "simple"
 
     lmin, lmax = constants.LMIN_DEFAULT, constants.LMAX_DEFAULT
     if args.filter and args.filter_range:

@@ -61,9 +61,12 @@ class TaperFilter:
         from ..io.loader import DataLoader
 
         # Identify dimensions
-        coords = data.coords
-        lat_dim = next((c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None)
-        lon_dim = next((c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None)
+        lat_dim = next(
+            (c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None
+        )
+        lon_dim = next(
+            (c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None
+        )
 
         if not lat_dim or not lon_dim:
             raise ValueError(

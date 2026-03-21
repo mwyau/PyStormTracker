@@ -41,7 +41,9 @@ def run_simple_dask(
     if filter:
         from .tracker import SimpleTracker
 
-        data_xr = SimpleTracker().preprocess_standard_track(data_xr, lmin=lmin, lmax=lmax)
+        data_xr = SimpleTracker().preprocess_standard_track(
+            data_xr, lmin=lmin, lmax=lmax
+        )
 
     detector_obj = SimpleDetector.from_xarray(data_xr)
 
