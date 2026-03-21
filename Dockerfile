@@ -8,6 +8,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
+# Install build dependencies for SHTns
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    make \
+    libfftw3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -32,6 +39,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.13-slim
 
 WORKDIR /app
+
+# Install runtime dependencies for SHTns
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libfftw3-double3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create data directory for mounting
 RUN mkdir /data && chmod 777 /data
