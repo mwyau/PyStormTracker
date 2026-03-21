@@ -4,6 +4,7 @@ from typing import Literal
 
 import numpy as np
 
+from ..hodges import constants
 from ..models import TimeRange, Tracks
 from ..models.tracker import RawDetectionStep
 from .detector import SimpleDetector
@@ -45,8 +46,8 @@ class SimpleTracker:
     def preprocess_standard_track(
         self,
         data: xr.DataArray,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = 10,
     ) -> xr.DataArray:
         """
@@ -79,8 +80,8 @@ class SimpleTracker:
         threshold: float | None = None,
         engine: str | None = None,
         filter: bool = True,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -123,8 +124,8 @@ class SimpleTracker:
         overlap: int = 3,
         min_points: int = 1,
         filter: bool = True,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit

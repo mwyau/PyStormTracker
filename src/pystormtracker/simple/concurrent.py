@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from mpi4py import MPI
 
+from ..hodges import constants
 from ..models import TimeRange, Tracks
 from ..models.tracker import RawDetectionStep
 from .detector import SimpleDetector
@@ -23,8 +24,8 @@ def run_simple_dask(
     threshold: float | None = None,
     engine: str | None = None,
     filter: bool = True,
-    lmin: int = 5,
-    lmax: int = 42,
+    lmin: int = constants.LMIN_DEFAULT,
+    lmax: int = constants.LMAX_DEFAULT,
     **kwargs: float | int | str | None,
 ) -> Tracks:
     import dask
@@ -98,8 +99,8 @@ def run_simple_mpi(
     threshold: float | None = None,
     engine: str | None = None,
     filter: bool = True,
-    lmin: int = 5,
-    lmax: int = 42,
+    lmin: int = constants.LMIN_DEFAULT,
+    lmax: int = constants.LMAX_DEFAULT,
     **kwargs: float | int | str | None,
 ) -> Tracks:
     from mpi4py import MPI

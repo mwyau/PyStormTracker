@@ -86,8 +86,8 @@ class HodgesTracker(Tracker):
     def preprocess_standard_track(
         self,
         data: xr.DataArray,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = 10,
     ) -> xr.DataArray:
         """
@@ -167,8 +167,8 @@ class HodgesTracker(Tracker):
         overlap: int = 3,
         min_points: int = 1,
         filter: bool = True,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int = constants.LMIN_DEFAULT,
+        lmax: int = constants.LMAX_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """

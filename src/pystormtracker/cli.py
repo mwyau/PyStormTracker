@@ -8,6 +8,7 @@ from typing import Literal
 
 import numpy as np
 
+from .hodges import constants
 from .hodges.tracker import HodgesTracker
 from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
@@ -48,8 +49,8 @@ def run_tracker(
     min_lifetime: int | None = None,
     max_missing: int | None = None,
     filter: bool = True,
-    lmin: int = 5,
-    lmax: int = 42,
+    lmin: int = constants.LMIN_DEFAULT,
+    lmax: int = constants.LMAX_DEFAULT,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -210,8 +211,8 @@ def parse_args() -> Namespace:
     filter_group.add_argument(
         "--filter-range",
         type=str,
-        default="5-42",
-        help="Spectral filter range (min-max). Default '5-42'.",
+        default=f"{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}",
+        help=f"Spectral filter range (min-max). Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'.",
     )
     filter_group.add_argument(
         "--no-filter",
@@ -329,7 +330,7 @@ def main() -> None:
         start_time = times[0]
         end_time = times[num - 1]
 
-    lmin, lmax = 5, 42
+    lmin, lmax = constants.LMIN_DEFAULT, constants.LMAX_DEFAULT
     if args.filter and args.filter_range:
         try:
             parts = args.filter_range.split("-")
@@ -338,7 +339,10 @@ def main() -> None:
             elif len(parts) == 1:
                 lmax = int(parts[0])
         except ValueError:
-            print(f"Warning: Could not parse filter-range '{args.filter_range}'. Using 5-42.")
+            print(
+                f"Warning: Could not parse filter-range '{args.filter_range}'. "
+                f"Using {constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}."
+            )
 
     run_tracker(
         infile=args.input,

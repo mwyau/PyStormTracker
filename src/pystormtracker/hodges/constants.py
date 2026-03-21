@@ -11,6 +11,10 @@ ITERATIONS_DEFAULT = 3
 LIFETIME_DEFAULT = 3
 MISSING_DEFAULT = 0
 
+# Spectral Filter defaults (T5-42)
+LMIN_DEFAULT = 5
+LMAX_DEFAULT = 42
+
 # Regional dmax zones [lon_min, lon_max, lat_min, lat_max, dmax]
 TRACK_ZONES = np.array(
     [
