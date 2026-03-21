@@ -145,12 +145,8 @@ def run_tracker(
         tracks.write(outfile, format=output_format)
         timer["export"] = timeit.default_timer() - timer["export"]
 
-        out_path = Path(outfile)
-        final_outfile = (
-            out_path if out_path.suffix == ".txt" else out_path.with_suffix(".txt")
-        )
         print(f"Export time: {timer['export']:.4f}s")
-        print(f"Results exported to {final_outfile}")
+        print(f"Results exported to {outfile}")
 
         timer["total"] = timeit.default_timer() - timer["total"]
         print(f"Total time: {timer['total']:.4f}s")

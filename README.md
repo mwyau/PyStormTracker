@@ -114,7 +114,7 @@ stormtracker -i data.nc -v msl -o my_tracks
 | **Required** | | |
 | `--input` | `-i` | Path to the input NetCDF/GRIB file. |
 | `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
-| `--output` | `-o` | Path to the output track file. |
+| `--output` | `-o` | Path to the output track file (e.g., `tracks.txt`). |
 | **General** | | |
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
 | `--format` | `-f` | Output format: `imilast` (default) or `hodges`. |
