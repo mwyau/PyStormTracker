@@ -6,9 +6,15 @@ import warnings
 from typing import Literal, cast, overload
 
 import numpy as np
-import shtns  # type: ignore[import-untyped]
 import xarray as xr
 from numpy.typing import NDArray
+
+try:
+    import shtns  # type: ignore[import-untyped]
+
+    SHTNS_AVAILABLE = True
+except ImportError:
+    SHTNS_AVAILABLE = False
 
 # Thread-local storage to ensure each Dask thread has its own SHTns object.
 # Sharing one SHTns object across threads is UNSAFE due to internal buffers.
@@ -19,6 +25,12 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
     """
     Retrieves or creates an SHTns plan for the current thread.
     """
+    if not SHTNS_AVAILABLE:
+        raise ImportError(
+            "shtns is required for SphericalHarmonicFilter. "
+            "Install it with 'pip install PyStormTracker[pre]'."
+        )
+
     if not hasattr(_thread_local, "cache"):
         _thread_local.cache = {}
 

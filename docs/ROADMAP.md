@@ -53,7 +53,7 @@ This document outlines the strategic plan for improving PyStormTracker's perform
     *   Object-based detection pipeline (Threshold -> CCL -> Filter -> Extrema).
     *   Unified legacy standards (constants.py).
 *   **Preprocessing (Completed):** 
-    *   Added support for spectral filtering (e.g., T42/T63 truncation) using `pyshtools` and `SphericalHarmonicFilter`.
+    *   Added support for spectral filtering (e.g., T42/T63 truncation) using `shtns` and `SphericalHarmonicFilter`. `shtns` was chosen for its computational efficiency in iterative transforms.
     *   Added `TaperFilter` for boundary smoothing.
 *   **HodgesTracker Refinement (In Progress):** 
     *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with the original TRACK software.

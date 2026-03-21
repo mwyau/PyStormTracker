@@ -1,6 +1,6 @@
 # PyStormTracker Architecture
 
-This document describes the modern, high-performance architecture of PyStormTracker, detailing how it leverages vectorization and decoupled components to process massive climate datasets efficiently.
+This document describes the vectorized architecture of PyStormTracker, detailing how it leverages vectorization and decoupled components to process massive climate datasets efficiently.
 
 ## 1. High-Level Design Philosophy
 
@@ -8,11 +8,11 @@ PyStormTracker is built for scale and extensibility. The architecture is centere
 1.  **Unified API (Tracker Protocol):** A structural interface that allows the CLI and Python API to support multiple tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) interchangeably.
 2.  **Centralized Threshold Management:** The `SimpleDetector` is responsible for managing variable-specific detection thresholds (e.g., `1e-4` for vorticity), ensuring consistent behavior across different parallel backends.
 3.  **Vectorization & JIT:** Heavy mathematical operations are offloaded to **Numba** JIT-compiled kernels and **NumPy** broadcasting, bypassing Python's loop overhead and Global Interpreter Lock (GIL).
-4.  **Hybrid Parallelism:** The architecture parallelizes the computationally intensive **Detection** phase while centralizing the **Linking** phase to ensure perfect serial-parallel consistency.
+4.  **Hybrid Parallelism:** The architecture parallelizes the computationally intensive **Detection** phase while centralizing the **Linking** phase to ensure exact serial-parallel consistency.
 
 ---
 
-## 2. Modern Core Components
+## 2. Core Components
 
 ### 2.1 Array-Backed Data Models (`Tracks`, `Track`, `Center`)
 The data models utilize a contiguous memory paradigm:
@@ -20,7 +20,7 @@ The data models utilize a contiguous memory paradigm:
 *   **`Track`**: A lightweight "view" into the `Tracks` arrays for a specific ID.
 *   **`Center`**: A simple dataclass used strictly for iteration or final data export.
 
-**Benefits:** By avoiding the creation of millions of Python objects, memory usage is minimized, and data serialization between parallel processes is nearly instantaneous. Raw NumPy arrays also enable extremely fast distance calculations via C-level broadcasting.
+**Benefits:** By avoiding the creation of many Python objects, memory usage is minimized, and data serialization between parallel processes is efficient. Raw NumPy arrays also enable efficient distance calculations via C-level broadcasting.
 
 ### 2.2 Shared DataLoader
 Data loading is encapsulated in a dedicated `DataLoader` class (`io/loader.py`). This component handles:
@@ -45,7 +45,7 @@ To ensure that parallel results are bit-wise identical to serial runs, PyStormTr
 1.  **Parallel Detection**: Assigned time chunks are distributed across Dask or MPI workers. Each worker runs Numba kernels to find centers and returns raw coordinate arrays.
 2.  **Centralized Linking**: The main process gathers the raw detections from all workers and performs a single sequential link. 
 
-**Why this works:** In storm tracking, the **Detection** phase (finding local extrema in 3D grids) consumes >95% of the runtime. The **Linking** phase (connecting coordinate lists) is extremely fast once vectorized. Centralizing the link eliminates the complex "merging" bugs found in tree-reduction strategies while maintaining near-perfect parallel scaling.
+**Why this works:** In storm tracking, the **Detection** phase (finding local extrema in 3D grids) consumes >95% of the runtime. The **Linking** phase (connecting coordinate lists) is efficient once vectorized. Centralizing the link eliminates the complex "merging" bugs found in tree-reduction strategies while maintaining scaling.
 
 ---
 
@@ -87,7 +87,7 @@ For more details on specific planned implementations, see the [Roadmap](ROADMAP.
 
 ## 5. Performance Benchmarks
 
-To quantify the efficiency gains of the modern array-backed JIT architecture, a comprehensive performance comparison was conducted between the legacy object-oriented system (`v0.3.3`) and the current implementation.
+To quantify the efficiency gains of the array-backed JIT architecture, a comprehensive performance comparison was conducted between the legacy object-oriented system (`v0.3.3`) and the current implementation.
 
 Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](BENCHMARK.md).
 
@@ -97,11 +97,11 @@ Detailed execution timings (breaking down Detection, Linking, Export, and I/O Ov
 
 The current architecture represents a fundamental shift from the legacy nested-object design used in earlier versions.
 
-| Feature | Legacy Architecture (v0.3.x and earlier) | Modern Architecture (v0.4.0+) |
+| Feature | Legacy Architecture (v0.3.x and earlier) | Current Architecture (v0.4.0+) |
 | :--- | :--- | :--- |
 | **Data Storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
-| **Parallelism** | Threads (bottlenecked by GIL). | Processes/MPI (true concurrent I/O). |
-| **Linking Strategy** | Tree-reduction (prone to boundary splits). | Parallel Detect + Centralized Link (perfect matching). |
+| **Parallelism** | Threads (bottlenecked by GIL). | Processes/MPI (concurrent I/O). |
+| **Linking Strategy** | Tree-reduction (prone to boundary splits). | Parallel Detect + Centralized Link (serial consistency). |
 | **Linker** | $O(N^2)$ nested Python loops. | Vectorized NumPy matrix broadcasting. |
 | **Algorithms** | Simple heuristic only. | Dual: Simple + Hodges (TRACK) Parity. |
 | **I/O** | Many small lazy-loaded chunks. | Contiguous shared `DataLoader`. |

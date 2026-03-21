@@ -30,7 +30,6 @@ dependencies = [
     "numpy>=1.24.0",
     "numba>=0.60.0",
     "xarray>=2024.9.0",
-    "shtns>=3.7.3",
 ]
 
 [project.scripts]
@@ -53,12 +52,16 @@ grib = [
 netcdf4 = [
     "netCDF4>=1.6.1",
 ]
+pre = [
+    "shtns>=3.7.3",
+]
 all = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
     "mpi4py>=4.1.0",
     "netCDF4>=1.6.1",
+    "shtns>=3.7.3",
 ]
 docs = [
     "myst-parser>=5.0.0",

@@ -2585,7 +2585,6 @@ dependencies = [
     { name = "h5py" },
     { name = "numba" },
     { name = "numpy" },
-    { name = "shtns" },
     { name = "xarray" },
 ]
 
@@ -2596,6 +2595,7 @@ all = [
     { name = "eccodeslib", marker = "sys_platform != 'win32'" },
     { name = "mpi4py" },
     { name = "netcdf4" },
+    { name = "shtns" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -2613,6 +2613,9 @@ mpi = [
 ]
 netcdf4 = [
     { name = "netcdf4" },
+]
+pre = [
+    { name = "shtns" },
 ]
 viz = [
     { name = "cartopy" },
@@ -2656,12 +2659,13 @@ requires-dist = [
     { name = "netcdf4", marker = "extra == 'netcdf4'", specifier = ">=1.6.1" },
     { name = "numba", specifier = ">=0.60.0" },
     { name = "numpy", specifier = ">=1.24.0" },
-    { name = "shtns", specifier = ">=3.7.3" },
+    { name = "shtns", marker = "extra == 'all'", specifier = ">=3.7.3" },
+    { name = "shtns", marker = "extra == 'pre'", specifier = ">=3.7.3" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.0.4" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.1.0" },
     { name = "xarray", specifier = ">=2024.9.0" },
 ]
-provides-extras = ["mpi", "grib", "netcdf4", "all", "docs", "viz"]
+provides-extras = ["mpi", "grib", "netcdf4", "pre", "all", "docs", "viz"]
 
 [package.metadata.requires-dev]
 dev = [

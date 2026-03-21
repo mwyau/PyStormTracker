@@ -1,6 +1,6 @@
 # PyStormTracker Hodges Implementation
 
-This document details the architecture, mathematical implementation, and design rationale for the Hodges tracking algorithm in `PyStormTracker`. The primary goal is **100% algorithmic parity** with the TRACK software (Hodges 1994, 1995, 1999) while modernizing the interface and performance.
+This document details the architecture, mathematical implementation, and design rationale for the Hodges tracking algorithm in `PyStormTracker`. The primary goal is **algorithmic parity** with the TRACK software (Hodges 1994, 1995, 1999) while updating the interface and performance.
 
 ---
 
@@ -10,20 +10,20 @@ This document details the architecture, mathematical implementation, and design 
 **Design Choice**: Replaced global extrema search with a multi-stage pipeline: `Thresholding -> CCL -> Object Filtering -> Local Extrema`.
 
 **Reasoning**: 
-Original TRACK (see `threshold.c` and `object_local_maxs.c`) does not find all grid-point extrema. It identifies "objects" (contiguous clusters of points exceeding a threshold) and then searches for extrema *only* within those objects. This prevents noise in small, isolated grid points from being tracked.
-- **Refinement**: Added `min_points` parameter to the CLI/API to match TRACK's `object_filter` logic, allowing users to discard small, insignificant features early.
+Original TRACK (see `threshold.c` and `object_local_maxs.c`) identifies "objects" (contiguous clusters of grid points exceeding a threshold) and then searches for extrema *only* within those objects. This prevents tracking isolated grid points that may represent noise.
+- **Refinement**: The `min_points` parameter allows discarding small, insignificant features before identifying local extrema.
 
 ### 1.2 Connected Component Labeling (CCL)
 **Design Choice**: Implemented `_numba_ccl` using **iterative label propagation** rather than TRACK's quad-tree approach (`hierarc_segment.c`).
 
 **Reasoning**: 
-Original TRACK uses a quad-tree structure for segmentation, which was memory-efficient for 1990s hardware but involves complex pointer-based recursion. In a modern Numba/Python environment, flat-array iterative propagation is highly performant, easily parallelizable, and produces identical object masks. This ensures algorithmic parity without the technical debt of legacy data structures.
+Original TRACK uses a quad-tree structure for segmentation, which was developed for limited memory environments but involves pointer-based recursion. In a Numba/Python implementation, flat-array iterative propagation is efficient, parallelizable, and produces identical object masks. This ensures algorithmic parity with legacy data structures.
 
 ### 1.3 Sub-grid Refinement
 **Design Choice**: Used 2D local quadratic surface fitting for sub-grid precision.
 
 **Reasoning**: 
-While TRACK supports B-spline surfaces (`surfit.c`, `gdfp_optimize.c`), this requires significant pre-processing (Cholesky decomposition). Quadratic fitting on a 3x3 neighborhood is the standard "modern" equivalent for identifying peaks between grid points. *Note: Global B-spline parity remains a future target if absolute coordinate identity is required.*
+While TRACK supports B-spline surfaces (`surfit.c`, `gdfp_optimize.c`), this requires significant pre-processing (Cholesky decomposition). Quadratic fitting on a 3x3 neighborhood is a standard equivalent for identifying peaks between grid points. *Note: Global B-spline parity remains a future target if absolute coordinate identity is required.*
 
 ---
 
@@ -40,34 +40,34 @@ The $0.5$ factor applied to the directional weight $w_1$ is a critical detail fo
 **Design Choice**: Implemented alternating forward/backward passes with **one best swap per frame**.
 
 **Reasoning**: 
-Unlike simpler greedy algorithms that swap as they go, TRACK's `fel_mge.c` searches the *entire set of track pairs* at a specific frame $k$ to find the single swap that yields the maximum global gain. It then moves to frame $k+1$.
-- **Recursion**: The optimization now repeats the entire forward/backward cycle until no more swaps occur, matching TRACK's convergence behavior.
+Original TRACK's `fel_mge.c` searches the *entire set of track pairs* at a specific frame $k$ to find the single swap that yields the maximum global gain. It then moves to frame $k+1$.
+- **Convergence**: The optimization repeats the entire forward/backward cycle until no more swaps occur or `n_iterations` is reached.
 
 ### 2.3 Track Breaking (Track Fail)
-**Design Choice**: Integrated `_break_track` logic directly into the MGE passes.
+**Design Choice**: Integrated displacement checks directly into the MGE passes.
 
 **Reasoning**: 
-Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an exchange causes a point to exceed the maximum displacement ($d_{max}$). My implementation checks this post-swap, ensuring that the optimization never creates "illegal" physical links in an attempt to improve smoothness.
+Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an exchange causes a point to exceed the maximum displacement ($d_{max}$). My implementation checks this after each swap, ensuring that the optimization never creates "illegal" physical links in an attempt to improve smoothness.
 
 ---
 
 ## 3. Adaptive Constraints (Hodges 1999)
 
 ### 3.1 Regional $d_{max}$ (Zones)
-**Implementation**: Supports `zone.dat` format.
+**Implementation**: Passed via `zones` argument during tracker initialization.
 **Reasoning**: Storms move faster in the extratropics than the tropics. Applying a single $d_{max}$ globally either misses fast mid-latitude storms or creates noise in the tropics.
 
 ### 3.2 Speed-Dependent Smoothness (Adaptive $\psi_{max}$)
-**Implementation**: Supports `adapt.dat` format via `get_adaptive_phimax`.
+**Implementation**: Passed via `adapt_thresholds` and `adapt_values` arguments during tracker initialization.
 **Reasoning**: As displacement (speed) increases, the directional constraint must become stricter. A storm moving 10°/step should not make sharp turns, whereas a slow-moving system (1°/step) can "wobble" more without being unphysical. This is implemented as a piecewise linear function of mean displacement.
 
 ---
 
-## 4. Modernization Strategy
+## 4. Implementation Strategy
 
 - **Numba JIT**: All heavy mathematical loops (MGE, CCL, Geodesic math) are implemented as GIL-free, cache-enabled Numba kernels. This allows Python to match or exceed the speed of the original C code.
 - **Xarray/NetCDF**: Legacy binary/ASCII I/O is replaced with Xarray, enabling seamless integration with climate data ecosystems (ERA5, CMIP6).
-- **CLI**: A modern argparse-based CLI replaces the interactive `scanf`-heavy prompts of the original TRACK binary, facilitating HPC batch processing.
+- **CLI**: A standard argparse-based CLI replaces the interactive `scanf`-heavy prompts of the original TRACK binary, facilitating HPC batch processing.
 - **Phantom Points**: Maintained the concept of "phantom" points (-1 index) to handle missing frames and initialization of tracks of varying lengths, ensuring the MGE matrix remains rectangular.
 
 ---
@@ -84,15 +84,15 @@ While `PyStormTracker` aims for 100% parity, the following minor differences exi
 ### 5.2 CCL Implementation
 - **TRACK**: Uses a quad-tree data structure for segmentation (`hierarc_segment.c`).
 - **PyStormTracker**: Uses iterative label propagation in a Numba kernel (`_numba_ccl`).
-- **Impact**: **None**. Both methods produce identical object masks from the same thresholded binary field. The Numba version is more performant on modern flat-memory architectures.
+- **Impact**: **None**. Both methods produce identical object masks from the same thresholded binary field. The Numba version is more efficient on flat-memory architectures.
 
 ### 5.3 Optimization Passes
-- **TRACK**: Implements a recursive strategy that alternates forward/backward passes until no swaps occur, but often includes hard-coded limits (e.g., 3 global iterations) in standard run scripts.
+- **TRACK**: Implements a recursive strategy that alternates forward/backward passes until no swaps occur, but often includes limits (e.g., 3 global iterations) in standard run scripts.
 - **PyStormTracker**: Fully replicates the recursive forward/backward "one best swap per frame" logic. Convergence is guaranteed to match the original algorithm's local minimum.
 
 ### 5.4 Specialized Constraints
-- **TRACK**: Supports some advanced features like elliptical search areas or directional bias based on steering flows (e.g., $u, v$ components).
+- **TRACK**: Supports some features like elliptical search areas or directional bias based on steering flows (e.g., $u, v$ components).
 - **PyStormTracker**: Currently implements the standard Hodges 1995/1999 circular search radius ($d_{max}$) and adaptive smoothness ($\psi_{max}$).
 
 ## 6. Performance
-All heavy mathematical loops are implemented as **GIL-free Numba-optimized JIT kernels** to ensure high performance even with large numbers of feature points. The use of modern `xarray` I/O allows for significantly faster data loading and preprocessing compared to TRACK's legacy binary formats.
+All heavy mathematical loops are implemented as **GIL-free Numba-optimized JIT kernels** to ensure efficiency even with large numbers of feature points. The use of `xarray` I/O allows for faster data loading and preprocessing compared to TRACK's legacy binary formats.
