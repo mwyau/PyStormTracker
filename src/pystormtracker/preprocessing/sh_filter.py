@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import os
+import threading
 import warnings
-from functools import lru_cache
 from typing import Literal, cast, overload
 
 import numpy as np
@@ -9,25 +10,33 @@ import shtns  # type: ignore[import-untyped]
 import xarray as xr
 from numpy.typing import NDArray
 
+# Thread-local storage to ensure each Dask thread has its own SHTns object.
+# Sharing one SHTns object across threads is UNSAFE due to internal buffers.
+_thread_local = threading.local()
 
-@lru_cache(maxsize=32)
+
 def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
     """
-    Creates and caches an SHTns plan.
-    The plan is thread-safe for concurrent analys/synth calls.
+    Retrieves or creates an SHTns plan for the current thread.
     """
-    # Sampling theorem limit for regular grid with poles: nlat > 2*lmax
-    grid_lmax = (nlat - 1) // 2
-    actual_lmax = min(lmax, grid_lmax)
-    mmax = min(actual_lmax, nlon // 2 - 1)
+    if not hasattr(_thread_local, "cache"):
+        _thread_local.cache = {}
 
-    # Use 4pi normalization to match pyshtools default and Hodges TRACK.
-    sh = shtns.sht(actual_lmax, mmax, norm=shtns.sht_fourpi)
-    # shtns.sht_reg_poles is the standard equidistant latitude grid including poles.
-    # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
-    sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
+    key = (nlat, nlon, lmax)
+    if key not in _thread_local.cache:
+        # Sampling theorem limit for regular grid with poles: nlat > 2*lmax
+        grid_lmax = (nlat - 1) // 2
+        actual_lmax = min(lmax, grid_lmax)
+        mmax = min(actual_lmax, nlon // 2 - 1)
 
-    return sh
+        # Use 4pi normalization to match pyshtools default and Hodges TRACK.
+        sh = shtns.sht(actual_lmax, mmax, norm=shtns.sht_fourpi)
+        # shtns.sht_reg_poles is the standard equidistant latitude grid including poles.
+        # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
+        sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
+        _thread_local.cache[key] = sh
+
+    return _thread_local.cache[key]
 
 
 def _filter_shtns_frame(
@@ -48,16 +57,13 @@ def _filter_shtns_frame(
     # Ensure frame is contiguous for SHTns C-routines
     frame = np.ascontiguousarray(frame, dtype=np.float64)
 
-    # Resolve plan. We use the maximum of the requested lmax and grid limit
-    # to ensure the plan covers the desired filtering range.
+    # Resolve plan for this thread.
     sh = _get_shtns_plan(nlat, nlon, lmax)
 
     # Forward transform (Spatial -> Spectral)
-    # ylm is a 1D complex array
     ylm = sh.analys(frame)
 
     # Apply Bandpass Mask
-    # sh.l contains the degree for each element in ylm.
     mask = (sh.l < lmin) | (sh.l > lmax)
     ylm[mask] = 0.0
 
@@ -173,10 +179,15 @@ def apply_sh_filter(
                 stacklevel=2,
             )
         else:
+            # Prevent OpenMP oversubscription when Dask is handling parallelism
+            os.environ.setdefault("OMP_NUM_THREADS", "1")
             dask_mode = "parallelized"
     elif backend == "mpi":
         try:
             from mpi4py import MPI
+
+            # Prevent OpenMP oversubscription when MPI is handling parallelism
+            os.environ.setdefault("OMP_NUM_THREADS", "1")
 
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
