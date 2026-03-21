@@ -12,6 +12,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     make \
+    libc6-dev \
     libfftw3-dev \
     && rm -rf /var/lib/apt/lists/*
 
