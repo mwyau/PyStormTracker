@@ -18,6 +18,13 @@ Benchmark <BENCHMARK>
 
 ```{toctree}
 :maxdepth: 2
+:caption: Visualization
+
+Interactive Map <interactive>
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Development & History
 
 Changelog <CHANGELOG>

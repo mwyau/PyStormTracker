@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Interactive Storm Tracks</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 10px; color: #333; }
+        .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 10px; }
+        .control-group { display: flex; flex-direction: column; }
+        .control-group label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em; }
+        .slider-values { display: flex; justify-content: space-between; font-size: 0.8em; color: #666; margin-top: 2px; }
+        #plot { width: 100%; height: 750px; border: 1px solid #eee; border-radius: 8px; }
+        select, input[type="range"] { width: 100%; cursor: pointer; }
+        .title-bar { margin-bottom: 10px; border-left: 4px solid #007bff; padding-left: 10px; }
+        .title-bar h2 { margin: 0; font-size: 1.2em; }
+        .loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.8); padding: 20px; border-radius: 10px; z-index: 100; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="loading" class="loading">Loading track data...</div>
+
+<div class="title-bar">
+    <h2>Storm Track Explorer</h2>
+    <div id="status" style="font-size: 0.85em; color: #666;">Initializing...</div>
+</div>
+
+<script src="tracks_data.js"></script>
+
+<div class="controls">
+    <div class="control-group">
+        <label>Map Projection</label>
+        <select id="projection">
+            <option value="orthographic">Globe (3D)</option>
+            <option value="equirectangular">Global (Lat/Lon)</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label>Time Range</label>
+        <div style="display:flex; gap:10px;">
+            <input type="range" id="time-start" min="0" max="100" value="0">
+            <input type="range" id="time-end" min="0" max="100" value="100">
+        </div>
+        <div class="slider-values">
+            <span id="time-start-val">...</span>
+            <span id="time-end-val">...</span>
+        </div>
+    </div>
+    <div class="control-group">
+        <label id="strength-label">Min Peak Strength</label>
+        <input type="range" id="strength" min="0" max="100" value="0">
+        <div class="slider-values">
+            <span id="strength-min-val">...</span>
+            <span id="strength-val">...</span>
+            <span id="strength-max-val">...</span>
+        </div>
+    </div>
+    <div class="control-group">
+        <label>Min Duration (hours)</label>
+        <input type="range" id="duration" min="0" max="100" value="42">
+        <div class="slider-values">
+            <span>0h</span>
+            <span id="duration-val">42h</span>
+            <span id="duration-max-val">...</span>
+        </div>
+    </div>
+    <div class="control-group">
+        <label>Min Displacement (km)</label>
+        <input type="range" id="displacement" min="0" max="100" value="1000">
+        <div class="slider-values">
+            <span>0km</span>
+            <span id="displacement-val">1000km</span>
+            <span id="displacement-max-val">...</span>
+        </div>
+    </div>
+</div>
+
+<div id="plot"></div>
+
+<script>
+let allData = null;
+let filteredTracks = [];
+
+const elements = {
+    projection: document.getElementById('projection'),
+    timeStart: document.getElementById('time-start'),
+    timeEnd: document.getElementById('time-end'),
+    timeStartVal: document.getElementById('time-start-val'),
+    timeEndVal: document.getElementById('time-end-val'),
+    strength: document.getElementById('strength'),
+    strengthLabel: document.getElementById('strength-label'),
+    strengthVal: document.getElementById('strength-val'),
+    strengthMinVal: document.getElementById('strength-min-val'),
+    strengthMaxVal: document.getElementById('strength-max-val'),
+    duration: document.getElementById('duration'),
+    durationVal: document.getElementById('duration-val'),
+    durationMaxVal: document.getElementById('duration-max-val'),
+    displacement: document.getElementById('displacement'),
+    displacementVal: document.getElementById('displacement-val'),
+    displacementMaxVal: document.getElementById('displacement-max-val'),
+    status: document.getElementById('status'),
+    loading: document.getElementById('loading')
+};
+
+async function init() {
+    console.log("Initializing Storm Track Explorer...");
+    
+    // Use the global variable from tracks_data.js
+    if (window.TRACKS_DATA) {
+        allData = window.TRACKS_DATA;
+        console.log("Data loaded successfully:", allData.tracks.length, "tracks");
+        setupControls();
+        elements.loading.style.display = 'none';
+        updatePlot();
+    } else {
+        console.error("TRACKS_DATA not found. Make sure tracks_data.js is loaded correctly.");
+        elements.status.innerHTML = `<b style='color:red'>Error:</b> Data script (tracks_data.js) not found or failed to load.`;
+        elements.loading.style.display = 'none';
+    }
+}
+
+function setupControls() {
+    const meta = allData.metadata;
+    const isMSL = meta.track_type === 'msl';
+    
+    // Time
+    elements.timeStart.min = meta.min_time;
+    elements.timeStart.max = meta.max_time;
+    elements.timeStart.value = meta.min_time;
+    elements.timeEnd.min = meta.min_time;
+    elements.timeEnd.max = meta.max_time;
+    elements.timeEnd.value = meta.max_time;
+    
+    // Strength
+    elements.strengthLabel.innerText = isMSL ? "Max Peak MSL (hPa)" : "Min Peak VO (10⁻⁵ s⁻¹)";
+    elements.strength.min = Math.floor(meta.min_strength);
+    elements.strength.max = Math.ceil(meta.max_strength);
+    elements.strength.step = isMSL ? 1 : 0.1;
+    // Set default: -15 for MSL, otherwise use default logic
+    elements.strength.value = isMSL ? -15 : (isMSL ? Math.ceil(meta.max_strength) : Math.floor(meta.min_strength));
+    elements.strengthMinVal.innerText = elements.strength.min;
+    elements.strengthMaxVal.innerText = elements.strength.max;
+    
+    // Duration
+    elements.duration.max = Math.ceil(meta.max_duration);
+    elements.duration.value = 48; // Default to 48h
+    elements.durationMaxVal.innerText = elements.duration.max + "h";
+    
+    // Displacement
+    elements.displacement.max = Math.ceil(meta.max_displacement);
+    elements.displacement.value = 1000; // Default to 1000km
+    elements.displacementMaxVal.innerText = elements.displacement.max + "km";
+
+    // Add listeners
+    [elements.projection, elements.timeStart, elements.timeEnd, elements.strength, elements.duration, elements.displacement].forEach(el => {
+        el.addEventListener('input', () => {
+            updatePlot();
+        });
+    });
+}
+
+function getColor(val, isMSL, meta) {
+    // High-resolution Turbo colormap (Google's Turbo)
+    const turboScale = [
+        [0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]],
+        [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]],
+        [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]],
+        [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]
+    ];
+
+    const cmin = isMSL ? -60 : 0;
+    const cmax = isMSL ? 0 : Math.max(10, meta.max_strength);
+    
+    // Normalize value to [0, 1]
+    let t = (val - cmin) / (cmax - cmin);
+    t = Math.min(1, Math.max(0, t));
+
+    // For MSL, we want -60 (min) to be Red and 0 (max) to be Blue.
+    // Turbo: 0 is Blue/Purple, 1 is Red.
+    // So for MSL, if val=-60, t=0. We want t_color=1.
+    // If val=0, t=1. We want t_color=0.
+    const t_color = isMSL ? (1 - t) : t;
+
+    for (let i = 0; i < turboScale.length - 1; i++) {
+        if (t_color >= turboScale[i][0] && t_color <= turboScale[i+1][0]) {
+            const t0 = turboScale[i][0], t1 = turboScale[i+1][0];
+            const c0 = turboScale[i][1], c1 = turboScale[i+1][1];
+            const ratio = (t_color - t0) / (t1 - t0);
+            const r = Math.round(c0[0] + (c1[0] - c0[0]) * ratio);
+            const g = Math.round(c0[1] + (c1[1] - c0[1]) * ratio);
+            const b = Math.round(c0[2] + (c1[2] - c0[2]) * ratio);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+    }
+    return isMSL ? `rgb(${turboScale[turboScale.length-1][1].join(',')})` : `rgb(${turboScale[0][1].join(',')})`;
+}
+
+function updatePlot() {
+    const meta = allData.metadata;
+    const isMSL = meta.track_type === 'msl';
+    
+    const tStart = parseInt(elements.timeStart.value);
+    const tEnd = parseInt(elements.timeEnd.value);
+    const strengthThresh = parseFloat(elements.strength.value);
+    const minDur = parseFloat(elements.duration.value);
+    const minDist = parseFloat(elements.displacement.value);
+    const proj = elements.projection.value;
+
+    // Update labels
+    elements.timeStartVal.innerText = new Date(tStart).toISOString().slice(0, 16).replace('T', ' ');
+    elements.timeEndVal.innerText = new Date(tEnd).toISOString().slice(0, 16).replace('T', ' ');
+    elements.strengthVal.innerText = strengthThresh;
+    elements.durationVal.innerText = minDur + "h";
+    elements.displacementVal.innerText = minDist + "km";
+
+    // Filter
+    const filtered = allData.tracks.filter(t => {
+        const strengthMatch = isMSL ? t.strength <= strengthThresh : t.strength >= strengthThresh;
+        return strengthMatch && t.duration >= minDur && t.displacement >= minDist;
+    });
+
+    const traces = [];
+    let visibleCount = 0;
+
+    filtered.forEach(t => {
+        let lats = [];
+        let lons = [];
+        for(let i=0; i<t.times.length; i++) {
+            if (t.times[i] >= tStart && t.times[i] <= tEnd) {
+                lats.push(t.lats[i]);
+                lons.push(t.lons[i]);
+            }
+        }
+        
+        if (lats.length > 1) {
+            visibleCount++;
+            traces.push({
+                type: 'scattergeo',
+                mode: 'lines',
+                lat: lats,
+                lon: lons,
+                line: {
+                    color: getColor(t.strength, isMSL, meta),
+                    width: 1.5
+                },
+                hoverinfo: 'text',
+                text: `ID: ${t.id}<br>Peak: ${t.strength.toFixed(1)}<br>Dur: ${t.duration}h`,
+                showlegend: false
+            });
+        }
+    });
+
+    elements.status.innerText = `Showing ${visibleCount} tracks`;
+
+    const layout = {
+        margin: { l: 20, r: 20, t: 20, b: 20 },
+        height: 750,
+        geo: {
+            showcoastlines: true,
+            coastlinecolor: "#444",
+            showland: true,
+            landcolor: "#eee",
+            showocean: true,
+            oceancolor: "#fff",
+            projection: {
+                type: proj,
+                rotation: proj === 'orthographic' ? { lon: -60, lat: 40 } : undefined
+            }
+        }
+    };
+
+    Plotly.react('plot', traces, layout, {responsive: true, displayModeBar: false});
+}
+
+init();
+</script>
+</body>
+</html>
