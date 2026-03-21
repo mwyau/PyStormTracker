@@ -157,6 +157,24 @@ jobs:
           flags: integration
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  docs-build:
+    name: docs-build
+    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - name: Install documentation dependencies
+        run: uv sync --frozen --no-dev --extra docs
+      - name: Build documentation
+        run: uv run sphinx-build -b html docs docs/_build/html
+
   docker-build:
     name: docker-build
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
