@@ -18,8 +18,9 @@ Benchmark <BENCHMARK>
 
 ```{toctree}
 :maxdepth: 2
-:caption: Future Development
+:caption: Development & History
 
+Changelog <CHANGELOG>
 Roadmap <ROADMAP>
 ```
 

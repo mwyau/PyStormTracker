@@ -162,14 +162,14 @@ tracks = tracker.track(
 )
 ```
 
-# 3. Analyze the results programmatically
+### Analyze the results programmatically
 ```
 for track in tracks:
     if len(track) >= 8:
         print(f"Track {track.track_id} lived for {len(track)} steps.")
 ```
 
-# 4. Export results
+### Export results
 ```
 tracks.write("output.txt", format="imilast")
 ```
