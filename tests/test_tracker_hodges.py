@@ -24,10 +24,9 @@ def test_hodges_tracker_standard_defaults() -> None:
 
 def test_hodges_tracker_override_constraints() -> None:
     custom_zones = np.array([[0.0, 360.0, -90.0, 90.0, 10.0]], dtype=np.float64)
-    custom_params = np.array([
-        [1.0, 2.0, 3.0, 4.0],
-        [1.0, 0.5, 0.2, 0.1]
-    ], dtype=np.float64)
+    custom_params = np.array(
+        [[1.0, 2.0, 3.0, 4.0], [1.0, 0.5, 0.2, 0.1]], dtype=np.float64
+    )
 
     tracker = HodgesTracker(
         zones=custom_zones,

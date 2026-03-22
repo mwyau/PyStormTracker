@@ -57,10 +57,7 @@ def test_get_regional_dmax() -> None:
 
 
 def test_get_adaptive_phimax() -> None:
-    adapt_params = np.array([
-        [1.0, 2.0, 5.0, 8.0],
-        [1.0, 0.3, 0.1, 0.0]
-    ])
+    adapt_params = np.array([[1.0, 2.0, 5.0, 8.0], [1.0, 0.3, 0.1, 0.0]])
 
     # Below min
     assert get_adaptive_phimax(0.5, adapt_params, 0.5) == 1.0

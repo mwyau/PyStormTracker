@@ -29,16 +29,24 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
     # 3. Patch run_tracker and sys.argv to run main()
     test_args = [
         "stormtracker",
-        "-i", "dummy.nc",
-        "-v", "msl",
-        "-o", "output.txt",
-        "--algorithm", "hodges",
-        "--zone-file", str(zone_file),
-        "--adapt-file", str(adapt_file),
+        "-i",
+        "dummy.nc",
+        "-v",
+        "msl",
+        "-o",
+        "output.txt",
+        "--algorithm",
+        "hodges",
+        "--zone-file",
+        str(zone_file),
+        "--adapt-file",
+        str(adapt_file),
     ]
 
-    with patch("sys.argv", test_args), \
-         patch("pystormtracker.cli.run_tracker") as mock_run:
+    with (
+        patch("sys.argv", test_args),
+        patch("pystormtracker.cli.run_tracker") as mock_run,
+    ):
         main()
 
     # 4. Verify that run_tracker was called with parsed numpy arrays
@@ -63,16 +71,24 @@ def test_cli_load_dat_json(tmp_path: Path) -> None:
 
     test_args = [
         "stormtracker",
-        "-i", "dummy.nc",
-        "-v", "msl",
-        "-o", "output.txt",
-        "--algorithm", "hodges",
-        "--zones", zones_json,
-        "--adapt-params", adapt_json,
+        "-i",
+        "dummy.nc",
+        "-v",
+        "msl",
+        "-o",
+        "output.txt",
+        "--algorithm",
+        "hodges",
+        "--zones",
+        zones_json,
+        "--adapt-params",
+        adapt_json,
     ]
 
-    with patch("sys.argv", test_args), \
-         patch("pystormtracker.cli.run_tracker") as mock_run:
+    with (
+        patch("sys.argv", test_args),
+        patch("pystormtracker.cli.run_tracker") as mock_run,
+    ):
         main()
 
     mock_run.assert_called_once()
