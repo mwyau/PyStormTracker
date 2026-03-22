@@ -13,9 +13,10 @@ This document details the architecture, mathematical implementation, and design 
 ### 1.1 Preprocessing (Spectral Filtering & Tapering)
 **Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and boundary tapering using the `shtns` library.
 - **References**: `spec_filt.c`.
+- **CLI Options**: `--filter-range` (e.g., `5-42`), `--no-filter`, `--overlap` (for splicing), and `--taper`.
 
 **Reasoning**: 
-Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution.
+Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution. By default, the Hodges algorithm applies a T5-42 band-pass filter unless `--no-filter` is specified. The `--taper` option allows smoothing at the boundaries to prevent Gibbs artifacts in the spectral transform. When using time-chunking (RSPLICE), the `--overlap` parameter controls the number of steps used to splice trajectories between consecutive windows.
 
 ### 1.2 Object-Based Detection
 **Design Choice**: Feature detection is implemented as a multi-stage pipeline: `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.

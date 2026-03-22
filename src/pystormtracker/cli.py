@@ -55,6 +55,7 @@ def run_tracker(
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
+    overlap: int = 3,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -148,6 +149,8 @@ def run_tracker(
         filter=filter,
         lmin=lmin,
         lmax=lmax,
+        taper_points=taper_points,
+        overlap=overlap,
     )
 
     # Export Phase
@@ -262,6 +265,12 @@ def parse_args() -> Namespace:
         help="Steps per chunk for Dask/RSPLICE. Default 60.",
     )
     perf.add_argument(
+        "--overlap",
+        type=int,
+        default=3,
+        help="Overlap steps between chunks for splicing. Default 3.",
+    )
+    perf.add_argument(
         "-e",
         "--engine",
         choices=["h5netcdf", "netcdf4", "cfgrib"],
@@ -276,6 +285,12 @@ def parse_args() -> Namespace:
         type=int,
         default=1,
         help="Min grid points per object (noise filter).",
+    )
+    hodges.add_argument(
+        "--taper",
+        type=int,
+        default=constants.TAPER_DEFAULT,
+        help="Number of points for boundary tapering. Default 0.",
     )
     hodges.add_argument(
         "--w1", type=float, default=None, help="Cost weight for direction. Default 0.2."
@@ -434,6 +449,8 @@ def main() -> None:
         filter=args.filter,
         lmin=lmin,
         lmax=lmax,
+        taper_points=args.taper,
+        overlap=args.overlap,
     )
 
 

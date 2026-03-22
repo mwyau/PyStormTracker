@@ -134,16 +134,20 @@ stormtracker -i data.nc -v msl -o my_tracks.txt
 | `--format` | `-f` | Output format: `imilast` (default) or `hodges`. |
 | `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
 | `--threshold` | `-t` | Intensity threshold for feature detection. |
+| `--filter-range` | | Spectral filter range (min-max). Default '5-42'. |
+| `--no-filter` | | Disable default T5-42 spectral filtering. |
 | `--num` | `-n` | Number of time steps to process. |
 | **Performance** | | |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |
 | `--workers` | `-w` | Number of parallel workers. Auto-detected for MPI; sets Dask if not MPI. |
 | `--chunk-size` | `-c` | Steps per chunk for Dask/RSPLICE (default 60). |
+| `--overlap` | | Overlap steps between chunks for splicing (default 3). |
 | `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
 | **Hodges-Specific** | | |
 | `--min-points` | | Minimum grid points per object (default 1). |
+| `--taper` | | Number of points for boundary tapering (default 0). |
 | `--w1`, `--w2` | | Cost weights for direction (0.2) and speed (default 0.8). |
-| `--dmax` | | Max search radius in degrees (default 5.0). |
+| `--dmax` | | Max search radius in degrees (default 6.5). |
 | `--phimax` | | Smoothness penalty (default 0.5). |
 | `--iterations` | | Max MGE optimization passes (default 3). |
 | `--min-lifetime`| | Minimum time steps for a valid track (default 3). |
