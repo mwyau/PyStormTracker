@@ -248,6 +248,7 @@ class HodgesTracker(Tracker):
         **kwargs: float | int | str | None,
     ) -> Tracks:
         # 1. Detection
+        print(f"DEBUG: Entering Detection with data shape {data.shape}", flush=True)
         detector = HodgesDetector.from_xarray(data)
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
@@ -255,8 +256,10 @@ class HodgesTracker(Tracker):
         detections = detector.detect(
             size=size, threshold=threshold, minmaxmode=mode, min_points=min_points
         )
+        print(f"DEBUG: Detection complete. Found detections for {len(detections)} time steps.", flush=True)
 
         # 2. Linking (MGE with adaptive constraints)
+        print("DEBUG: Entering Linking (MGE)...", flush=True)
         linker = HodgesLinker(
             w1=self.w1,
             w2=self.w2,
@@ -270,6 +273,7 @@ class HodgesTracker(Tracker):
         )
 
         tracks = linker.link(detections)
+        print(f"DEBUG: Linking complete. Found {len(tracks)} raw tracks.", flush=True)
 
         # 3. Pruning
         valid_tracks = []
@@ -281,4 +285,5 @@ class HodgesTracker(Tracker):
         for tr in valid_tracks:
             out.append(tr)
 
+        print(f"DEBUG: Pruning complete. Returning {len(out)} valid tracks.", flush=True)
         return out

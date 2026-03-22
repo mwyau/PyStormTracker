@@ -170,6 +170,8 @@ class HodgesDetector:
         full_var = self.get_var()
         is_min = minmaxmode == "min"
 
+        print(f"DEBUG: Processing {len(times)} frames with threshold {threshold}", flush=True)
+
         raw_results: list[RawDetectionStep] = []
         for it, t in enumerate(times):
             frame = full_var[it]
@@ -178,6 +180,11 @@ class HodgesDetector:
             binary_mask = (
                 (frame <= threshold) if is_min else (frame >= threshold)
             ).astype(np.float64)
+            
+            # Print frame stats for debugging possible NaNs/Inf on ARM
+            if it == 0:
+                print(f"DEBUG: Frame 0 shape {frame.shape}, range [{np.min(frame):.3e}, {np.max(frame):.3e}]", flush=True)
+            
             labeled_mask, num_objects = _numba_ccl(binary_mask)
 
             # 2. Find Extrema within objects
@@ -197,6 +204,9 @@ class HodgesDetector:
                 refined_lats[i] = rlat
                 refined_lons[i] = rlon
                 refined_vals[i] = rval
+
+            if it % 10 == 0 or it == len(times) - 1:
+                print(f"DEBUG: Frame {it}/{len(times)}: Found {len(r_idx)} features", flush=True)
 
             raw_results.append(
                 (t, refined_lats, refined_lons, {self.varname: refined_vals})
