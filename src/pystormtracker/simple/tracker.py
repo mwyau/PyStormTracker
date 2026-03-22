@@ -97,14 +97,17 @@ class SimpleTracker:
 
         if filter:
             data_xr = self.preprocess_standard_track(data_xr, lmin=lmin, lmax=lmax)
+        t_pre = timeit.default_timer()
+        print(f"    [Serial] Preprocessing time: {t_pre - t0:.4f}s")
 
+        t0_detect = timeit.default_timer()
         detector = SimpleDetector.from_xarray(data_xr)
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
         raw_steps = _detect_and_link(
             detector, size=size, threshold=threshold, mode=mode
         )
         t1 = timeit.default_timer()
-        print(f"    [Serial] Detection time: {t1 - t0:.4f}s")
+        print(f"    [Serial] Detection time: {t1 - t0_detect:.4f}s")
 
         t2 = timeit.default_timer()
         tracks = _link_centers(raw_steps, time_range=detector_peek.time_range)
