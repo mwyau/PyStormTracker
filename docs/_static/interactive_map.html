@@ -18,7 +18,6 @@
             margin-bottom: 10px; 
         }
         
-        /* Time Range spans all columns */
         .control-group.playback-group { grid-column: 1 / -1; }
 
         @media (max-width: 900px) {
@@ -48,10 +47,23 @@
         input[type="range"] { width: 100%; cursor: pointer; -webkit-appearance: none; background: #ddd; height: 6px; border-radius: 3px; outline: none; margin: 10px 0; }
         input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: #007bff; border-radius: 50%; cursor: pointer; border: 1px solid #0056b3; position: relative; z-index: 2; }
         
-        .range-slider { position: relative; width: 100%; height: 20px; display: flex; align-items: center; }
+        #time-scrub::-webkit-slider-thumb { width: 16px; height: 26px; background: linear-gradient(to right, transparent 6px, #dc3545 6px, #dc3545 10px, transparent 10px); border-radius: 0; border: none; cursor: ew-resize; z-index: 3; -webkit-appearance: none; transition: opacity 0.2s; }
+        #time-scrub::-moz-range-thumb { width: 16px; height: 26px; background: linear-gradient(to right, transparent 6px, #dc3545 6px, #dc3545 10px, transparent 10px); border-radius: 0; border: none; cursor: ew-resize; z-index: 3; transition: opacity 0.2s; }
+
+        .range-slider.not-animating #time-scrub::-webkit-slider-thumb { opacity: 0; cursor: default; }
+        .range-slider.not-animating #time-scrub::-moz-range-thumb { opacity: 0; cursor: default; }
+
+        .range-slider { position: relative; width: 100%; height: 30px; display: flex; align-items: center; }
         .range-slider input[type="range"] { position: absolute; left: 0; margin: 0; pointer-events: none; background: none; top: 50%; transform: translateY(-50%); }
         .range-slider input[type="range"]::-webkit-slider-thumb { pointer-events: auto; }
-        .range-slider .slider-track { position: absolute; height: 6px; width: 100%; background: #ddd; border-radius: 3px; top: 50%; transform: translateY(-50%); z-index: 0; }
+        .range-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; }
+        .range-slider .slider-track { 
+            position: absolute; height: 6px; width: 100%; background: #ddd; border-radius: 3px; top: 50%; transform: translateY(-50%); z-index: 0; 
+            --c1: calc(8px + var(--p1) * (100% - 16px));
+            --c2: calc(8px + var(--p2) * (100% - 16px));
+            --cs: calc(8px + var(--ps) * (100% - 16px));
+            background: linear-gradient(to right, #ddd 0%, #ddd var(--c1), #007bff var(--c1), #007bff var(--cs), #99c7ff var(--cs), #99c7ff var(--c2), #ddd var(--c2), #ddd 100%);
+        }
         
         .title-bar { margin-bottom: 10px; border-left: 4px solid #007bff; padding-left: 10px; }
         .title-bar h2 { margin: 0; font-size: 1.2em; }
@@ -67,7 +79,6 @@
 
 <div class="title-bar">
     <h2>Storm Track Explorer</h2>
-    <div id="status" style="font-size: 0.85em; color: #666;">Initializing...</div>
 </div>
 
 <script src="tracks_data.js"></script>
@@ -113,14 +124,20 @@
             <div class="slider-track" id="time-track"></div>
             <input type="range" id="time-start" step="21600000">
             <input type="range" id="time-end" step="21600000">
+            <input type="range" id="time-scrub" step="21600000">
         </div>
         <div class="slider-values">
             <span id="time-start-val">...</span>
+            <span id="status" style="color: #dc3545; font-weight: bold; position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap;">Initializing...</span>
             <span id="time-end-val">...</span>
         </div>
         <div style="display:flex; gap:5px; margin-top:10px;">
-            <button id="btn-play" class="btn" style="flex:1;">Play</button>
-            <button id="btn-stop" class="btn" style="flex:1;" disabled>Stop</button>
+            <button id="btn-play-pause" class="btn" style="flex:1;">Play</button>
+            <div style="flex:1; display:flex; border:1px solid #ccc; border-radius:4px; overflow:hidden; background:#fff;">
+                <button id="btn-speed-down" class="btn" style="border:none; border-radius:0; flex:1; padding:0; background:none;">-</button>
+                <div id="speed-val" style="flex:2; display:flex; align-items:center; justify-content:center; font-size:0.85em; font-weight:bold; border-left:1px solid #eee; border-right:1px solid #eee;">1x</div>
+                <button id="btn-speed-up" class="btn" style="border:none; border-radius:0; flex:1; padding:0; background:none;">+</button>
+            </div>
             <button id="btn-reset" class="btn" style="flex:1;">Reset</button>
         </div>
     </div>
@@ -131,8 +148,9 @@
 <script>
 // Global Constants
 const TURBO_SCALE = [[0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]], [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]], [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]], [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]];
-const FPS_INTERVAL = 1000 / 24;
+const BASE_FPS_INTERVAL = 1000 / 24;
 const HOUR_MS = 21600000; // 6 hours
+const SPEEDS = [0.25, 0.5, 1, 2, 4];
 
 // State Variables
 let allData = null;
@@ -143,6 +161,7 @@ let isDraggingMap = false;
 let lastFrameTime = 0;
 let lastProj = null;
 let uiRev = 0;
+let speedIdx = 2; // Default 1x
 
 const elements = {
     projection: document.getElementById('projection'),
@@ -151,8 +170,11 @@ const elements = {
     timeTrack: document.getElementById('time-track'),
     timeStartVal: document.getElementById('time-start-val'),
     timeEndVal: document.getElementById('time-end-val'),
-    btnPlay: document.getElementById('btn-play'),
-    btnStop: document.getElementById('btn-stop'),
+    timeScrub: document.getElementById('time-scrub'),
+    btnPlayPause: document.getElementById('btn-play-pause'),
+    btnSpeedDown: document.getElementById('btn-speed-down'),
+    btnSpeedUp: document.getElementById('btn-speed-up'),
+    speedVal: document.getElementById('speed-val'),
     btnReset: document.getElementById('btn-reset'),
     strength: document.getElementById('strength'),
     strengthLabel: document.getElementById('strength-label'),
@@ -176,23 +198,37 @@ async function init() {
         allData = window.TRACKS_DATA;
         setupControls();
         elements.loading.style.display = 'none';
+        document.querySelector('.range-slider').classList.add('not-animating');
         
-        elements.btnPlay.addEventListener('click', playAnimation);
-        elements.btnStop.addEventListener('click', stopAnimation);
+        elements.btnPlayPause.addEventListener('click', () => isPlaying ? pauseAnimation() : playAnimation());
+        elements.btnSpeedDown.addEventListener('click', () => changeSpeed(-1));
+        elements.btnSpeedUp.addEventListener('click', () => changeSpeed(1));
         elements.btnReset.addEventListener('click', resetAnimation);
         window.addEventListener('resize', () => updatePlot());
         
-        // Track map dragging to pause animation updates and allow smooth rotation
         elements.plot.addEventListener('mousedown', () => { isDraggingMap = true; });
         elements.plot.addEventListener('touchstart', () => { isDraggingMap = true; }, {passive: true});
         window.addEventListener('mouseup', () => { isDraggingMap = false; });
         window.addEventListener('touchend', () => { isDraggingMap = false; }, {passive: true});
+
+        elements.timeScrub.addEventListener('input', () => {
+            if (isPlaying) pauseAnimation();
+            document.querySelector('.range-slider').classList.remove('not-animating');
+            currentAnimTime = parseInt(elements.timeScrub.value);
+            updateSliderFill();
+            updatePlot();
+        });
 
         updatePlot(true);
     } else {
         elements.status.innerHTML = `<b style='color:red'>Error:</b> Data script not found.`;
         elements.loading.style.display = 'none';
     }
+}
+
+function changeSpeed(delta) {
+    speedIdx = Math.max(0, Math.min(SPEEDS.length - 1, speedIdx + delta));
+    elements.speedVal.innerText = SPEEDS[speedIdx] + 'x';
 }
 
 function updateSliderFill() {
@@ -204,30 +240,46 @@ function updateSliderFill() {
     const max = parseInt(elements.timeStart.max);
     const v1 = parseInt(elements.timeStart.value);
     const v2 = parseInt(elements.timeEnd.value);
-    const p1 = ((v1 - min) / (max - min)) * 100;
-    const p2 = ((v2 - min) / (max - min)) * 100;
-    elements.timeTrack.style.background = `linear-gradient(to right, #ddd ${p1}%, #007bff ${p1}%, #007bff ${p2}%, #ddd ${p2}%)`;
+    const vs = parseInt(elements.timeScrub.value);
+    
+    const p1 = (v1 - min) / (max - min);
+    const p2 = (v2 - min) / (max - min);
+    const ps = (vs - min) / (max - min);
+    
+    elements.timeTrack.style.setProperty('--p1', p1);
+    elements.timeTrack.style.setProperty('--p2', p2);
+    elements.timeTrack.style.setProperty('--ps', ps);
 }
 
 function setupControls() {
     const meta = allData.metadata;
     const isMSL = meta.track_type === 'msl';
     
-    elements.timeStart.min = meta.min_time;
-    elements.timeStart.max = meta.max_time;
-    elements.timeStart.value = meta.min_time;
-    elements.timeEnd.min = meta.min_time;
-    elements.timeEnd.max = meta.max_time;
-    elements.timeEnd.value = meta.max_time;
+    [elements.timeStart, elements.timeEnd, elements.timeScrub].forEach(el => {
+        el.min = meta.min_time;
+        el.max = meta.max_time;
+    });
     
+    elements.timeStart.value = meta.min_time;
+    elements.timeEnd.value = meta.max_time;
+    elements.timeScrub.value = meta.min_time;
+
     elements.timeStart.addEventListener('input', () => {
         if (parseInt(elements.timeStart.value) >= parseInt(elements.timeEnd.value)) {
             elements.timeStart.value = parseInt(elements.timeEnd.value) - HOUR_MS;
+        }
+        if (currentAnimTime !== null && parseInt(elements.timeScrub.value) < parseInt(elements.timeStart.value)) {
+            elements.timeScrub.value = elements.timeStart.value;
+            currentAnimTime = parseInt(elements.timeScrub.value);
         }
     });
     elements.timeEnd.addEventListener('input', () => {
         if (parseInt(elements.timeEnd.value) <= parseInt(elements.timeStart.value)) {
             elements.timeEnd.value = parseInt(elements.timeStart.value) + HOUR_MS;
+        }
+        if (currentAnimTime !== null && parseInt(elements.timeScrub.value) > parseInt(elements.timeEnd.value)) {
+            elements.timeScrub.value = elements.timeEnd.value;
+            currentAnimTime = parseInt(elements.timeScrub.value);
         }
     });
     
@@ -253,9 +305,9 @@ function setupControls() {
     [elements.projection, elements.timeStart, elements.timeEnd, elements.strength, elements.duration, elements.displacement].forEach(el => {
         el.addEventListener('input', () => {
             if (isPlaying && (el === elements.timeStart || el === elements.timeEnd)) {
-                stopAnimation();
+                pauseAnimation();
             } else if (el !== elements.timeStart && el !== elements.timeEnd) {
-                if (isPlaying) stopAnimation();
+                if (isPlaying) pauseAnimation();
             }
             updateSliderFill();
             updatePlot();
@@ -267,22 +319,23 @@ function setupControls() {
 function animate(timestamp) {
     if (!isPlaying) return;
     
-    if (timestamp - lastFrameTime >= FPS_INTERVAL) {
+    const currentFpsInterval = BASE_FPS_INTERVAL / SPEEDS[speedIdx];
+    if (timestamp - lastFrameTime >= currentFpsInterval) {
         lastFrameTime = timestamp;
         
-        // PAUSE animation updates if the user is actively interacting with the globe
-        // This prevents Plotly.restyle from interrupting drag/rotation events
         if (!isDraggingMap) {
             const tEnd = parseInt(elements.timeEnd.value);
-            let nextTime = currentAnimTime + HOUR_MS;
+            let nextTime = (currentAnimTime !== null ? currentAnimTime : parseInt(elements.timeStart.value)) + HOUR_MS;
             
             if (nextTime >= tEnd) {
                 currentAnimTime = tEnd;
                 updatePlot();
-                stopAnimation();
+                pauseAnimation();
                 return;
             }
             currentAnimTime = nextTime;
+            elements.timeScrub.value = currentAnimTime;
+            updateSliderFill();
             updatePlot();
         }
     }
@@ -292,8 +345,8 @@ function animate(timestamp) {
 function playAnimation() {
     if (isPlaying) return;
     isPlaying = true;
-    elements.btnPlay.disabled = true;
-    elements.btnStop.disabled = false;
+    elements.btnPlayPause.innerText = 'Pause';
+    document.querySelector('.range-slider').classList.remove('not-animating');
     
     const tStart = parseInt(elements.timeStart.value);
     const tEnd = parseInt(elements.timeEnd.value);
@@ -303,16 +356,20 @@ function playAnimation() {
     requestAnimationFrame(animate);
 }
 
-function stopAnimation() {
+function pauseAnimation() {
     isPlaying = false;
-    elements.btnPlay.disabled = false;
-    elements.btnStop.disabled = true;
+    elements.btnPlayPause.innerText = 'Play';
     updatePlot();
 }
 
 function resetAnimation() { 
-    stopAnimation(); 
+    pauseAnimation(); 
     currentAnimTime = null; 
+    speedIdx = 2; // Reset to 1x
+    elements.speedVal.innerText = '1x';
+    elements.timeScrub.value = elements.timeStart.value;
+    document.querySelector('.range-slider').classList.add('not-animating');
+    updateSliderFill();
     uiRev++;
     updatePlot(true); 
 }
@@ -358,7 +415,6 @@ function updatePlot(forceStructural = false) {
     if (proj !== lastProj) uiRev++;
     lastProj = proj;
 
-    // Responsive layout scaling
     const winW = window.innerWidth;
     const isMobile = winW < 600;
     const isTiny = winW < 400;
@@ -367,14 +423,12 @@ function updatePlot(forceStructural = false) {
         : (isTiny ? 320 : (isMobile ? 400 : 700));
     elements.plot.style.height = plotHeight + 'px';
 
-    // Update UI Labels
     elements.timeStartVal.innerText = formatTime(tStart);
     elements.timeEndVal.innerText = formatTime(tEnd);
     elements.strengthVal.innerText = strengthThresh + " " + unit;
     elements.durationVal.innerText = minDur + "h";
     elements.displacementVal.innerText = minDist + "km";
 
-    // Prepare arrays for the 13 traces (1 dummy, 11 line bins, 1 marker overlay)
     const binLats = Array(11).fill(0).map(() => []);
     const binLons = Array(11).fill(0).map(() => []);
     const binTexts = Array(11).fill(0).map(() => []);
@@ -382,29 +436,35 @@ function updatePlot(forceStructural = false) {
     let visibleCount = 0;
 
     allData.tracks.forEach(t => {
-        // Apply Filters
         const sMatch = isMSL ? t.strength <= strengthThresh : t.strength >= strengthThresh;
         if (!sMatch || t.duration < minDur || t.displacement < minDist) return;
 
-        let lats = [], lons = [], lastLat = null, lastLon = null;
+        const startTimeStr = formatTime(t.times[0]);
+        const endTimeStr = formatTime(t.times[t.times.length-1]);
         
-        // Find color bin for traces
         let t_val = Math.min(1, Math.max(0, (t.strength - cmin) / (cmax - cmin)));
         const tc = isMSL ? (1 - t_val) : t_val;
         const binIdx = Math.min(Math.floor(tc * 10), 10);
-        
-        const startTimeStr = formatTime(t.times[0]);
-        const endTimeStr = formatTime(t.times[t.times.length-1]);
-        const hoverText = `ID: ${t.id}<br>Peak: ${t.strength.toFixed(1)} ${unit}<br>Dur: ${t.duration}h<br>Start: ${startTimeStr}<br>End: ${endTimeStr}`;
 
-        // Temporal Filtering
+        let lats = [], lons = [], trackTexts = [];
+        let lastLat = null, lastLon = null, lastIntensity = null, lastTimeStr = null;
+        const peakText = `Track ID: ${t.id}<br>Peak: ${t.strength.toFixed(1)} ${unit}`;
+        const durText = `<br>Start: ${startTimeStr}<br>End: ${endTimeStr}<br>Dur: ${t.duration}h`;
+
         for(let i=0; i<t.times.length; i++) {
             if (t.times[i] >= tStart && t.times[i] <= tEnd) {
                 if (currentAnimTime !== null && t.times[i] > currentAnimTime) break;
                 lats.push(t.lats[i]); 
                 lons.push(t.lons[i]);
+                
+                const ptTimeStr = formatTime(t.times[i]);
+                const ptHover = `${peakText}<br>Curr: ${t.intensities[i].toFixed(1)} ${unit}<br>Curr Time: ${ptTimeStr}${durText}`;
+                trackTexts.push(ptHover);
+
                 lastLat = t.lats[i]; 
                 lastLon = t.lons[i];
+                lastIntensity = t.intensities[i];
+                lastTimeStr = ptTimeStr;
             }
         }
         
@@ -412,25 +472,21 @@ function updatePlot(forceStructural = false) {
             visibleCount++;
             binLats[binIdx].push(...lats, null);
             binLons[binIdx].push(...lons, null);
-            
-            // Add hover text for each point in the segment to restore line tooltips
-            for(let i=0; i<lats.length; i++) {
-                binTexts[binIdx].push(hoverText);
-            }
-            binTexts[binIdx].push(null);
+            binTexts[binIdx].push(...trackTexts, null);
         }
         
-        // If track is active at current animation frame, draw the leading marker
         if (currentAnimTime !== null && t.times[0] <= currentAnimTime && t.times[t.times.length-1] >= currentAnimTime && lastLat !== null) {
             const color = getColor(t.strength, isMSL, cmin, cmax);
             curLats.push(lastLat); 
             curLons.push(lastLon); 
-            curTexts.push(hoverText); 
+            const markerHover = `${peakText}<br>Curr: ${lastIntensity.toFixed(1)} ${unit}<br>Curr Time: ${lastTimeStr}${durText}`;
+            curTexts.push(markerHover); 
             curColors.push(color);
         }
     });
 
     elements.status.innerText = (isPlaying || currentAnimTime !== null) ? `Animating: ${formatTime(currentAnimTime)}` : `Showing ${visibleCount} tracks`;
+    elements.status.style.color = (isPlaying || currentAnimTime !== null) ? "#dc3545" : "#666";
 
     if (isProjChanged) {
         const traces = [
@@ -457,7 +513,6 @@ function updatePlot(forceStructural = false) {
             },
             uirevision: 'true'
         };
-        // Default North America / Atlantic view on initial orthographic load
         if (proj === 'orthographic') layout.geo.projection.rotation = { lon: -60, lat: 35 };
 
         Plotly.react(elements.plot, traces, layout, {responsive: true, displayModeBar: false}).then(() => { isUpdating = false; });
