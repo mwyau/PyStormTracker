@@ -389,14 +389,20 @@ def main() -> None:
 
     zones_arr = None
     if args.zone_file:
-        zones_arr = np.loadtxt(args.zone_file)
+        # Check if the file has a header line (single element)
+        with open(args.zone_file) as f:
+            first_line = f.readline().split()
+            has_header = len(first_line) == 1
+        zones_arr = np.loadtxt(args.zone_file, skiprows=1 if has_header else 0)
     elif args.zones:
         zones_arr = np.array(json.loads(args.zones), dtype=np.float64)
 
     adapt_params_arr = None
     if args.adapt_file:
-        # adapt.dat is 4x2, we need it as 2x4
-        adapt_params_arr = np.loadtxt(args.adapt_file).T
+        # Standard adapt.dat in TRACK is 4 points with (thresh, value) per line (4x2)
+        # We need it as 2x4 (row 0: thresholds, row 1: values)
+        arr = np.loadtxt(args.adapt_file)
+        adapt_params_arr = arr.T if arr.shape == (4, 2) else arr
     elif args.adapt_params:
         adapt_params_arr = np.array(json.loads(args.adapt_params), dtype=np.float64)
 
