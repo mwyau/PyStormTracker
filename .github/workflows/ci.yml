@@ -156,12 +156,8 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Install documentation dependencies
-        run: |
-          uv venv
-          uv pip install .[docs]
       - name: Build documentation
-        run: uv run sphinx-build -b html docs docs/_build/html
+        run: uv run --extra docs --no-dev sphinx-build -b html docs docs/_build/html
 
   docker-build:
     name: docker-build
