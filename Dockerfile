@@ -8,7 +8,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 # Use architecture-specific optimization flags
 ARG TARGETARCH
-ENV CFLAGS=${TARGETARCH:+"$(if [ "$TARGETARCH" = "arm64" ]; then echo "-O2 -g -march=armv8-a"; else echo "-O3"; fi)"}
+ENV CFLAGS=${TARGETARCH:+"$(if [ "$TARGETARCH" = "arm64" ]; then echo "-O2 -g -march=armv8-a -fno-fast-math"; else echo "-O3"; fi)"}
 
 WORKDIR /app
 
