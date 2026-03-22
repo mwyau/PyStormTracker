@@ -129,14 +129,20 @@
 <div id="plot"></div>
 
 <script>
+// Global Constants
+const TURBO_SCALE = [[0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]], [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]], [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]], [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]];
+const FPS_INTERVAL = 1000 / 24;
+const HOUR_MS = 21600000; // 6 hours
+
+// State Variables
 let allData = null;
 let isPlaying = false;
 let currentAnimTime = null;
 let isUpdating = false;
+let isDraggingMap = false;
 let lastFrameTime = 0;
 let lastProj = null;
 let uiRev = 0;
-const FPS_INTERVAL = 1000 / 24;
 
 const elements = {
     projection: document.getElementById('projection'),
@@ -170,10 +176,18 @@ async function init() {
         allData = window.TRACKS_DATA;
         setupControls();
         elements.loading.style.display = 'none';
+        
         elements.btnPlay.addEventListener('click', playAnimation);
         elements.btnStop.addEventListener('click', stopAnimation);
         elements.btnReset.addEventListener('click', resetAnimation);
         window.addEventListener('resize', () => updatePlot());
+        
+        // Track map dragging to pause animation updates and allow smooth rotation
+        elements.plot.addEventListener('mousedown', () => { isDraggingMap = true; });
+        elements.plot.addEventListener('touchstart', () => { isDraggingMap = true; }, {passive: true});
+        window.addEventListener('mouseup', () => { isDraggingMap = false; });
+        window.addEventListener('touchend', () => { isDraggingMap = false; }, {passive: true});
+
         updatePlot(true);
     } else {
         elements.status.innerHTML = `<b style='color:red'>Error:</b> Data script not found.`;
@@ -198,22 +212,25 @@ function updateSliderFill() {
 function setupControls() {
     const meta = allData.metadata;
     const isMSL = meta.track_type === 'msl';
+    
     elements.timeStart.min = meta.min_time;
     elements.timeStart.max = meta.max_time;
     elements.timeStart.value = meta.min_time;
     elements.timeEnd.min = meta.min_time;
     elements.timeEnd.max = meta.max_time;
     elements.timeEnd.value = meta.max_time;
+    
     elements.timeStart.addEventListener('input', () => {
         if (parseInt(elements.timeStart.value) >= parseInt(elements.timeEnd.value)) {
-            elements.timeStart.value = parseInt(elements.timeEnd.value) - 21600000;
+            elements.timeStart.value = parseInt(elements.timeEnd.value) - HOUR_MS;
         }
     });
     elements.timeEnd.addEventListener('input', () => {
         if (parseInt(elements.timeEnd.value) <= parseInt(elements.timeStart.value)) {
-            elements.timeEnd.value = parseInt(elements.timeStart.value) + 21600000;
+            elements.timeEnd.value = parseInt(elements.timeStart.value) + HOUR_MS;
         }
     });
+    
     elements.strengthLabel.innerText = isMSL ? "Peak MSL (hPa)" : "Peak VO (10⁻⁵ s⁻¹)";
     elements.strength.min = Math.floor(meta.min_strength);
     elements.strength.max = Math.ceil(meta.max_strength);
@@ -221,10 +238,12 @@ function setupControls() {
     elements.strength.value = isMSL ? -15 : Math.floor(meta.min_strength);
     elements.strengthMinVal.innerText = elements.strength.min;
     elements.strengthMaxVal.innerText = elements.strength.max;
+    
     elements.duration.min = 0;
     elements.duration.max = Math.ceil(meta.max_duration);
     elements.duration.value = 48;
     elements.durationMaxVal.innerText = elements.duration.max + "h";
+    
     const roundedMaxDisp = Math.ceil(meta.max_displacement / 100) * 100;
     elements.displacement.min = 100;
     elements.displacement.max = roundedMaxDisp;
@@ -247,18 +266,25 @@ function setupControls() {
 
 function animate(timestamp) {
     if (!isPlaying) return;
+    
     if (timestamp - lastFrameTime >= FPS_INTERVAL) {
         lastFrameTime = timestamp;
-        const tEnd = parseInt(elements.timeEnd.value);
-        let nextTime = currentAnimTime + 21600000;
-        if (nextTime >= tEnd) {
-            currentAnimTime = tEnd;
+        
+        // PAUSE animation updates if the user is actively interacting with the globe
+        // This prevents Plotly.restyle from interrupting drag/rotation events
+        if (!isDraggingMap) {
+            const tEnd = parseInt(elements.timeEnd.value);
+            let nextTime = currentAnimTime + HOUR_MS;
+            
+            if (nextTime >= tEnd) {
+                currentAnimTime = tEnd;
+                updatePlot();
+                stopAnimation();
+                return;
+            }
+            currentAnimTime = nextTime;
             updatePlot();
-            stopAnimation();
-            return;
         }
-        currentAnimTime = nextTime;
-        updatePlot();
     }
     requestAnimationFrame(animate);
 }
@@ -268,9 +294,11 @@ function playAnimation() {
     isPlaying = true;
     elements.btnPlay.disabled = true;
     elements.btnStop.disabled = false;
+    
     const tStart = parseInt(elements.timeStart.value);
     const tEnd = parseInt(elements.timeEnd.value);
     if (currentAnimTime === null || currentAnimTime >= tEnd) currentAnimTime = tStart;
+    
     lastFrameTime = performance.now();
     requestAnimationFrame(animate);
 }
@@ -289,22 +317,24 @@ function resetAnimation() {
     updatePlot(true); 
 }
 
-function getColor(val, isMSL, meta) {
-    const turboScale = [[0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]], [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]], [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]], [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]];
-    const cmin = isMSL ? -60 : 0;
-    const cmax = isMSL ? 0 : Math.max(10, meta.max_strength);
+function getColor(val, isMSL, cmin, cmax) {
     let t = Math.min(1, Math.max(0, (val - cmin) / (cmax - cmin)));
     const tc = isMSL ? (1 - t) : t;
-    for (let i = 0; i < turboScale.length - 1; i++) {
-        if (tc >= turboScale[i][0] && tc <= turboScale[i+1][0]) {
-            const ratio = (tc - turboScale[i][0]) / (turboScale[i+1][0] - turboScale[i][0]);
-            const r = Math.round(turboScale[i][1][0] + (turboScale[i+1][1][0] - turboScale[i][1][0]) * ratio);
-            const g = Math.round(turboScale[i][1][1] + (turboScale[i+1][1][1] - turboScale[i][1][1]) * ratio);
-            const b = Math.round(turboScale[i][1][2] + (turboScale[i+1][1][2] - turboScale[i][1][2]) * ratio);
+    
+    for (let i = 0; i < TURBO_SCALE.length - 1; i++) {
+        if (tc >= TURBO_SCALE[i][0] && tc <= TURBO_SCALE[i+1][0]) {
+            const ratio = (tc - TURBO_SCALE[i][0]) / (TURBO_SCALE[i+1][0] - TURBO_SCALE[i][0]);
+            const r = Math.round(TURBO_SCALE[i][1][0] + (TURBO_SCALE[i+1][1][0] - TURBO_SCALE[i][1][0]) * ratio);
+            const g = Math.round(TURBO_SCALE[i][1][1] + (TURBO_SCALE[i+1][1][1] - TURBO_SCALE[i][1][1]) * ratio);
+            const b = Math.round(TURBO_SCALE[i][1][2] + (TURBO_SCALE[i+1][1][2] - TURBO_SCALE[i][1][2]) * ratio);
             return `rgb(${r}, ${g}, ${b})`;
         }
     }
     return `rgb(0,0,0)`;
+}
+
+function formatTime(ms) {
+    return new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
 }
 
 function updatePlot(forceStructural = false) {
@@ -314,6 +344,9 @@ function updatePlot(forceStructural = false) {
     const meta = allData.metadata;
     const isMSL = meta.track_type === 'msl';
     const unit = isMSL ? "hPa" : "10⁻⁵ s⁻¹";
+    const cmin = isMSL ? -60 : 0;
+    const cmax = isMSL ? 0 : Math.max(10, meta.max_strength);
+    
     const tStart = parseInt(elements.timeStart.value);
     const tEnd = parseInt(elements.timeEnd.value);
     const strengthThresh = parseFloat(elements.strength.value);
@@ -325,6 +358,7 @@ function updatePlot(forceStructural = false) {
     if (proj !== lastProj) uiRev++;
     lastProj = proj;
 
+    // Responsive layout scaling
     const winW = window.innerWidth;
     const isMobile = winW < 600;
     const isTiny = winW < 400;
@@ -333,64 +367,80 @@ function updatePlot(forceStructural = false) {
         : (isTiny ? 320 : (isMobile ? 400 : 700));
     elements.plot.style.height = plotHeight + 'px';
 
-    elements.timeStartVal.innerText = new Date(tStart).toISOString().slice(0, 16).replace('T', ' ');
-    elements.timeEndVal.innerText = new Date(tEnd).toISOString().slice(0, 16).replace('T', ' ');
+    // Update UI Labels
+    elements.timeStartVal.innerText = formatTime(tStart);
+    elements.timeEndVal.innerText = formatTime(tEnd);
     elements.strengthVal.innerText = strengthThresh + " " + unit;
     elements.durationVal.innerText = minDur + "h";
     elements.displacementVal.innerText = minDist + "km";
 
-    const filtered = allData.tracks.filter(t => {
-        const sMatch = isMSL ? t.strength <= strengthThresh : t.strength >= strengthThresh;
-        return sMatch && t.duration >= minDur && t.displacement >= minDist;
-    });
-
-    const turboScale = [[0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]], [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]], [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]], [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]];
+    // Prepare arrays for the 13 traces (1 dummy, 11 line bins, 1 marker overlay)
     const binLats = Array(11).fill(0).map(() => []);
     const binLons = Array(11).fill(0).map(() => []);
+    const binTexts = Array(11).fill(0).map(() => []);
     const curLats = [], curLons = [], curTexts = [], curColors = [];
     let visibleCount = 0;
 
-    filtered.forEach(t => {
-        let lats = [], lons = [], lastLat = null, lastLon = null;
-        const color = getColor(t.strength, isMSL, meta);
-        const startTimeStr = new Date(t.times[0]).toISOString().slice(0, 16).replace('T', ' ');
-        const endTimeStr = new Date(t.times[t.times.length-1]).toISOString().slice(0, 16).replace('T', ' ');
-        const hoverText = `ID: ${t.id}<br>Peak: ${t.strength.toFixed(1)} ${unit}<br>Dur: ${t.duration}h<br>Start: ${startTimeStr}<br>End: ${endTimeStr}`;
+    allData.tracks.forEach(t => {
+        // Apply Filters
+        const sMatch = isMSL ? t.strength <= strengthThresh : t.strength >= strengthThresh;
+        if (!sMatch || t.duration < minDur || t.displacement < minDist) return;
 
-        const cmin = isMSL ? -60 : 0;
-        const cmax = isMSL ? 0 : Math.max(10, meta.max_strength);
+        let lats = [], lons = [], lastLat = null, lastLon = null;
+        
+        // Find color bin for traces
         let t_val = Math.min(1, Math.max(0, (t.strength - cmin) / (cmax - cmin)));
         const tc = isMSL ? (1 - t_val) : t_val;
         const binIdx = Math.min(Math.floor(tc * 10), 10);
+        
+        const startTimeStr = formatTime(t.times[0]);
+        const endTimeStr = formatTime(t.times[t.times.length-1]);
+        const hoverText = `ID: ${t.id}<br>Peak: ${t.strength.toFixed(1)} ${unit}<br>Dur: ${t.duration}h<br>Start: ${startTimeStr}<br>End: ${endTimeStr}`;
 
+        // Temporal Filtering
         for(let i=0; i<t.times.length; i++) {
             if (t.times[i] >= tStart && t.times[i] <= tEnd) {
                 if (currentAnimTime !== null && t.times[i] > currentAnimTime) break;
-                lats.push(t.lats[i]); lons.push(t.lons[i]);
-                lastLat = t.lats[i]; lastLon = t.lons[i];
+                lats.push(t.lats[i]); 
+                lons.push(t.lons[i]);
+                lastLat = t.lats[i]; 
+                lastLon = t.lons[i];
             }
         }
+        
         if (lats.length > 1) {
             visibleCount++;
             binLats[binIdx].push(...lats, null);
             binLons[binIdx].push(...lons, null);
+            
+            // Add hover text for each point in the segment to restore line tooltips
+            for(let i=0; i<lats.length; i++) {
+                binTexts[binIdx].push(hoverText);
+            }
+            binTexts[binIdx].push(null);
         }
+        
+        // If track is active at current animation frame, draw the leading marker
         if (currentAnimTime !== null && t.times[0] <= currentAnimTime && t.times[t.times.length-1] >= currentAnimTime && lastLat !== null) {
-            curLats.push(lastLat); curLons.push(lastLon); curTexts.push(hoverText); curColors.push(color);
+            const color = getColor(t.strength, isMSL, cmin, cmax);
+            curLats.push(lastLat); 
+            curLons.push(lastLon); 
+            curTexts.push(hoverText); 
+            curColors.push(color);
         }
     });
 
-    elements.status.innerText = (isPlaying || currentAnimTime !== null) ? `Animating: ${new Date(currentAnimTime).toISOString().slice(0, 16).replace('T', ' ')}` : `Showing ${visibleCount} tracks`;
+    elements.status.innerText = (isPlaying || currentAnimTime !== null) ? `Animating: ${formatTime(currentAnimTime)}` : `Showing ${visibleCount} tracks`;
 
     if (isProjChanged) {
         const traces = [
             { type: 'scattergeo', lat: [0], lon: [0], marker: { size: 0, opacity: 0 }, showlegend: false, hoverinfo: 'none' }
         ];
-        turboScale.forEach((bin, idx) => {
+        TURBO_SCALE.forEach((bin, idx) => {
             traces.push({
                 type: 'scattergeo', mode: 'lines', lat: binLats[idx], lon: binLons[idx],
                 line: { color: `rgb(${bin[1].join(',')})`, width: 1.5 },
-                hoverinfo: 'none', showlegend: false
+                hoverinfo: 'text', text: binTexts[idx], showlegend: false
             });
         });
         traces.push({ 
@@ -407,6 +457,7 @@ function updatePlot(forceStructural = false) {
             },
             uirevision: 'true'
         };
+        // Default North America / Atlantic view on initial orthographic load
         if (proj === 'orthographic') layout.geo.projection.rotation = { lon: -60, lat: 35 };
 
         Plotly.react(elements.plot, traces, layout, {responsive: true, displayModeBar: false}).then(() => { isUpdating = false; });
@@ -414,7 +465,7 @@ function updatePlot(forceStructural = false) {
         const update = {
             lat: [[0], ...binLats, curLats],
             lon: [[0], ...binLons, curLons],
-            text: [null, ...Array(11).fill(null), curTexts],
+            text: [null, ...binTexts, curTexts],
             'marker.color': [null, ...Array(11).fill(null), curColors]
         };
         Plotly.restyle(elements.plot, update, Array.from(Array(13).keys())).then(() => { isUpdating = false; });
