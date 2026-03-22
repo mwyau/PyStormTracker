@@ -15,19 +15,15 @@ from pystormtracker.utils.data import fetch_era5_vo850
 
 def run_command_direct(cmd_args: list[str]) -> None:
     """Utility to run the tracker directly via main."""
-    print(f"\nRunning command: stormtracker {' '.join(cmd_args)}")
-    stderr_buf = io.StringIO()
+    print(f"\nRunning command: stormtracker {' '.join(cmd_args)}", flush=True)
     try:
         with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
-            with patch("sys.stderr", stderr_buf):
-                main()
-    except Exception as e:
-        print(f"Command failed with error: {e}")
-        print(f"Stderr: {stderr_buf.getvalue()}")
+            main()
+    except BaseException as e:
+        print(f"Command failed with {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         raise
-    finally:
-        if stderr_buf.getvalue():
-             print(f"Stderr: {stderr_buf.getvalue()}")
 
 
 @pytest.fixture(scope="module")
