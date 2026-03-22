@@ -2662,9 +2662,9 @@ requires-dist = [
     { name = "netcdf4", marker = "extra == 'netcdf4'", specifier = ">=1.6.1" },
     { name = "numba", specifier = ">=0.60.0" },
     { name = "numpy", specifier = ">=1.24.0" },
-    { name = "shtns", marker = "extra == 'all'", git = "https://github.com/mwyau/shtns.git" },
-    { name = "shtns", marker = "extra == 'hodges'", git = "https://github.com/mwyau/shtns.git" },
-    { name = "shtns", marker = "extra == 'pre'", git = "https://github.com/mwyau/shtns.git" },
+    { name = "shtns", marker = "extra == 'all'", specifier = ">=3.7.3" },
+    { name = "shtns", marker = "extra == 'hodges'", specifier = ">=3.7.3" },
+    { name = "shtns", marker = "extra == 'pre'", specifier = ">=3.7.3" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.0.4" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.1.0" },
     { name = "xarray", specifier = ">=2024.9.0" },
@@ -3150,10 +3150,11 @@ wheels = [
 [[package]]
 name = "shtns"
 version = "3.7.5"
-source = { git = "https://github.com/mwyau/shtns.git#602a30971529b797a9ca13eb285f50adec143f21" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/35/60/241291c0a737d269efd0ae02a488172721f1ad4b226729613cf8d12d3a4f/shtns-3.7.5.tar.gz", hash = "sha256:94f608f3a01df892b67cf9b209b110df6b067f5fe68e3319719ab95ccc6c2a03", size = 654274, upload-time = "2026-02-13T22:17:30.09Z" }
 
 [[package]]
 name = "six"
