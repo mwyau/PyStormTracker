@@ -1,5 +1,5 @@
 # --- Build Stage ---
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Prevent uv from creating a virtualenv that might be hard to move
 ENV UV_COMPILE_BYTECODE=1 \
@@ -22,10 +22,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # 1. Copy only dependency files for better layer caching.
 COPY pyproject.toml uv.lock ./
 
-# 2. Install third-party dependencies first (including grib extra).
+# 2. Install third-party dependencies first (including extras).
 # Use cache mount for uv to persist downloads and build artifacts.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-workspace --extra grib --no-editable
+    uv sync --frozen --no-dev --no-install-workspace --extra grib --extra hodges --extra netcdf4 --no-editable
 
 # 3. Copy only necessary source files for the final installation step.
 COPY src/ ./src/
@@ -33,11 +33,11 @@ COPY README.md ./
 
 # 4. Final installation of the project package itself.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra grib --no-editable
+    uv sync --frozen --no-dev --extra grib --extra hodges --extra netcdf4 --no-editable
 
 
 # --- Runtime Stage ---
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
