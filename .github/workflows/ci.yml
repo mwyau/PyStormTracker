@@ -116,18 +116,10 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    name: integration-tests (Python 3.13)
+    runs-on: ubuntu-24.04
     env:
-      CFLAGS: ${{ matrix.cflags }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            os: ubuntu-24.04
-            python-version: "3.13"
-            cflags: "-O3 -march=x86-64"
+      CFLAGS: "-O3 -march=x86-64"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -136,7 +128,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev libfftw3-dev
       - name: Install dependencies
@@ -192,7 +184,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and load Docker image
+      - name: Build and load image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -203,14 +195,14 @@ jobs:
           cache-from: type=gha,scope=docker-build
           cache-to: type=gha,mode=max,scope=docker-build
 
-      - name: Smoke test Docker image
+      - name: Smoke test image
         run: |
           # Test CLI help
           docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
           # Test library import
           docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} -c "import pystormtracker as pst; print('Import success')"
 
-      - name: Run Trivy vulnerability scanner
+      - name: Vulnerability scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
