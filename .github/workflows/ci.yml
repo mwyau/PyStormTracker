@@ -131,7 +131,7 @@ jobs:
           - arch: arm64
             os: ubuntu-24.04-arm
             python-version: "3.13"
-            cflags: "-O3"
+            cflags: "-O2"
     steps:
       - uses: actions/checkout@v6
         with:

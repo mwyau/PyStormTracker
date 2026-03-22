@@ -6,6 +6,15 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0
 
+# Use architecture-specific optimization flags
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        echo "CFLAGS=-O2" >> /etc/environment; \
+    else \
+        echo "CFLAGS=-O3" >> /etc/environment; \
+    fi
+ENV CFLAGS=${TARGETARCH:+"$(if [ "$TARGETARCH" = "arm64" ]; then echo "-O2"; else echo "-O3"; fi)"}
+
 WORKDIR /app
 
 # Install build dependencies for SHTns
