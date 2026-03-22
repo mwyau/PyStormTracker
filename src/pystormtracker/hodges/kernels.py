@@ -229,8 +229,7 @@ def get_regional_dmax(
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
 def get_adaptive_phimax(
     mean_dist: float,
-    adapt_thresholds: NDArray[np.float64],
-    adapt_values: NDArray[np.float64],
+    adapt_params: NDArray[np.float64],
     default_phimax: float,
 ) -> float:
     """
@@ -238,15 +237,17 @@ def get_adaptive_phimax(
 
     Args:
         mean_dist: Average displacement over three frames.
-        adapt_thresholds: Distance thresholds from adapt.dat.
-        adapt_values: Smoothness values from adapt.dat.
+        adapt_params: Distance thresholds and smoothness values (2x4 array).
         default_phimax: Value if adaptive logic is disabled.
 
     Returns:
         The dynamic phimax limit.
     """
-    if adapt_thresholds.shape[0] < 4:
+    if adapt_params.shape[1] < 4:
         return default_phimax
+
+    adapt_thresholds = adapt_params[0, :]
+    adapt_values = adapt_params[1, :]
 
     d = mean_dist
 
@@ -374,8 +375,7 @@ def _mge_iteration(
     default_dmax: float,
     phimax: float,
     zones: NDArray[np.float64],
-    adapt_thresholds: NDArray[np.float64],
-    adapt_values: NDArray[np.float64],
+    adapt_params: NDArray[np.float64],
     max_missing: int,
 ) -> tuple[int, int]:
     """
@@ -393,7 +393,7 @@ def _mge_iteration(
         default_dmax: Default search radius.
         phimax: Phantom penalty.
         zones: Regional dmax definitions.
-        adapt_thresholds, adapt_values: Adaptive smoothness definitions.
+        adapt_params: Adaptive smoothness definitions.
         max_missing: Missing frame limit.
 
     Returns:
@@ -484,7 +484,7 @@ def _mge_iteration(
                     features_lon[tracks[i, k + 1]],
                 )
                 phi_max_i = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
+                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
                 )
                 if new_cost_i > phi_max_i:
                     valid_swap = False
@@ -508,7 +508,7 @@ def _mge_iteration(
                     features_lon[tracks[j, k + 1]],
                 )
                 phi_max_j = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
+                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
                 )
                 if new_cost_j > phi_max_j:
                     valid_swap = False
@@ -535,8 +535,7 @@ def _initial_break_pass(
     w1: float,
     w2: float,
     phimax: float,
-    adapt_thresholds: NDArray[np.float64],
-    adapt_values: NDArray[np.float64],
+    adapt_params: NDArray[np.float64],
 ) -> NDArray[np.int64]:
     """
     Identifies tracks that violate smoothness constraints after initial linking
@@ -547,7 +546,7 @@ def _initial_break_pass(
         features_lat, features_lon: Coordinate arrays.
         w1, w2: Cost weights.
         phimax: Phantom penalty.
-        adapt_thresholds, adapt_values: Adaptive smoothness definitions.
+        adapt_params: Adaptive smoothness definitions.
 
     Returns:
         A new track matrix with broken tracks appended as new rows.
@@ -589,7 +588,7 @@ def _initial_break_pass(
                     features_lon[current_track[k + 1]],
                 )
                 phi_max = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_thresholds, adapt_values, phimax
+                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
                 )
 
                 if cost > phi_max:

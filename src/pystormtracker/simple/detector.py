@@ -10,6 +10,7 @@ from numpy.typing import NDArray
 
 from ..io.loader import DataLoader
 from ..models import TimeRange
+from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from .kernels import (
     _numba_extrema_filter,
@@ -256,7 +257,10 @@ class SimpleDetector:
 
         # Set variable specific thresholds if not provided
         if threshold is None:
-            threshold = 1e-5 if self.requested_varname == "vo" else 0.0
+            if self.requested_varname == "vo":
+                threshold = model_constants.DEFAULT_VO_THRESHOLD
+            else:
+                threshold = model_constants.DEFAULT_MSL_THRESHOLD
 
         time_array = self.get_time()
         lat, lon = self.lat, self.lon

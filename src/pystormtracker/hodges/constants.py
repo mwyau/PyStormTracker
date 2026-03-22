@@ -31,8 +31,11 @@ TRACK_ZONES = np.array(
     dtype=np.float64,
 )
 
-# Adaptive smoothness distance thresholds (4 points)
-ADAPT_THRESHOLDS = np.array([1.0, 2.0, 5.0, 8.0], dtype=np.float64)
-
-# Adaptive smoothness phi values (4 points)
-ADAPT_VALUES = np.array([1.0, 0.3, 0.1, 0.0], dtype=np.float64)
+# Adaptive smoothness parameters matching adapt.dat
+ADAPT_PARAMS = np.array(
+    [
+        [1.0, 2.0, 5.0, 8.0],
+        [1.0, 0.3, 0.1, 0.0],
+    ],
+    dtype=np.float64,
+)

@@ -34,8 +34,7 @@ class HodgesLinker:
         n_iterations: int = constants.ITERATIONS_DEFAULT,
         max_missing: int = constants.MISSING_DEFAULT,
         zones: NDArray[np.float64] = constants.TRACK_ZONES,
-        adapt_thresholds: NDArray[np.float64] = constants.ADAPT_THRESHOLDS,
-        adapt_values: NDArray[np.float64] = constants.ADAPT_VALUES,
+        adapt_params: NDArray[np.float64] = constants.ADAPT_PARAMS,
     ) -> None:
         """
         Initialize the MGE linker.
@@ -47,7 +46,7 @@ class HodgesLinker:
             n_iterations: Maximum number of MGE passes.
             max_missing: Maximum consecutive phantom points allowed.
             zones: Regional dmax definitions.
-            adapt_thresholds, adapt_values: Piecewise linear adaptive smoothness.
+            adapt_params: Piecewise linear adaptive smoothness parameters (2xN).
         """
         self.w1 = w1
         self.w2 = w2
@@ -56,8 +55,7 @@ class HodgesLinker:
         self.n_iterations = n_iterations
         self.max_missing = max_missing
         self.zones = zones
-        self.adapt_thresholds = adapt_thresholds
-        self.adapt_values = adapt_values
+        self.adapt_params = adapt_params
 
     def link(self, detections: list[RawDetectionStep]) -> Tracks:
         """
@@ -170,8 +168,7 @@ class HodgesLinker:
             self.w1,
             self.w2,
             self.phimax,
-            self.adapt_thresholds,
-            self.adapt_values,
+            self.adapt_params,
         )
 
         # 4. MGE Optimization (Iterate until convergence)
@@ -190,8 +187,7 @@ class HodgesLinker:
                     self.dmax,
                     self.phimax,
                     self.zones,
-                    self.adapt_thresholds,
-                    self.adapt_values,
+                    self.adapt_params,
                     self.max_missing,
                 )
                 if best_i != -1:
@@ -240,8 +236,7 @@ class HodgesLinker:
                     self.dmax,
                     self.phimax,
                     self.zones,
-                    self.adapt_thresholds,
-                    self.adapt_values,
+                    self.adapt_params,
                     self.max_missing,
                 )
                 if best_i != -1:

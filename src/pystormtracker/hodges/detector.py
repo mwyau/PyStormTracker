@@ -8,6 +8,7 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.loader import DataLoader
+from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange
 from .kernels import (
@@ -160,10 +161,12 @@ class HodgesDetector:
         """
         if threshold is None:
             # Standard thresholds based on Hodges (1994, 1995, 1999)
-            # Vo: 1.0e-5 is common for weak systems, 3.0e-5 for more intense.
+            # Vo: typically 1.0e-5 for weak systems, 3.0e-5 for more intense.
             # MSL: Usually local minima search with no strict global threshold
-            # (use 0.0 or high value).
-            threshold = 1.0e-5 if self.requested_varname == "vo" else 0.0
+            if self.requested_varname == "vo":
+                threshold = model_constants.DEFAULT_VO_THRESHOLD
+            else:
+                threshold = model_constants.DEFAULT_MSL_THRESHOLD
 
         times = self.get_time()
         lat, lon = self.lat, self.lon

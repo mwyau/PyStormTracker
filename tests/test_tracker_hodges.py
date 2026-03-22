@@ -18,26 +18,25 @@ def test_hodges_tracker_standard_defaults() -> None:
     assert tracker.dmax == 6.5
     assert tracker.zones is not None
     assert len(tracker.zones) == 3
-    assert tracker.adapt_thresholds is not None
-    assert len(tracker.adapt_thresholds) == 4
+    assert tracker.adapt_params is not None
+    assert tracker.adapt_params.shape == (2, 4)
 
 
 def test_hodges_tracker_override_constraints() -> None:
     custom_zones = np.array([[0.0, 360.0, -90.0, 90.0, 10.0]], dtype=np.float64)
-    custom_thresholds = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
-    custom_values = np.array([1.0, 0.5, 0.2, 0.1], dtype=np.float64)
+    custom_params = np.array(
+        [[1.0, 2.0, 3.0, 4.0], [1.0, 0.5, 0.2, 0.1]], dtype=np.float64
+    )
 
     tracker = HodgesTracker(
         zones=custom_zones,
-        adapt_thresholds=custom_thresholds,
-        adapt_values=custom_values,
+        adapt_params=custom_params,
         use_standard_constraints=False,
     )
 
     assert tracker.zones is not None
     assert tracker.zones[0, 4] == 10.0
-    assert np.array_equal(tracker.adapt_thresholds, custom_thresholds)
-    assert np.array_equal(tracker.adapt_values, custom_values)
+    assert np.array_equal(tracker.adapt_params, custom_params)
 
 
 @patch("pystormtracker.hodges.detector.HodgesDetector.detect")

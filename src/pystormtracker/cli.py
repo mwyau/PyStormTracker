@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import timeit
 from argparse import Namespace
@@ -10,6 +11,7 @@ import numpy as np
 
 from .hodges import constants
 from .hodges.tracker import HodgesTracker
+from .models import constants as model_constants
 from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
@@ -48,10 +50,13 @@ def run_tracker(
     n_iterations: int | None = None,
     min_lifetime: int | None = None,
     max_missing: int | None = None,
+    zones: np.ndarray | None = None,
+    adapt_params: np.ndarray | None = None,
     filter: bool = True,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
+    overlap: int = model_constants.OVERLAP_DEFAULT,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -108,7 +113,7 @@ def run_tracker(
         tracker = SimpleTracker()
     else:
         # Pass only provided values to use tracker defaults
-        hodges_kwargs: dict[str, float | int] = {}
+        hodges_kwargs: dict[str, float | int | np.ndarray] = {}
         if w1 is not None:
             hodges_kwargs["w1"] = w1
         if w2 is not None:
@@ -123,6 +128,10 @@ def run_tracker(
             hodges_kwargs["min_lifetime"] = min_lifetime
         if max_missing is not None:
             hodges_kwargs["max_missing"] = max_missing
+        if zones is not None:
+            hodges_kwargs["zones"] = zones
+        if adapt_params is not None:
+            hodges_kwargs["adapt_params"] = adapt_params
 
         tracker = HodgesTracker(**hodges_kwargs)  # type: ignore[arg-type]
 
@@ -141,6 +150,8 @@ def run_tracker(
         filter=filter,
         lmin=lmin,
         lmax=lmax,
+        taper_points=taper_points,
+        overlap=overlap,
     )
 
     # Export Phase
@@ -255,6 +266,15 @@ def parse_args() -> Namespace:
         help="Steps per chunk for Dask/RSPLICE. Default 60.",
     )
     perf.add_argument(
+        "--overlap",
+        type=int,
+        default=model_constants.OVERLAP_DEFAULT,
+        help=(
+            f"Overlap steps between chunks for splicing. "
+            f"Default {model_constants.OVERLAP_DEFAULT}."
+        ),
+    )
+    perf.add_argument(
         "-e",
         "--engine",
         choices=["h5netcdf", "netcdf4", "cfgrib"],
@@ -269,6 +289,12 @@ def parse_args() -> Namespace:
         type=int,
         default=1,
         help="Min grid points per object (noise filter).",
+    )
+    hodges.add_argument(
+        "--taper",
+        type=int,
+        default=constants.TAPER_DEFAULT,
+        help="Number of points for boundary tapering. Default 0.",
     )
     hodges.add_argument(
         "--w1", type=float, default=None, help="Cost weight for direction. Default 0.2."
@@ -305,6 +331,34 @@ def parse_args() -> Namespace:
         type=int,
         default=None,
         help="Max consecutive missing frames. Default 0.",
+    )
+
+    zone_group = hodges.add_mutually_exclusive_group()
+    zone_group.add_argument(
+        "--zone-file",
+        type=str,
+        default=None,
+        help="Path to legacy zone.dat file for regional DMAX.",
+    )
+    zone_group.add_argument(
+        "--zones",
+        type=str,
+        default=None,
+        help="JSON string defining regional DMAX zones.",
+    )
+
+    adapt_group = hodges.add_mutually_exclusive_group()
+    adapt_group.add_argument(
+        "--adapt-file",
+        type=str,
+        default=None,
+        help="Path to legacy adapt.dat file for adaptive smoothness.",
+    )
+    adapt_group.add_argument(
+        "--adapt-params",
+        type=str,
+        default=None,
+        help="JSON string defining adaptive smoothness parameters (2x4 array).",
     )
 
     return parser.parse_args()
@@ -352,6 +406,25 @@ def main() -> None:
                 f"Using {constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}."
             )
 
+    zones_arr = None
+    if args.zone_file:
+        # Check if the file has a header line (single element)
+        with open(args.zone_file) as f:
+            first_line = f.readline().split()
+            has_header = len(first_line) == 1
+        zones_arr = np.loadtxt(args.zone_file, skiprows=1 if has_header else 0)
+    elif args.zones:
+        zones_arr = np.array(json.loads(args.zones), dtype=np.float64)
+
+    adapt_params_arr = None
+    if args.adapt_file:
+        # Standard adapt.dat in TRACK is 4 points with (thresh, value) per line (4x2)
+        # We need it as 2x4 (row 0: thresholds, row 1: values)
+        arr = np.loadtxt(args.adapt_file)
+        adapt_params_arr = arr.T if arr.shape == (4, 2) else arr
+    elif args.adapt_params:
+        adapt_params_arr = np.array(json.loads(args.adapt_params), dtype=np.float64)
+
     run_tracker(
         infile=args.input,
         varname=args.var,
@@ -375,9 +448,13 @@ def main() -> None:
         n_iterations=args.iterations,
         min_lifetime=args.min_lifetime,
         max_missing=args.max_missing,
+        zones=zones_arr,
+        adapt_params=adapt_params_arr,
         filter=args.filter,
         lmin=lmin,
         lmax=lmax,
+        taper_points=args.taper,
+        overlap=args.overlap,
     )
 
 

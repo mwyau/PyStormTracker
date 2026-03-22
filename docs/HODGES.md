@@ -13,9 +13,10 @@ This document details the architecture, mathematical implementation, and design 
 ### 1.1 Preprocessing (Spectral Filtering & Tapering)
 **Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and boundary tapering using the `shtns` library.
 - **References**: `spec_filt.c`.
+- **CLI Options**: `--filter-range` (e.g., `5-42`), `--no-filter`, `--overlap` (for splicing), and `--taper`.
 
 **Reasoning**: 
-Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution.
+Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution. By default, the Hodges algorithm applies a T5-42 band-pass filter unless `--no-filter` is specified. The `--taper` option allows smoothing at the boundaries to prevent Gibbs artifacts in the spectral transform. When using time-chunking (RSPLICE), the `--overlap` parameter controls the number of steps used to splice trajectories between consecutive windows.
 
 ### 1.2 Object-Based Detection
 **Design Choice**: Feature detection is implemented as a multi-stage pipeline: `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.
@@ -73,7 +74,7 @@ Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an
 **Reasoning**: Storms move faster in the extratropics than the tropics. Applying a single $d_{max}$ globally either misses fast mid-latitude storms or creates noise in the tropics.
 
 ### 3.2 Speed-Dependent Smoothness (Adaptive $\psi_{max}$)
-**Implementation**: Passed via `adapt_thresholds` and `adapt_values` arguments during tracker initialization.
+**Implementation**: Passed via `adapt_params` argument during tracker initialization.
 - **References**: *Hodges 1999*, Section 5, Table 1; `read_adptp.c`.
 
 **Reasoning**: As displacement (speed) increases, the directional constraint must become stricter. `PyStormTracker` uses piecewise linear interpolation between the 4 provided threshold/value pairs, matching the logic found in `read_adptp.c`.
