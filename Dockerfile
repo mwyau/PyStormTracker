@@ -6,8 +6,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0
 
-# Set optimization flags
-ENV CFLAGS="-O3"
+# Use architecture-specific optimization flags
+ARG TARGETARCH
+ENV CFLAGS=${TARGETARCH:+"$(if [ "$TARGETARCH" = "arm64" ]; then echo "-O2 -g -march=armv8-a"; else echo "-O3"; fi)"}
 
 WORKDIR /app
 
