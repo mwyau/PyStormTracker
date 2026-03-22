@@ -71,6 +71,7 @@ def test_hodges_serial_integration(
         "hodges",
         "--format",
         "imilast",
+        "--no-filter",
     ]
 
     if steps:
@@ -106,6 +107,7 @@ def test_hodges_output_format(test_data_vo: str, tmp_path: Path) -> None:
         "5",
         "--format",
         "hodges",
+        "--no-filter",
     ]
 
     run_command_direct(args)
