@@ -10,6 +10,7 @@ from typing import Literal
 import numpy as np
 
 from .hodges import constants
+from .models import constants as model_constants
 from .hodges.tracker import HodgesTracker
 from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
@@ -55,7 +56,7 @@ def run_tracker(
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
-    overlap: int = 3,
+    overlap: int = model_constants.OVERLAP_DEFAULT,
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -267,8 +268,8 @@ def parse_args() -> Namespace:
     perf.add_argument(
         "--overlap",
         type=int,
-        default=3,
-        help="Overlap steps between chunks for splicing. Default 3.",
+        default=model_constants.OVERLAP_DEFAULT,
+        help=f"Overlap steps between chunks for splicing. Default {model_constants.OVERLAP_DEFAULT}.",
     )
     perf.add_argument(
         "-e",

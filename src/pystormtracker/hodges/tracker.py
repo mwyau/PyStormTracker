@@ -6,6 +6,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
+from ..models import constants as model_constants
 from ..models.tracker import Tracker
 from ..models.tracks import Tracks
 from ..preprocessing.sh_filter import SphericalHarmonicFilter
@@ -154,7 +155,7 @@ class HodgesTracker(Tracker):
         max_chunk_size: int | None = None,
         threshold: float | None = None,
         engine: str | None = None,
-        overlap: int = 3,
+        overlap: int = model_constants.OVERLAP_DEFAULT,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         filter: bool = True,
         lmin: int = constants.LMIN_DEFAULT,
