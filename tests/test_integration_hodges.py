@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -13,8 +15,19 @@ from pystormtracker.utils.data import fetch_era5_vo850
 
 def run_command_direct(cmd_args: list[str]) -> None:
     """Utility to run the tracker directly via main."""
-    with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
-        main()
+    print(f"\nRunning command: stormtracker {' '.join(cmd_args)}")
+    stderr_buf = io.StringIO()
+    try:
+        with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
+            with patch("sys.stderr", stderr_buf):
+                main()
+    except Exception as e:
+        print(f"Command failed with error: {e}")
+        print(f"Stderr: {stderr_buf.getvalue()}")
+        raise
+    finally:
+        if stderr_buf.getvalue():
+             print(f"Stderr: {stderr_buf.getvalue()}")
 
 
 @pytest.fixture(scope="module")
@@ -42,8 +55,8 @@ def hodges_config(
     steps: int | None,
 ) -> int | None:
     """Skip full tests locally if not in CI."""
-    if steps is None:
-        pytest.skip("Full Hodges integration tests are temporarily disabled.")
+    if steps is None and not os.environ.get("GITHUB_ACTIONS"):
+        pytest.skip("Full Hodges integration tests are temporarily disabled locally.")
 
     return steps
 
