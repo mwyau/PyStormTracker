@@ -116,8 +116,12 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (Python 3.13)
+    name: integration-tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
     env:
       CFLAGS: "-O3 -march=x86-64"
     steps:
@@ -128,7 +132,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev libfftw3-dev
       - name: Install dependencies
