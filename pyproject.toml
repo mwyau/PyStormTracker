@@ -159,3 +159,4 @@ exclude_lines = [
 
 [tool.uv]
 link-mode = "copy"
+no-binary = ["shtns"]
