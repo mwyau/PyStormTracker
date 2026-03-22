@@ -21,10 +21,11 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # -- Options for HTML output -------------------------------------------------
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
-html_extra_path = ["IntercomparisonProtocol.pdf"]
+html_extra_path = ["../docs", "../benchmark"]
 
 # -- MyST Parser configuration -----------------------------------------------
 myst_heading_anchors = 3
 myst_enable_extensions = [
     "dollarmath",
+    "attrs_inline",
 ]

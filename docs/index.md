@@ -33,4 +33,4 @@ Roadmap <ROADMAP>
 
 ## Resources
 
-- [IMILAST Intercomparison Protocol](IntercomparisonProtocol.pdf)
+- <a href="_static/IntercomparisonProtocol.pdf" target="_blank">IMILAST Intercomparison Protocol</a>
