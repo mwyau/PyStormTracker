@@ -11,7 +11,7 @@
 [![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
 
 <p align="center">
-  <img src="docs/era5_msl_nh.png" width="600" alt="PyStormTracker Example">
+  <img src="docs/_static/era5_msl_nh.png" width="600" alt="PyStormTracker Example">
   <br>
   <b><a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html">Storm Track Explorer (Interactive Map)</a></b>
 </p>
@@ -36,7 +36,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 - **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
 
 <p align="center">
-  <img src="benchmark/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
+  <img src="docs/_static/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
   <br>
   <i>Significant performance gains in v0.4.0+ compared to the v0.3.3 architecture on high-resolution ERA5 data.</i>
 </p>
