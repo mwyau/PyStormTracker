@@ -191,7 +191,12 @@ class HodgesTracker(Tracker):
             filter: If True, apply spectral filtering.
             lmin, lmax: Spectral truncation range (default T5-42).
         """
+        import timeit
+
+        t_total_start = timeit.default_timer()
+
         # 1. Load and optionally filter data
+        t0 = timeit.default_timer()
         detector_peek = HodgesDetector(infile, varname, engine=engine)
         if start_time is None or end_time is None:
             full_times = detector_peek.get_time()
@@ -204,40 +209,46 @@ class HodgesTracker(Tracker):
 
         if filter:
             data_xr = self.preprocess_standard_track(data_xr, lmin=lmin, lmax=lmax)
+        t1 = timeit.default_timer()
+        print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")
 
         if max_chunk_size is None:
-            return self._track_single_chunk_from_data(
+            tracks = self._track_single_chunk_from_data(
                 data_xr,
                 mode,
                 threshold,
                 min_points=min_points,
                 **kwargs,
             )
+        else:
+            # 2. Time-chunking logic (RSPLICE-style)
+            time_dim = detector_peek._loader.get_coords()[0]
+            n_steps = data_xr.sizes[time_dim]
+            tracks_all = []
 
-        # 2. Time-chunking logic (RSPLICE-style)
-        time_dim = detector_peek._loader.get_coords()[0]
-        n_steps = data_xr.sizes[time_dim]
-        tracks_all = []
+            start_idx = 0
+            while start_idx < n_steps:
+                end_idx = min(start_idx + max_chunk_size, n_steps)
+                chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
 
-        start_idx = 0
-        while start_idx < n_steps:
-            end_idx = min(start_idx + max_chunk_size, n_steps)
-            chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
+                chunk_res = self._track_single_chunk_from_data(
+                    chunk_data,
+                    mode,
+                    threshold,
+                    min_points=min_points,
+                    **kwargs,
+                )
+                tracks_all.append(chunk_res)
 
-            chunk_res = self._track_single_chunk_from_data(
-                chunk_data,
-                mode,
-                threshold,
-                min_points=min_points,
-                **kwargs,
-            )
-            tracks_all.append(chunk_res)
+                if end_idx == n_steps:
+                    break
+                start_idx = end_idx - overlap
 
-            if end_idx == n_steps:
-                break
-            start_idx = end_idx - overlap
+            tracks = self._splice_tracks(tracks_all, overlap)
 
-        return self._splice_tracks(tracks_all, overlap)
+        t_total_end = timeit.default_timer()
+        print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
+        return tracks
 
     def _track_single_chunk_from_data(
         self,
@@ -247,7 +258,10 @@ class HodgesTracker(Tracker):
         min_points: int = constants.MIN_POINTS_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
+        import timeit
+
         # 1. Detection
+        t_detect_start = timeit.default_timer()
         detector = HodgesDetector.from_xarray(data)
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
@@ -255,8 +269,11 @@ class HodgesTracker(Tracker):
         detections = detector.detect(
             size=size, threshold=threshold, minmaxmode=mode, min_points=min_points
         )
+        t_detect_end = timeit.default_timer()
+        print(f"    [Serial] Detection time: {t_detect_end - t_detect_start:.4f}s")
 
         # 2. Linking (MGE with adaptive constraints)
+        t_link_start = timeit.default_timer()
         linker = HodgesLinker(
             w1=self.w1,
             w2=self.w2,
@@ -270,6 +287,8 @@ class HodgesTracker(Tracker):
         )
 
         tracks = linker.link(detections)
+        t_link_end = timeit.default_timer()
+        print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")
 
         # 3. Pruning
         valid_tracks = []

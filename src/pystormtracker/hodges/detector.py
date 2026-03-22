@@ -169,9 +169,18 @@ class HodgesDetector:
         lat, lon = self.lat, self.lon
         full_var = self.get_var()
         is_min = minmaxmode == "min"
+        num_steps = len(times)
 
         raw_results: list[RawDetectionStep] = []
         for it, t in enumerate(times):
+            if (it + 1) % 10 == 0 or it == 0 or it == num_steps - 1:
+                if self.global_total_steps:
+                    s_idx = self.global_start_idx + it + 1
+                    g_steps = self.global_total_steps
+                    print(f"  Step {it + 1}/{num_steps} (Global: {s_idx}/{g_steps})")
+                else:
+                    print(f"  Step {it + 1}/{num_steps}")
+
             frame = full_var[it]
 
             # 1. Threshold and Segment (CCL)
