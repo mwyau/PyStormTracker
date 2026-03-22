@@ -13,6 +13,7 @@ Foundational mandates and engineering standards for `PyStormTracker`. These take
 
 - **Flexible APIs**: All `track()` implementations MUST accept `**kwargs` for cross-algorithm compatibility.
 - **I/O**: MUST use coordinate-aware Xarray NetCDF/GRIB handling via `DataLoader`. Centralize remote data fetching in `src/pystormtracker/utils/data.py`.
+- **Typing**: MUST NOT use `Any` typing. Provide explicit type annotations for all declarations.
 - **Plain Language**: Use objective, scientific language in documentation. Avoid superlatives and subjective terms.
 - **No Auto-Commit**: NEVER stage or commit changes unless specifically and explicitly requested by the user.
 - **Documentation Persistence**: Preserve existing technical documentation and design rationale unless explicitly obsoleted.

@@ -9,6 +9,8 @@ on:
       - 'uv.lock'
       - 'Dockerfile'
       - '.github/workflows/ci.yml'
+      - 'docs/**'
+      - 'README.md'
   push:
     branches:
       - main
@@ -20,6 +22,8 @@ on:
       - 'uv.lock'
       - 'Dockerfile'
       - '.github/workflows/ci.yml'
+      - 'docs/**'
+      - 'README.md'
   release:
     types: [published]
   workflow_dispatch:
@@ -149,7 +153,7 @@ jobs:
 
   docs-build:
     name: docs-build
-    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+    needs: [ruff-lint, ruff-format]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6

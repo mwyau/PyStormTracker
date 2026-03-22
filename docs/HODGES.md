@@ -1,7 +1,7 @@
 # PyStormTracker Hodges Implementation
 
 <p align="center">
-  <img src="era5_msl_nh.png" width="600" alt="Hodges Tracking Example">
+  <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/docs/era5_msl_nh.png" width="600" alt="Hodges Tracking Example">
 </p>
 
 This document details the architecture, mathematical implementation, and design rationale for the Hodges tracking algorithm in `PyStormTracker`. The primary goal is **algorithmic parity** with the TRACK software (Hodges 1994, 1995, 1999) while updating the interface and performance.
