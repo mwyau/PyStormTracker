@@ -148,6 +148,8 @@ stormtracker -i data.nc -v msl -o my_tracks.txt
 | `--iterations` | | Max MGE optimization passes (default 3). |
 | `--min-lifetime`| | Minimum time steps for a valid track (default 3). |
 | `--max-missing` | | Max consecutive missing frames (default 0). |
+| `--zone-file` / `--zones` | | Path to legacy `zone.dat` or JSON string for regional DMAX zones. |
+| `--adapt-file` / `--adapt-params` | | Path to legacy `adapt.dat` or JSON string for adaptive smoothness (2x4 array). |
 
 ### Python API
 

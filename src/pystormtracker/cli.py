@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import timeit
 from argparse import Namespace
@@ -48,6 +49,8 @@ def run_tracker(
     n_iterations: int | None = None,
     min_lifetime: int | None = None,
     max_missing: int | None = None,
+    zones: np.ndarray | None = None,
+    adapt_params: np.ndarray | None = None,
     filter: bool = True,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
@@ -108,7 +111,7 @@ def run_tracker(
         tracker = SimpleTracker()
     else:
         # Pass only provided values to use tracker defaults
-        hodges_kwargs: dict[str, float | int] = {}
+        hodges_kwargs: dict[str, float | int | np.ndarray] = {}
         if w1 is not None:
             hodges_kwargs["w1"] = w1
         if w2 is not None:
@@ -123,6 +126,10 @@ def run_tracker(
             hodges_kwargs["min_lifetime"] = min_lifetime
         if max_missing is not None:
             hodges_kwargs["max_missing"] = max_missing
+        if zones is not None:
+            hodges_kwargs["zones"] = zones
+        if adapt_params is not None:
+            hodges_kwargs["adapt_params"] = adapt_params
 
         tracker = HodgesTracker(**hodges_kwargs)  # type: ignore[arg-type]
 
@@ -307,6 +314,34 @@ def parse_args() -> Namespace:
         help="Max consecutive missing frames. Default 0.",
     )
 
+    zone_group = hodges.add_mutually_exclusive_group()
+    zone_group.add_argument(
+        "--zone-file",
+        type=str,
+        default=None,
+        help="Path to legacy zone.dat file for regional DMAX.",
+    )
+    zone_group.add_argument(
+        "--zones",
+        type=str,
+        default=None,
+        help="JSON string defining regional DMAX zones.",
+    )
+
+    adapt_group = hodges.add_mutually_exclusive_group()
+    adapt_group.add_argument(
+        "--adapt-file",
+        type=str,
+        default=None,
+        help="Path to legacy adapt.dat file for adaptive smoothness.",
+    )
+    adapt_group.add_argument(
+        "--adapt-params",
+        type=str,
+        default=None,
+        help="JSON string defining adaptive smoothness parameters (2x4 array).",
+    )
+
     return parser.parse_args()
 
 
@@ -352,6 +387,19 @@ def main() -> None:
                 f"Using {constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}."
             )
 
+    zones_arr = None
+    if args.zone_file:
+        zones_arr = np.loadtxt(args.zone_file)
+    elif args.zones:
+        zones_arr = np.array(json.loads(args.zones), dtype=np.float64)
+
+    adapt_params_arr = None
+    if args.adapt_file:
+        # adapt.dat is 4x2, we need it as 2x4
+        adapt_params_arr = np.loadtxt(args.adapt_file).T
+    elif args.adapt_params:
+        adapt_params_arr = np.array(json.loads(args.adapt_params), dtype=np.float64)
+
     run_tracker(
         infile=args.input,
         varname=args.var,
@@ -375,6 +423,8 @@ def main() -> None:
         n_iterations=args.iterations,
         min_lifetime=args.min_lifetime,
         max_missing=args.max_missing,
+        zones=zones_arr,
+        adapt_params=adapt_params_arr,
         filter=args.filter,
         lmin=lmin,
         lmax=lmax,

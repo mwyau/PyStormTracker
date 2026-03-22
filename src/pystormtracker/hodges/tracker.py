@@ -30,8 +30,7 @@ class HodgesTracker(Tracker):
         min_lifetime: int = constants.LIFETIME_DEFAULT,
         max_missing: int = constants.MISSING_DEFAULT,
         zones: NDArray[np.float64] | None = None,
-        adapt_thresholds: NDArray[np.float64] | None = None,
-        adapt_values: NDArray[np.float64] | None = None,
+        adapt_params: NDArray[np.float64] | None = None,
         use_standard_constraints: bool = True,
     ) -> None:
         """
@@ -46,8 +45,7 @@ class HodgesTracker(Tracker):
             min_lifetime: Minimum number of steps for a valid track.
             max_missing: Maximum consecutive missing frames allowed.
             zones: Regional dmax zones [lon_min, lon_max, lat_min, lat_max, dmax].
-            adapt_thresholds: Adaptive smoothness distance thresholds (4 points).
-            adapt_values: Adaptive smoothness phi values (4 points).
+            adapt_params: Adaptive smoothness parameters (2x4 array).
             use_standard_constraints: If True, use legacy standard zones/adaptive
                 values if None provided.
         """
@@ -67,21 +65,13 @@ class HodgesTracker(Tracker):
         else:
             self.zones = zones
 
-        if adapt_thresholds is None:
-            if use_standard_constraints:
-                self.adapt_thresholds = constants.ADAPT_THRESHOLDS
+        if adapt_params is None:
+            if self.phimax > 0:
+                self.adapt_params = constants.ADAPT_PARAMS
             else:
-                self.adapt_thresholds = np.zeros(0, dtype=np.float64)
+                self.adapt_params = np.zeros((2, 0), dtype=np.float64)
         else:
-            self.adapt_thresholds = adapt_thresholds
-
-        if adapt_values is None:
-            if use_standard_constraints:
-                self.adapt_values = constants.ADAPT_VALUES
-            else:
-                self.adapt_values = np.zeros(0, dtype=np.float64)
-        else:
-            self.adapt_values = adapt_values
+            self.adapt_params = adapt_params
 
     def preprocess_standard_track(
         self,
@@ -282,8 +272,7 @@ class HodgesTracker(Tracker):
             n_iterations=self.n_iterations,
             max_missing=self.max_missing,
             zones=self.zones,
-            adapt_thresholds=self.adapt_thresholds,
-            adapt_values=self.adapt_values,
+            adapt_params=self.adapt_params,
         )
 
         tracks = linker.link(detections)

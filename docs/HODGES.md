@@ -73,7 +73,7 @@ Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an
 **Reasoning**: Storms move faster in the extratropics than the tropics. Applying a single $d_{max}$ globally either misses fast mid-latitude storms or creates noise in the tropics.
 
 ### 3.2 Speed-Dependent Smoothness (Adaptive $\psi_{max}$)
-**Implementation**: Passed via `adapt_thresholds` and `adapt_values` arguments during tracker initialization.
+**Implementation**: Passed via `adapt_params` argument during tracker initialization.
 - **References**: *Hodges 1999*, Section 5, Table 1; `read_adptp.c`.
 
 **Reasoning**: As displacement (speed) increases, the directional constraint must become stricter. `PyStormTracker` uses piecewise linear interpolation between the 4 provided threshold/value pairs, matching the logic found in `read_adptp.c`.

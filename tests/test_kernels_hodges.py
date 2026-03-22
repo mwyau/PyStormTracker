@@ -57,18 +57,20 @@ def test_get_regional_dmax() -> None:
 
 
 def test_get_adaptive_phimax() -> None:
-    thresholds = np.array([1.0, 2.0, 5.0, 8.0])
-    values = np.array([1.0, 0.3, 0.1, 0.0])
+    adapt_params = np.array([
+        [1.0, 2.0, 5.0, 8.0],
+        [1.0, 0.3, 0.1, 0.0]
+    ])
 
     # Below min
-    assert get_adaptive_phimax(0.5, thresholds, values, 0.5) == 1.0
+    assert get_adaptive_phimax(0.5, adapt_params, 0.5) == 1.0
     # Above max
-    assert get_adaptive_phimax(10.0, thresholds, values, 0.5) == 0.0
+    assert get_adaptive_phimax(10.0, adapt_params, 0.5) == 0.0
     # On threshold
-    assert get_adaptive_phimax(2.0, thresholds, values, 0.5) == 0.3
+    assert get_adaptive_phimax(2.0, adapt_params, 0.5) == 0.3
     # Interpolated
     # Between 1.0 and 2.0, mean is 1.5 -> (1.0 + 0.3)/2 = 0.65
-    assert np.allclose(get_adaptive_phimax(1.5, thresholds, values, 0.5), 0.65)
+    assert np.allclose(get_adaptive_phimax(1.5, adapt_params, 0.5), 0.65)
 
 
 def test_subgrid_refine() -> None:

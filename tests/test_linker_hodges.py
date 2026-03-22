@@ -15,8 +15,7 @@ def test_hodges_linker_init() -> None:
 def test_hodges_linker_link_straight() -> None:
     linker = HodgesLinker(
         zones=np.zeros((0, 5), dtype=np.float64),
-        adapt_thresholds=np.zeros(0, dtype=np.float64),
-        adapt_values=np.zeros(0, dtype=np.float64),
+        adapt_params=np.zeros((2, 0), dtype=np.float64),
     )
 
     # Create two detections moving in a straight line
@@ -75,8 +74,7 @@ def test_hodges_linker_link_crossing() -> None:
     linker = HodgesLinker(
         dmax=15.0,
         zones=np.zeros((0, 5), dtype=np.float64),
-        adapt_thresholds=np.zeros(0, dtype=np.float64),
-        adapt_values=np.zeros(0, dtype=np.float64),
+        adapt_params=np.zeros((2, 0), dtype=np.float64),
     )
 
     t0 = np.datetime64("2025-12-01T00:00:00")
