@@ -116,10 +116,22 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (Python 3.13)
-    runs-on: ubuntu-24.04
+    name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     env:
-      CFLAGS: "-O3 -march=x86-64"
+      CFLAGS: ${{ matrix.cflags }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+            python-version: "3.13"
+            cflags: "-O3 -march=x86-64"
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            python-version: "3.13"
+            cflags: "-O3 --march=armv8-a"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -133,10 +145,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev libfftw3-dev
       - name: Install dependencies
         run: uv sync --frozen --group dev
+      - name: Run Integration Tests
+        if: matrix.arch != 'amd64'
+        run: uv run pytest -vv tests/test_integration_*.py --run-integration
+
       - name: Run Integration Tests with Coverage
+        if: matrix.arch == 'amd64'
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration_*.py --run-integration
 
       - name: Upload coverage reports to Codecov
+        if: matrix.arch == 'amd64'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
