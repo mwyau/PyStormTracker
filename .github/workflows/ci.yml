@@ -100,15 +100,15 @@ jobs:
         if: ${{ matrix.min-deps }}
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
-        if: matrix.python-version != '3.13' || matrix.min-deps
+        if: matrix.python-version != '3.14' || matrix.min-deps
         run: uv run pytest -vv
 
       - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.13' && !matrix.min-deps
+        if: matrix.python-version == '3.14' && !matrix.min-deps
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.13' && !matrix.min-deps
+        if: matrix.python-version == '3.14' && !matrix.min-deps
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
@@ -137,10 +137,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev libfftw3-dev
       - name: Install dependencies
         run: uv sync --frozen --group dev
+      - name: Run Integration Tests
+        if: matrix.python-version != '3.14'
+        run: uv run pytest -vv tests/test_integration_*.py --run-integration
+
       - name: Run Integration Tests with Coverage
+        if: matrix.python-version == '3.14'
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration_*.py --run-integration
 
       - name: Upload coverage reports to Codecov
+        if: matrix.python-version == '3.14'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
