@@ -4,7 +4,7 @@
 ### Features
 - **Hodges (TRACK) Algorithm**: Full implementation of the Hodges tracking algorithm with algorithmic parity to the original TRACK software. Includes object-based detection (CCL), spherical cost functions, adaptive constraints, and recursive MGE optimization.
 - **New Preprocessing Module**: Introduced a dedicated module for spherical harmonic filtering and tapering. Initially implemented with `pyshtools` and subsequently migrated to the high-performance `shtns` library for improved scalability.
-- **Interactive Visualization**: Added a Jupyter Notebook for interactive trajectory analysis and visualization.
+- **Interactive Visualization**: Added a Jupyter Notebook and **Storm Track Explorer** for interactive trajectory analysis and visualization.
 - **Backend Auto-Detection**: Improved logic for automatically selecting the most efficient execution backend (Serial, Dask, or MPI) based on the environment.
 
 ### Performance
