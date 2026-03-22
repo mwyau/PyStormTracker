@@ -10,8 +10,8 @@ from typing import Literal
 import numpy as np
 
 from .hodges import constants
-from .models import constants as model_constants
 from .hodges.tracker import HodgesTracker
+from .models import constants as model_constants
 from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
@@ -269,7 +269,10 @@ def parse_args() -> Namespace:
         "--overlap",
         type=int,
         default=model_constants.OVERLAP_DEFAULT,
-        help=f"Overlap steps between chunks for splicing. Default {model_constants.OVERLAP_DEFAULT}.",
+        help=(
+            f"Overlap steps between chunks for splicing. "
+            f"Default {model_constants.OVERLAP_DEFAULT}."
+        ),
     )
     perf.add_argument(
         "-e",
