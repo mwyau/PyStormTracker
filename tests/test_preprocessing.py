@@ -89,9 +89,9 @@ def test_sh_filter_engines_compare() -> None:
     # Use a smooth field rather than random noise to avoid high-frequency
     # aliasing differences between the two transform implementations.
     nlat, nlon = 73, 144
-    lat = np.linspace(-np.pi/2, np.pi/2, nlat)[:, None]
-    lon = np.linspace(0, 2*np.pi, nlon)[None, :]
-    data: NDArray[np.float64] = np.cos(5*lon) * np.sin(lat)**5 * np.cos(lat)**5
+    lat = np.linspace(-np.pi / 2, np.pi / 2, nlat)[:, None]
+    lon = np.linspace(0, 2 * np.pi, nlon)[None, :]
+    data: NDArray[np.float64] = np.cos(5 * lon) * np.sin(lat) ** 5 * np.cos(lat) ** 5
 
     filt_pyshtools = SphericalHarmonicFilter(lmin=5, lmax=42, engine="pyshtools")
     filt_shtns = SphericalHarmonicFilter(lmin=5, lmax=42, engine="shtns")
