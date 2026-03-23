@@ -5,6 +5,10 @@ TAPER_POINTS_DEFAULT = 0
 LMIN_DEFAULT = 5
 LMAX_DEFAULT = 42
 
+# Planetary Constants
+R_EARTH_METERS = 6371220.0  # Standard Spherepack/NCL radius
+R_EARTH_KM = R_EARTH_METERS / 1000.0
+
 # Universal Tracking Defaults
 MIN_LIFETIME_DEFAULT = 3
 MAX_MISSING_DEFAULT = 0

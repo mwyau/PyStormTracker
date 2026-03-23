@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
+    "ducc0>=0.33.0",
     "h5netcdf>=1.0.0",
     "h5py>=3.8.0",
     "numpy>=1.24.0",

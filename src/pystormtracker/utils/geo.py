@@ -3,7 +3,8 @@ from __future__ import annotations
 import numba as nb
 import numpy as np
 
-R_EARTH = 6367.0  # Radius of Earth in km
+from ..models.constants import R_EARTH_KM
+
 DEGTORAD = np.pi / 180.0
 
 
@@ -32,4 +33,4 @@ def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
 def geod_dist_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculates the great circle distance in kilometers."""
-    return float(geod_dist(lat1, lon1, lat2, lon2) * R_EARTH)
+    return float(geod_dist(lat1, lon1, lat2, lon2) * R_EARTH_KM)
