@@ -165,19 +165,19 @@
             <span id="status" style="color: #dc3545; font-weight: bold; position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap;">Initializing...</span>
             <span id="time-end-val">...</span>
         </div>
-        <div style="display:flex; gap:5px; margin-top:10px; align-items: center; justify-content: space-between;">
-            <button id="btn-play-pause" class="btn" style="flex: 1; min-width: 60px;">Play</button>
-            <div style="flex: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; min-width: 140px;">
+        <div style="display:flex; gap:10px; margin-top:10px; align-items: center; justify-content: center;">
+            <button id="btn-play-pause" class="btn" style="flex: 2;">Play</button>
+            <div style="flex: 1.5; max-width: 180px; display: flex; align-items: center; justify-content: center; gap: 8px;">
                 <label style="display:flex; align-items:center; gap:2px; font-size:0.85em; cursor:pointer; white-space: nowrap;">
                     <input type="checkbox" id="chk-loop"> Loop
                 </label>
-                <div style="display:flex; border:1px solid #ccc; border-radius:4px; overflow:hidden; background:#fff; height: 26px; flex: 1;">
+                <div style="display:flex; border:1px solid #ccc; border-radius:4px; overflow:hidden; background:#fff; height: 26px; flex: 1; min-width: 90px;">
                     <button id="btn-speed-down" class="btn" style="border:none; border-radius:0; padding: 0; background:none; flex: 1;">-</button>
                     <div id="speed-val" style="display:flex; align-items:center; justify-content:center; font-size:0.85em; font-weight:bold; border-left:1px solid #eee; border-right:1px solid #eee; flex: 1.5;">1x</div>
                     <button id="btn-speed-up" class="btn" style="border:none; border-radius:0; padding: 0; background:none; flex: 1;">+</button>
                 </div>
             </div>
-            <button id="btn-reset" class="btn" style="flex: 1; min-width: 60px;">Reset</button>
+            <button id="btn-reset" class="btn" style="flex: 2;">Reset</button>
         </div>
     </div>
 </div>
@@ -574,8 +574,12 @@ function updatePlot(forceStructural = false) {
 
     const binLats = Array(11).fill(0).map(() => []);
     const binLons = Array(11).fill(0).map(() => []);
-    const binTexts = Array(11).fill(0).map(() => []);
+    
+    // We will use a dedicated, invisible scattergeo trace purely for hover text points
+    // This avoids all the NaN/segment complexities of line hover text
+    const hoverLats = [], hoverLons = [], hoverTexts = [], hoverColors = [];
     const curLats = [], curLons = [], curColors = [], curTexts = [];
+    
     let visibleCount = 0;
 
     for (let i = 0; i < allData.tracks.length; i++) {
@@ -596,20 +600,24 @@ function updatePlot(forceStructural = false) {
             if (ptTime > tEnd || (currentAnimTime !== null && ptTime > currentAnimTime)) break;
             if (ptTime < tStart) continue;
             
+            // Collect hover point
+            let v = masterStrengths[p];
+            let t_val = Math.min(1, Math.max(0, (v - cmin) / (cmax - cmin)));
+            const tc = isMSL ? (1 - t_val) : t_val;
+            const binIdx = Math.min(Math.floor(tc * 10), 10);
+            const ptColor = `rgb(${TURBO_SCALE[binIdx][1].join(',')})`;
+            
+            hoverLats.push(masterLats[p]);
+            hoverLons.push(masterLons[p]);
+            hoverTexts.push(getHoverText(p, t, peakText, durText, unit));
+            hoverColors.push(ptColor);
+            
+            // Build visual line segment
             if (p < t.end) {
                 const nextTime = masterTimes[p+1];
                 if (nextTime >= tStart && nextTime <= tEnd && (currentAnimTime === null || nextTime <= currentAnimTime)) {
-                    let v = masterStrengths[p];
-                    let t_val = Math.min(1, Math.max(0, (v - cmin) / (cmax - cmin)));
-                    const tc = isMSL ? (1 - t_val) : t_val;
-                    const binIdx = Math.min(Math.floor(tc * 10), 10);
-                    
                     binLats[binIdx].push(masterLats[p], masterLats[p+1], null);
                     binLons[binIdx].push(masterLons[p], masterLons[p+1], null);
-                    
-                    const h1 = getHoverText(p, t, peakText, durText, unit);
-                    const h2 = getHoverText(p+1, t, peakText, durText, unit);
-                    binTexts[binIdx].push(h1, h2, "");
                 }
             }
             
@@ -631,22 +639,36 @@ function updatePlot(forceStructural = false) {
     elements.status.style.color = (isPlaying || currentAnimTime !== null) ? "#dc3545" : "#666";
 
     const traces = [];
+    
+    // Invisible hover points
+    traces.push({
+        type: 'scattergeo', mode: 'markers', lat: hoverLats, lon: hoverLons,
+        marker: { size: 5, color: 'rgba(0,0,0,0)', line: {width: 0} }, // invisible
+        hovertext: hoverTexts,
+        hovertemplate: '%{hovertext}<extra></extra>',
+        hoverlabel: { bgcolor: hoverColors, bordercolor: '#fff' },
+        showlegend: false
+    });
+
+    // Visual Lines
     TURBO_SCALE.forEach((bin, idx) => {
         const color = `rgb(${bin[1].join(',')})`;
         traces.push({
             type: 'scattergeo', mode: 'lines', lat: binLats[idx], lon: binLons[idx],
             line: { color: color, width: 1.5 },
-            hoverinfo: 'text', text: binTexts[idx], showlegend: false,
-            hoverlabel: { bordercolor: color, namelength: 0 },
-            name: ''
+            hoverinfo: 'skip',
+            showlegend: false
         });
     });
+    
+    // Active Center Markers
     traces.push({ 
         type: 'scattergeo', mode: 'markers', lat: curLats, lon: curLons, 
         marker: { size: 10, color: curColors, line: { width: 1.5, color: '#333' } }, 
-        hoverinfo: 'text', text: curTexts, showlegend: false,
-        hoverlabel: { namelength: 0 },
-        name: ''
+        hovertext: curTexts,
+        hovertemplate: '%{hovertext}<extra></extra>',
+        hoverlabel: { bgcolor: curColors, bordercolor: '#fff' },
+        showlegend: false 
     });
 
     const layout = {
