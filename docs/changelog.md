@@ -9,13 +9,13 @@
 
 ### Performance
 - **SHTns Optimization**: Optimized thread handling for spherical harmonic transforms.
-- **Architecture-Aware Builds**: Improved CI configuration for better hardware compatibility.
+- **Build Compatibility**: Restricted CI builds to x86-64 to ensure `shtns` compatibility.
 
 ### CI/CD & Testing
-- **Verification**: Enhanced documentation builds, automated linting, and expanded test coverage.
+- **Verification**: Enhanced documentation builds and expanded test coverage.
 
 ### Maintenance
-- **Standards & Tooling**: Standardized documentation structure, adopted `uv`, and enforced strict typing.
+- **Standardized Documentation**: Renamed documentation files to lowercase and updated internal references.
 - **Repository Cleanup**: Organized documentation and removed legacy scripts.
 - **Dependencies**: Refined optional dependency groups.
 
