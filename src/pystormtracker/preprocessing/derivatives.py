@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import threading
 from typing import Any, Literal
 
@@ -113,8 +112,6 @@ def compute_relative_vorticity_divergence(
         return div, vort
 
     elif resolved_engine in ("ducc0", "shtools"):
-        import pyshtools as pysh  # type: ignore[import-untyped]
-
         backend = "ducc" if resolved_engine == "ducc0" else "shtools"
         mmax = min(lmax, (nphi - 1) // 2)
 
@@ -142,8 +139,6 @@ def compute_relative_vorticity_divergence(
         else:
             # Manual E/B decomposition using scalar transforms
             # (Appropriate for 'shtools' backend)
-            grid_u = pysh.SHGrid.from_array(-v, grid="DH")
-            grid_v = pysh.SHGrid.from_array(u, grid="DH")
             # This is complex because pyshtools scalar expand doesn't
             # directly give vector components.
             # Using ducc0 logic even for shtools if available is better.
