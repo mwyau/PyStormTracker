@@ -2,23 +2,22 @@
 
 ## v0.5.0.dev
 ### Features
-- **Hodges (TRACK) Algorithm**: Full implementation of the Hodges tracking algorithm with algorithmic parity to the original TRACK software. Includes object-based detection (CCL), spherical cost functions, adaptive constraints, and recursive MGE optimization.
-- **New Preprocessing Module**: Introduced a dedicated module for spherical harmonic filtering and tapering. Initially implemented with `pyshtools` and subsequently migrated to the high-performance `shtns` library for improved scalability.
-- **Interactive Visualization**: Added a Jupyter Notebook and **Storm Track Explorer** for interactive trajectory analysis and visualization.
-- **Backend Auto-Detection**: Improved logic for automatically selecting the most efficient execution backend (Serial, Dask, or MPI) based on the environment.
+- **pst-convert & JSON Support**: New utility for format conversion and a GPU-optimized JSON format for track data.
+- **Interactive Track Explorer**: Web-based visualization with real-time filtering and animations.
+- **Hodges (TRACK) Parity**: Full implementation of the Hodges algorithm with TRACK parity.
+- **Preprocessing & Performance**: Improved spherical harmonic filtering and backend auto-detection.
 
 ### Performance
-- **SHTns Optimization**: Implemented thread-local caching and explicit thread control for spherical harmonic transforms. This resolves performance bottlenecks and prevents CPU oversubscription in multi-process workloads.
-- **Architecture-Aware Builds**: Configured CI to use generic x86-64 and ARM64 CFLAGS, resolving "Illegal instruction" errors on certain hardware while maintaining high performance.
+- **SHTns Optimization**: Optimized thread handling for spherical harmonic transforms.
+- **Architecture-Aware Builds**: Improved CI configuration for better hardware compatibility.
 
 ### CI/CD & Testing
-- **New Documentation Build**: Added a verification step to the CI pipeline to ensure documentation builds successfully before merging.
-- **Improved Linting**: Migrated to `ruff-action v3` for faster automated code quality checks.
-- **Expanded Test Coverage**: Added comprehensive unit tests for I/O, utility functions, and preprocessing modules.
+- **Verification**: Enhanced documentation builds, automated linting, and expanded test coverage.
 
 ### Maintenance
-- **Repository Organization**: Centralized core documentation in the `docs/` directory and cleaned up legacy metadata and unused data files.
-- **Dependency Management**: Refined optional dependency groups (`hodges`, `pre`, `viz`).
+- **Standards & Tooling**: Standardized documentation structure, adopted `uv`, and enforced strict typing.
+- **Repository Cleanup**: Organized documentation and removed legacy scripts.
+- **Dependencies**: Refined optional dependency groups.
 
 ---
 
