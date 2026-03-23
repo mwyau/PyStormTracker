@@ -11,13 +11,15 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # Install build dependencies
-# Note: libfftw3-dev is only required for SHTns (amd64)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Only required for SHTns (amd64)
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     make \
     libc6-dev \
-    $( [ "$TARGETARCH" = "amd64" ] && echo "libfftw3-dev" ) \
-    && rm -rf /var/lib/apt/lists/*
+    libfftw3-dev \
+    && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -48,10 +50,12 @@ ARG TARGETARCH
 WORKDIR /app
 
 # Install runtime dependencies
-# libfftw3-double3 is only required for SHTns (amd64)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    $( [ "$TARGETARCH" = "amd64" ] && echo "libfftw3-double3" ) \
-    && rm -rf /var/lib/apt/lists/*
+# Only required for SHTns (amd64)
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libfftw3-double3 \
+    && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Create data directory for mounting
 RUN mkdir /data && chmod 777 /data
