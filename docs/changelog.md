@@ -9,7 +9,8 @@
 
 ### Performance
 - **SHTns Optimization**: Optimized thread handling for spherical harmonic transforms.
-- **Build Compatibility**: Restricted CI builds to x86-64 to ensure `shtns` compatibility.
+- **Backend Fallback**: Implemented `pyshtools` as the default backend for spherical harmonic filtering, with `shtns` as an optional, high-performance alternative.
+- **ARM64 Support**: Restored full support for **ARM64** architectures in Docker and CI by making `shtns` an optional dependency.
 
 ### CI/CD & Testing
 - **Verification**: Enhanced documentation builds and expanded test coverage.
