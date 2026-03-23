@@ -459,10 +459,15 @@ function changeSpeed(delta) {
 }
 
 function updateSliderFill() {
-    [elements.strength, elements.duration, elements.displacement].forEach(el => {
+    [elements.duration, elements.displacement].forEach(el => {
         const val = (el.value - el.min) / (el.max - el.min) * 100;
         el.style.background = `linear-gradient(to right, #007bff ${val}%, #ddd ${val}%)`;
     });
+    
+    // Peak Strength fills from right (Minimum Intensity)
+    const sVal = (elements.strength.value - elements.strength.min) / (elements.strength.max - elements.strength.min) * 100;
+    elements.strength.style.background = `linear-gradient(to left, #007bff ${100 - sVal}%, #ddd ${100 - sVal}%)`;
+
     const min = parseInt(elements.timeStart.min);
     const max = parseInt(elements.timeStart.max);
     const v1 = parseInt(elements.timeStart.value);
@@ -541,7 +546,7 @@ function setupControls() {
             } else if (el !== elements.timeStart && el !== elements.timeEnd) {
                 if (isPlaying) pauseAnimation();
             }
-            if (el === elements.strength || el === elements.duration || el === elements.displacement) {
+            if (el === elements.projection || el === elements.strength || el === elements.duration || el === elements.displacement) {
                 updatePlot(true); // force structural rebuild
             } else {
                 updatePlot(false);
