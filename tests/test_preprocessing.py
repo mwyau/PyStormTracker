@@ -84,10 +84,7 @@ def test_sh_filter_numpy_ndarray_3d() -> None:
 
 
 def test_sh_filter_engines_compare() -> None:
-    from pystormtracker.preprocessing.sh_filter import SHTNS_AVAILABLE
-
-    if not SHTNS_AVAILABLE:
-        pytest.skip("shtns is not available")
+    pytest.importorskip("shtns")
 
     # Use a smooth field rather than random noise to avoid high-frequency
     # aliasing differences between the two transform implementations.
