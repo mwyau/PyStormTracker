@@ -33,15 +33,43 @@
             .range-slider { height: 16px; }
             .title-bar { margin-bottom: 5px; }
             .title-bar h2 { font-size: 1.1em; }
-            .btn { padding: 4px 8px; font-size: 0.8em; }
+            .btn { padding: 4px 6px; font-size: 0.75em; }
             .slider-values { font-size: 0.7em; }
+            .color-scale { width: 40px !important; }
+            .color-scale-labels { font-size: 8px !important; }
         }
 
         .control-group { display: flex; flex-direction: column; }
         .control-group label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em; }
         .slider-values { display: flex; justify-content: space-between; font-size: 0.8em; color: #666; margin-top: 2px; }
-        #plot { width: 100%; height: 700px; border: 1px solid #eee; border-radius: 8px; }
         
+        .plot-container { position: relative; width: 100%; height: 700px; border: 1px solid #eee; border-radius: 8px; display: flex; }
+        #plot-wrapper { flex: 1; position: relative; height: 100%; overflow: hidden; }
+        #plot { width: 100%; height: 100%; }
+        
+        .color-scale { 
+            width: 60px; 
+            height: 100%; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 40px 0; 
+            font-size: 10px; 
+            color: #666;
+            background: #fff;
+            border-right: 1px solid #eee;
+            border-radius: 8px 0 0 8px;
+            box-sizing: border-box;
+        }
+        .color-bar-wrapper { flex: 1; display: flex; flex-direction: row; gap: 4px; }
+        .color-bar { 
+            width: 12px; 
+            height: 100%; 
+            background: linear-gradient(to bottom, rgb(48, 18, 59), rgb(70, 74, 164), rgb(61, 126, 237), rgb(33, 176, 213), rgb(24, 215, 160), rgb(100, 240, 91), rgb(178, 230, 54), rgb(238, 182, 48), rgb(254, 112, 28), rgb(226, 45, 6), rgb(158, 1, 1));
+            border-radius: 6px;
+        }
+        .color-scale-labels { height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; }
+
         select { width: 100%; cursor: pointer; padding: 4px; border-radius: 4px; border: 1px solid #ccc; background: #fff; height: auto; font-size: 0.9em; }
         
         input[type="range"] { width: 100%; cursor: pointer; -webkit-appearance: none; background: #ddd; height: 6px; border-radius: 3px; outline: none; margin: 10px 0; }
@@ -70,9 +98,12 @@
         .title-bar h2 { margin: 0; font-size: 1.2em; }
         .title-bar .version { font-size: 0.85em; color: #666; font-family: monospace; }
         .loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.8); padding: 20px; border-radius: 10px; z-index: 100; font-weight: bold; }
-        .btn { padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+        .btn { padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; text-align: center; }
         .btn:hover:not(:disabled) { background: #e9ecef; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        #fps-display { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); color: white; padding: 2px 5px; border-radius: 3px; font-size: 10px; z-index: 1000; pointer-events: none; display: none; }
+        #fps-toggle { position: absolute; top: 0; right: 0; width: 100px; height: 100px; z-index: 1001; cursor: default; }
     </style>
 </head>
 <body>
@@ -134,27 +165,46 @@
             <span id="status" style="color: #dc3545; font-weight: bold; position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap;">Initializing...</span>
             <span id="time-end-val">...</span>
         </div>
-        <div style="display:flex; gap:5px; margin-top:10px; align-items: center;">
-            <button id="btn-play-pause" class="btn" style="flex:2;">Play</button>
-            <label style="flex:1; display:flex; align-items:center; gap:3px; font-size:0.85em; cursor:pointer;">
-                <input type="checkbox" id="chk-loop"> Loop
-            </label>
-            <div style="flex:2; display:flex; border:1px solid #ccc; border-radius:4px; overflow:hidden; background:#fff;">
-                <button id="btn-speed-down" class="btn" style="border:none; border-radius:0; flex:1; padding:0; background:none;">-</button>
-                <div id="speed-val" style="flex:2; display:flex; align-items:center; justify-content:center; font-size:0.85em; font-weight:bold; border-left:1px solid #eee; border-right:1px solid #eee;">1x</div>
-                <button id="btn-speed-up" class="btn" style="border:none; border-radius:0; flex:1; padding:0; background:none;">+</button>
+        <div style="display:flex; gap:5px; margin-top:10px; align-items: center; justify-content: space-between;">
+            <button id="btn-play-pause" class="btn" style="flex: 1; min-width: 60px;">Play</button>
+            <div style="flex: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; min-width: 140px;">
+                <label style="display:flex; align-items:center; gap:2px; font-size:0.85em; cursor:pointer; white-space: nowrap;">
+                    <input type="checkbox" id="chk-loop"> Loop
+                </label>
+                <div style="display:flex; border:1px solid #ccc; border-radius:4px; overflow:hidden; background:#fff; height: 26px; flex: 1;">
+                    <button id="btn-speed-down" class="btn" style="border:none; border-radius:0; padding: 0; background:none; flex: 1;">-</button>
+                    <div id="speed-val" style="display:flex; align-items:center; justify-content:center; font-size:0.85em; font-weight:bold; border-left:1px solid #eee; border-right:1px solid #eee; flex: 1.5;">1x</div>
+                    <button id="btn-speed-up" class="btn" style="border:none; border-radius:0; padding: 0; background:none; flex: 1;">+</button>
+                </div>
             </div>
-            <button id="btn-reset" class="btn" style="flex:1;">Reset</button>
+            <button id="btn-reset" class="btn" style="flex: 1; min-width: 60px;">Reset</button>
         </div>
     </div>
 </div>
 
-<div id="plot"></div>
+<div class="plot-container">
+    <div class="color-scale" id="legend">
+        <div style="font-weight: bold; margin-bottom: 12px; font-size: 11px;" id="legend-unit">hPa</div>
+        <div class="color-bar-wrapper">
+            <div class="color-bar" id="legend-bar"></div>
+            <div class="color-scale-labels" id="legend-labels">
+                <span>0</span>
+                <span>-30</span>
+                <span>-60</span>
+            </div>
+        </div>
+    </div>
+    <div id="plot-wrapper">
+        <div id="plot"></div>
+        <div id="fps-display">FPS: --</div>
+        <div id="fps-toggle"></div>
+    </div>
+</div>
 
 <script>
 // Global Constants
 const TURBO_SCALE = [[0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]], [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]], [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]], [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]];
-const BASE_FPS_INTERVAL = 1000 / 24; 
+const BASE_STEPS_PER_SEC = 24; 
 const HOUR_MS = 21600000; 
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 
@@ -167,6 +217,10 @@ let isDraggingMap = false;
 let lastFrameTime = 0;
 let lastProj = null;
 let speedIdx = 2; 
+
+// Benchmark
+let frameCount = 0;
+let lastFpsUpdate = 0;
 
 // Buffer Data
 let masterLats, masterLons, masterTimes, masterStrengths;
@@ -199,7 +253,12 @@ const elements = {
     displacementMaxVal: document.getElementById('displacement-max-val'),
     status: document.getElementById('status'),
     loading: document.getElementById('loading'),
-    plot: document.getElementById('plot')
+    plot: document.getElementById('plot'),
+    fpsDisplay: document.getElementById('fps-display'),
+    fpsToggle: document.getElementById('fps-toggle'),
+    legendUnit: document.getElementById('legend-unit'),
+    legendBar: document.getElementById('legend-bar'),
+    legendLabels: document.getElementById('legend-labels')
 };
 
 async function init() {
@@ -220,12 +279,28 @@ async function init() {
         elements.btnSpeedDown.addEventListener('click', () => changeSpeed(-1));
         elements.btnSpeedUp.addEventListener('click', () => changeSpeed(1));
         elements.btnReset.addEventListener('click', resetAnimation);
-        window.addEventListener('resize', () => updatePlot());
+        window.addEventListener('resize', () => { updatePlot(); updateLegend(); });
         
         elements.plot.addEventListener('mousedown', () => { isDraggingMap = true; });
         elements.plot.addEventListener('touchstart', () => { isDraggingMap = true; }, {passive: true});
         window.addEventListener('mouseup', () => { isDraggingMap = false; });
         window.addEventListener('touchend', () => { isDraggingMap = false; }, {passive: true});
+
+        const toggleFps = () => {
+            const disp = elements.fpsDisplay.style.display;
+            elements.fpsDisplay.style.display = (disp === 'none' || disp === '') ? 'block' : 'none';
+        };
+        elements.fpsToggle.addEventListener('dblclick', toggleFps);
+        
+        let lastTap = 0;
+        elements.fpsToggle.addEventListener('touchstart', (e) => {
+            const now = performance.now();
+            if (now - lastTap < 300) {
+                toggleFps();
+                e.preventDefault();
+            }
+            lastTap = now;
+        }, {passive: false});
 
         elements.timeScrub.addEventListener('input', () => {
             if (isPlaying) pauseAnimation();
@@ -236,9 +311,27 @@ async function init() {
         });
 
         updatePlot(true);
+        updateLegend();
     } else {
         elements.status.innerHTML = `<b style='color:red'>Error:</b> Data script not found. If using split mode, ensure the .tracks.js file is present and loaded correctly.`;
         elements.loading.innerHTML = `<span style='color:red'>Data failed to load.</span>`;
+    }
+}
+
+function updateLegend() {
+    const meta = allData.metadata;
+    const isMSL = meta.track_type === 'msl';
+    elements.legendUnit.innerText = isMSL ? "hPa" : "10⁻⁵ s⁻¹";
+    
+    const cmin = meta.min_strength;
+    const cmax = meta.max_strength;
+    
+    if (isMSL) {
+        elements.legendBar.style.background = "linear-gradient(to bottom, rgb(48, 18, 59), rgb(70, 74, 164), rgb(61, 126, 237), rgb(33, 176, 213), rgb(24, 215, 160), rgb(100, 240, 91), rgb(178, 230, 54), rgb(238, 182, 48), rgb(254, 112, 28), rgb(226, 45, 6), rgb(158, 1, 1))";
+        elements.legendLabels.innerHTML = `<span>${cmax.toFixed(0)}</span><span>${((cmin+cmax)/2).toFixed(0)}</span><span>${cmin.toFixed(0)}</span>`;
+    } else {
+        elements.legendBar.style.background = "linear-gradient(to top, rgb(48, 18, 59), rgb(70, 74, 164), rgb(61, 126, 237), rgb(33, 176, 213), rgb(24, 215, 160), rgb(100, 240, 91), rgb(178, 230, 54), rgb(238, 182, 48), rgb(254, 112, 28), rgb(226, 45, 6), rgb(158, 1, 1))";
+        elements.legendLabels.innerHTML = `<span>${cmax.toFixed(1)}</span><span>${((cmin+cmax)/2).toFixed(1)}</span><span>${cmin.toFixed(1)}</span>`;
     }
 }
 
@@ -303,7 +396,7 @@ function setupControls() {
     elements.strength.min = Math.floor(meta.min_strength);
     elements.strength.max = Math.ceil(meta.max_strength);
     elements.strength.step = isMSL ? 1 : 0.1;
-    elements.strength.value = isMSL ? Math.min(elements.strength.max, 990) : Math.floor(meta.min_strength);
+    elements.strength.value = isMSL ? Math.max(elements.strength.min, Math.min(elements.strength.max, -15)) : Math.floor(meta.min_strength);
     elements.strengthMinVal.innerText = elements.strength.min;
     elements.strengthMaxVal.innerText = elements.strength.max;
     
@@ -335,35 +428,48 @@ function setupControls() {
 function animate(timestamp) {
     if (!isPlaying) return;
     
-    const currentFpsInterval = BASE_FPS_INTERVAL / SPEEDS[speedIdx];
-    if (timestamp - lastFrameTime >= currentFpsInterval) {
-        lastFrameTime = timestamp;
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const dt = timestamp - lastFrameTime;
+    
+    const targetStepsPerSec = BASE_STEPS_PER_SEC * SPEEDS[speedIdx];
+    const msPerStep = 1000 / targetStepsPerSec;
+    
+    if (dt >= msPerStep) {
+        const tStart = parseInt(elements.timeStart.value);
+        const tEnd = parseInt(elements.timeEnd.value);
         
-        if (!isDraggingMap) {
-            const tStart = parseInt(elements.timeStart.value);
-            const tEnd = parseInt(elements.timeEnd.value);
-            
-            if (currentAnimTime === null) currentAnimTime = tStart;
+        if (currentAnimTime === null) currentAnimTime = tStart;
 
-            // Update UI for the current frame
+        if (!isDraggingMap) {
+            const stepsToAdvance = Math.floor(dt / msPerStep);
+            let nextTime = currentAnimTime;
+            
+            for (let i = 0; i < stepsToAdvance; i++) {
+                if (nextTime >= tEnd) {
+                    if (elements.chkLoop.checked) {
+                        nextTime = tStart;
+                    } else {
+                        nextTime = tEnd;
+                        pauseAnimation();
+                        break;
+                    }
+                } else {
+                    nextTime = Math.min(tEnd, nextTime + HOUR_MS);
+                }
+            }
+            
+            currentAnimTime = nextTime;
             elements.timeScrub.value = currentAnimTime;
             updateSliderFill();
             updatePlot();
-
-            // Prepare for next frame
-            if (currentAnimTime >= tEnd) {
-                if (elements.chkLoop.checked) {
-                    currentAnimTime = tStart;
-                } else {
-                    pauseAnimation();
-                    return;
-                }
-            } else {
-                currentAnimTime = Math.min(tEnd, currentAnimTime + HOUR_MS);
-            }
         }
+        
+        lastFrameTime = timestamp - (dt % msPerStep);
     }
-    requestAnimationFrame(animate);
+    
+    if (isPlaying) {
+        requestAnimationFrame(animate);
+    }
 }
 
 function playAnimation() {
@@ -376,7 +482,7 @@ function playAnimation() {
     const tEnd = parseInt(elements.timeEnd.value);
     if (currentAnimTime === null || currentAnimTime >= tEnd) currentAnimTime = tStart;
     
-    lastFrameTime = performance.now();
+    lastFrameTime = 0;
     requestAnimationFrame(animate);
 }
 
@@ -418,10 +524,23 @@ function formatTime(ms) {
     return new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
 }
 
+function getHoverText(p, track, peakText, durText, unit) {
+    const ptTimeStr = formatTime(masterTimes[p]);
+    return `${peakText}<br>Curr: ${masterStrengths[p].toFixed(1)} ${unit}<br>Time: ${ptTimeStr}${durText}`;
+}
+
 function updatePlot(forceStructural = false) {
     if (isUpdating && !forceStructural) return;
     isUpdating = true;
     
+    frameCount++;
+    const now = performance.now();
+    if (now - lastFpsUpdate >= 1000) {
+        elements.fpsDisplay.innerText = "FPS: " + frameCount;
+        frameCount = 0;
+        lastFpsUpdate = now;
+    }
+
     const meta = allData.metadata;
     const isMSL = meta.track_type === 'msl';
     const unit = isMSL ? "hPa" : "10⁻⁵ s⁻¹";
@@ -445,6 +564,7 @@ function updatePlot(forceStructural = false) {
         ? (isTiny ? 200 : (isMobile ? 250 : 450)) 
         : (isTiny ? 320 : (isMobile ? 400 : 700));
     elements.plot.style.height = plotHeight + 'px';
+    document.querySelector('.plot-container').style.height = plotHeight + 'px';
 
     elements.timeStartVal.innerText = formatTime(tStart);
     elements.timeEndVal.innerText = formatTime(tEnd);
@@ -463,10 +583,6 @@ function updatePlot(forceStructural = false) {
         const sMatch = isMSL ? t.strength <= strengthThresh : t.strength >= strengthThresh;
         if (!sMatch || t.duration < minDur || t.displacement < minDist) continue;
 
-        let t_val = Math.min(1, Math.max(0, (t.strength - cmin) / (cmax - cmin)));
-        const tc = isMSL ? (1 - t_val) : t_val;
-        const binIdx = Math.min(Math.floor(tc * 10), 10);
-
         const startTimeStr = formatTime(masterTimes[t.start]);
         const endTimeStr = formatTime(masterTimes[t.end]);
         const peakText = `Track ID: ${t.track_id}<br>Peak: ${t.strength.toFixed(1)} ${unit}`;
@@ -477,32 +593,36 @@ function updatePlot(forceStructural = false) {
 
         for (let p = t.start; p <= t.end; p++) {
             const ptTime = masterTimes[p];
-            if (ptTime >= tStart && ptTime <= tEnd) {
-                if (currentAnimTime !== null && ptTime > currentAnimTime) break;
-                
-                binLats[binIdx].push(masterLats[p]);
-                binLons[binIdx].push(masterLons[p]);
-                
-                const ptTimeStr = formatTime(ptTime);
-                const ptHover = `${peakText}<br>Curr: ${masterStrengths[p].toFixed(1)} ${unit}<br>Time: ${ptTimeStr}${durText}`;
-                binTexts[binIdx].push(ptHover);
-                
-                lastValidIdx = p;
+            if (ptTime > tEnd || (currentAnimTime !== null && ptTime > currentAnimTime)) break;
+            if (ptTime < tStart) continue;
+            
+            if (p < t.end) {
+                const nextTime = masterTimes[p+1];
+                if (nextTime >= tStart && nextTime <= tEnd && (currentAnimTime === null || nextTime <= currentAnimTime)) {
+                    let v = masterStrengths[p];
+                    let t_val = Math.min(1, Math.max(0, (v - cmin) / (cmax - cmin)));
+                    const tc = isMSL ? (1 - t_val) : t_val;
+                    const binIdx = Math.min(Math.floor(tc * 10), 10);
+                    
+                    binLats[binIdx].push(masterLats[p], masterLats[p+1], null);
+                    binLons[binIdx].push(masterLons[p], masterLons[p+1], null);
+                    
+                    const h1 = getHoverText(p, t, peakText, durText, unit);
+                    const h2 = getHoverText(p+1, t, peakText, durText, unit);
+                    binTexts[binIdx].push(h1, h2, "");
+                }
             }
+            
+            lastValidIdx = p;
         }
-        binLats[binIdx].push(null);
-        binLons[binIdx].push(null);
-        binTexts[binIdx].push(null);
 
         if (currentAnimTime !== null && lastValidIdx !== -1) {
             if (masterTimes[t.start] <= currentAnimTime && masterTimes[t.end] >= currentAnimTime) {
+                const currentV = masterStrengths[lastValidIdx];
                 curLats.push(masterLats[lastValidIdx]);
                 curLons.push(masterLons[lastValidIdx]);
-                curColors.push(getColor(t.strength, isMSL, cmin, cmax));
-                
-                const ptTimeStr = formatTime(masterTimes[lastValidIdx]);
-                const ptHover = `${peakText}<br>Curr: ${masterStrengths[lastValidIdx].toFixed(1)} ${unit}<br>Time: ${ptTimeStr}${durText}`;
-                curTexts.push(ptHover);
+                curColors.push(getColor(currentV, isMSL, cmin, cmax));
+                curTexts.push(getHoverText(lastValidIdx, t, peakText, durText, unit));
             }
         }
     }
@@ -510,41 +630,37 @@ function updatePlot(forceStructural = false) {
     elements.status.innerText = (isPlaying || currentAnimTime !== null) ? `Animating: ${formatTime(currentAnimTime)}` : `Showing ${visibleCount} tracks`;
     elements.status.style.color = (isPlaying || currentAnimTime !== null) ? "#dc3545" : "#666";
 
-    if (isProjChanged) {
-        const traces = [];
-        TURBO_SCALE.forEach((bin, idx) => {
-            traces.push({
-                type: 'scattergeo', mode: 'lines', lat: binLats[idx], lon: binLons[idx],
-                line: { color: `rgb(${bin[1].join(',')})`, width: 1.5 },
-                hoverinfo: 'text', text: binTexts[idx], showlegend: false
-            });
+    const traces = [];
+    TURBO_SCALE.forEach((bin, idx) => {
+        const color = `rgb(${bin[1].join(',')})`;
+        traces.push({
+            type: 'scattergeo', mode: 'lines', lat: binLats[idx], lon: binLons[idx],
+            line: { color: color, width: 1.5 },
+            hoverinfo: 'text', text: binTexts[idx], showlegend: false,
+            hoverlabel: { bordercolor: color, namelength: 0 },
+            name: ''
         });
-        traces.push({ 
-            type: 'scattergeo', mode: 'markers', lat: curLats, lon: curLons, 
-            marker: { size: 10, color: curColors, line: { width: 1.5, color: '#333' } }, 
-            hoverinfo: 'text', text: curTexts, showlegend: false 
-        });
+    });
+    traces.push({ 
+        type: 'scattergeo', mode: 'markers', lat: curLats, lon: curLons, 
+        marker: { size: 10, color: curColors, line: { width: 1.5, color: '#333' } }, 
+        hoverinfo: 'text', text: curTexts, showlegend: false,
+        hoverlabel: { namelength: 0 },
+        name: ''
+    });
 
-        const layout = {
-            margin: { l: 20, r: 20, t: 20, b: 20 }, height: plotHeight,
-            geo: { 
-                showcoastlines: true, coastlinecolor: "#444", showland: true, landcolor: "#eee", showocean: true, oceancolor: "#fff", 
-                projection: { type: proj }
-            },
-            uirevision: 'true'
-        };
-        if (proj === 'orthographic') layout.geo.projection.rotation = { lon: -60, lat: 35 };
+    const layout = {
+        margin: { l: 20, r: 20, t: 20, b: 20 }, height: plotHeight,
+        geo: { 
+            showcoastlines: true, coastlinecolor: "#444", showland: true, landcolor: "#eee", showocean: true, oceancolor: "#fff", 
+            projection: { type: proj }
+        },
+        hovermode: 'closest',
+        uirevision: proj
+    };
+    if (proj === 'orthographic') layout.geo.projection.rotation = { lon: -60, lat: 35 };
 
-        Plotly.react(elements.plot, traces, layout, {responsive: true, displayModeBar: false}).then(() => { isUpdating = false; });
-    } else {
-        const update = {
-            lat: [...binLats, curLats],
-            lon: [...binLons, curLons],
-            text: [...binTexts, curTexts],
-            'marker.color': [...Array(11).fill(null), curColors]
-        };
-        Plotly.restyle(elements.plot, update, Array.from(Array(12).keys())).then(() => { isUpdating = false; });
-    }
+    Plotly.react(elements.plot, traces, layout, {responsive: true, displayModeBar: false}).then(() => { isUpdating = false; });
 }
 
 init();
