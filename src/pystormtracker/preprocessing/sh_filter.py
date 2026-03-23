@@ -25,12 +25,6 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
     """
     Retrieves or creates an SHTns plan for the current thread.
     """
-    if not SHTNS_AVAILABLE:
-        raise ImportError(
-            "shtns is required for SphericalHarmonicFilter. "
-            "Install it with 'pip install PyStormTracker[pre]'."
-        )
-
     if not hasattr(_thread_local, "cache"):
         _thread_local.cache = {}
 
@@ -88,14 +82,71 @@ def _filter_shtns_frame(
     return out
 
 
+def _filter_pyshtools_frame(
+    frame: NDArray[np.float64], lmin: int, lmax: int, lat_reverse: bool = False
+) -> NDArray[np.float64]:
+    """Filters a single 2D frame using pyshtools."""
+    import pyshtools as pysh  # type: ignore[import-untyped]
+
+    if lat_reverse:
+        frame = frame[::-1, :]
+
+    nlat, nlon = frame.shape
+
+    # pyshtools DH grid requires nlon = 2*nlat-1 (extended) or nlon = 2*nlat.
+    # Typical ERA5 2.5x2.5 is 73x144. nlon=144, nlat=73. 2*nlat-1 = 145.
+    if nlon == 2 * nlat - 2:
+        # Pad longitude by repeating first column at the end to get 2*nlat-1
+        frame_proc = np.empty((nlat, nlon + 1), dtype=frame.dtype)
+        frame_proc[:, :-1] = frame
+        frame_proc[:, -1] = frame[:, 0]
+        slice_back = True
+    elif nlon == 2 * nlat - 1 or nlon == 2 * nlat:
+        frame_proc = frame
+        slice_back = False
+    else:
+        # Try to use as is, let pyshtools raise if incompatible
+        frame_proc = frame
+        slice_back = False
+
+    try:
+        grid = pysh.SHGrid.from_array(frame_proc, grid="DH")
+        coeffs = grid.expand()
+
+        # Filter operations
+        coeffs_filtered = coeffs.copy()
+        if lmin > 0:
+            for l_val in range(min(lmin, coeffs_filtered.lmax + 1)):
+                coeffs_filtered.coeffs[:, l_val, :] = 0.0
+        if lmax < coeffs_filtered.lmax:
+            for l_val in range(lmax + 1, coeffs_filtered.lmax + 1):
+                coeffs_filtered.coeffs[:, l_val, :] = 0.0
+
+        filtered_grid = coeffs_filtered.expand()
+        out = cast(NDArray[np.float64], filtered_grid.to_array())
+
+        if slice_back:
+            out = out[:, :-1]
+        if lat_reverse:
+            out = out[::-1, :]
+
+        return out
+    except Exception as e:
+        raise ValueError(f"Unsupported shape for SH filter: {frame.shape}. {e}") from e
+
+
 class SphericalHarmonicFilter:
     """
-    High-performance Spherical harmonic bandpass filter for lat-lon grid data
-    powered by SHTns.
+    Spherical harmonic bandpass filter for lat-lon grid data.
+    Automatically uses SHTns if available, otherwise falls back to pyshtools.
     """
 
     def __init__(
-        self, lmin: int = 5, lmax: int = 42, lat_reverse: bool = False
+        self,
+        lmin: int = 5,
+        lmax: int = 42,
+        lat_reverse: bool = False,
+        engine: Literal["auto", "pyshtools", "shtns"] = "auto",
     ) -> None:
         """
         Initialize the filter with wave number bounds.
@@ -104,10 +155,12 @@ class SphericalHarmonicFilter:
             lmin (int): Minimum total wave number to retain.
             lmax (int): Maximum total wave number to retain.
             lat_reverse (bool): If True, assume latitude is stored from South to North.
+            engine (str): Engine to use ('auto', 'pyshtools', 'shtns').
         """
         self.lmin = lmin
         self.lmax = lmax
         self.lat_reverse = lat_reverse
+        self.engine = engine
 
     @overload
     def filter(
@@ -139,14 +192,19 @@ class SphericalHarmonicFilter:
             xr.DataArray | np.ndarray: The filtered data.
         """
         if isinstance(data, np.ndarray):
+            if self.engine == "shtns" or (self.engine == "auto" and SHTNS_AVAILABLE):
+                filter_func = _filter_shtns_frame
+            else:
+                filter_func = _filter_pyshtools_frame
+
             if data.ndim == 2:
-                return _filter_shtns_frame(
+                return filter_func(
                     data, self.lmin, self.lmax, lat_reverse=self.lat_reverse
                 )
             elif data.ndim == 3:
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
-                    out[i] = _filter_shtns_frame(
+                    out[i] = filter_func(
                         data[i], self.lmin, self.lmax, lat_reverse=self.lat_reverse
                     )
                 return out
@@ -154,7 +212,12 @@ class SphericalHarmonicFilter:
                 raise ValueError("numpy array must be 2D or 3D")
 
         return apply_sh_filter(
-            data, self.lmin, self.lmax, lat_reverse=self.lat_reverse, backend=backend
+            data,
+            self.lmin,
+            self.lmax,
+            lat_reverse=self.lat_reverse,
+            backend=backend,
+            engine=self.engine,
         )
 
 
@@ -164,9 +227,10 @@ def apply_sh_filter(
     lmax: int = 42,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
+    engine: Literal["auto", "pyshtools", "shtns"] = "auto",
 ) -> xr.DataArray:
     """
-    Applies a spherical harmonic bandpass filter to the input data using SHTns.
+    Applies a spherical harmonic bandpass filter to the input data.
 
     Args:
         data (xr.DataArray): Input data with lat/lon dimensions.
@@ -174,6 +238,7 @@ def apply_sh_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+        engine (str): Transform engine. Options: 'auto', 'pyshtools', 'shtns'.
 
     Returns:
         xr.DataArray: The filtered data.
@@ -193,6 +258,18 @@ def apply_sh_filter(
             f"Input DataArray must have latitude and longitude dimensions. "
             f"Found: {list(data.dims)}"
         )
+
+    if engine == "shtns":
+        if not SHTNS_AVAILABLE:
+            raise ImportError("shtns is requested but not available.")
+        filter_func = _filter_shtns_frame
+    elif engine == "pyshtools":
+        filter_func = _filter_pyshtools_frame
+    else:  # auto
+        if SHTNS_AVAILABLE:
+            filter_func = _filter_shtns_frame
+        else:
+            filter_func = _filter_pyshtools_frame
 
     kwargs = {"lmin": lmin, "lmax": lmax, "lat_reverse": lat_reverse}
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
@@ -242,7 +319,7 @@ def apply_sh_filter(
     filtered = cast(
         xr.DataArray,
         xr.apply_ufunc(
-            _filter_shtns_frame,
+            filter_func,
             data,
             input_core_dims=[[lat_dim, lon_dim]],
             output_core_dims=[[lat_dim, lon_dim]],

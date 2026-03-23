@@ -81,3 +81,26 @@ def test_sh_filter_numpy_ndarray_3d() -> None:
 
     assert isinstance(filtered, np.ndarray)
     assert filtered.shape == (3, 73, 144)
+
+
+def test_sh_filter_engines_compare() -> None:
+    from pystormtracker.preprocessing.sh_filter import SHTNS_AVAILABLE
+
+    if not SHTNS_AVAILABLE:
+        pytest.skip("shtns is not available")
+
+    # Use a smooth field rather than random noise to avoid high-frequency
+    # aliasing differences between the two transform implementations.
+    nlat, nlon = 73, 144
+    lat = np.linspace(-np.pi/2, np.pi/2, nlat)[:, None]
+    lon = np.linspace(0, 2*np.pi, nlon)[None, :]
+    data: NDArray[np.float64] = np.cos(5*lon) * np.sin(lat)**5 * np.cos(lat)**5
+
+    filt_pyshtools = SphericalHarmonicFilter(lmin=5, lmax=42, engine="pyshtools")
+    filt_shtns = SphericalHarmonicFilter(lmin=5, lmax=42, engine="shtns")
+
+    filtered_pysh = filt_pyshtools.filter(data)
+    filtered_shtns = filt_shtns.filter(data)
+
+    # Allow a small tolerance due to differences in math libraries/implementations
+    np.testing.assert_allclose(filtered_pysh, filtered_shtns, rtol=1e-3, atol=1e-4)
