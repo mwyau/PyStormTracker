@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Storm Tracks</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 10px; color: #333; }
+        .controls { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 15px; 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border: 1px solid #ddd; 
+            margin-bottom: 10px; 
+        }
+        
+        .control-group.playback-group { grid-column: 1 / -1; }
+
+        @media (max-width: 900px) {
+            .controls { grid-template-columns: 1fr 1fr; }
+        }
+
+        @media (max-width: 600px) {
+            .controls { gap: 8px; padding: 10px; }
+            body { padding: 5px; }
+            .control-group label { margin-bottom: 2px; font-size: 0.8em; }
+            input[type="range"] { height: 4px; margin: 4px 0; }
+            input[type="range"]::-webkit-slider-thumb { width: 14px; height: 14px; }
+            .range-slider { height: 16px; }
+            .title-bar { margin-bottom: 5px; }
+            .title-bar h2 { font-size: 1.1em; }
+            .btn { padding: 4px 8px; font-size: 0.8em; }
+            .slider-values { font-size: 0.7em; }
+        }
+
+        .control-group { display: flex; flex-direction: column; }
+        .control-group label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em; }
+        .slider-values { display: flex; justify-content: space-between; font-size: 0.8em; color: #666; margin-top: 2px; }
+        #plot { width: 100%; height: 700px; border: 1px solid #eee; border-radius: 8px; }
+        
+        select { width: 100%; cursor: pointer; padding: 4px; border-radius: 4px; border: 1px solid #ccc; background: #fff; height: auto; font-size: 0.9em; }
+        
+        input[type="range"] { width: 100%; cursor: pointer; -webkit-appearance: none; background: #ddd; height: 6px; border-radius: 3px; outline: none; margin: 10px 0; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: #007bff; border-radius: 50%; cursor: pointer; border: 1px solid #0056b3; position: relative; z-index: 2; }
+        
+        #time-scrub::-webkit-slider-thumb { width: 16px; height: 26px; background: linear-gradient(to right, transparent 6px, #dc3545 6px, #dc3545 10px, transparent 10px); border-radius: 0; border: none; cursor: ew-resize; z-index: 3; -webkit-appearance: none; transition: opacity 0.2s; }
+        #time-scrub::-moz-range-thumb { width: 16px; height: 26px; background: linear-gradient(to right, transparent 6px, #dc3545 6px, #dc3545 10px, transparent 10px); border-radius: 0; border: none; cursor: ew-resize; z-index: 3; transition: opacity 0.2s; }
+
+        .range-slider.not-animating #time-scrub::-webkit-slider-thumb { opacity: 0; cursor: default; }
+        .range-slider.not-animating #time-scrub::-moz-range-thumb { opacity: 0; cursor: default; }
+
+        .range-slider { position: relative; width: 100%; height: 30px; display: flex; align-items: center; }
+        .range-slider input[type="range"] { position: absolute; left: 0; margin: 0; pointer-events: none; background: none; top: 50%; transform: translateY(-50%); }
+        .range-slider input[type="range"]::-webkit-slider-thumb { pointer-events: auto; }
+        .range-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; }
+        .range-slider .slider-track { 
+            position: absolute; height: 6px; width: 100%; background: #ddd; border-radius: 3px; top: 50%; transform: translateY(-50%); z-index: 0; 
+            --p1: 0; --p2: 1; --ps: 0;
+            --c1: calc(8px + var(--p1) * (100% - 16px));
+            --c2: calc(8px + var(--p2) * (100% - 16px));
+            --cs: calc(8px + var(--ps) * (100% - 16px));
+            background: linear-gradient(to right, #ddd 0%, #ddd var(--c1), #007bff var(--c1), #007bff var(--cs), #99c7ff var(--cs), #99c7ff var(--c2), #ddd var(--c2), #ddd 100%);
+        }
+        
+        .title-bar { margin-bottom: 10px; border-left: 4px solid #007bff; padding-left: 10px; display: flex; align-items: baseline; justify-content: space-between; padding-right: 15px; }
+        .title-bar h2 { margin: 0; font-size: 1.2em; }
+        .title-bar .version { font-size: 0.85em; color: #666; font-family: monospace; }
+        .loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.8); padding: 20px; border-radius: 10px; z-index: 100; font-weight: bold; }
+        .btn { padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+        .btn:hover:not(:disabled) { background: #e9ecef; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div id="loading" class="loading">Loading track data...</div>
+
+<div class="title-bar">
+    <h2>Storm Track Explorer</h2>
+    <span class="version">PyStormTracker {{version}}</span>
+</div>
+
+// TRACKS_DATA_PLACEHOLDER
+
+<div class="controls">
+    <div class="control-group">
+        <label>Map Projection</label>
+        <select id="projection">
+            <option value="orthographic">Globe (3D)</option>
+            <option value="equirectangular">Global (Lat/Lon)</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label id="strength-label">Peak Strength</label>
+        <input type="range" id="strength">
+        <div class="slider-values">
+            <span id="strength-min-val">...</span>
+            <span id="strength-val">...</span>
+            <span id="strength-max-val">...</span>
+        </div>
+    </div>
+    <div class="control-group">
+        <label>Min Duration (hours)</label>
+        <input type="range" id="duration" step="6">
+        <div class="slider-values">
+            <span>0h</span>
+            <span id="duration-val">42h</span>
+            <span id="duration-max-val">...</span>
+        </div>
+    </div>
+    <div class="control-group">
+        <label>Min Displacement (km)</label>
+        <input type="range" id="displacement" step="100">
+        <div class="slider-values">
+            <span id="displacement-min-val">100km</span>
+            <span id="displacement-val">...</span>
+            <span id="displacement-max-val">...</span>
+        </div>
+    </div>
+    <div class="control-group playback-group">
+        <label>Time Range</label>
+        <div class="range-slider">
+            <div class="slider-track" id="time-track"></div>
+            <input type="range" id="time-start" step="21600000">
+            <input type="range" id="time-end" step="21600000">
+            <input type="range" id="time-scrub" step="21600000">
+        </div>
+        <div class="slider-values">
+            <span id="time-start-val">...</span>
+            <span id="status" style="color: #dc3545; font-weight: bold; position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap;">Initializing...</span>
+            <span id="time-end-val">...</span>
+        </div>
+        <div style="display:flex; gap:5px; margin-top:10px; align-items: center;">
+            <button id="btn-play-pause" class="btn" style="flex:2;">Play</button>
+            <label style="flex:1; display:flex; align-items:center; gap:3px; font-size:0.85em; cursor:pointer;">
+                <input type="checkbox" id="chk-loop"> Loop
+            </label>
+            <div style="flex:2; display:flex; border:1px solid #ccc; border-radius:4px; overflow:hidden; background:#fff;">
+                <button id="btn-speed-down" class="btn" style="border:none; border-radius:0; flex:1; padding:0; background:none;">-</button>
+                <div id="speed-val" style="flex:2; display:flex; align-items:center; justify-content:center; font-size:0.85em; font-weight:bold; border-left:1px solid #eee; border-right:1px solid #eee;">1x</div>
+                <button id="btn-speed-up" class="btn" style="border:none; border-radius:0; flex:1; padding:0; background:none;">+</button>
+            </div>
+            <button id="btn-reset" class="btn" style="flex:1;">Reset</button>
+        </div>
+    </div>
+</div>
+
+<div id="plot"></div>
+
+<script>
+// Global Constants
+const TURBO_SCALE = [[0.0, [48, 18, 59]], [0.1, [70, 74, 164]], [0.2, [61, 126, 237]], [0.3, [33, 176, 213]], [0.4, [24, 215, 160]], [0.5, [100, 240, 91]], [0.6, [178, 230, 54]], [0.7, [238, 182, 48]], [0.8, [254, 112, 28]], [0.9, [226, 45, 6]], [1.0, [158, 1, 1]]];
+const BASE_FPS_INTERVAL = 1000 / 24; 
+const HOUR_MS = 21600000; 
+const SPEEDS = [0.25, 0.5, 1, 2, 4];
+
+// State Variables
+let allData = null;
+let isPlaying = false;
+let currentAnimTime = null;
+let isUpdating = false;
+let isDraggingMap = false;
+let lastFrameTime = 0;
+let lastProj = null;
+let speedIdx = 2; 
+
+// Buffer Data
+let masterLats, masterLons, masterTimes, masterStrengths;
+
+const elements = {
+    projection: document.getElementById('projection'),
+    timeStart: document.getElementById('time-start'),
+    timeEnd: document.getElementById('time-end'),
+    timeTrack: document.getElementById('time-track'),
+    timeStartVal: document.getElementById('time-start-val'),
+    timeEndVal: document.getElementById('time-end-val'),
+    timeScrub: document.getElementById('time-scrub'),
+    btnPlayPause: document.getElementById('btn-play-pause'),
+    btnSpeedDown: document.getElementById('btn-speed-down'),
+    btnSpeedUp: document.getElementById('btn-speed-up'),
+    speedVal: document.getElementById('speed-val'),
+    chkLoop: document.getElementById('chk-loop'),
+    btnReset: document.getElementById('btn-reset'),
+    strength: document.getElementById('strength'),
+    strengthLabel: document.getElementById('strength-label'),
+    strengthVal: document.getElementById('strength-val'),
+    strengthMinVal: document.getElementById('strength-min-val'),
+    strengthMaxVal: document.getElementById('strength-max-val'),
+    duration: document.getElementById('duration'),
+    durationVal: document.getElementById('duration-val'),
+    durationMaxVal: document.getElementById('duration-max-val'),
+    displacement: document.getElementById('displacement'),
+    displacementVal: document.getElementById('displacement-val'),
+    displacementMinVal: document.getElementById('displacement-min-val'),
+    displacementMaxVal: document.getElementById('displacement-max-val'),
+    status: document.getElementById('status'),
+    loading: document.getElementById('loading'),
+    plot: document.getElementById('plot')
+};
+
+async function init() {
+    if (window.TRACKS_DATA) {
+        allData = window.TRACKS_DATA;
+        
+        const ptCount = allData.points.lat.length;
+        masterLats = new Float32Array(allData.points.lat);
+        masterLons = new Float32Array(allData.points.lon);
+        masterTimes = new Float64Array(allData.points.time);
+        masterStrengths = new Float32Array(allData.points.strength);
+        
+        setupControls();
+        elements.loading.style.display = 'none';
+        document.querySelector('.range-slider').classList.add('not-animating');
+        
+        elements.btnPlayPause.addEventListener('click', () => isPlaying ? pauseAnimation() : playAnimation());
+        elements.btnSpeedDown.addEventListener('click', () => changeSpeed(-1));
+        elements.btnSpeedUp.addEventListener('click', () => changeSpeed(1));
+        elements.btnReset.addEventListener('click', resetAnimation);
+        window.addEventListener('resize', () => updatePlot());
+        
+        elements.plot.addEventListener('mousedown', () => { isDraggingMap = true; });
+        elements.plot.addEventListener('touchstart', () => { isDraggingMap = true; }, {passive: true});
+        window.addEventListener('mouseup', () => { isDraggingMap = false; });
+        window.addEventListener('touchend', () => { isDraggingMap = false; }, {passive: true});
+
+        elements.timeScrub.addEventListener('input', () => {
+            if (isPlaying) pauseAnimation();
+            document.querySelector('.range-slider').classList.remove('not-animating');
+            currentAnimTime = parseInt(elements.timeScrub.value);
+            updateSliderFill();
+            updatePlot();
+        });
+
+        updatePlot(true);
+    } else {
+        elements.status.innerHTML = `<b style='color:red'>Error:</b> Data script not found. If using split mode, ensure the .tracks.js file is present and loaded correctly.`;
+        elements.loading.innerHTML = `<span style='color:red'>Data failed to load.</span>`;
+    }
+}
+
+function changeSpeed(delta) {
+    speedIdx = Math.max(0, Math.min(SPEEDS.length - 1, speedIdx + delta));
+    elements.speedVal.innerText = SPEEDS[speedIdx] + 'x';
+}
+
+function updateSliderFill() {
+    [elements.strength, elements.duration, elements.displacement].forEach(el => {
+        const val = (el.value - el.min) / (el.max - el.min) * 100;
+        el.style.background = `linear-gradient(to right, #007bff ${val}%, #ddd ${val}%)`;
+    });
+    const min = parseInt(elements.timeStart.min);
+    const max = parseInt(elements.timeStart.max);
+    const v1 = parseInt(elements.timeStart.value);
+    const v2 = parseInt(elements.timeEnd.value);
+    const vs = parseInt(elements.timeScrub.value);
+    
+    const p1 = (v1 - min) / (max - min);
+    const p2 = (v2 - min) / (max - min);
+    const ps = (vs - min) / (max - min);
+    
+    elements.timeTrack.style.setProperty('--p1', p1);
+    elements.timeTrack.style.setProperty('--p2', p2);
+    elements.timeTrack.style.setProperty('--ps', ps);
+}
+
+function setupControls() {
+    const meta = allData.metadata;
+    const isMSL = meta.track_type === 'msl';
+    
+    [elements.timeStart, elements.timeEnd, elements.timeScrub].forEach(el => {
+        el.min = meta.min_time;
+        el.max = meta.max_time;
+    });
+    
+    elements.timeStart.value = meta.min_time;
+    elements.timeEnd.value = meta.max_time;
+    elements.timeScrub.value = meta.min_time;
+
+    elements.timeStart.addEventListener('input', () => {
+        if (parseInt(elements.timeStart.value) >= parseInt(elements.timeEnd.value)) {
+            elements.timeStart.value = parseInt(elements.timeEnd.value) - HOUR_MS;
+        }
+        if (currentAnimTime !== null && parseInt(elements.timeScrub.value) < parseInt(elements.timeStart.value)) {
+            elements.timeScrub.value = elements.timeStart.value;
+            currentAnimTime = parseInt(elements.timeScrub.value);
+        }
+    });
+    elements.timeEnd.addEventListener('input', () => {
+        if (parseInt(elements.timeEnd.value) <= parseInt(elements.timeStart.value)) {
+            elements.timeEnd.value = parseInt(elements.timeStart.value) + HOUR_MS;
+        }
+        if (currentAnimTime !== null && parseInt(elements.timeScrub.value) > parseInt(elements.timeEnd.value)) {
+            elements.timeScrub.value = elements.timeEnd.value;
+            currentAnimTime = parseInt(elements.timeScrub.value);
+        }
+    });
+    
+    elements.strengthLabel.innerText = isMSL ? "Peak MSL (hPa)" : "Peak VO (10⁻⁵ s⁻¹)";
+    elements.strength.min = Math.floor(meta.min_strength);
+    elements.strength.max = Math.ceil(meta.max_strength);
+    elements.strength.step = isMSL ? 1 : 0.1;
+    elements.strength.value = isMSL ? Math.min(elements.strength.max, 990) : Math.floor(meta.min_strength);
+    elements.strengthMinVal.innerText = elements.strength.min;
+    elements.strengthMaxVal.innerText = elements.strength.max;
+    
+    elements.duration.min = 0;
+    elements.duration.max = Math.ceil(meta.max_duration);
+    elements.duration.value = 48;
+    elements.durationMaxVal.innerText = elements.duration.max + "h";
+    
+    const roundedMaxDisp = Math.ceil(meta.max_displacement / 100) * 100;
+    elements.displacement.min = 100;
+    elements.displacement.max = roundedMaxDisp;
+    elements.displacement.value = Math.min(1000, roundedMaxDisp);
+    elements.displacementMaxVal.innerText = roundedMaxDisp + "km";
+    
+    [elements.projection, elements.timeStart, elements.timeEnd, elements.strength, elements.duration, elements.displacement].forEach(el => {
+        el.addEventListener('input', () => {
+            if (isPlaying && (el === elements.timeStart || el === elements.timeEnd)) {
+                pauseAnimation();
+            } else if (el !== elements.timeStart && el !== elements.timeEnd) {
+                if (isPlaying) pauseAnimation();
+            }
+            updateSliderFill();
+            updatePlot();
+        });
+    });
+    updateSliderFill();
+}
+
+function animate(timestamp) {
+    if (!isPlaying) return;
+    
+    const currentFpsInterval = BASE_FPS_INTERVAL / SPEEDS[speedIdx];
+    if (timestamp - lastFrameTime >= currentFpsInterval) {
+        lastFrameTime = timestamp;
+        
+        if (!isDraggingMap) {
+            const tStart = parseInt(elements.timeStart.value);
+            const tEnd = parseInt(elements.timeEnd.value);
+            
+            if (currentAnimTime === null) currentAnimTime = tStart;
+
+            // Update UI for the current frame
+            elements.timeScrub.value = currentAnimTime;
+            updateSliderFill();
+            updatePlot();
+
+            // Prepare for next frame
+            if (currentAnimTime >= tEnd) {
+                if (elements.chkLoop.checked) {
+                    currentAnimTime = tStart;
+                } else {
+                    pauseAnimation();
+                    return;
+                }
+            } else {
+                currentAnimTime = Math.min(tEnd, currentAnimTime + HOUR_MS);
+            }
+        }
+    }
+    requestAnimationFrame(animate);
+}
+
+function playAnimation() {
+    if (isPlaying) return;
+    isPlaying = true;
+    elements.btnPlayPause.innerText = 'Pause';
+    document.querySelector('.range-slider').classList.remove('not-animating');
+    
+    const tStart = parseInt(elements.timeStart.value);
+    const tEnd = parseInt(elements.timeEnd.value);
+    if (currentAnimTime === null || currentAnimTime >= tEnd) currentAnimTime = tStart;
+    
+    lastFrameTime = performance.now();
+    requestAnimationFrame(animate);
+}
+
+function pauseAnimation() {
+    isPlaying = false;
+    elements.btnPlayPause.innerText = 'Play';
+    updatePlot();
+}
+
+function resetAnimation() { 
+    pauseAnimation(); 
+    currentAnimTime = null; 
+    speedIdx = 2; 
+    elements.speedVal.innerText = '1x';
+    elements.timeScrub.value = elements.timeStart.value;
+    document.querySelector('.range-slider').classList.add('not-animating');
+    updateSliderFill();
+    updatePlot(true); 
+}
+
+function getColor(val, isMSL, cmin, cmax) {
+    let t = Math.min(1, Math.max(0, (val - cmin) / (cmax - cmin)));
+    const tc = isMSL ? (1 - t) : t;
+    
+    for (let i = 0; i < TURBO_SCALE.length - 1; i++) {
+        if (tc >= TURBO_SCALE[i][0] && tc <= TURBO_SCALE[i+1][0]) {
+            const ratio = (tc - TURBO_SCALE[i][0]) / (TURBO_SCALE[i+1][0] - TURBO_SCALE[i][0]);
+            const r = Math.round(TURBO_SCALE[i][1][0] + (TURBO_SCALE[i+1][1][0] - TURBO_SCALE[i][1][0]) * ratio);
+            const g = Math.round(TURBO_SCALE[i][1][1] + (TURBO_SCALE[i+1][1][1] - TURBO_SCALE[i][1][1]) * ratio);
+            const b = Math.round(TURBO_SCALE[i][1][2] + (TURBO_SCALE[i+1][1][2] - TURBO_SCALE[i][1][2]) * ratio);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+    }
+    return `rgb(0,0,0)`;
+}
+
+function formatTime(ms) {
+    if (!ms || isNaN(ms)) return "N/A";
+    return new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function updatePlot(forceStructural = false) {
+    if (isUpdating && !forceStructural) return;
+    isUpdating = true;
+    
+    const meta = allData.metadata;
+    const isMSL = meta.track_type === 'msl';
+    const unit = isMSL ? "hPa" : "10⁻⁵ s⁻¹";
+    const cmin = meta.min_strength;
+    const cmax = meta.max_strength;
+    
+    const tStart = parseInt(elements.timeStart.value);
+    const tEnd = parseInt(elements.timeEnd.value);
+    const strengthThresh = parseFloat(elements.strength.value);
+    const minDur = parseFloat(elements.duration.value);
+    const minDist = parseFloat(elements.displacement.value);
+    const proj = elements.projection.value;
+
+    const isProjChanged = proj !== lastProj || forceStructural;
+    lastProj = proj;
+
+    const winW = window.innerWidth;
+    const isMobile = winW < 600;
+    const isTiny = winW < 400;
+    const plotHeight = proj === 'equirectangular' 
+        ? (isTiny ? 200 : (isMobile ? 250 : 450)) 
+        : (isTiny ? 320 : (isMobile ? 400 : 700));
+    elements.plot.style.height = plotHeight + 'px';
+
+    elements.timeStartVal.innerText = formatTime(tStart);
+    elements.timeEndVal.innerText = formatTime(tEnd);
+    elements.strengthVal.innerText = strengthThresh + " " + unit;
+    elements.durationVal.innerText = minDur + "h";
+    elements.displacementVal.innerText = minDist + "km";
+
+    const binLats = Array(11).fill(0).map(() => []);
+    const binLons = Array(11).fill(0).map(() => []);
+    const binTexts = Array(11).fill(0).map(() => []);
+    const curLats = [], curLons = [], curColors = [], curTexts = [];
+    let visibleCount = 0;
+
+    for (let i = 0; i < allData.tracks.length; i++) {
+        const t = allData.tracks[i];
+        const sMatch = isMSL ? t.strength <= strengthThresh : t.strength >= strengthThresh;
+        if (!sMatch || t.duration < minDur || t.displacement < minDist) continue;
+
+        let t_val = Math.min(1, Math.max(0, (t.strength - cmin) / (cmax - cmin)));
+        const tc = isMSL ? (1 - t_val) : t_val;
+        const binIdx = Math.min(Math.floor(tc * 10), 10);
+
+        const startTimeStr = formatTime(masterTimes[t.start]);
+        const endTimeStr = formatTime(masterTimes[t.end]);
+        const peakText = `Track ID: ${t.track_id}<br>Peak: ${t.strength.toFixed(1)} ${unit}`;
+        const durText = `<br>Start: ${startTimeStr}<br>End: ${endTimeStr}<br>Dur: ${t.duration}h`;
+
+        let lastValidIdx = -1;
+        visibleCount++;
+
+        for (let p = t.start; p <= t.end; p++) {
+            const ptTime = masterTimes[p];
+            if (ptTime >= tStart && ptTime <= tEnd) {
+                if (currentAnimTime !== null && ptTime > currentAnimTime) break;
+                
+                binLats[binIdx].push(masterLats[p]);
+                binLons[binIdx].push(masterLons[p]);
+                
+                const ptTimeStr = formatTime(ptTime);
+                const ptHover = `${peakText}<br>Curr: ${masterStrengths[p].toFixed(1)} ${unit}<br>Time: ${ptTimeStr}${durText}`;
+                binTexts[binIdx].push(ptHover);
+                
+                lastValidIdx = p;
+            }
+        }
+        binLats[binIdx].push(null);
+        binLons[binIdx].push(null);
+        binTexts[binIdx].push(null);
+
+        if (currentAnimTime !== null && lastValidIdx !== -1) {
+            if (masterTimes[t.start] <= currentAnimTime && masterTimes[t.end] >= currentAnimTime) {
+                curLats.push(masterLats[lastValidIdx]);
+                curLons.push(masterLons[lastValidIdx]);
+                curColors.push(getColor(t.strength, isMSL, cmin, cmax));
+                
+                const ptTimeStr = formatTime(masterTimes[lastValidIdx]);
+                const ptHover = `${peakText}<br>Curr: ${masterStrengths[lastValidIdx].toFixed(1)} ${unit}<br>Time: ${ptTimeStr}${durText}`;
+                curTexts.push(ptHover);
+            }
+        }
+    }
+
+    elements.status.innerText = (isPlaying || currentAnimTime !== null) ? `Animating: ${formatTime(currentAnimTime)}` : `Showing ${visibleCount} tracks`;
+    elements.status.style.color = (isPlaying || currentAnimTime !== null) ? "#dc3545" : "#666";
+
+    if (isProjChanged) {
+        const traces = [];
+        TURBO_SCALE.forEach((bin, idx) => {
+            traces.push({
+                type: 'scattergeo', mode: 'lines', lat: binLats[idx], lon: binLons[idx],
+                line: { color: `rgb(${bin[1].join(',')})`, width: 1.5 },
+                hoverinfo: 'text', text: binTexts[idx], showlegend: false
+            });
+        });
+        traces.push({ 
+            type: 'scattergeo', mode: 'markers', lat: curLats, lon: curLons, 
+            marker: { size: 10, color: curColors, line: { width: 1.5, color: '#333' } }, 
+            hoverinfo: 'text', text: curTexts, showlegend: false 
+        });
+
+        const layout = {
+            margin: { l: 20, r: 20, t: 20, b: 20 }, height: plotHeight,
+            geo: { 
+                showcoastlines: true, coastlinecolor: "#444", showland: true, landcolor: "#eee", showocean: true, oceancolor: "#fff", 
+                projection: { type: proj }
+            },
+            uirevision: 'true'
+        };
+        if (proj === 'orthographic') layout.geo.projection.rotation = { lon: -60, lat: 35 };
+
+        Plotly.react(elements.plot, traces, layout, {responsive: true, displayModeBar: false}).then(() => { isUpdating = false; });
+    } else {
+        const update = {
+            lat: [...binLats, curLats],
+            lon: [...binLons, curLons],
+            text: [...binTexts, curTexts],
+            'marker.color': [...Array(11).fill(null), curColors]
+        };
+        Plotly.restyle(elements.plot, update, Array.from(Array(12).keys())).then(() => { isUpdating = false; });
+    }
+}
+
+init();
+</script>
+</body>
+</html>

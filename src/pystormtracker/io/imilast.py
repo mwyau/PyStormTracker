@@ -65,9 +65,16 @@ def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 6) 
     """Exports tracks to an IMILAST format text file."""
     outfile_str = str(outfile)
 
+    # Determine variable header based on track type
+    var_header = "Intensity1"
+    if tracks.track_type.lower() == "msl":
+        var_header = "MSL"
+    elif tracks.track_type.lower() == "vo":
+        var_header = "VO"
+
     with open(outfile_str, "w", newline="") as f:
         header = (
-            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,Intensity1\n"
+            f"99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,{var_header}\n"
         )
         f.write(header)
 
