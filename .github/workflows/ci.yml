@@ -121,6 +121,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        python-version: ["3.13"]
         include:
           - arch: amd64
             os: ubuntu-24.04
@@ -190,6 +192,7 @@ jobs:
        github.event_name == 'workflow_dispatch')
     strategy:
       matrix:
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             os: ubuntu-24.04

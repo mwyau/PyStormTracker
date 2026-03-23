@@ -23,6 +23,7 @@ jobs:
     name: build-and-push (${{ matrix.arch }})
     strategy:
       matrix:
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             os: ubuntu-24.04
