@@ -16,4 +16,5 @@ Foundational mandates and engineering standards for `PyStormTracker`. These take
 - **Typing**: MUST NOT use `Any` typing. Provide explicit type annotations for all declarations.
 - **Plain Language**: Use objective, scientific language in documentation. Avoid superlatives and subjective terms.
 - **No Auto-Commit**: NEVER stage or commit changes unless specifically and explicitly requested by the user.
+- **Tooling**: MUST use `uv` for package management, environment handling, and running tools (e.g., `uv run ruff`, `uv run pytest`).
 - **Documentation Persistence**: Preserve existing technical documentation and design rationale unless explicitly obsoleted.
