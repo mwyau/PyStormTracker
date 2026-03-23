@@ -121,7 +121,9 @@ class Tracks:
         lats: NDArray[np.float64] | None = None,
         lons: NDArray[np.float64] | None = None,
         vars_dict: dict[str, NDArray[np.float64]] | None = None,
+        track_type: str = "unknown",
     ) -> None:
+        self.track_type = track_type
         if track_ids is not None:
             self.track_ids = np.asarray(track_ids, dtype=np.int64)
             self.times = np.asarray(times, dtype="datetime64[s]")
@@ -418,7 +420,7 @@ class Tracks:
 
         Args:
             outfile (str | Path): Output file path.
-            format (str): Output format. Currently only "imilast" is supported.
+            format (str): Output format. Supports "imilast", "hodges", "tracks-json".
         """
         if format.lower() == "imilast":
             from ..io.imilast import write_imilast
@@ -428,5 +430,9 @@ class Tracks:
             from ..io.hodges import write_hodges
 
             write_hodges(self, str(outfile))
+        elif format.lower() == "json":
+            from ..io.json import write_json
+
+            write_json(self, outfile)
         else:
             raise ValueError(f"Unsupported output format: {format}")

@@ -4,16 +4,16 @@
 :maxdepth: 2
 :caption: Getting Started
 
-PyStormTracker <README>
+PyStormTracker <readme>
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: Technical Reference
 
-Architecture <ARCHITECTURE>
-Hodges Implementation <HODGES>
-Benchmark <BENCHMARK>
+Architecture <architecture>
+Hodges Implementation <hodges>
+Benchmark <benchmark>
 ```
 
 ```{toctree}
@@ -27,8 +27,8 @@ Interactive Map <interactive>
 :maxdepth: 2
 :caption: Development & History
 
-Changelog <CHANGELOG>
-Roadmap <ROADMAP>
+Changelog <changelog>
+Roadmap <roadmap>
 ```
 
 ## Resources

@@ -81,7 +81,7 @@ To further optimize scalability and memory efficiency for native-resolution clim
 *   **Lazy Evaluation & Thread Topology:** Shifting from eager chunk-loading to lazy, frame-by-frame memory access to eliminate out-of-memory risks on large domains. Concurrently, strictly pinning Numba thread topologies to prevent CPU oversubscription in multi-process backends.
 *   **Tree-based Linking:** Upgrading the current NumPy-broadcasting linker to utilize C-level tree structures (e.g., `scipy.spatial.cKDTree`), breaking the $O(N^2)$ scaling barrier for extremely long or dense trajectory sequences.
 
-For more details on specific planned implementations, see the [Roadmap](ROADMAP.md).
+For more details on specific planned implementations, see the [Roadmap](roadmap.md).
 
 ---
 
@@ -89,7 +89,7 @@ For more details on specific planned implementations, see the [Roadmap](ROADMAP.
 
 To quantify the efficiency gains of the array-backed JIT architecture, a comprehensive performance comparison was conducted between the legacy object-oriented system (`v0.3.3`) and the current implementation.
 
-Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](BENCHMARK.md).
+Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](benchmark.md).
 
 ---
 
