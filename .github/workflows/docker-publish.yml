@@ -20,11 +20,15 @@ env:
 
 jobs:
   build-and-push:
-    name: build-and-push (${{ matrix.platform }})
+    name: build-and-push (${{ matrix.arch }})
     strategy:
       matrix:
-        platform: [amd64, arm64]
-    runs-on: ${{ matrix.platform == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     # Only run if CI succeeded (for workflow_run) or if it's a manual trigger.
     # Exclude PR events to avoid double triggers/publishing.
     if: |
@@ -64,12 +68,22 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/${{ matrix.platform }}
+          platforms: linux/${{ matrix.arch }}
           tags: |
-            ${{ env.DOCKER_HUB_REPO }}:${{ github.sha }}-${{ matrix.platform }}
-            ${{ env.GHCR_REPO }}:${{ github.sha }}-${{ matrix.platform }}
-          cache-from: type=gha,scope=docker-build-${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.platform }}
+            ${{ env.DOCKER_HUB_REPO }}:${{ github.sha }}-${{ matrix.arch }}
+            ${{ env.GHCR_REPO }}:${{ github.sha }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
+
+      - name: Vulnerability scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: "${{ env.DOCKER_HUB_REPO }}:${{ github.sha }}-${{ matrix.arch }}"
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
 
   create-manifest:
     name: create-manifest
