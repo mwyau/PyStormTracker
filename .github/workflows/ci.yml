@@ -100,15 +100,15 @@ jobs:
         if: ${{ matrix.min-deps }}
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
-        if: matrix.python-version != '3.14' || matrix.min-deps
+        if: matrix.python-version != '3.13' || matrix.min-deps
         run: uv run pytest -vv
 
       - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.14' && !matrix.min-deps
+        if: matrix.python-version == '3.13' && !matrix.min-deps
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.14' && !matrix.min-deps
+        if: matrix.python-version == '3.13' && !matrix.min-deps
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
@@ -116,14 +116,24 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-24.04
+    name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        arch: [amd64, arm64]
+        python-version: ["3.13"]
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+            python-version: "3.13"
+            cflags: "-O3 -march=x86-64"
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            python-version: "3.13"
+            cflags: "-O3"
     env:
-      CFLAGS: "-O3 -march=x86-64"
+      CFLAGS: ${{ matrix.cflags }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -138,15 +148,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
-        if: matrix.python-version != '3.14'
+        if: matrix.python-version != '3.13'
         run: uv run pytest -vv tests/test_integration_*.py --run-integration
 
       - name: Run Integration Tests with Coverage
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration_*.py --run-integration
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
@@ -165,12 +175,12 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: "3.14"
+          python-version: "3.13"
       - name: Build documentation
         run: uv run --extra docs --no-dev sphinx-build -b html docs docs/_build/html
 
   docker-build:
-    name: docker-build
+    name: docker-build (${{ matrix.arch }})
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
     # Only run on merges to main, release branches, tags, releases, or manual dispatch
     if: |
@@ -180,7 +190,15 @@ jobs:
        startsWith(github.ref, 'refs/tags/v') ||
        github.event_name == 'release' ||
        github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -196,22 +214,22 @@ jobs:
           context: .
           push: false
           load: true
-          platforms: linux/amd64
-          tags: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
-          cache-from: type=gha,scope=docker-build
-          cache-to: type=gha,mode=max,scope=docker-build
+          platforms: linux/${{ matrix.arch }}
+          tags: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
+          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
 
       - name: Smoke test image
         run: |
           # Test CLI help
-          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
+          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} --help
           # Test library import
-          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} -c "import pystormtracker as pst; print('Import success')"
+          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} -c "import pystormtracker as pst; print('Import success')"
 
       - name: Vulnerability scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
           format: "table"
           exit-code: "0"
           ignore-unfixed: true
