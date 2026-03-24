@@ -105,7 +105,7 @@ def _filter_shtns_frame(
     grid_lmax = (nlat - 1) // 2
     if lmin > grid_lmax:
         raise ValueError(
-            f"Unsupported shape for SH filter: {frame.shape}. "
+            f"Unsupported shape for spectral filter: {frame.shape}. "
             f"Grid resolution (lmax={grid_lmax}) is too low for lmin={lmin}."
         )
 
@@ -186,12 +186,12 @@ def _filter_pyshtools_frame(
 
         return out
     except Exception as e:
-        raise ValueError(f"Unsupported shape for SH filter: {frame.shape}. {e}") from e
+        raise ValueError(f"Unsupported shape for spectral filter: {frame.shape}. {e}") from e
 
 
-class SphericalHarmonicFilter:
+class SpectralFilter:
     """
-    Spherical harmonic bandpass filter for lat-lon grid data.
+    Spectral bandpass filter (truncation) for lat-lon grid data.
     Backends (in order of preference): shtns, ducc0, shtools.
     """
 
@@ -261,7 +261,7 @@ class SphericalHarmonicFilter:
             else:
                 raise ValueError("numpy array must be 2D or 3D")
 
-        return apply_sh_filter(
+        return apply_spectral_filter(
             data,
             self.lmin,
             self.lmax,
@@ -271,7 +271,7 @@ class SphericalHarmonicFilter:
         )
 
 
-def apply_sh_filter(
+def apply_spectral_filter(
     data: xr.DataArray,
     lmin: int = 5,
     lmax: int = 42,
@@ -280,7 +280,7 @@ def apply_sh_filter(
     sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
 ) -> xr.DataArray:
     """
-    Applies a spherical harmonic bandpass filter to the input data.
+    Applies a spectral bandpass filter to the input DataArray.
 
     Args:
         data (xr.DataArray): Input data with lat/lon dimensions.
@@ -373,5 +373,7 @@ def apply_sh_filter(
     )
 
     filtered.attrs.update(data.attrs)
-    filtered.name = f"{data.name}_sh_filtered" if data.name else "sh_filtered"
+    filtered.name = (
+        f"{data.name}_spectral_filtered" if data.name else "spectral_filtered"
+    )
     return filtered
