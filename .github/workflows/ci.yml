@@ -15,6 +15,9 @@ on:
     branches:
       - main
       - release/**
+      - 'v*.*'
+    tags:
+      - 'v*.*'
     paths:
       - 'src/**'
       - 'tests/**'
@@ -24,8 +27,6 @@ on:
       - '.github/workflows/ci.yml'
       - 'docs/**'
       - 'README.md'
-  release:
-    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -126,11 +127,9 @@ jobs:
         include:
           - arch: amd64
             os: ubuntu-24.04
-            python-version: "3.13"
             cflags: "-O3 -march=x86-64"
           - arch: arm64
             os: ubuntu-24.04-arm
-            python-version: "3.13"
             cflags: "-O3"
     env:
       CFLAGS: ${{ matrix.cflags }}
@@ -180,7 +179,7 @@ jobs:
         run: uv run --extra docs --no-dev sphinx-build -b html docs docs/_build/html
 
   docker-build:
-    name: docker-build (${{ matrix.arch }})
+    name: docker-build
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
     # Only run on merges to main, release branches, tags, releases, or manual dispatch
     if: |
@@ -190,23 +189,28 @@ jobs:
        startsWith(github.ref, 'refs/tags/v') ||
        github.event_name == 'release' ||
        github.event_name == 'workflow_dispatch')
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            os: ubuntu-24.04
-          - arch: arm64
-            os: ubuntu-24.04-arm
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+          tags: |
+            type=sha,format=long,prefix=
+          ref: ${{ github.sha }}
 
       - name: Build and load image
         uses: docker/build-push-action@v7
@@ -214,22 +218,32 @@ jobs:
           context: .
           push: false
           load: true
-          platforms: linux/${{ matrix.arch }}
-          tags: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
-          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-build
+          cache-to: type=gha,mode=max,scope=docker-build
+
+      - name: Build ARM64 (cache only)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          platforms: linux/arm64
+          cache-from: type=gha,scope=docker-build
+          cache-to: type=gha,mode=max,scope=docker-build
 
       - name: Smoke test image
         run: |
           # Test CLI help
-          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} --help
+          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
           # Test library import
-          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} -c "import pystormtracker as pst; print('Import success')"
+          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} -c "import pystormtracker as pst; print('Import success')"
 
       - name: Vulnerability scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
+          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
           format: "table"
           exit-code: "0"
           ignore-unfixed: true

@@ -6,30 +6,25 @@ on:
     types: [completed]
     branches:
       - main
-      - 'v[0-9]*'
+      - 'v*.*'
+      - 'release/**'
   workflow_dispatch:
 
-concurrency:
+  concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: ${{ !(github.event.workflow_run.event == 'release' || github.ref_type == 'tag') }}
 
-env:
-  # Publish to ORG on release or dispatch from tag, else to OWNER (personal) for merge to main/manual
-  DOCKER_HUB_REPO: docker.io/${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release') || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'release') || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  env:
+  # Publish to ORG on version tag/branch (v*.*), else to OWNER (personal) for merge to main/manual
+  # We check for both 'v' prefix and a dot to match the v?.?* requirement and avoid false positives
+  IS_STABLE: ${{ (github.event_name == 'workflow_run' && startsWith(github.event.workflow_run.head_branch, 'v') && contains(github.event.workflow_run.head_branch, '.')) || (github.event_name == 'workflow_dispatch' && (github.ref_type == 'tag' || (startsWith(github.ref_name, 'v') && contains(github.ref_name, '.')))) }}
+
+  DOCKER_HUB_REPO: docker.io/${{ env.IS_STABLE == 'true' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ env.IS_STABLE == 'true' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
-    name: build-and-push (${{ matrix.arch }})
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            os: ubuntu-24.04
-          - arch: arm64
-            os: ubuntu-24.04-arm
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     # Only run if CI succeeded (for workflow_run) or if it's a manual trigger.
     # Exclude PR events to avoid double triggers/publishing.
     if: |
@@ -38,58 +33,6 @@ jobs:
        github.event.workflow_run.event != 'pull_request' &&
        github.event.workflow_run.head_repository.full_name == github.repository) ||
       github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
-          fetch-depth: 0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ vars.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GHCR_PAT }}
-
-      - name: Build and push native image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/${{ matrix.arch }}
-          tags: |
-            ${{ env.DOCKER_HUB_REPO }}:${{ github.sha }}-${{ matrix.arch }}
-            ${{ env.GHCR_REPO }}:${{ github.sha }}-${{ matrix.arch }}
-          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
-
-      - name: Vulnerability scan
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          image-ref: "${{ env.DOCKER_HUB_REPO }}:${{ github.sha }}-${{ matrix.arch }}"
-          format: "table"
-          exit-code: "0"
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-
-  create-manifest:
-    name: create-manifest
-    needs: [build-and-push]
-    runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: write
@@ -101,8 +44,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          # Use the head_sha for workflow_run to ensure we build exactly what CI tested
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -127,11 +74,20 @@ jobs:
           images: |
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
-          # Fix: Tell the metadata action the real ref, otherwise it defaults to 'main'
-          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+          # Determine the symbolic ref to get the correct tags (semver/branch)
+          ref: >-
+            ${{ 
+              github.event_name == 'workflow_run' 
+                ? (
+                    (github.event.workflow_run.event == 'release' || startsWith(github.event.workflow_run.head_branch, 'v')) 
+                      ? format('refs/tags/{0}', github.event.workflow_run.head_branch) 
+                      : format('refs/heads/{0}', github.event.workflow_run.head_branch)
+                  )
+                : github.ref 
+            }}
           tags: |
             # Tag with 'latest' for main branch (used for personal repo/edge)
-            type=raw,value=latest,enable=${{ github.event.workflow_run.head_branch == 'main' || github.ref == 'refs/heads/main' }},priority=1000
+            type=raw,value=latest,enable=${{ (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main') || (github.event_name != 'workflow_run' && github.ref == 'refs/heads/main') }},priority=1000
             # Tag with 'edge' only for main branch builds
             type=edge,branch=main,priority=900
             # Semver tags for releases (includes 'latest')
@@ -140,39 +96,29 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},priority=700
             type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }},priority=700
             # Branch tag for all branches except main
-            type=ref,event=branch,enable=${{ github.ref_name != 'main' }},priority=600
+            type=ref,event=branch,enable=${{ github.ref_name != 'main' && !startsWith(github.ref_name, 'v') }},priority=600
             # Always tag with short SHA
             type=sha,format=short,prefix=,priority=100
 
-      - name: Create and push multi-arch manifest
-        id: manifest
-        run: |
-          # Create manifests for each final tag
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            # Determine which repo this tag belongs to
-            if [[ $tag == ghcr.io* ]]; then
-              REPO_PREFIX="${{ env.GHCR_REPO }}"
-            else
-              REPO_PREFIX="${{ env.DOCKER_HUB_REPO }}"
-            fi
-            
-            echo "Creating manifest for $tag using sources from $REPO_PREFIX"
-            docker buildx imagetools create -t "$tag" \
-              "${REPO_PREFIX}:${{ github.sha }}-amd64" \
-              "${REPO_PREFIX}:${{ github.sha }}-arm64"
-          done
-
-          # Output digest of the final multi-arch manifest for attestations
-          # (All tags point to the same manifest content)
-          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
-          DIGEST=$(docker buildx imagetools inspect "$FIRST_TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-build
+          cache-to: type=gha,mode=max,scope=docker-build
 
       - name: Attest Provenance (Docker Hub)
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
+          subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
       - name: Generate SBOM
@@ -187,6 +133,6 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_REPO }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
+          subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
