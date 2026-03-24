@@ -49,10 +49,13 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
         _thread_local.cache = {}
     key = (nlat, nlon, lmax)
     if key not in _thread_local.cache:
-        grid_lmax = (nlat - 1) // 2
-        actual_lmax = min(lmax, grid_lmax)
-        mmax = min(actual_lmax, nlon // 2 - 1)
-        sh = shtns.sht(actual_lmax, mmax, norm=shtns.sht_fourpi)
+        # grid_lmax = (nlat - 1) // 2
+        # actual_lmax = min(lmax, grid_lmax)
+        # SHTns can handle lmax beyond sampling theorem for analysis, 
+        # but results might be aliased if not careful.
+        # NCL/Spherepack T42 uses lmax=42 for 73x144.
+        mmax = min(lmax, nlon // 2 - 1)
+        sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
         sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
         _thread_local.cache[key] = sh
     return _thread_local.cache[key]
@@ -103,7 +106,7 @@ def compute_vort_div(
             raise ImportError("shtns is requested but not available.")
         sh = _get_shtns_plan(ntheta, nphi, lmax)
         # SHTns: spat_to_SHsphtor expects (v_theta, v_phi)
-        # v_theta = v, v_phi = u (pointing North and East)
+        # v_theta = v, v_phi = u (points North and East)
         v_theta = np.ascontiguousarray(v, dtype=np.float64)
         v_phi = np.ascontiguousarray(u, dtype=np.float64)
         # Returns S (divergence-like) and T (vorticity-like) coeffs
@@ -115,12 +118,12 @@ def compute_vort_div(
         # SHTns returns coefficients s, t such that:
         # V = sum (s Ylm_grad + t Ylm_curl)
         # In meteorology:
-        # div = -sqrt(l(l+1))/R * s
-        # vort = sqrt(l(l+1))/R * t
+        # div = -l(l+1)/R * s
+        # vort = -l(l+1)/R * t
         l_arr = sh.l
-        eigen = np.sqrt(l_arr * (l_arr + 1.0)) / R
+        eigen = (l_arr * (l_arr + 1.0)) / R
         div_lm = -slm * eigen
-        vort_lm = tlm * eigen
+        vort_lm = -tlm * eigen
 
         div = sh.synth(div_lm)
         vort = sh.synth(vort_lm)
