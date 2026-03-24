@@ -25,6 +25,15 @@ class FilterKwargs(TypedDict, total=False):
     nthreads: int
 
 
+def _resolve_engine(
+    engine: Literal["auto", "shtns", "ducc0", "shtools"],
+) -> Literal["shtns", "ducc0", "shtools"]:
+    """Resolves 'auto' engine to the best available backend."""
+    if engine == "auto":
+        return "shtns" if SHTNS_AVAILABLE else "ducc0"
+    return engine
+
+
 # Thread-local storage to ensure each Dask thread has its own SHTns object.
 # Sharing one SHTns object across threads is UNSAFE due to internal buffers.
 _thread_local = threading.local()
@@ -207,11 +216,7 @@ class SphericalHarmonicFilter:
         """
         if isinstance(data, np.ndarray):
             nthreads = 1 if backend in ("mpi", "dask") else 0
-
-            # Resolve engine
-            resolved_engine = self.engine
-            if resolved_engine == "auto":
-                resolved_engine = "shtns" if SHTNS_AVAILABLE else "ducc0"
+            resolved_engine = _resolve_engine(self.engine)
 
             kwargs: FilterKwargs
             if resolved_engine == "shtns":
@@ -306,11 +311,7 @@ def apply_sh_filter(
         "lat_reverse": lat_reverse,
     }
 
-    # Resolve engine
-    resolved_engine = engine
-    if resolved_engine == "auto":
-        resolved_engine = "shtns" if SHTNS_AVAILABLE else "ducc0"
-
+    resolved_engine = _resolve_engine(engine)
     if resolved_engine == "shtns":
         if not SHTNS_AVAILABLE:
             raise ImportError("shtns is requested but not available.")

@@ -18,6 +18,15 @@ class DerivativeKwargs(TypedDict, total=False):
     engine: str
 
 
+def _resolve_engine(
+    engine: Literal["auto", "shtns", "ducc0", "shtools"],
+) -> Literal["shtns", "ducc0", "shtools"]:
+    """Resolves 'auto' engine to the best available backend."""
+    if engine == "auto":
+        return "shtns" if SHTNS_AVAILABLE else "ducc0"
+    return engine
+
+
 try:
     import ducc0  # type: ignore[import-not-found]
 
@@ -87,9 +96,7 @@ def compute_relative_vorticity_divergence(
             lmax = ntheta - 1
 
     # Resolve engine
-    resolved_engine = engine
-    if resolved_engine == "auto":
-        resolved_engine = "shtns" if SHTNS_AVAILABLE else "ducc0"
+    resolved_engine = _resolve_engine(engine)
 
     if resolved_engine == "shtns":
         if not SHTNS_AVAILABLE:
