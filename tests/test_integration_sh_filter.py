@@ -9,7 +9,7 @@ import xarray as xr
 
 from pystormtracker.preprocessing import SphericalHarmonicFilter
 
-# Use local test data
+# Use local test data (Generated with NCL 6.6.2)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 

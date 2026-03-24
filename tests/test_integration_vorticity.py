@@ -9,7 +9,7 @@ import xarray as xr
 
 from pystormtracker.preprocessing.derivatives import apply_wind_derivatives
 
-# Use local test data generated from first frame
+# Use local test data generated from first frame (Generated with NCL 6.6.2)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIND_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_uv850_2025120100_2.5x2.5.nc")
 VODIV_FILE = os.path.join(
