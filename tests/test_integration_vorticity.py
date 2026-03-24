@@ -52,7 +52,7 @@ def test_vorticity_divergence_parity_integration() -> None:
             # but same order of magnitude and general pattern.
             rmse_vo = np.sqrt(np.mean((vort.values - vo_ref.values) ** 2))
             assert rmse_vo < 5e-6  # Tightened from 1e-4, but allows for Fejer weights
-            
+
             # Ensure high structural correlation with NCL reference
             corr = np.corrcoef(vort.values.flatten(), vo_ref.values.flatten())[0, 1]
             assert corr > 0.99
@@ -67,13 +67,17 @@ def test_vorticity_internal_consistency() -> None:
     u, v = ds_uv.u, ds_uv.v
 
     _, vort_ducc = apply_vort_div(u, v, sht_engine="ducc0")
-    
+
     try:
-        import pyshtools  # type: ignore[import-untyped]
-        _, vort_shtools = apply_vort_div(u, v, sht_engine="shtools")
-        
-        rmse_shtools = np.sqrt(np.mean((vort_ducc.values - vort_shtools.values) ** 2))
-        assert rmse_shtools < 1e-10  # Should be nearly identical
+        from importlib.util import find_spec
+
+        if find_spec("pyshtools") is not None:
+            _, vort_shtools = apply_vort_div(u, v, sht_engine="shtools")
+
+            rmse_shtools = np.sqrt(
+                np.mean((vort_ducc.values - vort_shtools.values) ** 2)
+            )
+            assert rmse_shtools < 1e-10  # Should be nearly identical
     except ImportError:
         pass
 
@@ -82,9 +86,11 @@ def test_vorticity_internal_consistency() -> None:
 
         _ = shtns.sht(31, 31)  # Test import
         _, vort_shtns = apply_vort_div(u, v, sht_engine="shtns")
-        
+
         # Ensure ducc0 and shtns are highly correlated
-        corr = np.corrcoef(vort_ducc.values.flatten(), vort_shtns.values.flatten())[0, 1]
+        corr = np.corrcoef(
+            vort_ducc.values.flatten(), vort_shtns.values.flatten()
+        )[0, 1]
         assert corr > 0.99
 
         # Ensure they are in the same ballpark (RMSE < 5e-6)

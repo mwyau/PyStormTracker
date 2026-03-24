@@ -89,7 +89,7 @@ def test_kinematics_class() -> None:
         dims=["lat", "lon"],
     )
 
-    div_xr, vort_xr = calc.compute(u_xr, v_xr)
+    div_xr, _vort_xr = calc.compute(u_xr, v_xr)
     assert isinstance(div_xr, xr.DataArray)
     np.testing.assert_allclose(div_xr.values, div_np)
 

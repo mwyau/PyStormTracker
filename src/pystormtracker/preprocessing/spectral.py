@@ -186,7 +186,8 @@ def _filter_pyshtools_frame(
 
         return out
     except Exception as e:
-        raise ValueError(f"Unsupported shape for spectral filter: {frame.shape}. {e}") from e
+        msg = f"Unsupported shape for spectral filter: {frame.shape}. {e}"
+        raise ValueError(msg) from e
 
 
 class SpectralFilter:
@@ -288,7 +289,7 @@ def apply_spectral_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-        sht_engine (str): Transform engine. Options: 'auto', 'shtns', 'ducc0', 'shtools'.
+        sht_engine (str): Engine. Options: 'auto', 'shtns', 'ducc0', 'shtools'.
 
     Returns:
         xr.DataArray: The filtered data.

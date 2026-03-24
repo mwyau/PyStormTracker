@@ -51,7 +51,7 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
     if key not in _thread_local.cache:
         # grid_lmax = (nlat - 1) // 2
         # actual_lmax = min(lmax, grid_lmax)
-        # SHTns can handle lmax beyond sampling theorem for analysis, 
+        # SHTns can handle lmax beyond sampling theorem for analysis,
         # but results might be aliased if not careful.
         # NCL/Spherepack T42 uses lmax=42 for 73x144.
         mmax = min(lmax, nlon // 2 - 1)
@@ -183,12 +183,16 @@ def compute_vort_div(
                 # Handle potential shape mismatch (DH vs CC)
                 if div.shape != (ntheta, nphi):
                     # Fallback to ducc0 if shapes are weird
-                    return compute_vort_div(u, v, R, lmax, geometry, nthreads, sht_engine="ducc0")
+                    return compute_vort_div(
+                        u, v, R, lmax, geometry, nthreads, sht_engine="ducc0"
+                    )
 
                 return div, vort
             except Exception:
                 # Fallback to ducc0 if Fortran path fails
-                return compute_vort_div(u, v, R, lmax, geometry, nthreads, sht_engine="ducc0")
+                return compute_vort_div(
+                    u, v, R, lmax, geometry, nthreads, sht_engine="ducc0"
+                )
 
         # Spectral Scaling
         l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
@@ -290,7 +294,7 @@ def apply_vort_div(
 
 class Kinematics:
     """
-    Computes spatial derivatives and kinematic properties of the wind field (vorticity, divergence).
+    Computes spatial derivatives and kinematic properties of the wind field.
     """
 
     def __init__(
