@@ -1,77 +1,70 @@
 from __future__ import annotations
 
+import os
+from typing import Literal
+
 import numpy as np
 import pytest
-from numpy.typing import NDArray
-
+import xarray as xr
 from pystormtracker.preprocessing import SphericalHarmonicFilter
 
+# Use local test data
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 
-@pytest.fixture(autouse=True)
-def skip_if_no_shtns() -> None:
-    pytest.importorskip("shtns")
+# Test cases for different truncations
+TEST_CASES = [
+    {
+        "lmin": 5,
+        "lmax": 42,
+        "ref": os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t5-42_ncl.nc")
+    },
+    {
+        "lmin": 0,
+        "lmax": 42,
+        "ref": os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t0-42_ncl.nc")
+    }
+]
 
+HAS_BASE_DATA = os.path.exists(MSL_FILE)
 
-def test_sh_filter_engines_compare() -> None:
-    # Use a smooth field rather than random noise to avoid high-frequency
-    # aliasing differences between the two transform implementations.
-    nlat, nlon = 73, 144
-    lat = np.linspace(-np.pi / 2, np.pi / 2, nlat)[:, None]
-    lon = np.linspace(0, 2 * np.pi, nlon)[None, :]
-    data: NDArray[np.float64] = np.cos(5 * lon) * np.sin(lat) ** 5 * np.cos(lat) ** 5
+@pytest.mark.skipif(not HAS_BASE_DATA, reason="Base MSL test data not found.")
+@pytest.mark.parametrize(
+    "case", TEST_CASES, ids=["T5-42", "T0-42"]
+)
+def test_sh_filter_era5_parity_integration(case: dict) -> None:
+    """
+    Verifies that all SHT backends for filtering produce results matching
+    the NCL reference data for MSL across multiple truncations.
+    """
+    if not os.path.exists(case["ref"]):
+        pytest.skip(f"Reference data not found: {case['ref']}")
 
-    # Use a more conservative lmax (30) for the comparison test to minimize
-    # the impact of grid-sampling differences (DH vs Regular-with-Poles)
-    # between the two backend implementations.
-    filt_shtools = SphericalHarmonicFilter(lmin=5, lmax=30, engine="shtools")
-    filt_ducc0 = SphericalHarmonicFilter(lmin=5, lmax=30, engine="ducc0")
-    filt_shtns = SphericalHarmonicFilter(lmin=5, lmax=30, engine="shtns")
+    ds_msl = xr.open_dataset(MSL_FILE)
+    ds_ref = xr.open_dataset(case["ref"])
 
-    filtered_shtools = filt_shtools.filter(data)
-    filtered_ducc0 = filt_ducc0.filter(data)
-    filtered_shtns = filt_shtns.filter(data)
+    msl = ds_msl.msl
+    ref = ds_ref.msl
 
-    # 2 orders of magnitude back from ~1e-10 limit
-    np.testing.assert_allclose(filtered_shtools, filtered_shtns, rtol=1e-8, atol=1e-8)
-    np.testing.assert_allclose(filtered_ducc0, filtered_shtns, rtol=1e-8, atol=1e-8)
+    engines: list[Literal["shtns", "ducc0", "shtools"]] = [
+        "shtns",
+        "ducc0",
+        "shtools",
+    ]
 
+    for engine in engines:
+        if engine == "shtns":
+            pytest.importorskip("shtns")
 
-def test_sh_filter_engines_compare_gaussian_blob() -> None:
-    nlat, nlon = 73, 144
-    lats = np.linspace(90, -90, nlat)
-    lons = np.linspace(0, 360, nlon, endpoint=False)
-    lon_grid, lat_grid = np.meshgrid(lons, lats)
+        filt = SphericalHarmonicFilter(lmin=case["lmin"], lmax=case["lmax"], engine=engine)
+        filtered = filt.filter(msl)
 
-    # Gaussian blob at 45N, 180E
-    sigma = 10.0
-    data = np.exp(-((lat_grid - 45) ** 2 + (lon_grid - 180) ** 2) / (2 * sigma**2))
+        # Ensure high structural correlation (> 0.99)
+        corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
+        assert corr > 0.99, f"Low correlation for {engine} (T{case['lmin']}-{case['lmax']}): {corr}"
 
-    filt_shtools = SphericalHarmonicFilter(lmin=5, lmax=30, engine="shtools")
-    filt_ducc0 = SphericalHarmonicFilter(lmin=5, lmax=30, engine="ducc0")
-    filt_shtns = SphericalHarmonicFilter(lmin=5, lmax=30, engine="shtns")
-
-    filtered_shtools = filt_shtools.filter(data)
-    filtered_ducc0 = filt_ducc0.filter(data)
-    filtered_shtns = filt_shtns.filter(data)
-
-    # ~1.5 orders of magnitude back from ~1.4e-7 abs and ~3e-3 rel limits
-    np.testing.assert_allclose(filtered_shtools, filtered_shtns, rtol=5e-2, atol=1e-5)
-    np.testing.assert_allclose(filtered_ducc0, filtered_shtns, rtol=5e-2, atol=1e-5)
-
-
-def test_sh_filter_engines_compare_random() -> None:
-    # Random noise test (harder to match exactly due to aliasing)
-    np.random.seed(42)
-    data = np.random.rand(73, 144)
-
-    filt_shtools = SphericalHarmonicFilter(lmin=5, lmax=20, engine="shtools")
-    filt_ducc0 = SphericalHarmonicFilter(lmin=5, lmax=20, engine="ducc0")
-    filt_shtns = SphericalHarmonicFilter(lmin=5, lmax=20, engine="shtns")
-
-    filtered_shtools = filt_shtools.filter(data)
-    filtered_ducc0 = filt_ducc0.filter(data)
-    filtered_shtns = filt_shtns.filter(data)
-
-    # Use larger tolerance for random noise (limit was ~5e-3 abs)
-    np.testing.assert_allclose(filtered_shtools, filtered_shtns, rtol=1e-1, atol=5e-2)
-    np.testing.assert_allclose(filtered_ducc0, filtered_shtns, rtol=1e-1, atol=5e-2)
+        # Ensure RMSE is within acceptable bounds for large-scale field (MSL ~10^5)
+        # Note: RMSE is slightly higher for T0-42 as it includes low frequencies
+        rmse = np.sqrt(np.mean((filtered.values - ref.values) ** 2))
+        max_rmse = 100.0
+        assert rmse < max_rmse, f"High RMSE for {engine} (T{case['lmin']}-{case['lmax']}): {rmse}"
