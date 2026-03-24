@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import threading
-from typing import Literal
+from typing import Literal, TypedDict
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
 from ..models.constants import R_EARTH_METERS
+
+
+class DerivativeKwargs(TypedDict, total=False):
+    R: float
+    lmax: int | None
+    geometry: str
+    nthreads: int
+    engine: str
+
 
 try:
     import ducc0  # type: ignore[import-not-found]
@@ -240,7 +249,7 @@ def apply_wind_derivatives(
     """
     # Logic for handling parallel dimensions if needed (ufunc)
     # For now, similar to apply_sh_filter
-    kwargs: dict[str, float | int | str | None] = {
+    kwargs: DerivativeKwargs = {
         "R": R,
         "lmax": lmax,
         "geometry": geometry,

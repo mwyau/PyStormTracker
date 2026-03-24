@@ -9,53 +9,68 @@ import xarray as xr
 
 from pystormtracker.preprocessing.derivatives import apply_wind_derivatives
 
-DATA_DIR = os.path.expanduser("~/PyStormTracker-Data")
-UV_FILE = os.path.join(DATA_DIR, "era5_uv850_2025-2026_djf_2.5x2.5.nc")
-VO_FILE = os.path.join(DATA_DIR, "era5_vo850_2025-2026_djf_2.5x2.5.nc")
-
-HAS_DATA = os.path.exists(UV_FILE) and os.path.exists(VO_FILE)
-
-
-@pytest.mark.skipif(
-    not HAS_DATA, reason="ERA5 validation data not found in ~/PyStormTracker-Data"
+# Use local test data generated from first frame
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WIND_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_uv850_2025120100_2.5x2.5.nc")
+VODIV_FILE = os.path.join(
+    BASE_DIR, "data/test/era5/era5_vodv850_2025120100_2.5x2.5_ncl.nc"
 )
-def test_vorticity_era5_integration() -> None:
-    ds_uv = xr.open_dataset(UV_FILE)
-    ds_vo = xr.open_dataset(VO_FILE)
 
-    # Use first time step for speed
-    u = ds_uv.u.isel(valid_time=0, pressure_level=0)
-    v = ds_uv.v.isel(valid_time=0, pressure_level=0)
-    vo_ref = ds_vo.vo.isel(valid_time=0, pressure_level=0)
+HAS_DATA = os.path.exists(WIND_FILE) and os.path.exists(VODIV_FILE)
 
-    # Standardize orientation
-    if u.latitude[0] < u.latitude[-1]:
-        u = u.sortby("latitude", ascending=False)
-        v = v.sortby("latitude", ascending=False)
-        vo_ref = vo_ref.sortby("latitude", ascending=False)
+
+@pytest.mark.skipif(not HAS_DATA, reason="Local integration test data not found.")
+def test_vorticity_divergence_parity_integration() -> None:
+    """
+    Verifies that all SHT backends produce results matching the NCL/Spherepack
+    reference data.
+    """
+    ds_uv = xr.open_dataset(WIND_FILE)
+    ds_ref = xr.open_dataset(VODIV_FILE)
+
+    u, v = ds_uv.u, ds_uv.v
+    vo_ref, dv_ref = ds_ref.vo, ds_ref.dv
 
     engines: list[Literal["shtns", "ducc0"]] = ["shtns", "ducc0"]
-    results = {}
 
     for engine in engines:
         if engine == "shtns":
             pytest.importorskip("shtns")
 
-        _, vort = apply_wind_derivatives(u, v, engine=engine)
-        results[engine] = vort
+        div, vort = apply_wind_derivatives(u, v, engine=engine)
 
-    # 1. Internal Consistency Check
-    # Spectral backends should be very close to each other
-    if "shtns" in results and "ducc0" in results:
-        diff_internal = results["shtns"].values - results["ducc0"].values
-        rmse_int = np.sqrt(np.mean(diff_internal**2))
-        # Internal consistency should be significantly better than ERA5 reference match
-        assert rmse_int < 2e-5
+        if engine == "ducc0":
+            # ducc0/pyshtools should be bit-wise identical to NCL Spherepack
+            np.testing.assert_allclose(
+                vort.values, vo_ref.values, rtol=1e-12, atol=1e-12
+            )
+            np.testing.assert_allclose(
+                div.values, dv_ref.values, rtol=1e-12, atol=1e-12
+            )
+        else:
+            # shtns uses different grid weights for regular grids, loose match
+            # but same order of magnitude and general pattern.
+            rmse_vo = np.sqrt(np.mean((vort.values - vo_ref.values) ** 2))
+            assert rmse_vo < 1e-4
 
-    # 2. Loose Validation against ERA5 reference
-    # We expect a discrepancy due to resolution/interpolation (as discovered in R&D)
-    for _engine, vo_calc in results.items():
-        diff = vo_calc.values - vo_ref.values
-        rmse = np.sqrt(np.mean(diff**2))
-        # Ensure it's in the expected order of magnitude
+
+@pytest.mark.skipif(not HAS_DATA, reason="Local integration test data not found.")
+def test_vorticity_internal_consistency() -> None:
+    """
+    Verifies that different backends are consistent with each other.
+    """
+    ds_uv = xr.open_dataset(WIND_FILE)
+    u, v = ds_uv.u, ds_uv.v
+
+    _, vort_ducc = apply_wind_derivatives(u, v, engine="ducc0")
+
+    try:
+        import shtns  # type: ignore[import-untyped]
+
+        _ = shtns.sht(31, 31)  # Test import
+        _, vort_shtns = apply_wind_derivatives(u, v, engine="shtns")
+        # Ensure they are in the same ballpark (RMSE < 1e-4)
+        rmse = np.sqrt(np.mean((vort_ducc.values - vort_shtns.values) ** 2))
         assert rmse < 1e-4
+    except ImportError:
+        pytest.skip("shtns not available for consistency check")
