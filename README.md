@@ -58,12 +58,11 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- (Optional) **SHTns build dependencies**: Required for the spherical harmonic filter (`pip install PyStormTracker[pre]`):
-  - `gcc`
-  - `make`
-  - `libc6-dev`
-  - `libfftw3-dev`
-- **Windows**: GRIB support is experimental and untested. SHTns is not supported on Windows.
+- **SHT Backends**: Supported engines for filtering and derivatives:
+  - `ducc0`: **Core dependency**. High-precision C++ backend. Default for derivatives.
+  - `pyshtools`: **Core dependency**. Includes Fortran backend.
+  - `shtns`: (Optional) High-performance C library (`pip install PyStormTracker[pre]`). Recommended for large datasets.
+- **Windows**: GRIB support is experimental. SHTns is not supported on Windows; `ducc0` or `shtools` will be used automatically.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
@@ -136,6 +135,7 @@ stormtracker -i data.nc -v msl -o my_tracks.txt
 | `--threshold` | `-t` | Intensity threshold for feature detection. |
 | `--filter-range` | | Spectral filter range (min-max). Default '5-42'. |
 | `--no-filter` | | Disable default T5-42 spectral filtering. |
+| `--engine` | | SHT backend: `auto`, `shtns`, `ducc0`, `shtools`. |
 | `--num` | `-n` | Number of time steps to process. |
 | **Performance** | | |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |
