@@ -436,18 +436,16 @@
             gap: 10px;
             margin-top: 10px;
             align-items: center;
-            justify-content: center;
           "
         >
-          <button id="btn-play-pause" class="btn" style="flex: 2">Play</button>
+          <button id="btn-play-pause" class="btn" style="flex: 1">Play</button>
           <div
             style="
-              flex: 1.5;
-              max-width: 180px;
               display: flex;
               align-items: center;
               justify-content: center;
-              gap: 8px;
+              gap: 12px;
+              padding: 0 5px;
             "
           >
             <label
@@ -470,8 +468,7 @@
                 overflow: hidden;
                 background: #fff;
                 height: 26px;
-                flex: 1;
-                min-width: 90px;
+                width: 90px;
               "
             >
               <button
@@ -516,8 +513,20 @@
                 +
               </button>
             </div>
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                font-size: 0.85em;
+                cursor: pointer;
+                white-space: nowrap;
+              "
+            >
+              <input type="checkbox" id="chk-track-color" /> Same Color
+            </label>
           </div>
-          <button id="btn-reset" class="btn" style="flex: 2">Reset</button>
+          <button id="btn-reset" class="btn" style="flex: 1">Reset</button>
         </div>
       </div>
     </div>
@@ -561,7 +570,7 @@
         [0.9, [226, 45, 6]],
         [1.0, [158, 1, 1]],
       ];
-      const BASE_STEPS_PER_SEC = 24;
+      const BASE_STEPS_PER_SEC = 12;
       const HOUR_MS = 21600000;
       const SPEEDS = [0.25, 0.5, 1, 2, 4];
       const TRAIL_DAYS_MS = 15 * 24 * 3600 * 1000;
@@ -603,6 +612,7 @@
         btnSpeedUp: document.getElementById("btn-speed-up"),
         speedVal: document.getElementById("speed-val"),
         chkLoop: document.getElementById("chk-loop"),
+        chkTrackColor: document.getElementById("chk-track-color"),
         btnReset: document.getElementById("btn-reset"),
         strength: document.getElementById("strength"),
         strengthLabel: document.getElementById("strength-label"),
@@ -747,6 +757,11 @@
             { passive: false },
           );
 
+          elements.chkTrackColor.addEventListener("change", () => {
+            if (isPlaying) pauseAnimation();
+            updatePlot(true);
+          });
+
           elements.timeScrub.addEventListener("input", () => {
             if (isPlaying) pauseAnimation();
             document
@@ -773,6 +788,7 @@
         const strengthThresh = parseFloat(elements.strength.value);
         const minDur = parseFloat(elements.duration.value);
         const minDist = parseFloat(elements.displacement.value);
+        const useSameColor = elements.chkTrackColor.checked;
 
         activeTrackIndices = [];
 
@@ -794,13 +810,35 @@
           if (sMatch && t.duration >= minDur && t.displacement >= minDist) {
             activeTrackIndices.push(i);
 
+            // Calculate peak color for the whole track if same-color toggle is on
+            let trackBin = -1;
+            let trackColor = "";
+            if (useSameColor) {
+              let t_val = Math.min(
+                1,
+                Math.max(0, (t.strength - cmin) / (cmax - cmin)),
+              );
+              const tc = isMSL ? 1 - t_val : t_val;
+              trackBin = Math.min(Math.floor(tc * 10), 10);
+              trackColor = `rgb(${TURBO_SCALE[trackBin][1].join(",")})`;
+            }
+
             let currentBin = -1;
             for (let p = t.start; p <= t.end; p++) {
-              let v = masterStrengths[p];
-              let t_val = Math.min(1, Math.max(0, (v - cmin) / (cmax - cmin)));
-              const tc = isMSL ? 1 - t_val : t_val;
-              const newBin = Math.min(Math.floor(tc * 10), 10);
-              const ptColor = `rgb(${TURBO_SCALE[newBin][1].join(",")})`;
+              let newBin;
+              let ptColor;
+
+              if (useSameColor) {
+                newBin = trackBin;
+                ptColor = trackColor;
+              } else {
+                let v = masterStrengths[p];
+                let t_val = Math.min(1, Math.max(0, (v - cmin) / (cmax - cmin)));
+                const tc = isMSL ? 1 - t_val : t_val;
+                newBin = Math.min(Math.floor(tc * 10), 10);
+                ptColor = `rgb(${TURBO_SCALE[newBin][1].join(",")})`;
+              }
+
               const hText = masterHoverTexts[p];
 
               if (currentBin !== -1 && currentBin !== newBin) {
@@ -1085,11 +1123,36 @@
       }
 
       function resetAnimation() {
+        const meta = allData.metadata;
+        const isMSL = meta.track_type === "msl";
+
         pauseAnimation();
         currentAnimTime = null;
         speedIdx = 2;
         elements.speedVal.innerText = "1x";
-        elements.timeScrub.value = elements.timeStart.value;
+
+        // Reset UI elements
+        elements.projection.value = "orthographic";
+        elements.chkLoop.checked = false;
+        elements.chkTrackColor.checked = false;
+
+        elements.strength.value = isMSL
+          ? Math.max(
+              elements.strength.min,
+              Math.min(elements.strength.max, -15),
+            )
+          : Math.floor(meta.min_strength);
+
+        elements.duration.value = 48;
+        elements.displacement.value = Math.min(
+          1000,
+          Math.ceil(meta.max_displacement / 100) * 100,
+        );
+
+        elements.timeStart.value = meta.min_time;
+        elements.timeEnd.value = meta.max_time;
+        elements.timeScrub.value = meta.min_time;
+
         document.querySelector(".range-slider").classList.add("not-animating");
         updateSliderFill();
         updatePlot(true);
