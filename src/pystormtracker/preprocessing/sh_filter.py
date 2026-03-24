@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import threading
 import warnings
-from typing import Literal, cast, overload
+from collections.abc import Callable
+from typing import Literal, TypedDict, cast, overload
 
 import numpy as np
 import xarray as xr
@@ -15,6 +16,53 @@ try:
     SHTNS_AVAILABLE = True
 except ImportError:
     SHTNS_AVAILABLE = False
+
+
+class FilterKwargs(TypedDict, total=False):
+    lmin: int
+    lmax: int
+    lat_reverse: bool
+    backend: str
+    nthreads: int
+
+
+def _resolve_engine(
+    engine: Literal["auto", "shtns", "ducc0", "shtools"],
+) -> Literal["shtns", "ducc0", "shtools"]:
+    """Resolves 'auto' engine to the best available backend."""
+    if engine == "auto":
+        return "shtns" if SHTNS_AVAILABLE else "ducc0"
+    return engine
+
+
+def _get_filter_config(
+    engine: Literal["auto", "shtns", "ducc0", "shtools"],
+    lmin: int,
+    lmax: int,
+    lat_reverse: bool,
+    nthreads: int = 1,
+) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
+    """Returns the filter function and kwargs for the resolved engine."""
+    resolved_engine = _resolve_engine(engine)
+    kwargs: FilterKwargs = {
+        "lmin": lmin,
+        "lmax": lmax,
+        "lat_reverse": lat_reverse,
+    }
+
+    if resolved_engine == "shtns":
+        if not SHTNS_AVAILABLE:
+            raise ImportError("shtns is requested but not available.")
+        return _filter_shtns_frame, kwargs
+
+    if resolved_engine == "shtools":
+        kwargs["backend"] = "shtools"
+    else:  # ducc0
+        kwargs["backend"] = "ducc"
+        kwargs["nthreads"] = nthreads
+
+    return _filter_pyshtools_frame, kwargs
+
 
 # Thread-local storage to ensure each Dask thread has its own SHTns object.
 # Sharing one SHTns object across threads is UNSAFE due to internal buffers.
@@ -83,7 +131,12 @@ def _filter_shtns_frame(
 
 
 def _filter_pyshtools_frame(
-    frame: NDArray[np.float64], lmin: int, lmax: int, lat_reverse: bool = False
+    frame: NDArray[np.float64],
+    lmin: int,
+    lmax: int,
+    lat_reverse: bool = False,
+    backend: Literal["shtools", "ducc"] = "ducc",
+    nthreads: int = 1,
 ) -> NDArray[np.float64]:
     """Filters a single 2D frame using pyshtools."""
     import pyshtools as pysh  # type: ignore[import-untyped]
@@ -111,7 +164,7 @@ def _filter_pyshtools_frame(
 
     try:
         grid = pysh.SHGrid.from_array(frame_proc, grid="DH")
-        coeffs = grid.expand()
+        coeffs = grid.expand(backend=backend, nthreads=nthreads)
 
         # Filter operations
         coeffs_filtered = coeffs.copy()
@@ -122,7 +175,7 @@ def _filter_pyshtools_frame(
             for l_val in range(lmax + 1, coeffs_filtered.lmax + 1):
                 coeffs_filtered.coeffs[:, l_val, :] = 0.0
 
-        filtered_grid = coeffs_filtered.expand()
+        filtered_grid = coeffs_filtered.expand(backend=backend, nthreads=nthreads)
         out = cast(NDArray[np.float64], filtered_grid.to_array())
 
         if slice_back:
@@ -138,7 +191,7 @@ def _filter_pyshtools_frame(
 class SphericalHarmonicFilter:
     """
     Spherical harmonic bandpass filter for lat-lon grid data.
-    Automatically uses SHTns if available, otherwise falls back to pyshtools.
+    Backends (in order of preference): shtns, ducc0, shtools.
     """
 
     def __init__(
@@ -146,7 +199,7 @@ class SphericalHarmonicFilter:
         lmin: int = 5,
         lmax: int = 42,
         lat_reverse: bool = False,
-        engine: Literal["auto", "pyshtools", "shtns"] = "auto",
+        engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
     ) -> None:
         """
         Initialize the filter with wave number bounds.
@@ -155,7 +208,7 @@ class SphericalHarmonicFilter:
             lmin (int): Minimum total wave number to retain.
             lmax (int): Maximum total wave number to retain.
             lat_reverse (bool): If True, assume latitude is stored from South to North.
-            engine (str): Engine to use ('auto', 'pyshtools', 'shtns').
+            engine (str): Engine to use ('auto', 'shtns', 'ducc0', 'shtools').
         """
         self.lmin = lmin
         self.lmax = lmax
@@ -192,21 +245,17 @@ class SphericalHarmonicFilter:
             xr.DataArray | np.ndarray: The filtered data.
         """
         if isinstance(data, np.ndarray):
-            if self.engine == "shtns" or (self.engine == "auto" and SHTNS_AVAILABLE):
-                filter_func = _filter_shtns_frame
-            else:
-                filter_func = _filter_pyshtools_frame
+            nthreads = 1 if backend in ("mpi", "dask") else 0
+            filter_func, kwargs = _get_filter_config(
+                self.engine, self.lmin, self.lmax, self.lat_reverse, nthreads
+            )
 
             if data.ndim == 2:
-                return filter_func(
-                    data, self.lmin, self.lmax, lat_reverse=self.lat_reverse
-                )
+                return filter_func(data, **kwargs)
             elif data.ndim == 3:
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
-                    out[i] = filter_func(
-                        data[i], self.lmin, self.lmax, lat_reverse=self.lat_reverse
-                    )
+                    out[i] = filter_func(data[i], **kwargs)
                 return out
             else:
                 raise ValueError("numpy array must be 2D or 3D")
@@ -227,7 +276,7 @@ def apply_sh_filter(
     lmax: int = 42,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
-    engine: Literal["auto", "pyshtools", "shtns"] = "auto",
+    engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
 ) -> xr.DataArray:
     """
     Applies a spherical harmonic bandpass filter to the input data.
@@ -238,7 +287,7 @@ def apply_sh_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-        engine (str): Transform engine. Options: 'auto', 'pyshtools', 'shtns'.
+        engine (str): Transform engine. Options: 'auto', 'shtns', 'ducc0', 'shtools'.
 
     Returns:
         xr.DataArray: The filtered data.
@@ -259,19 +308,9 @@ def apply_sh_filter(
             f"Found: {list(data.dims)}"
         )
 
-    if engine == "shtns":
-        if not SHTNS_AVAILABLE:
-            raise ImportError("shtns is requested but not available.")
-        filter_func = _filter_shtns_frame
-    elif engine == "pyshtools":
-        filter_func = _filter_pyshtools_frame
-    else:  # auto
-        if SHTNS_AVAILABLE:
-            filter_func = _filter_shtns_frame
-        else:
-            filter_func = _filter_pyshtools_frame
+    nthreads = 1 if backend in ("mpi", "dask") else 0
+    filter_func, kwargs = _get_filter_config(engine, lmin, lmax, lat_reverse, nthreads)
 
-    kwargs = {"lmin": lmin, "lmax": lmax, "lat_reverse": lat_reverse}
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 
     if data.chunks:

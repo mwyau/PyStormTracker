@@ -2,10 +2,16 @@
 
 ## v0.5.0.dev
 ### Features
+- **Spectral Backends**: Integrated support for `shtns`, `ducc0`, and `shtools` for all spherical harmonic operations.
+- **High-Precision Derivatives**: New `vodv` module for computing relative vorticity and divergence using spin-1 vector harmonics.
+- **Planetary Constants**: Standardized Earth radius to 6,371,220 m across derivatives and tracking geometry.
 - **pst-convert & JSON Support**: New utility for format conversion and a GPU-optimized JSON format for track data.
 - **Interactive Track Explorer**: Web-based visualization with real-time filtering and animations.
 - **Hodges (TRACK) Parity**: Full implementation of the Hodges algorithm with TRACK parity.
 - **Preprocessing & Performance**: Improved spherical harmonic filtering and backend auto-detection.
+
+### Testing
+- **NCL Validation**: New integration test suite validated against NCL 6.6.2 reference data.
 
 ### Performance
 - **SHTns Optimization**: Optimized thread handling for spherical harmonic transforms.
