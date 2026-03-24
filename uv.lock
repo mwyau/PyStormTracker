@@ -990,6 +990,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/8b/88f16936a8e8070a83d36239555227ecd91728f9ef222c5382cda07e0fd6/h5netcdf-1.8.1-py3-none-any.whl", hash = "sha256:a76ed7cfc9b8a8908ea7057c4e57e27307acff1049b7f5ed52db6c2247636879", size = 62915, upload-time = "2026-01-23T07:35:30.195Z" },
 ]
 
+[package.optional-dependencies]
+h5py = [
+    { name = "h5py" },
+]
+
 [[package]]
 name = "h5py"
 version = "3.16.0"
@@ -2719,8 +2724,7 @@ version = "0.5.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "dask" },
-    { name = "h5netcdf" },
-    { name = "h5py" },
+    { name = "h5netcdf", extra = ["h5py"] },
     { name = "numba" },
     { name = "numpy" },
     { name = "pyshtools", extra = ["ducc"] },
@@ -2785,8 +2789,7 @@ requires-dist = [
     { name = "eccodes", marker = "extra == 'grib'", specifier = ">=2.43.0" },
     { name = "eccodeslib", marker = "sys_platform != 'win32' and extra == 'all'", specifier = ">=2.43.0" },
     { name = "eccodeslib", marker = "sys_platform != 'win32' and extra == 'grib'", specifier = ">=2.43.0" },
-    { name = "h5netcdf", specifier = ">=1.0.0" },
-    { name = "h5py", specifier = ">=3.8.0" },
+    { name = "h5netcdf", extras = ["h5py"], specifier = ">=1.0.0" },
     { name = "ipympl", marker = "extra == 'viz'", specifier = ">=0.10.0" },
     { name = "ipywidgets", marker = "extra == 'viz'", specifier = ">=8.1.8" },
     { name = "jupyterlab", marker = "extra == 'viz'", specifier = ">=4.5.6" },

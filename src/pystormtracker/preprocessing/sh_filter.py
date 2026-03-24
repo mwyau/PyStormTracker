@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import warnings
+from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
 
 import numpy as np
@@ -32,6 +33,35 @@ def _resolve_engine(
     if engine == "auto":
         return "shtns" if SHTNS_AVAILABLE else "ducc0"
     return engine
+
+
+def _get_filter_config(
+    engine: Literal["auto", "shtns", "ducc0", "shtools"],
+    lmin: int,
+    lmax: int,
+    lat_reverse: bool,
+    nthreads: int = 1,
+) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
+    """Returns the filter function and kwargs for the resolved engine."""
+    resolved_engine = _resolve_engine(engine)
+    kwargs: FilterKwargs = {
+        "lmin": lmin,
+        "lmax": lmax,
+        "lat_reverse": lat_reverse,
+    }
+
+    if resolved_engine == "shtns":
+        if not SHTNS_AVAILABLE:
+            raise ImportError("shtns is requested but not available.")
+        return _filter_shtns_frame, kwargs
+
+    if resolved_engine == "shtools":
+        kwargs["backend"] = "shtools"
+    else:  # ducc0
+        kwargs["backend"] = "ducc"
+        kwargs["nthreads"] = nthreads
+
+    return _filter_pyshtools_frame, kwargs
 
 
 # Thread-local storage to ensure each Dask thread has its own SHTns object.
@@ -216,42 +246,16 @@ class SphericalHarmonicFilter:
         """
         if isinstance(data, np.ndarray):
             nthreads = 1 if backend in ("mpi", "dask") else 0
-            resolved_engine = _resolve_engine(self.engine)
-
-            kwargs: FilterKwargs
-            if resolved_engine == "shtns":
-                if not SHTNS_AVAILABLE:
-                    raise ImportError("shtns is requested but not available.")
-                filter_func = _filter_shtns_frame
-                kwargs = {
-                    "lmin": self.lmin,
-                    "lmax": self.lmax,
-                    "lat_reverse": self.lat_reverse,
-                }
-            elif resolved_engine == "shtools":
-                filter_func = _filter_pyshtools_frame
-                kwargs = {
-                    "lmin": self.lmin,
-                    "lmax": self.lmax,
-                    "lat_reverse": self.lat_reverse,
-                    "backend": "shtools",
-                }
-            else:  # ducc0
-                filter_func = _filter_pyshtools_frame
-                kwargs = {
-                    "lmin": self.lmin,
-                    "lmax": self.lmax,
-                    "lat_reverse": self.lat_reverse,
-                    "backend": "ducc",
-                    "nthreads": nthreads,
-                }
+            filter_func, kwargs = _get_filter_config(
+                self.engine, self.lmin, self.lmax, self.lat_reverse, nthreads
+            )
 
             if data.ndim == 2:
-                return filter_func(data, **kwargs)  # type: ignore[misc]
+                return filter_func(data, **kwargs)
             elif data.ndim == 3:
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
-                    out[i] = filter_func(data[i], **kwargs)  # type: ignore[misc]
+                    out[i] = filter_func(data[i], **kwargs)
                 return out
             else:
                 raise ValueError("numpy array must be 2D or 3D")
@@ -305,24 +309,8 @@ def apply_sh_filter(
         )
 
     nthreads = 1 if backend in ("mpi", "dask") else 0
-    kwargs: FilterKwargs = {
-        "lmin": lmin,
-        "lmax": lmax,
-        "lat_reverse": lat_reverse,
-    }
+    filter_func, kwargs = _get_filter_config(engine, lmin, lmax, lat_reverse, nthreads)
 
-    resolved_engine = _resolve_engine(engine)
-    if resolved_engine == "shtns":
-        if not SHTNS_AVAILABLE:
-            raise ImportError("shtns is requested but not available.")
-        filter_func = _filter_shtns_frame
-    elif resolved_engine == "shtools":
-        filter_func = _filter_pyshtools_frame
-        kwargs["backend"] = "shtools"
-    else:  # ducc0
-        filter_func = _filter_pyshtools_frame
-        kwargs["backend"] = "ducc"
-        kwargs["nthreads"] = nthreads
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 
     if data.chunks:
