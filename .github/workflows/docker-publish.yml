@@ -10,11 +10,11 @@ on:
       - 'release/**'
   workflow_dispatch:
 
-  concurrency:
+concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: ${{ !(github.event.workflow_run.event == 'release' || github.ref_type == 'tag') }}
 
-  env:
+env:
   # Publish to ORG on version tag/branch (v*.*), else to OWNER (personal) for merge to main/manual
   # We check for both 'v' prefix and a dot to match the v?.?* requirement and avoid false positives
   IS_STABLE: ${{ (github.event_name == 'workflow_run' && startsWith(github.event.workflow_run.head_branch, 'v') && contains(github.event.workflow_run.head_branch, '.')) || (github.event_name == 'workflow_dispatch' && (github.ref_type == 'tag' || (startsWith(github.ref_name, 'v') && contains(github.ref_name, '.')))) }}
