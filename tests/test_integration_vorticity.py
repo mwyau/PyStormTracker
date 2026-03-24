@@ -88,9 +88,9 @@ def test_vorticity_internal_consistency() -> None:
         _, vort_shtns = apply_vort_div(u, v, sht_engine="shtns")
 
         # Ensure ducc0 and shtns are highly correlated
-        corr = np.corrcoef(
-            vort_ducc.values.flatten(), vort_shtns.values.flatten()
-        )[0, 1]
+        corr = np.corrcoef(vort_ducc.values.flatten(), vort_shtns.values.flatten())[
+            0, 1
+        ]
         assert corr > 0.99
 
         # Ensure they are in the same ballpark (RMSE < 5e-6)
