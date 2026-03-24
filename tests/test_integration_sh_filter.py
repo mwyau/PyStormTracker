@@ -68,7 +68,7 @@ def test_sh_filter_era5_parity_integration(case: FilterTestCase) -> None:
             pytest.importorskip("shtns")
 
         filt = SphericalHarmonicFilter(
-            lmin=case["lmin"], lmax=case["lmax"], engine=engine
+            lmin=case["lmin"], lmax=case["lmax"], sht_engine=engine
         )
         filtered = filt.filter(msl)
 

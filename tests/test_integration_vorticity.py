@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pystormtracker.preprocessing.derivatives import apply_wind_derivatives
+from pystormtracker.preprocessing.kinematics import apply_vort_div
 
 # Use local test data generated from first frame (Generated with NCL 6.6.2)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,7 +37,7 @@ def test_vorticity_divergence_parity_integration() -> None:
         if engine == "shtns":
             pytest.importorskip("shtns")
 
-        div, vort = apply_wind_derivatives(u, v, engine=engine)
+        div, vort = apply_vort_div(u, v, sht_engine=engine)
 
         if engine == "ducc0":
             # ducc0/pyshtools should be bit-wise identical to NCL Spherepack
@@ -62,13 +62,13 @@ def test_vorticity_internal_consistency() -> None:
     ds_uv = xr.open_dataset(WIND_FILE)
     u, v = ds_uv.u, ds_uv.v
 
-    _, vort_ducc = apply_wind_derivatives(u, v, engine="ducc0")
+    _, vort_ducc = apply_vort_div(u, v, sht_engine="ducc0")
 
     try:
         import shtns  # type: ignore[import-untyped]
 
         _ = shtns.sht(31, 31)  # Test import
-        _, vort_shtns = apply_wind_derivatives(u, v, engine="shtns")
+        _, vort_shtns = apply_vort_div(u, v, sht_engine="shtns")
         # Ensure they are in the same ballpark (RMSE < 1e-4)
         rmse = np.sqrt(np.mean((vort_ducc.values - vort_shtns.values) ** 2))
         assert rmse < 1e-4
