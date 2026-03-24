@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -87,31 +87,32 @@ def compute_relative_vorticity_divergence(
             raise ImportError("shtns is requested but not available.")
         sh = _get_shtns_plan(ntheta, nphi, lmax)
         # SHTns: spat_to_SHsphtor expects (v_theta, v_phi)
-        # v_theta = -v, v_phi = u
-        v_theta = np.ascontiguousarray(-v, dtype=np.float64)
+        # v_theta = v, v_phi = u (pointing North and East)
+        v_theta = np.ascontiguousarray(v, dtype=np.float64)
         v_phi = np.ascontiguousarray(u, dtype=np.float64)
         # Returns S (divergence-like) and T (vorticity-like) coeffs
         slm = np.zeros(sh.nlm, dtype=np.complex128)
         tlm = np.zeros(sh.nlm, dtype=np.complex128)
         sh.spat_to_SHsphtor(v_theta, v_phi, slm, tlm)
 
-        # Scale by -sqrt(l(l+1))/R to get div and vort coefficients
-        # SHTns internal scaling for sph/tor is such that synth gives V.
-        # Laplacian in spectral space is -l(l+1)/R^2.
-        # But spat_to_SHsphtor returns coefficients s, t such that
+        # Scale to get div and vort coefficients
+        # SHTns returns coefficients s, t such that:
         # V = sum (s Ylm_grad + t Ylm_curl)
-        # div = -sum l(l+1)/R * s * Ylm
-        # vort = -sum l(l+1)/R * t * Ylm
+        # In meteorology:
+        # div = -sqrt(l(l+1))/R * s
+        # vort = sqrt(l(l+1))/R * t
         l_arr = sh.l
-        scaling = -l_arr * (l_arr + 1.0) / R
-        div_lm = slm * scaling
-        vort_lm = tlm * scaling
+        eigen = np.sqrt(l_arr * (l_arr + 1.0)) / R
+        div_lm = -slm * eigen
+        vort_lm = tlm * eigen
 
         div = sh.synth(div_lm)
         vort = sh.synth(vort_lm)
         return div, vort
 
     elif resolved_engine in ("ducc0", "shtools"):
+        import pyshtools as pysh  # type: ignore[import-untyped]
+
         backend = "ducc" if resolved_engine == "ducc0" else "shtools"
         mmax = min(lmax, (nphi - 1) // 2)
 
@@ -125,7 +126,8 @@ def compute_relative_vorticity_divergence(
 
         # Analysis
         if backend == "ducc" and DUCC0_AVAILABLE:
-            vec_map = np.stack((-v, u), axis=0).astype(np.float64)
+            # v_theta = v, v_phi = u (matches NCL Spherepack convention)
+            vec_map = np.stack((v, u), axis=0).astype(np.float64)
             alm_vec = ducc0.sht.experimental.analysis_2d(
                 map=vec_map,
                 spin=1,
@@ -137,18 +139,41 @@ def compute_relative_vorticity_divergence(
             alm_E = alm_vec[0]
             alm_B = alm_vec[1]
         else:
-            # Manual E/B decomposition using scalar transforms
-            # (Appropriate for 'shtools' backend)
-            # This is complex because pyshtools scalar expand doesn't
-            # directly give vector components.
-            # Using ducc0 logic even for shtools if available is better.
-            if DUCC0_AVAILABLE:
+            # Manual E/B (Spheroidal/Toroidal) decomposition using Fortran SHTOOLS
+            # SHExpandVDH expects (v_theta, v_phi). v_theta is southward wind.
+            try:
+                cilm_s, cilm_t = pysh.backends.shtools.SHExpandVDH(-v, u, lmax=lmax)
+
+                # Spectral Scaling
+                # div = -l(l+1)/R * s, vort = -l(l+1)/R * t
+                div_lm_raw = np.zeros_like(cilm_s)
+                vort_lm_raw = np.zeros_like(cilm_t)
+                for l_val in range(lmax + 1):
+                    scale = -float(l_val * (l_val + 1)) / R
+                    div_lm_raw[:, l_val, : l_val + 1] = (
+                        cilm_s[:, l_val, : l_val + 1] * scale
+                    )
+                    vort_lm_raw[:, l_val, : l_val + 1] = (
+                        cilm_t[:, l_val, : l_val + 1] * scale
+                    )
+
+                # Synthesis
+                div = pysh.backends.shtools.MakeGridDH(div_lm_raw, sampling=2)
+                vort = pysh.backends.shtools.MakeGridDH(vort_lm_raw, sampling=2)
+
+                # Handle potential shape mismatch (DH vs CC)
+                if div.shape != (ntheta, nphi):
+                    # Fallback to ducc0 if shapes are weird
+                    return compute_relative_vorticity_divergence(
+                        u, v, R, lmax, geometry, nthreads, engine="ducc0"
+                    )
+
+                return div, vort
+            except Exception:
+                # Fallback to ducc0 if Fortran path fails
                 return compute_relative_vorticity_divergence(
                     u, v, R, lmax, geometry, nthreads, engine="ducc0"
                 )
-            raise NotImplementedError(
-                "Manual vector transform without ducc0 is complex."
-            )
 
         # Spectral Scaling
         l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
@@ -215,7 +240,7 @@ def apply_wind_derivatives(
     """
     # Logic for handling parallel dimensions if needed (ufunc)
     # For now, similar to apply_sh_filter
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, float | int | str | None] = {
         "R": R,
         "lmax": lmax,
         "geometry": geometry,

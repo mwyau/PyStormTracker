@@ -1,38 +1,49 @@
 from __future__ import annotations
 
 import os
-from typing import Literal
+from typing import Literal, TypedDict
 
 import numpy as np
 import pytest
 import xarray as xr
+
 from pystormtracker.preprocessing import SphericalHarmonicFilter
 
 # Use local test data
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 
+
+class FilterTestCase(TypedDict):
+    lmin: int
+    lmax: int
+    ref: str
+
+
 # Test cases for different truncations
-TEST_CASES = [
+TEST_CASES: list[FilterTestCase] = [
     {
         "lmin": 5,
         "lmax": 42,
-        "ref": os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t5-42_ncl.nc")
+        "ref": os.path.join(
+            BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t5-42_ncl.nc"
+        ),
     },
     {
         "lmin": 0,
         "lmax": 42,
-        "ref": os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t0-42_ncl.nc")
-    }
+        "ref": os.path.join(
+            BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t0-42_ncl.nc"
+        ),
+    },
 ]
 
 HAS_BASE_DATA = os.path.exists(MSL_FILE)
 
+
 @pytest.mark.skipif(not HAS_BASE_DATA, reason="Base MSL test data not found.")
-@pytest.mark.parametrize(
-    "case", TEST_CASES, ids=["T5-42", "T0-42"]
-)
-def test_sh_filter_era5_parity_integration(case: dict) -> None:
+@pytest.mark.parametrize("case", TEST_CASES, ids=["T5-42", "T0-42"])
+def test_sh_filter_era5_parity_integration(case: FilterTestCase) -> None:
     """
     Verifies that all SHT backends for filtering produce results matching
     the NCL reference data for MSL across multiple truncations.
@@ -56,15 +67,21 @@ def test_sh_filter_era5_parity_integration(case: dict) -> None:
         if engine == "shtns":
             pytest.importorskip("shtns")
 
-        filt = SphericalHarmonicFilter(lmin=case["lmin"], lmax=case["lmax"], engine=engine)
+        filt = SphericalHarmonicFilter(
+            lmin=case["lmin"], lmax=case["lmax"], engine=engine
+        )
         filtered = filt.filter(msl)
 
         # Ensure high structural correlation (> 0.99)
         corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
-        assert corr > 0.99, f"Low correlation for {engine} (T{case['lmin']}-{case['lmax']}): {corr}"
+        assert corr > 0.99, (
+            f"Low correlation for {engine} (T{case['lmin']}-{case['lmax']}): {corr}"
+        )
 
         # Ensure RMSE is within acceptable bounds for large-scale field (MSL ~10^5)
         # Note: RMSE is slightly higher for T0-42 as it includes low frequencies
         rmse = np.sqrt(np.mean((filtered.values - ref.values) ** 2))
         max_rmse = 100.0
-        assert rmse < max_rmse, f"High RMSE for {engine} (T{case['lmin']}-{case['lmax']}): {rmse}"
+        assert rmse < max_rmse, (
+            f"High RMSE for {engine} (T{case['lmin']}-{case['lmax']}): {rmse}"
+        )

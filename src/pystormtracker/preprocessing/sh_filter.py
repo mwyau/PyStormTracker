@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import warnings
-from typing import Any, Literal, cast, overload
+from typing import Literal, cast, overload
 
 import numpy as np
 import xarray as xr
@@ -204,7 +204,7 @@ class SphericalHarmonicFilter:
             if resolved_engine == "auto":
                 resolved_engine = "shtns" if SHTNS_AVAILABLE else "ducc0"
 
-            kwargs: dict[str, Any]
+            kwargs: dict[str, int | bool | str]
             if resolved_engine == "shtns":
                 if not SHTNS_AVAILABLE:
                     raise ImportError("shtns is requested but not available.")
@@ -233,11 +233,11 @@ class SphericalHarmonicFilter:
                 }
 
             if data.ndim == 2:
-                return filter_func(data, **kwargs)
+                return filter_func(data, **kwargs)  # type: ignore[arg-type]
             elif data.ndim == 3:
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
-                    out[i] = filter_func(data[i], **kwargs)
+                    out[i] = filter_func(data[i], **kwargs)  # type: ignore[arg-type]
                 return out
             else:
                 raise ValueError("numpy array must be 2D or 3D")
@@ -291,7 +291,11 @@ def apply_sh_filter(
         )
 
     nthreads = 1 if backend in ("mpi", "dask") else 0
-    kwargs: dict[str, Any] = {"lmin": lmin, "lmax": lmax, "lat_reverse": lat_reverse}
+    kwargs: dict[str, int | bool | str] = {
+        "lmin": lmin,
+        "lmax": lmax,
+        "lat_reverse": lat_reverse,
+    }
 
     # Resolve engine
     resolved_engine = engine
