@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 from ..models import constants as model_constants
 from ..models.tracker import Tracker
 from ..models.tracks import Tracks
-from ..preprocessing.sh_filter import SphericalHarmonicFilter
+from ..preprocessing.spectral import SpectralFilter
 from ..preprocessing.taper import TaperFilter
 from . import constants
 from .detector import HodgesDetector
@@ -94,8 +94,8 @@ class HodgesTracker(Tracker):
             data = cast(xr.DataArray, taper.filter(data))
 
         # 2. Spectral Filtering
-        sh_filter = SphericalHarmonicFilter(lmin=lmin, lmax=lmax)
-        data = sh_filter.filter(data)
+        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+        data = spectral_filter.filter(data)
 
         return data
 

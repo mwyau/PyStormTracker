@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from .derivatives import apply_wind_derivatives, compute_relative_vorticity_divergence
-from .sh_filter import SphericalHarmonicFilter
+from .kinematics import Kinematics, apply_vort_div, compute_vort_div
+from .spectral import SpectralFilter, apply_spectral_filter
 from .taper import TaperFilter
 
 __all__ = [
-    "SphericalHarmonicFilter",
+    "Kinematics",
+    "SpectralFilter",
     "TaperFilter",
-    "apply_wind_derivatives",
-    "compute_relative_vorticity_divergence",
+    "apply_spectral_filter",
+    "apply_vort_div",
+    "compute_vort_div",
 ]

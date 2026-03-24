@@ -54,7 +54,7 @@ class SimpleTracker:
         """
         Applies standard spectral preprocessing.
         """
-        from ..preprocessing.sh_filter import SphericalHarmonicFilter
+        from ..preprocessing.spectral import SpectralFilter
         from ..preprocessing.taper import TaperFilter
 
         # Ensure data is loaded into memory for spectral filtering
@@ -69,8 +69,8 @@ class SimpleTracker:
             data = cast(xr.DataArray, taper.filter(data))
 
         # 2. Spectral Filtering
-        sh_filter = SphericalHarmonicFilter(lmin=lmin, lmax=lmax)
-        data = sh_filter.filter(data)
+        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+        data = spectral_filter.filter(data)
 
         return data
 

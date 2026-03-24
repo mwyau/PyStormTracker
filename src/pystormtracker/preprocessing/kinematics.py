@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, overload
 
 import numpy as np
 import xarray as xr
@@ -10,21 +10,21 @@ from numpy.typing import NDArray
 from ..models.constants import R_EARTH_METERS
 
 
-class DerivativeKwargs(TypedDict, total=False):
+class KinematicsKwargs(TypedDict, total=False):
     R: float
     lmax: int | None
     geometry: str
     nthreads: int
-    engine: str
+    sht_engine: str
 
 
 def _resolve_engine(
-    engine: Literal["auto", "shtns", "ducc0", "shtools"],
+    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"],
 ) -> Literal["shtns", "ducc0", "shtools"]:
     """Resolves 'auto' engine to the best available backend."""
-    if engine == "auto":
+    if sht_engine == "auto":
         return "shtns" if SHTNS_AVAILABLE else "ducc0"
-    return engine
+    return sht_engine
 
 
 try:
@@ -49,23 +49,26 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
         _thread_local.cache = {}
     key = (nlat, nlon, lmax)
     if key not in _thread_local.cache:
-        grid_lmax = (nlat - 1) // 2
-        actual_lmax = min(lmax, grid_lmax)
-        mmax = min(actual_lmax, nlon // 2 - 1)
-        sh = shtns.sht(actual_lmax, mmax, norm=shtns.sht_fourpi)
+        # grid_lmax = (nlat - 1) // 2
+        # actual_lmax = min(lmax, grid_lmax)
+        # SHTns can handle lmax beyond sampling theorem for analysis,
+        # but results might be aliased if not careful.
+        # NCL/Spherepack T42 uses lmax=42 for 73x144.
+        mmax = min(lmax, nlon // 2 - 1)
+        sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
         sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
         _thread_local.cache[key] = sh
     return _thread_local.cache[key]
 
 
-def compute_relative_vorticity_divergence(
+def compute_vort_div(
     u: NDArray[np.float64],
     v: NDArray[np.float64],
     R: float = R_EARTH_METERS,
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Computes spatial divergence and relative vorticity from u and v wind components.
@@ -77,7 +80,7 @@ def compute_relative_vorticity_divergence(
         lmax: Maximum spherical harmonic degree. If None, derived from ntheta.
         geometry: Grid geometry (for ducc0/shtools). Default 'CC'.
         nthreads: Number of threads (for ducc0).
-        engine: Transform engine ('auto', 'shtns', 'ducc0', 'shtools').
+        sht_engine: Transform engine ('auto', 'shtns', 'ducc0', 'shtools').
 
     Returns:
         div: Divergence (ntheta, nphi)
@@ -96,14 +99,14 @@ def compute_relative_vorticity_divergence(
             lmax = ntheta - 1
 
     # Resolve engine
-    resolved_engine = _resolve_engine(engine)
+    resolved_engine = _resolve_engine(sht_engine)
 
     if resolved_engine == "shtns":
         if not SHTNS_AVAILABLE:
             raise ImportError("shtns is requested but not available.")
         sh = _get_shtns_plan(ntheta, nphi, lmax)
         # SHTns: spat_to_SHsphtor expects (v_theta, v_phi)
-        # v_theta = v, v_phi = u (pointing North and East)
+        # v_theta = v, v_phi = u (points North and East)
         v_theta = np.ascontiguousarray(v, dtype=np.float64)
         v_phi = np.ascontiguousarray(u, dtype=np.float64)
         # Returns S (divergence-like) and T (vorticity-like) coeffs
@@ -115,12 +118,12 @@ def compute_relative_vorticity_divergence(
         # SHTns returns coefficients s, t such that:
         # V = sum (s Ylm_grad + t Ylm_curl)
         # In meteorology:
-        # div = -sqrt(l(l+1))/R * s
-        # vort = sqrt(l(l+1))/R * t
+        # div = -l(l+1)/R * s
+        # vort = -l(l+1)/R * t
         l_arr = sh.l
-        eigen = np.sqrt(l_arr * (l_arr + 1.0)) / R
+        eigen = (l_arr * (l_arr + 1.0)) / R
         div_lm = -slm * eigen
-        vort_lm = tlm * eigen
+        vort_lm = -tlm * eigen
 
         div = sh.synth(div_lm)
         vort = sh.synth(vort_lm)
@@ -180,15 +183,15 @@ def compute_relative_vorticity_divergence(
                 # Handle potential shape mismatch (DH vs CC)
                 if div.shape != (ntheta, nphi):
                     # Fallback to ducc0 if shapes are weird
-                    return compute_relative_vorticity_divergence(
-                        u, v, R, lmax, geometry, nthreads, engine="ducc0"
+                    return compute_vort_div(
+                        u, v, R, lmax, geometry, nthreads, sht_engine="ducc0"
                     )
 
                 return div, vort
             except Exception:
                 # Fallback to ducc0 if Fortran path fails
-                return compute_relative_vorticity_divergence(
-                    u, v, R, lmax, geometry, nthreads, engine="ducc0"
+                return compute_vort_div(
+                    u, v, R, lmax, geometry, nthreads, sht_engine="ducc0"
                 )
 
         # Spectral Scaling
@@ -225,17 +228,17 @@ def compute_relative_vorticity_divergence(
 
         return div, vort
 
-    raise ValueError(f"Unknown engine: {engine}")
+    raise ValueError(f"Unknown engine: {sht_engine}")
 
 
-def apply_wind_derivatives(
+def apply_vort_div(
     u: xr.DataArray,
     v: xr.DataArray,
     R: float = R_EARTH_METERS,
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
     backend: Literal["serial", "mpi", "dask"] = "serial",
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """
@@ -248,20 +251,19 @@ def apply_wind_derivatives(
         lmax: Maximum spherical harmonic degree.
         geometry: Grid geometry (default 'CC').
         nthreads: Number of threads.
-        engine: Transform engine.
+        sht_engine: Transform engine.
         backend: Parallelization backend.
 
     Returns:
         div, vort: Divergence and relative vorticity DataArrays.
     """
     # Logic for handling parallel dimensions if needed (ufunc)
-    # For now, similar to apply_sh_filter
-    kwargs: DerivativeKwargs = {
+    kwargs: KinematicsKwargs = {
         "R": R,
         "lmax": lmax,
         "geometry": geometry,
         "nthreads": nthreads if backend not in ("mpi", "dask") else 1,
-        "engine": engine,
+        "sht_engine": sht_engine,
     }
 
     # Identify spatial dimensions
@@ -270,7 +272,7 @@ def apply_wind_derivatives(
 
     # Use apply_ufunc for broad support
     div_vort = xr.apply_ufunc(
-        compute_relative_vorticity_divergence,
+        compute_vort_div,
         u,
         v,
         input_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
@@ -288,3 +290,92 @@ def apply_wind_derivatives(
     vort.name = "relative_vorticity"
 
     return div, vort
+
+
+class Kinematics:
+    """
+    Computes spatial derivatives and kinematic properties of the wind field.
+    """
+
+    def __init__(
+        self,
+        R: float = R_EARTH_METERS,
+        lmax: int | None = None,
+        geometry: str = "CC",
+        sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+    ) -> None:
+        """
+        Initialize the kinematics calculator.
+
+        Args:
+            R: Planetary radius in meters.
+            lmax: Maximum spherical harmonic degree.
+            geometry: Grid geometry ('CC', 'DH', etc.).
+            sht_engine: Transform engine ('auto', 'shtns', 'ducc0', 'shtools').
+        """
+        self.R = R
+        self.lmax = lmax
+        self.geometry = geometry
+        self.sht_engine = sht_engine
+
+    @overload
+    def compute(
+        self,
+        u: xr.DataArray,
+        v: xr.DataArray,
+        backend: Literal["serial", "mpi", "dask"] = "serial",
+        nthreads: int = 0,
+    ) -> tuple[xr.DataArray, xr.DataArray]: ...
+
+    @overload
+    def compute(
+        self,
+        u: NDArray[np.float64],
+        v: NDArray[np.float64],
+        backend: Literal["serial", "mpi", "dask"] = "serial",
+        nthreads: int = 0,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]: ...
+
+    def compute(
+        self,
+        u: xr.DataArray | NDArray[np.float64],
+        v: xr.DataArray | NDArray[np.float64],
+        backend: Literal["serial", "mpi", "dask"] = "serial",
+        nthreads: int = 0,
+    ) -> tuple[xr.DataArray | NDArray[np.float64], xr.DataArray | NDArray[np.float64]]:
+        """
+        Computes vorticity and divergence from wind components.
+
+        Args:
+            u: Zonal wind component.
+            v: Meridional wind component.
+            backend: Parallelization backend ('serial', 'mpi', 'dask').
+            nthreads: Number of threads (for local computation).
+
+        Returns:
+            div, vort: Divergence and relative vorticity.
+        """
+        if isinstance(u, np.ndarray) and isinstance(v, np.ndarray):
+            return compute_vort_div(
+                u,
+                v,
+                R=self.R,
+                lmax=self.lmax,
+                geometry=self.geometry,
+                nthreads=nthreads,
+                sht_engine=self.sht_engine,
+            )
+
+        if isinstance(u, xr.DataArray) and isinstance(v, xr.DataArray):
+            return apply_vort_div(
+                u,
+                v,
+                R=self.R,
+                lmax=self.lmax,
+                geometry=self.geometry,
+                nthreads=nthreads,
+                sht_engine=self.sht_engine,
+                backend=backend,
+            )
+
+        raise TypeError("u and v must be both numpy arrays or both xarray DataArrays")

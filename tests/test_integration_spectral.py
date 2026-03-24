@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pystormtracker.preprocessing import SphericalHarmonicFilter
+from pystormtracker.preprocessing import SpectralFilter
 
 # Use local test data (Generated with NCL 6.6.2)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,7 +43,7 @@ HAS_BASE_DATA = os.path.exists(MSL_FILE)
 
 @pytest.mark.skipif(not HAS_BASE_DATA, reason="Base MSL test data not found.")
 @pytest.mark.parametrize("case", TEST_CASES, ids=["T5-42", "T0-42"])
-def test_sh_filter_era5_parity_integration(case: FilterTestCase) -> None:
+def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     """
     Verifies that all SHT backends for filtering produce results matching
     the NCL reference data for MSL across multiple truncations.
@@ -67,9 +67,7 @@ def test_sh_filter_era5_parity_integration(case: FilterTestCase) -> None:
         if engine == "shtns":
             pytest.importorskip("shtns")
 
-        filt = SphericalHarmonicFilter(
-            lmin=case["lmin"], lmax=case["lmax"], engine=engine
-        )
+        filt = SpectralFilter(lmin=case["lmin"], lmax=case["lmax"], sht_engine=engine)
         filtered = filt.filter(msl)
 
         # Ensure high structural correlation (> 0.99)

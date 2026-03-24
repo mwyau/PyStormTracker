@@ -50,7 +50,7 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 *   **HodgesTracker Integration (Completed):** 
     *   Native Python/Numba implementation of the Modified Greedy Exchange (MGE) algorithm with algorithmic parity to TRACK-1.5.2.
 *   **Preprocessing (Completed):** 
-    *   Added support for spectral filtering (e.g., T42 truncation) using `shtns` and `SphericalHarmonicFilter`. `shtns` was chosen for its computational efficiency in iterative transforms.
+    *   Added support for spectral filtering (e.g., T42 truncation) using `shtns` and `SpectralFilter`. `shtns` was chosen for its computational efficiency in iterative transforms.
 *   **HodgesTracker Refinement (In Progress):** 
     *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with original TRACK software.
 *   **Postprocessing (Track Metrics):**
