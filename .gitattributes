@@ -1,0 +1,17 @@
+# Mark notebooks as generated so they don't count towards language statistics
+notebooks/*.ipynb linguist-generated
+
+# Mark benchmarking code and data as documentation to focus on core logic
+benchmark/* linguist-documentation
+
+# Mark the JOSS paper and all documentation files (including static HTML) as documentation
+docs/* linguist-documentation
+paper/* linguist-documentation
+
+# Mark example/test data files as documentation/vendored
+data/* linguist-vendored
+
+# Ensure lockfiles are marked as generated
+uv.lock linguist-generated
+
+# (Note: src/pystormtracker/templates/*.html are NOT marked, so they WILL count as source)
