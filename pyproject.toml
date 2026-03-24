@@ -25,12 +25,11 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
-    "ducc0>=0.33.0",
     "h5netcdf>=1.0.0",
     "h5py>=3.8.0",
     "numpy>=1.24.0",
     "numba>=0.60.0",
-    "pyshtools>=4.10.4",
+    "pyshtools[ducc]>=4.10.4",
     "xarray>=2024.9.0",
 ]
 

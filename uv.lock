@@ -2708,18 +2708,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/ed/6e9ff799d3334999a0dfd640b5fad55fc350eda2493560f425e8710b8806/pyshtools-4.14.1-pp311-pypy311_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:4d2d5b6b125c31058ed23050d8987ca2eb175902a776aa3acffc005ffc8d95be", size = 6412232, upload-time = "2026-02-23T07:23:29.269Z" },
 ]
 
+[package.optional-dependencies]
+ducc = [
+    { name = "ducc0" },
+]
+
 [[package]]
 name = "pystormtracker"
 version = "0.5.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "dask" },
-    { name = "ducc0" },
     { name = "h5netcdf" },
     { name = "h5py" },
     { name = "numba" },
     { name = "numpy" },
-    { name = "pyshtools" },
+    { name = "pyshtools", extra = ["ducc"] },
     { name = "xarray" },
 ]
 
@@ -2777,7 +2781,6 @@ requires-dist = [
     { name = "cfgrib", marker = "extra == 'all'", specifier = ">=0.9.15.1" },
     { name = "cfgrib", marker = "extra == 'grib'", specifier = ">=0.9.15.1" },
     { name = "dask", specifier = ">=2024.1.0" },
-    { name = "ducc0", specifier = ">=0.33.0" },
     { name = "eccodes", marker = "extra == 'all'", specifier = ">=2.43.0" },
     { name = "eccodes", marker = "extra == 'grib'", specifier = ">=2.43.0" },
     { name = "eccodeslib", marker = "sys_platform != 'win32' and extra == 'all'", specifier = ">=2.43.0" },
@@ -2795,7 +2798,7 @@ requires-dist = [
     { name = "netcdf4", marker = "extra == 'netcdf4'", specifier = ">=1.6.1" },
     { name = "numba", specifier = ">=0.60.0" },
     { name = "numpy", specifier = ">=1.24.0" },
-    { name = "pyshtools", specifier = ">=4.10.4" },
+    { name = "pyshtools", extras = ["ducc"], specifier = ">=4.10.4" },
     { name = "shtns", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'all'", specifier = ">=3.7.3" },
     { name = "shtns", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'shtns'", specifier = ">=3.7.3" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.0.4" },
