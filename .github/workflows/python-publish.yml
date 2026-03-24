@@ -20,13 +20,14 @@ permissions:
 jobs:
   release-build:
     runs-on: ubuntu-latest
-    # Only run if CI succeeded AND it was a release event.
+    # Only run if CI succeeded AND it was a tag push.
     # Exclude PRs to avoid accidental triggers/publishing.
     if: |
       github.event_name == 'workflow_run' && 
       github.event.workflow_run.conclusion == 'success' && 
       github.event.workflow_run.event != 'pull_request' &&
-      github.event.workflow_run.event == 'release' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v') &&
       github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
       contents: read
