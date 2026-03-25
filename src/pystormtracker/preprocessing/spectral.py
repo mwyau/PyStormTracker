@@ -28,8 +28,8 @@ class FilterKwargs(TypedDict, total=False):
 
 
 def _resolve_engine(
-    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"],
-) -> Literal["shtns", "ducc0", "shtools"]:
+    sht_engine: Literal["auto", "shtns", "ducc0"],
+) -> Literal["shtns", "ducc0"]:
     """Resolves 'auto' engine to the best available backend."""
     if sht_engine == "auto":
         return "shtns" if SHTNS_AVAILABLE else "ducc0"
@@ -37,7 +37,7 @@ def _resolve_engine(
 
 
 def _get_filter_config(
-    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"],
+    sht_engine: Literal["auto", "shtns", "ducc0"],
     lmin: int,
     lmax: int,
     lat_reverse: bool,
@@ -56,13 +56,10 @@ def _get_filter_config(
             raise ImportError("shtns is requested but not available.")
         return _filter_shtns_frame, kwargs
 
-    if resolved_engine == "shtools":
-        kwargs["backend"] = "shtools"
-    else:  # ducc0
-        kwargs["backend"] = "ducc"
-        kwargs["nthreads"] = nthreads
+    # ducc0
+    kwargs["nthreads"] = nthreads
 
-    return _filter_pyshtools_frame, kwargs
+    return _filter_ducc0_frame, kwargs
 
 
 # Thread-local storage to ensure each Dask thread has its own SHTns object.
@@ -79,13 +76,13 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
 
     key = (nlat, nlon, lmax)
     if key not in _thread_local.cache:
-        # Sampling theorem limit for regular grid with poles: nlat > 2*lmax
-        grid_lmax = (nlat - 1) // 2
-        actual_lmax = min(lmax, grid_lmax)
-        mmax = min(actual_lmax, nlon // 2 - 1)
+        # SHTns can handle lmax beyond sampling theorem for analysis,
+        # but results might be aliased if not careful.
+        # NCL/Spherepack T42 uses lmax=42 for 73x144.
+        mmax = min(lmax, nlon // 2 - 1)
 
-        # Use 4pi normalization to match pyshtools default and Hodges TRACK.
-        sh = shtns.sht(actual_lmax, mmax, norm=shtns.sht_fourpi)
+        # Use 4pi normalization to match standard SHTOOLS and Hodges TRACK.
+        sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
         # shtns.sht_reg_poles is the standard equidistant latitude grid including poles.
         # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
         sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
@@ -131,56 +128,52 @@ def _filter_shtns_frame(
     return out
 
 
-def _filter_pyshtools_frame(
+def _filter_ducc0_frame(
     frame: NDArray[np.float64],
     lmin: int,
     lmax: int,
     lat_reverse: bool = False,
-    backend: Literal["shtools", "ducc"] = "ducc",
     nthreads: int = 1,
 ) -> NDArray[np.float64]:
-    """Filters a single 2D frame using pyshtools."""
-    import pyshtools as pysh  # type: ignore[import-untyped]
+    """Filters a single 2D frame using ducc0."""
+    import ducc0  # type: ignore[import-not-found]
 
     if lat_reverse:
         frame = frame[::-1, :]
 
     nlat, nlon = frame.shape
-
-    # pyshtools DH grid requires nlon = 2*nlat-1 (extended) or nlon = 2*nlat.
-    # Typical ERA5 2.5x2.5 is 73x144. nlon=144, nlat=73. 2*nlat-1 = 145.
-    if nlon == 2 * nlat - 2:
-        # Pad longitude by repeating first column at the end to get 2*nlat-1
-        frame_proc = np.empty((nlat, nlon + 1), dtype=frame.dtype)
-        frame_proc[:, :-1] = frame
-        frame_proc[:, -1] = frame[:, 0]
-        slice_back = True
-    elif nlon == 2 * nlat - 1 or nlon == 2 * nlat:
-        frame_proc = frame
-        slice_back = False
-    else:
-        # Try to use as is, let pyshtools raise if incompatible
-        frame_proc = frame
-        slice_back = False
+    
+    # Regular equidistant grid
+    geometry = "CC"
+    mmax = min(lmax, nlon // 2 - 1)
 
     try:
-        grid = pysh.SHGrid.from_array(frame_proc, grid="DH")
-        coeffs = grid.expand(backend=backend, nthreads=nthreads)
+        alm = ducc0.sht.analysis_2d(
+            map=np.expand_dims(frame, axis=0),
+            spin=0,
+            lmax=lmax,
+            mmax=mmax,
+            geometry=geometry,
+            nthreads=nthreads,
+        )
 
-        # Filter operations
-        coeffs_filtered = coeffs.copy()
+        # Apply Bandpass Mask
+        l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
         if lmin > 0:
-            for l_val in range(min(lmin, coeffs_filtered.lmax + 1)):
-                coeffs_filtered.coeffs[:, l_val, :] = 0.0
-        if lmax < coeffs_filtered.lmax:
-            for l_val in range(lmax + 1, coeffs_filtered.lmax + 1):
-                coeffs_filtered.coeffs[:, l_val, :] = 0.0
+            mask = l_arr < lmin
+            alm[0, mask] = 0.0
 
-        filtered_grid = coeffs_filtered.expand(backend=backend, nthreads=nthreads)
-        out = cast(NDArray[np.float64], filtered_grid.to_array())
+        out = ducc0.sht.synthesis_2d(
+            alm=alm,
+            spin=0,
+            lmax=lmax,
+            mmax=mmax,
+            ntheta=nlat,
+            nphi=nlon,
+            geometry=geometry,
+            nthreads=nthreads,
+        )[0]
 
-        if slice_back:
-            out = out[:, :-1]
         if lat_reverse:
             out = out[::-1, :]
 
@@ -193,7 +186,7 @@ def _filter_pyshtools_frame(
 class SpectralFilter:
     """
     Spectral bandpass filter (truncation) for lat-lon grid data.
-    Backends (in order of preference): shtns, ducc0, shtools.
+    Backends (in order of preference): shtns, ducc0.
     """
 
     def __init__(
@@ -201,7 +194,7 @@ class SpectralFilter:
         lmin: int = 5,
         lmax: int = 42,
         lat_reverse: bool = False,
-        sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     ) -> None:
         """
         Initialize the filter with wave number bounds.
@@ -210,7 +203,7 @@ class SpectralFilter:
             lmin (int): Minimum total wave number to retain.
             lmax (int): Maximum total wave number to retain.
             lat_reverse (bool): If True, assume latitude is stored from South to North.
-            sht_engine (str): Engine to use ('auto', 'shtns', 'ducc0', 'shtools').
+            sht_engine (str): Engine to use ('auto', 'shtns', 'ducc0').
         """
         self.lmin = lmin
         self.lmax = lmax
@@ -278,7 +271,7 @@ def apply_spectral_filter(
     lmax: int = 42,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
-    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
 ) -> xr.DataArray:
     """
     Applies a spectral bandpass filter to the input DataArray.
@@ -289,7 +282,7 @@ def apply_spectral_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-        sht_engine (str): Engine. Options: 'auto', 'shtns', 'ducc0', 'shtools'.
+        sht_engine (str): Engine. Options: 'auto', 'shtns', 'ducc0'.
 
     Returns:
         xr.DataArray: The filtered data.

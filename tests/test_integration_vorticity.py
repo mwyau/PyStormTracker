@@ -40,7 +40,7 @@ def test_vorticity_divergence_parity_integration() -> None:
         div, vort = apply_vort_div(u, v, sht_engine=engine)
 
         if engine == "ducc0":
-            # ducc0/pyshtools should be bit-wise identical to NCL Spherepack
+            # ducc0 should be bit-wise identical to NCL Spherepack (on the same grid)
             np.testing.assert_allclose(
                 vort.values, vo_ref.values, rtol=1e-12, atol=1e-12
             )
@@ -68,19 +68,7 @@ def test_vorticity_internal_consistency() -> None:
 
     _, vort_ducc = apply_vort_div(u, v, sht_engine="ducc0")
 
-    try:
-        from importlib.util import find_spec
-
-        if find_spec("pyshtools") is not None:
-            _, vort_shtools = apply_vort_div(u, v, sht_engine="shtools")
-
-            rmse_shtools = np.sqrt(
-                np.mean((vort_ducc.values - vort_shtools.values) ** 2)
-            )
-            assert rmse_shtools < 1e-10  # Should be nearly identical
-    except ImportError:
-        pass
-
+    # Comparing ducc0 with shtns.
     try:
         import shtns  # type: ignore[import-untyped]
 

@@ -57,10 +57,9 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     msl = ds_msl.msl
     ref = ds_ref.msl
 
-    engines: list[Literal["shtns", "ducc0", "shtools"]] = [
+    engines: list[Literal["shtns", "ducc0"]] = [
         "shtns",
         "ducc0",
-        "shtools",
     ]
 
     for engine in engines:

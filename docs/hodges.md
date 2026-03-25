@@ -11,12 +11,12 @@ This document details the architecture, mathematical implementation, and design 
 ## 1. Feature Identification Design
 
 ### 1.1 Preprocessing (Spectral Filtering & Derivatives)
-**Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and high-precision derivative calculation using the `shtns`, `ducc0`, or `shtools` backends.
+**Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and high-precision derivative calculation using the `shtns` or `ducc0` backends.
 - **References**: `spec_filt.c`, `uv2vr.c`.
-- **CLI Options**: `--filter-range` (e.g., `5-42`), `--no-filter`, `--engine` (auto/shtns/ducc0/shtools), and `--taper`.
+- **CLI Options**: `--filter-range` (e.g., `5-42`), `--no-filter`, `--engine` (auto/shtns/ducc0), and `--taper`.
 
 **Reasoning**: 
-Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution. By default, the Hodges algorithm applies a T5-42 band-pass filter unless `--no-filter` is specified. The system also supports high-precision **Relative Vorticity** and **Divergence** calculation from wind components using spin-1 vector harmonics, ensuring bit-wise parity with NCL/Spherepack when using the `ducc0` or `shtools` backends.
+Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution. By default, the Hodges algorithm applies a T5-42 band-pass filter unless `--no-filter` is specified. The system also supports high-precision **Relative Vorticity** and **Divergence** calculation from wind components using spin-1 vector harmonics, ensuring bit-wise parity with NCL/Spherepack when using the `ducc0` backend.
 
 ### 1.2 Object-Based Detection
 **Design Choice**: Feature detection is implemented as a multi-stage pipeline: `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.

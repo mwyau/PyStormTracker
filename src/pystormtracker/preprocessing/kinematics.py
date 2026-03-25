@@ -19,8 +19,8 @@ class KinematicsKwargs(TypedDict, total=False):
 
 
 def _resolve_engine(
-    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"],
-) -> Literal["shtns", "ducc0", "shtools"]:
+    sht_engine: Literal["auto", "shtns", "ducc0"],
+) -> Literal["shtns", "ducc0"]:
     """Resolves 'auto' engine to the best available backend."""
     if sht_engine == "auto":
         return "shtns" if SHTNS_AVAILABLE else "ducc0"
@@ -49,8 +49,6 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
         _thread_local.cache = {}
     key = (nlat, nlon, lmax)
     if key not in _thread_local.cache:
-        # grid_lmax = (nlat - 1) // 2
-        # actual_lmax = min(lmax, grid_lmax)
         # SHTns can handle lmax beyond sampling theorem for analysis,
         # but results might be aliased if not careful.
         # NCL/Spherepack T42 uses lmax=42 for 73x144.
@@ -68,7 +66,7 @@ def compute_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Computes spatial divergence and relative vorticity from u and v wind components.
@@ -78,9 +76,9 @@ def compute_vort_div(
         v: Meridional wind (ntheta, nphi).
         R: Planetary radius in meters. Default is R_EARTH_METERS.
         lmax: Maximum spherical harmonic degree. If None, derived from ntheta.
-        geometry: Grid geometry (for ducc0/shtools). Default 'CC'.
+        geometry: Grid geometry (for ducc0). Default 'CC'.
         nthreads: Number of threads (for ducc0).
-        sht_engine: Transform engine ('auto', 'shtns', 'ducc0', 'shtools').
+        sht_engine: Transform engine ('auto', 'shtns', 'ducc0').
 
     Returns:
         div: Divergence (ntheta, nphi)
@@ -129,10 +127,10 @@ def compute_vort_div(
         vort = sh.synth(vort_lm)
         return div, vort
 
-    elif resolved_engine in ("ducc0", "shtools"):
-        import pyshtools as pysh  # type: ignore[import-untyped]
+    elif resolved_engine == "ducc0":
+        if not DUCC0_AVAILABLE:
+            raise ImportError("ducc0 is requested but not available.")
 
-        backend = "ducc" if resolved_engine == "ducc0" else "shtools"
         mmax = min(lmax, (nphi - 1) // 2)
 
         # Standard spectral derivation from wind components:
@@ -144,55 +142,18 @@ def compute_vort_div(
         # vort_lm = sqrt(l(l+1))/R * B_lm
 
         # Analysis
-        if backend == "ducc" and DUCC0_AVAILABLE:
-            # v_theta = v, v_phi = u (matches NCL Spherepack convention)
-            vec_map = np.stack((v, u), axis=0).astype(np.float64)
-            alm_vec = ducc0.sht.experimental.analysis_2d(
-                map=vec_map,
-                spin=1,
-                lmax=lmax,
-                mmax=mmax,
-                geometry=geometry,
-                nthreads=nthreads,
-            )
-            alm_E = alm_vec[0]
-            alm_B = alm_vec[1]
-        else:
-            # Manual E/B (Spheroidal/Toroidal) decomposition using Fortran SHTOOLS
-            # SHExpandVDH expects (v_theta, v_phi). v_theta is southward wind.
-            try:
-                cilm_s, cilm_t = pysh.backends.shtools.SHExpandVDH(-v, u, lmax=lmax)
-
-                # Spectral Scaling
-                # div = -l(l+1)/R * s, vort = -l(l+1)/R * t
-                div_lm_raw = np.zeros_like(cilm_s)
-                vort_lm_raw = np.zeros_like(cilm_t)
-                for l_val in range(lmax + 1):
-                    scale = -float(l_val * (l_val + 1)) / R
-                    div_lm_raw[:, l_val, : l_val + 1] = (
-                        cilm_s[:, l_val, : l_val + 1] * scale
-                    )
-                    vort_lm_raw[:, l_val, : l_val + 1] = (
-                        cilm_t[:, l_val, : l_val + 1] * scale
-                    )
-
-                # Synthesis
-                div = pysh.backends.shtools.MakeGridDH(div_lm_raw, sampling=2)
-                vort = pysh.backends.shtools.MakeGridDH(vort_lm_raw, sampling=2)
-
-                # Handle potential shape mismatch (DH vs CC)
-                if div.shape != (ntheta, nphi):
-                    # Fallback to ducc0 if shapes are weird
-                    return compute_vort_div(
-                        u, v, R, lmax, geometry, nthreads, sht_engine="ducc0"
-                    )
-
-                return div, vort
-            except Exception:
-                # Fallback to ducc0 if Fortran path fails
-                return compute_vort_div(
-                    u, v, R, lmax, geometry, nthreads, sht_engine="ducc0"
-                )
+        # v_theta = v, v_phi = u (matches NCL Spherepack convention)
+        vec_map = np.stack((v, u), axis=0).astype(np.float64)
+        alm_vec = ducc0.sht.analysis_2d(
+            map=vec_map,
+            spin=1,
+            lmax=lmax,
+            mmax=mmax,
+            geometry=geometry,
+            nthreads=nthreads,
+        )
+        alm_E = alm_vec[0]
+        alm_B = alm_vec[1]
 
         # Spectral Scaling
         l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
@@ -201,30 +162,26 @@ def compute_vort_div(
         alm_vort = eigen_scale * alm_B
 
         # Synthesis
-        if backend == "ducc" and DUCC0_AVAILABLE:
-            div = ducc0.sht.experimental.synthesis_2d(
-                alm=np.expand_dims(alm_div, axis=0),
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                ntheta=ntheta,
-                nphi=nphi,
-                geometry=geometry,
-                nthreads=nthreads,
-            )[0]
-            vort = ducc0.sht.experimental.synthesis_2d(
-                alm=np.expand_dims(alm_vort, axis=0),
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                ntheta=ntheta,
-                nphi=nphi,
-                geometry=geometry,
-                nthreads=nthreads,
-            )[0]
-        else:
-            # This part shouldn't really be reached if we have ducc0
-            raise NotImplementedError("Pure shtools vector synthesis not implemented.")
+        div = ducc0.sht.synthesis_2d(
+            alm=np.expand_dims(alm_div, axis=0),
+            spin=0,
+            lmax=lmax,
+            mmax=mmax,
+            ntheta=ntheta,
+            nphi=nphi,
+            geometry=geometry,
+            nthreads=nthreads,
+        )[0]
+        vort = ducc0.sht.synthesis_2d(
+            alm=np.expand_dims(alm_vort, axis=0),
+            spin=0,
+            lmax=lmax,
+            mmax=mmax,
+            ntheta=ntheta,
+            nphi=nphi,
+            geometry=geometry,
+            nthreads=nthreads,
+        )[0]
 
         return div, vort
 
@@ -238,7 +195,7 @@ def apply_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     backend: Literal["serial", "mpi", "dask"] = "serial",
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """
@@ -302,7 +259,7 @@ class Kinematics:
         R: float = R_EARTH_METERS,
         lmax: int | None = None,
         geometry: str = "CC",
-        sht_engine: Literal["auto", "shtns", "ducc0", "shtools"] = "auto",
+        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     ) -> None:
         """
         Initialize the kinematics calculator.

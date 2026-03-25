@@ -57,6 +57,7 @@ def run_tracker(
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
     overlap: int = model_constants.OVERLAP_DEFAULT,
+    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -152,6 +153,7 @@ def run_tracker(
         lmax=lmax,
         taper_points=taper_points,
         overlap=overlap,
+        sht_engine=sht_engine,
     )
 
     # Export Phase
@@ -237,6 +239,13 @@ def parse_args() -> Namespace:
         help="Disable default T5-42 spectral filtering.",
     )
     # Default is determined in main() based on algorithm
+
+    general.add_argument(
+        "--sht-engine",
+        choices=["auto", "shtns", "ducc0"],
+        default="auto",
+        help="SHT backend for filtering and derivatives. Default 'auto'.",
+    )
 
     general.add_argument(
         "-n", "--num", type=int, help="Number of time steps to process."
@@ -455,6 +464,7 @@ def main() -> None:
         lmax=lmax,
         taper_points=args.taper,
         overlap=args.overlap,
+        sht_engine=args.sht_engine,
     )
 
 

@@ -28,7 +28,7 @@ dependencies = [
     "h5netcdf[h5py]>=1.0.0",
     "numpy>=1.24.0",
     "numba>=0.60.0",
-    "pyshtools[ducc]>=4.10.4",
+    "ducc0>=0.33.0",
     "xarray>=2024.9.0",
 ]
 
@@ -157,4 +157,4 @@ exclude_lines = [
 
 [tool.uv]
 link-mode = "copy"
-no-binary-package = ["shtns"]
+no-binary-package = ["ducc0", "shtns"]
