@@ -69,16 +69,17 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
         filt = SpectralFilter(lmin=case["lmin"], lmax=case["lmax"], sht_engine=engine)
         filtered = filt.filter(msl)
 
-        # Ensure high structural correlation (> 0.99)
+        # Ensure extremely high structural correlation (> 0.9999)
         corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
-        assert corr > 0.99, (
+        assert corr > 0.9999, (
             f"Low correlation for {engine} (T{case['lmin']}-{case['lmax']}): {corr}"
         )
 
         # Ensure RMSE is within acceptable bounds for large-scale field (MSL ~10^5)
-        # Note: RMSE is slightly higher for T0-42 as it includes low frequencies
+        # shtns: ~0.46 Pa RMSE vs NCL (legacy Spherepack)
+        # ducc0: ~0.05 Pa RMSE vs NCL (modern implementation consistency)
         rmse = np.sqrt(np.mean((filtered.values - ref.values) ** 2))
-        max_rmse = 100.0
+        max_rmse = 1.0 if engine == "shtns" else 0.1
         assert rmse < max_rmse, (
             f"High RMSE for {engine} (T{case['lmin']}-{case['lmax']}): {rmse}"
         )
