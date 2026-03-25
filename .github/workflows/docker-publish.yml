@@ -14,12 +14,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Use Org Name for production tags (v*), otherwise use Repository Owner
-  TARGET_OWNER: ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}
-  DOCKER_HUB_REPO: ${{ env.TARGET_OWNER }}/${{ vars.DOCKER_IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ env.TARGET_OWNER }}/${{ vars.DOCKER_IMAGE_NAME }}
-
 jobs:
   build-and-push:
     runs-on: ubuntu-24.04
@@ -70,8 +64,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ${{ env.DOCKER_HUB_REPO }}
-            ${{ env.GHCR_REPO }}
+            ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+            ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
             type=semver,pattern={{version}}
@@ -96,7 +90,7 @@ jobs:
       - name: Attest Provenance (Docker Hub)
         uses: actions/attest@v4
         with:
-          subject-name: ${{ env.DOCKER_HUB_REPO }}
+          subject-name: ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
@@ -111,7 +105,7 @@ jobs:
       - name: Attest SBOM (Docker Hub)
         uses: actions/attest@v4
         with:
-          subject-name: ${{ env.DOCKER_HUB_REPO }}
+          subject-name: ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
