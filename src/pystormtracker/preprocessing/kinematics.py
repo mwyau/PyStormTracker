@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from typing import Literal, TypedDict, overload
 
 import numpy as np
@@ -19,11 +18,11 @@ class KinematicsKwargs(TypedDict, total=False):
 
 
 def _resolve_engine(
-    sht_engine: Literal["auto", "shtns", "ducc0"],
-) -> Literal["shtns", "ducc0"]:
+    sht_engine: Literal["auto", "ducc0"],
+) -> Literal["ducc0"]:
     """Resolves 'auto' engine to the best available backend."""
     if sht_engine == "auto":
-        return "shtns" if SHTNS_AVAILABLE else "ducc0"
+        return "ducc0"
     return sht_engine
 
 
@@ -34,30 +33,6 @@ try:
 except ImportError:
     DUCC0_AVAILABLE = False
 
-try:
-    import shtns  # type: ignore[import-untyped]
-
-    SHTNS_AVAILABLE = True
-except ImportError:
-    SHTNS_AVAILABLE = False
-
-_thread_local = threading.local()
-
-
-def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
-    if not hasattr(_thread_local, "cache"):
-        _thread_local.cache = {}
-    key = (nlat, nlon, lmax)
-    if key not in _thread_local.cache:
-        # SHTns can handle lmax beyond sampling theorem for analysis,
-        # but results might be aliased if not careful.
-        # NCL/Spherepack T42 uses lmax=42 for 73x144.
-        mmax = min(lmax, nlon // 2 - 1)
-        sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
-        sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
-        _thread_local.cache[key] = sh
-    return _thread_local.cache[key]
-
 
 def compute_vort_div(
     u: NDArray[np.float64],
@@ -66,7 +41,7 @@ def compute_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
+    sht_engine: Literal["auto", "ducc0"] = "auto",
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Computes spatial divergence and relative vorticity from u and v wind components.
@@ -78,7 +53,7 @@ def compute_vort_div(
         lmax: Maximum spherical harmonic degree. If None, derived from ntheta.
         geometry: Grid geometry (for ducc0). Default 'CC'.
         nthreads: Number of threads (for ducc0).
-        sht_engine: Transform engine ('auto', 'shtns', 'ducc0').
+        sht_engine: Transform engine ('auto', 'ducc0').
 
     Returns:
         div: Divergence (ntheta, nphi)
@@ -99,35 +74,7 @@ def compute_vort_div(
     # Resolve engine
     resolved_engine = _resolve_engine(sht_engine)
 
-    if resolved_engine == "shtns":
-        if not SHTNS_AVAILABLE:
-            raise ImportError("shtns is requested but not available.")
-        sh = _get_shtns_plan(ntheta, nphi, lmax)
-        # SHTns: spat_to_SHsphtor expects (v_theta, v_phi)
-        # v_theta = v, v_phi = u (points North and East)
-        v_theta = np.ascontiguousarray(v, dtype=np.float64)
-        v_phi = np.ascontiguousarray(u, dtype=np.float64)
-        # Returns S (divergence-like) and T (vorticity-like) coeffs
-        slm = np.zeros(sh.nlm, dtype=np.complex128)
-        tlm = np.zeros(sh.nlm, dtype=np.complex128)
-        sh.spat_to_SHsphtor(v_theta, v_phi, slm, tlm)
-
-        # Scale to get div and vort coefficients
-        # SHTns returns coefficients s, t such that:
-        # V = sum (s Ylm_grad + t Ylm_curl)
-        # In meteorology:
-        # div = -l(l+1)/R * s
-        # vort = -l(l+1)/R * t
-        l_arr = sh.l
-        eigen = (l_arr * (l_arr + 1.0)) / R
-        div_lm = -slm * eigen
-        vort_lm = -tlm * eigen
-
-        div = sh.synth(div_lm)
-        vort = sh.synth(vort_lm)
-        return div, vort
-
-    elif resolved_engine == "ducc0":
+    if resolved_engine == "ducc0":
         if not DUCC0_AVAILABLE:
             raise ImportError("ducc0 is requested but not available.")
 
@@ -195,7 +142,7 @@ def apply_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
+    sht_engine: Literal["auto", "ducc0"] = "auto",
     backend: Literal["serial", "mpi", "dask"] = "serial",
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """
@@ -259,7 +206,7 @@ class Kinematics:
         R: float = R_EARTH_METERS,
         lmax: int | None = None,
         geometry: str = "CC",
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
+        sht_engine: Literal["auto", "ducc0"] = "auto",
     ) -> None:
         """
         Initialize the kinematics calculator.
@@ -268,7 +215,7 @@ class Kinematics:
             R: Planetary radius in meters.
             lmax: Maximum spherical harmonic degree.
             geometry: Grid geometry ('CC', 'DH', etc.).
-            sht_engine: Transform engine ('auto', 'shtns', 'ducc0', 'shtools').
+            sht_engine: Transform engine ('auto', 'ducc0').
         """
         self.R = R
         self.lmax = lmax

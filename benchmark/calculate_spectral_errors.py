@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 from pystormtracker.preprocessing import SpectralFilter
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 
 TEST_CASES = [
@@ -70,7 +70,7 @@ def main():
                 filtered = filt.filter(msl)
                 
                 stats = calculate_stats(filtered, ref)
-                print(f"{case['name']:<10} {engine:<10} {stats['rmse']:<18.8f} {stats['abs_err']:<18.8f} {stats['rel_err']:<18.8e} {stats['corr']:<18.12e}")
+                print(f"{case['name']:<10} {engine:<10} {stats['rmse']:<18.8f} {stats['abs_err']:<18.8f} {stats['rel_err']:<18.12f} {stats['corr']:<18.12f}")
             except Exception as e:
                 print(f"{case['name']:<10} {engine:<10} Error: {e}")
 

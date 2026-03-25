@@ -110,7 +110,7 @@ def test_solid_body_rotation() -> None:
     div, vort = compute_vort_div(u, v, nthreads=1)
 
     # Divergence of solid body rotation should be very close to zero
-    np.testing.assert_allclose(div, 0, atol=1e-10)
+    np.testing.assert_allclose(div, 0, atol=1e-12)
 
     # Vorticity is non-zero
     assert np.max(np.abs(vort)) > 0
