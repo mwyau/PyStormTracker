@@ -42,10 +42,6 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# ducc0 only depends on standard system libraries (libstdc++, libc6),
-# which are already included in the python:slim base image.
-# No additional runtime apt packages are required.
-
 # Create data directory for mounting
 RUN mkdir /data && chmod 777 /data
 
