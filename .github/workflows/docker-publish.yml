@@ -11,16 +11,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
-  cancel-in-progress: ${{ !(github.event.workflow_run.event == 'release' || github.ref_type == 'tag') }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  # Publish to ORG on version tag/branch (v*.*), else to OWNER (personal) for merge to main/manual
-  # We check for both 'v' prefix and a dot to match the v?.?* requirement and avoid false positives
-  IS_STABLE: ${{ (github.event_name == 'workflow_run' && startsWith(github.event.workflow_run.head_branch, 'v') && contains(github.event.workflow_run.head_branch, '.')) || (github.event_name == 'workflow_dispatch' && (github.ref_type == 'tag' || (startsWith(github.ref_name, 'v') && contains(github.ref_name, '.')))) }}
-
-  DOCKER_HUB_REPO: docker.io/${{ env.IS_STABLE == 'true' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-  GHCR_REPO: ghcr.io/${{ env.IS_STABLE == 'true' && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  # Use Org Name for production tags (v*), otherwise use Repository Owner
+  TARGET_OWNER: ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}
+  DOCKER_HUB_REPO: ${{ env.TARGET_OWNER }}/${{ vars.DOCKER_IMAGE_NAME }}
+  GHCR_REPO: ghcr.io/${{ env.TARGET_OWNER }}/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
   build-and-push:
@@ -74,31 +72,12 @@ jobs:
           images: |
             ${{ env.DOCKER_HUB_REPO }}
             ${{ env.GHCR_REPO }}
-          # Determine the symbolic ref to get the correct tags (semver/branch)
-          ref: >-
-            ${{ 
-              github.event_name == 'workflow_run' 
-                ? (
-                    (github.event.workflow_run.event == 'release' || startsWith(github.event.workflow_run.head_branch, 'v')) 
-                      ? format('refs/tags/{0}', github.event.workflow_run.head_branch) 
-                      : format('refs/heads/{0}', github.event.workflow_run.head_branch)
-                  )
-                : github.ref 
-            }}
           tags: |
-            # Tag with 'latest' for main branch (used for personal repo/edge)
-            type=raw,value=latest,enable=${{ (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main') || (github.event_name != 'workflow_run' && github.ref == 'refs/heads/main') }},priority=1000
-            # Tag with 'edge' only for main branch builds
-            type=edge,branch=main,priority=900
-            # Semver tags for releases (includes 'latest')
-            type=semver,pattern=latest,priority=1000
-            type=semver,pattern={{version}},priority=800
-            type=semver,pattern={{major}}.{{minor}},priority=700
-            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0') }},priority=700
-            # Branch tag for all branches except main
-            type=ref,event=branch,enable=${{ github.ref_name != 'main' && !startsWith(github.ref_name, 'v') }},priority=600
-            # Always tag with short SHA
-            type=sha,format=short,prefix=,priority=100
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short,prefix=
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
 
       - name: Build and push Docker image
         id: push
