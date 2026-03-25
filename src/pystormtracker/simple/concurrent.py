@@ -26,6 +26,8 @@ def run_simple_dask(
     filter: bool = True,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
+    taper_points: int = constants.TAPER_DEFAULT,
+    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     **kwargs: float | int | str | None,
 ) -> Tracks:
     import dask
@@ -42,7 +44,11 @@ def run_simple_dask(
         from .tracker import SimpleTracker
 
         data_xr = SimpleTracker().preprocess_standard_track(
-            data_xr, lmin=lmin, lmax=lmax
+            data_xr,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            sht_engine=sht_engine,
         )
 
     detector_obj = SimpleDetector.from_xarray(data_xr)
@@ -103,6 +109,8 @@ def run_simple_mpi(
     filter: bool = True,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
+    taper_points: int = constants.TAPER_DEFAULT,
+    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     **kwargs: float | int | str | None,
 ) -> Tracks:
     from mpi4py import MPI
@@ -123,7 +131,11 @@ def run_simple_mpi(
             from .tracker import SimpleTracker
 
             data_xr = SimpleTracker().preprocess_standard_track(
-                data_xr, lmin=lmin, lmax=lmax
+                data_xr,
+                lmin=lmin,
+                lmax=lmax,
+                taper_points=taper_points,
+                sht_engine=sht_engine,
             )
 
         detector_obj = SimpleDetector.from_xarray(data_xr)

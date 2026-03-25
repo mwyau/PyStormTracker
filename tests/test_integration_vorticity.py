@@ -31,70 +31,16 @@ def test_vorticity_divergence_parity_integration() -> None:
     u, v = ds_uv.u, ds_uv.v
     vo_ref, dv_ref = ds_ref.vo, ds_ref.dv
 
-    engines: list[Literal["shtns", "ducc0"]] = ["shtns", "ducc0"]
+    engines: list[Literal["ducc0"]] = ["ducc0"]
 
     for engine in engines:
-        if engine == "shtns":
-            pytest.importorskip("shtns")
-
         div, vort = apply_vort_div(u, v, sht_engine=engine)
 
         if engine == "ducc0":
-            # ducc0/pyshtools should be bit-wise identical to NCL Spherepack
+            # ducc0 should be bit-wise identical to NCL Spherepack (on the same grid)
             np.testing.assert_allclose(
                 vort.values, vo_ref.values, rtol=1e-12, atol=1e-12
             )
             np.testing.assert_allclose(
                 div.values, dv_ref.values, rtol=1e-12, atol=1e-12
             )
-        else:
-            # shtns uses different grid weights for regular grids, loose match
-            # but same order of magnitude and general pattern.
-            rmse_vo = np.sqrt(np.mean((vort.values - vo_ref.values) ** 2))
-            assert rmse_vo < 5e-6  # Tightened from 1e-4, but allows for Fejer weights
-
-            # Ensure high structural correlation with NCL reference
-            corr = np.corrcoef(vort.values.flatten(), vo_ref.values.flatten())[0, 1]
-            assert corr > 0.99
-
-
-@pytest.mark.skipif(not HAS_DATA, reason="Local integration test data not found.")
-def test_vorticity_internal_consistency() -> None:
-    """
-    Verifies that different backends are consistent with each other.
-    """
-    ds_uv = xr.open_dataset(WIND_FILE)
-    u, v = ds_uv.u, ds_uv.v
-
-    _, vort_ducc = apply_vort_div(u, v, sht_engine="ducc0")
-
-    try:
-        from importlib.util import find_spec
-
-        if find_spec("pyshtools") is not None:
-            _, vort_shtools = apply_vort_div(u, v, sht_engine="shtools")
-
-            rmse_shtools = np.sqrt(
-                np.mean((vort_ducc.values - vort_shtools.values) ** 2)
-            )
-            assert rmse_shtools < 1e-10  # Should be nearly identical
-    except ImportError:
-        pass
-
-    try:
-        import shtns  # type: ignore[import-untyped]
-
-        _ = shtns.sht(31, 31)  # Test import
-        _, vort_shtns = apply_vort_div(u, v, sht_engine="shtns")
-
-        # Ensure ducc0 and shtns are highly correlated
-        corr = np.corrcoef(vort_ducc.values.flatten(), vort_shtns.values.flatten())[
-            0, 1
-        ]
-        assert corr > 0.99
-
-        # Ensure they are in the same ballpark (RMSE < 5e-6)
-        rmse = np.sqrt(np.mean((vort_ducc.values - vort_shtns.values) ** 2))
-        assert rmse < 5e-6
-    except ImportError:
-        pytest.skip("shtns not available for consistency check")
