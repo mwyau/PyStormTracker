@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict, overload
 
-import ducc0  # type: ignore[import-not-found]
+import ducc0
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray

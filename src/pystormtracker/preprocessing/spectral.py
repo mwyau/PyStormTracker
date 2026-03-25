@@ -6,7 +6,7 @@ import warnings
 from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
 
-import ducc0  # type: ignore[import-not-found]
+import ducc0
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
