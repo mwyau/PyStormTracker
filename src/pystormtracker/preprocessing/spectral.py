@@ -142,7 +142,7 @@ def _filter_ducc0_frame(
         frame = frame[::-1, :]
 
     nlat, nlon = frame.shape
-    
+
     # Regular equidistant grid
     geometry = "CC"
     mmax = min(lmax, nlon // 2 - 1)
@@ -163,16 +163,19 @@ def _filter_ducc0_frame(
             mask = l_arr < lmin
             alm[0, mask] = 0.0
 
-        out = ducc0.sht.synthesis_2d(
-            alm=alm,
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            ntheta=nlat,
-            nphi=nlon,
-            geometry=geometry,
-            nthreads=nthreads,
-        )[0]
+        out = cast(
+            NDArray[np.float64],
+            ducc0.sht.synthesis_2d(
+                alm=alm,
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                ntheta=nlat,
+                nphi=nlon,
+                geometry=geometry,
+                nthreads=nthreads,
+            )[0],
+        )
 
         if lat_reverse:
             out = out[::-1, :]
