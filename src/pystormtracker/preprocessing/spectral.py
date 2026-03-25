@@ -33,7 +33,7 @@ def _resolve_engine(
 ) -> Literal["shtns", "ducc0"]:
     """Resolves 'auto' engine to the best available backend."""
     if sht_engine == "auto":
-        return "shtns" if SHTNS_AVAILABLE else "ducc0"
+        return "ducc0"
     return sht_engine
 
 
