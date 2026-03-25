@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict, overload
 
+import ducc0  # type: ignore[import-not-found]
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
@@ -15,23 +16,6 @@ class KinematicsKwargs(TypedDict, total=False):
     geometry: str
     nthreads: int
     sht_engine: str
-
-
-def _resolve_engine(
-    sht_engine: Literal["auto", "ducc0"],
-) -> Literal["ducc0"]:
-    """Resolves 'auto' engine to the best available backend."""
-    if sht_engine == "auto":
-        return "ducc0"
-    return sht_engine
-
-
-try:
-    import ducc0  # type: ignore[import-not-found]
-
-    DUCC0_AVAILABLE = True
-except ImportError:
-    DUCC0_AVAILABLE = False
 
 
 def compute_vort_div(
@@ -72,12 +56,9 @@ def compute_vort_div(
             lmax = ntheta - 1
 
     # Resolve engine
-    resolved_engine = _resolve_engine(sht_engine)
+    resolved_engine = "ducc0" if sht_engine == "auto" else sht_engine
 
     if resolved_engine == "ducc0":
-        if not DUCC0_AVAILABLE:
-            raise ImportError("ducc0 is requested but not available.")
-
         mmax = min(lmax, (nphi - 1) // 2)
 
         # Standard spectral derivation from wind components:

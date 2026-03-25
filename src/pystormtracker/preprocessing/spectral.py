@@ -6,6 +6,7 @@ import warnings
 from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
 
+import ducc0  # type: ignore[import-not-found]
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
@@ -81,7 +82,7 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
         # NCL/Spherepack T42 uses lmax=42 for 73x144.
         mmax = min(lmax, nlon // 2 - 1)
 
-        # Use 4pi normalization to match standard SHTOOLS and Hodges TRACK.
+        # Use 4pi normalization to match NCL/Spherepack and Hodges TRACK.
         sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
         # shtns.sht_reg_poles is the standard equidistant latitude grid including poles.
         # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
@@ -136,8 +137,6 @@ def _filter_ducc0_frame(
     nthreads: int = 1,
 ) -> NDArray[np.float64]:
     """Filters a single 2D frame using ducc0."""
-    import ducc0  # type: ignore[import-not-found]
-
     if lat_reverse:
         frame = frame[::-1, :]
 
