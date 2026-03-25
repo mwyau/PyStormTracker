@@ -8,8 +8,12 @@ from numpy.typing import NDArray
 class TaperFilter:
     """
     A filter that applies a cosine taper to the edges of the domain.
+
     This is often used in TRACK before spherical harmonic filtering to
-    minimize ringing at the boundaries.
+    minimize the Gibbs phenomenon (ringing artifacts) at the boundaries.
+    Since spherical harmonic transforms effectively assume periodicity or
+    symmetry, abrupt changes at the boundaries (e.g. between the North
+    Pole and the first latitude row) can introduce high-frequency noise.
     """
 
     def __init__(self, n_points: int = 10) -> None:
@@ -18,6 +22,8 @@ class TaperFilter:
 
         Args:
             n_points (int): Number of points to taper at the edges.
+                Higher values provide smoother transitions but sacrifice
+                more of the physical data at the boundaries.
         """
         self.n_points = n_points
 
@@ -89,7 +95,12 @@ class TaperFilter:
         return data * mask
 
     def _get_taper(self, n: int) -> NDArray[np.float64]:
-        """Generates a 1D cosine taper vector."""
+        """
+        Generates a 1D cosine taper vector.
+
+        The taper uses a raised cosine (Hanning-like) window at the
+        boundaries to smoothly transition from 0 to 1.
+        """
         taper = np.ones(n, dtype=np.float64)
         if self.n_points <= 0:
             return taper
@@ -97,7 +108,8 @@ class TaperFilter:
         # Ensure n_points doesn't exceed half the dimension size
         n_eff = min(self.n_points, n // 2)
 
-        # Cosine taper from 0 to 1 over n_eff points
+        # Cosine taper from 0 to 1 over n_eff points:
+        # w = 0.5 * (1 - cos(pi * i / n_eff))
         weights = 0.5 * (1.0 - np.cos(np.pi * np.arange(n_eff) / n_eff))
 
         taper[:n_eff] = weights

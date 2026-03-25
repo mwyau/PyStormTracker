@@ -77,14 +77,17 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
 
     key = (nlat, nlon, lmax)
     if key not in _thread_local.cache:
-        # SHTns can handle lmax beyond sampling theorem for analysis,
-        # but results might be aliased if not careful.
-        # NCL/Spherepack T42 uses lmax=42 for 73x144.
+        # mmax is derived from the longitude grid resolution to satisfy the
+        # sampling theorem (mmax < nlon/2).
         mmax = min(lmax, nlon // 2 - 1)
 
-        # Use 4pi normalization to match NCL/Spherepack and Hodges TRACK.
+        # Use 4pi normalization (shtns.sht_fourpi) to ensure parity with
+        # NCL/Spherepack and Hodges TRACK. This ensures coefficients are
+        # scaled such that they represent the amplitude of the harmonics.
         sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
-        # shtns.sht_reg_poles is the standard equidistant latitude grid including poles.
+
+        # shtns.sht_reg_poles is the standard equidistant latitude grid
+        # including poles, which is the most common format for climate data (e.g. ERA5).
         # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
         sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
         _thread_local.cache[key] = sh
@@ -100,6 +103,7 @@ def _filter_shtns_frame(
         frame = frame[::-1, :]
 
     nlat, nlon = frame.shape
+    # Basic check against the sampling theorem limit for the latitude grid.
     grid_lmax = (nlat - 1) // 2
     if lmin > grid_lmax:
         raise ValueError(
@@ -116,7 +120,7 @@ def _filter_shtns_frame(
     # Forward transform (Spatial -> Spectral)
     ylm = sh.analys(frame)
 
-    # Apply Bandpass Mask
+    # Apply Bandpass Mask (Zero out coefficients outside [lmin, lmax])
     mask = (sh.l < lmin) | (sh.l > lmax)
     ylm[mask] = 0.0
 
@@ -142,7 +146,9 @@ def _filter_ducc0_frame(
 
     nlat, nlon = frame.shape
 
-    # Regular equidistant grid
+    # geometry='CC' (Clenshaw-Curtis) assumes an equidistant grid including
+    # the poles, matching standard lat-lon climate data.
+    # For Gaussian grids, 'GL' (Gauss-Legendre) would be more appropriate.
     geometry = "CC"
     mmax = min(lmax, nlon // 2 - 1)
 
@@ -157,6 +163,7 @@ def _filter_ducc0_frame(
         )
 
         # Apply Bandpass Mask
+        # Coefficients are stored in a packed format: for each m, l goes from m to lmax.
         l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
         if lmin > 0:
             mask = l_arr < lmin
@@ -188,7 +195,9 @@ def _filter_ducc0_frame(
 class SpectralFilter:
     """
     Spectral bandpass filter (truncation) for lat-lon grid data.
-    Backends (in order of preference): shtns, ducc0.
+    Backends (in order of preference):
+    - shtns: Highly optimized for performance, requires C library installation.
+    - ducc0: Pure Python/C++ library with no external C dependencies, easy installation.
     """
 
     def __init__(
@@ -206,6 +215,8 @@ class SpectralFilter:
             lmax (int): Maximum total wave number to retain.
             lat_reverse (bool): If True, assume latitude is stored from South to North.
             sht_engine (str): Engine to use ('auto', 'shtns', 'ducc0').
+                - 'shtns' is preferred for high-performance iterative filters.
+                - 'ducc0' is used for robust, thread-safe transforms.
         """
         self.lmin = lmin
         self.lmax = lmax

@@ -59,18 +59,25 @@ def compute_vort_div(
     resolved_engine = "ducc0" if sht_engine == "auto" else sht_engine
 
     if resolved_engine == "ducc0":
+        # mmax calculation follows the sampling theorem: for a longitude grid of
+        # size nphi, the maximum resolvable wavenumber m is (nphi-1)//2 to avoid
+        # aliasing.
         mmax = min(lmax, (nphi - 1) // 2)
 
         # Standard spectral derivation from wind components:
-        # V = (u, v)
+        # For a vector field V = (u, v) on a sphere:
         # div = 1/(R cos lat) * (du/dlon + d(v cos lat)/dlat)
         # vo  = 1/(R cos lat) * (dv/dlon - d(u cos lat)/dlat)
-        # In spectral space, for a vector field expanded into E/B modes:
-        # div_lm = -sqrt(l(l+1))/R * E_lm
-        # vort_lm = sqrt(l(l+1))/R * B_lm
-
-        # Analysis
-        # v_theta = v, v_phi = u (matches NCL Spherepack convention)
+        #
+        # In spherical harmonic space, using E (divergence-like) and
+        # B (vorticity-like) modes:
+        # div_lm = -[sqrt(l(l+1))/R] * E_lm
+        # vort_lm = [sqrt(l(l+1))/R] * B_lm
+        # where the [sqrt(l(l+1))/R] term is the eigenvalue of the vector Laplacian.
+        # Analysis:
+        # ducc0.sht.analysis_2d expects (v_theta, v_phi) for spin-1 (vector) fields.
+        # v_theta (meridional) is v, v_phi (zonal) is u.
+        # This matches the convention used in NCL's Spherepack wrappers.
         vec_map = np.stack((v, u), axis=0).astype(np.float64)
         alm_vec = ducc0.sht.analysis_2d(
             map=vec_map,
@@ -83,7 +90,9 @@ def compute_vort_div(
         alm_E = alm_vec[0]
         alm_B = alm_vec[1]
 
-        # Spectral Scaling
+        # Spectral Scaling:
+        # We apply the eigenvalue of the gradient/curl operators in spectral space.
+        # l_arr contains the degree 'l' for each coefficient in the alm array.
         l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
         eigen_scale = np.sqrt(l_arr * (l_arr + 1.0)) / R
         alm_div = -eigen_scale * alm_E
