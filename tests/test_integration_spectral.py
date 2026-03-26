@@ -87,7 +87,11 @@ def test_spectral_filter_era5_parity_integration(
     ref = ds_ref.msl
 
     filt = SpectralFilter(lmin=case["lmin"], lmax=case["lmax"], sht_engine=engine)
+    import time
+    start_time = time.perf_counter()
     filtered = filt.filter(msl)
+    end_time = time.perf_counter()
+    duration = end_time - start_time
 
     # Ensure extremely high structural correlation (> 0.9999)
     corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
@@ -99,8 +103,15 @@ def test_spectral_filter_era5_parity_integration(
     # shtns: ~0.46 Pa RMSE vs NCL (legacy Spherepack)
     # ducc0: ~0.05 Pa RMSE vs NCL (modern implementation consistency)
     rmse = np.sqrt(np.mean((filtered.values - ref.values) ** 2))
+    
+    # Relative Error: RMSE / Mean Magnitude of the field
+    ref_mean = np.mean(np.abs(ref.values))
+    rel_error = rmse / ref_mean if ref_mean > 0 else 0.0
+
     print(
-        f"\n{engine} (T{case['lmin']}-{case['lmax']}) RMSE: {rmse:.8f}, Correlation: {corr:.12f}"
+        f"\n{engine} (T{case['lmin']}-{case['lmax']}) "
+        f"RMSE: {rmse:.8f}, RelError: {rel_error:.12f}, "
+        f"Corr: {corr:.12f}, Time: {duration:.4f}s"
     )
 
     max_rmse = 1.0 if engine == "shtns" else 0.1
