@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Literal
 
+import dask
 import numpy as np
 
 from ..hodges import constants
@@ -100,10 +101,8 @@ def run_simple_dask(
     taper_points: int = constants.TAPER_DEFAULT,
     **kwargs: float | int | str | None,
 ) -> Tracks:
-    """Dask Orchestrator: Maps detection tasks over time chunks."""
-    from dask.distributed import Client, LocalCluster
-
-    # Prevent OpenMP oversubscription
+    """Dask Orchestrator: Maps detection tasks using threads."""
+    # Prevent OpenMP oversubscription when using threads
     os.environ["OMP_NUM_THREADS"] = "1"
 
     detector_peek = SimpleDetector(
@@ -125,33 +124,30 @@ def run_simple_dask(
     time_dim = detector_peek._loader.get_coords()[0]
     n_frames = data_xr.sizes[time_dim]
 
-    if max_chunk_size is None:
+    if max_chunk_size is None or max_chunk_size <= 0:
         max_chunk_size = 60
 
-    # Create task list
-    cluster = LocalCluster(n_workers=n_workers, threads_per_worker=1)
-    with Client(cluster) as client:
-        futures = []
-        start_idx = 0
-        window_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+    # Ensure we at least split into tasks
+    tasks = []
+    start_idx = 0
+    window_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 
-        while start_idx < n_frames:
-            end_idx = min(start_idx + max_chunk_size, n_frames)
-            chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
+    while start_idx < n_frames:
+        end_idx = min(start_idx + max_chunk_size, n_frames)
+        chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
 
-            # Submit task
-            future = client.submit(
-                _detect_and_link,
-                SimpleDetector.from_xarray(chunk_data),
-                window_size,
-                threshold,
-                mode,
-            )
-            futures.append(future)
-            start_idx = end_idx
+        # Create delayed task
+        task = dask.delayed(_detect_and_link)(
+            SimpleDetector.from_xarray(chunk_data),
+            window_size,
+            threshold,
+            mode,
+        )
+        tasks.append(task)
+        start_idx = end_idx
 
-        # Gather
-        results = client.gather(futures)
+    # Execute using threaded scheduler
+    results = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
 
     # Flatten and Link
     flat_raw = [step for sublist in results for step in sublist]
