@@ -58,9 +58,8 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- **SHT Backends**: Supported engines for filtering and derivatives:
-  - `ducc0`: **Core dependency**. High-precision C++ library (Distinctly Useful Code Collection) providing high performance spherical harmonic transforms.
-  - `ducc0`: (Optional) High-performance C library (`pip install PyStormTracker[ducc0]`). Recommended for large datasets.
+- **SHT Backend**: `ducc0` (**Core dependency**). High-precision C++ library providing high performance spherical harmonic transforms. Evaluated against `SHTns` and `pyshtools` and selected for superior multi-frame performance and portability.
+- **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
