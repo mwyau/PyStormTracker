@@ -20,9 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - name: amd64
+            arch: amd64
             os: ubuntu-24.04
-          - arch: arm64
+          - name: arm64
+            arch: arm64
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
     if: |
@@ -34,12 +36,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-    env:
-      DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-      GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
     outputs:
       digest: ${{ steps.push.outputs.digest }}
-      tags: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -63,23 +61,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: |
-            ${{ env.DOCKER_HUB_IMAGE }}
-            ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short,prefix=
-          flavor: |
-            suffix=-${{ matrix.arch }}
-            latest=false
-
-      - name: Build and push Docker image
+      - name: Build and push Docker image by digest
         id: push
         uses: docker/build-push-action@v7
         with:
@@ -88,8 +70,7 @@ jobs:
           provenance: false
           sbom: false
           platforms: linux/${{ matrix.arch }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=registry
           cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
 
@@ -133,19 +114,26 @@ jobs:
 
       - name: Create and push manifest
         id: manifest
+        env:
+          DIGESTS: ${{ needs.build-and-push-platform.outputs.digest }}
         run: |
+          amd64_digest=$(echo $DIGESTS | jq -r .amd64)
+          arm64_digest=$(echo $DIGESTS | jq -r .arm64)
+
           tags_with_commas="${{ steps.meta.outputs.tags }}"
           tags_with_spaces=$(echo "$tags_with_commas" | tr ',' ' ')
-          digest=""
+          manifest_digest=""
+
           for tag in $tags_with_spaces; do
             echo "Creating manifest for $tag"
-            docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64"
+            docker buildx imagetools create -t "$tag" 
+              "${{ env.DOCKER_HUB_IMAGE }}@${amd64_digest}" 
+              "${{ env.DOCKER_HUB_IMAGE }}@${arm64_digest}"
             if [[ "$tag" == *":latest" ]]; then
-              # Get the digest of the 'latest' manifest to use for attestation
-              digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
+              manifest_digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
             fi
           done
-          echo "digest=$digest" >> $GITHUB_OUTPUT
+          echo "digest=$manifest_digest" >> $GITHUB_OUTPUT
 
       - name: Attest Provenance (Docker Hub)
         if: steps.manifest.outputs.digest != ''
