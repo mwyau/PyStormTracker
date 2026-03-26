@@ -1,15 +1,101 @@
 from __future__ import annotations
 
 import os
-from typing import Literal
+import timeit
+from typing import TYPE_CHECKING, Literal
 
-import dask
-import numpy as np
+if TYPE_CHECKING:
+    from mpi4py import MPI
 
 from ..hodges import constants
 from ..models import TimeRange, Tracks
+from ..models.tracker import RawDetectionStep
 from .detector import SimpleDetector
 from .tracker import _detect_and_link, _link_centers
+
+
+def run_simple_dask(
+    infile: str,
+    varname: str,
+    time_range: TimeRange | None,
+    mode: Literal["min", "max"],
+    n_workers: int | None,
+    max_chunk_size: int | None = None,
+    threshold: float | None = None,
+    engine: str | None = None,
+    filter: bool = True,
+    lmin: int = constants.LMIN_DEFAULT,
+    lmax: int = constants.LMAX_DEFAULT,
+    taper_points: int = constants.TAPER_DEFAULT,
+    **kwargs: float | int | str | None,
+) -> Tracks:
+    """Dask Orchestrator: Maps detection tasks using threads."""
+    import dask
+
+    if n_workers is None or n_workers <= 0:
+        n_workers = min(os.cpu_count() or 1, 4)
+
+    detector_peek = SimpleDetector(
+        pathname=infile, varname=varname, time_range=time_range, engine=engine
+    )
+    data_xr = detector_peek.get_xarray()
+
+    if filter:
+        from .tracker import SimpleTracker
+
+        data_xr = SimpleTracker().preprocess_standard_track(
+            data_xr,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+        )
+
+    detector_obj = SimpleDetector.from_xarray(data_xr)
+
+    # Decouple task chunks from worker count to prevent OOM on high-res data.
+    times = detector_obj.get_time()
+    total_steps = len(times) if times is not None else 1
+
+    if max_chunk_size is None or max_chunk_size <= 0:
+        max_chunk_size = 60
+    else:
+        max_chunk_size = max(1, max_chunk_size)
+
+    # Ensure we at least split into n_workers tasks
+    n_splits = max(n_workers, (total_steps + max_chunk_size - 1) // max_chunk_size)
+
+    detectors = detector_obj.split(n_splits)
+
+    t0 = timeit.default_timer()
+    t1 = timeit.default_timer()
+    print(f"    [Dask] Setup time: {t1 - t0:.4f}s")
+    print(
+        f"    [Dask] Splitting {total_steps} steps into {n_splits} "
+        f"tasks (across {n_workers} threads)"
+    )
+
+    size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+    tasks = [
+        dask.delayed(_detect_and_link)(d, size, threshold, mode)  # type: ignore[attr-defined]
+        for d in detectors
+    ]
+
+    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)  # type: ignore[attr-defined]
+
+    # Flatten chunks into a single sequence of steps
+    all_raw_steps: list[RawDetectionStep] = [
+        step for chunk in all_raw_chunks for step in chunk
+    ]
+
+    t2 = timeit.default_timer()
+    print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
+
+    # Centralized linking guarantees bit-wise identity with Serial
+    t3 = timeit.default_timer()
+    tracks = _link_centers(all_raw_steps, time_range=time_range)
+    t4 = timeit.default_timer()
+    print(f"    [Dask] Linking time: {t4 - t3:.4f}s")
+    return tracks
 
 
 def run_simple_mpi(
@@ -19,7 +105,7 @@ def run_simple_mpi(
     mode: Literal["min", "max"],
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = False,
+    filter: bool = True,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
@@ -28,127 +114,59 @@ def run_simple_mpi(
     """MPI Orchestrator: Splits frames across ranks, gathers raw detections."""
     from mpi4py import MPI
 
-    comm = MPI.COMM_WORLD
+    comm: MPI.Intracomm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
+    root = 0
 
-    # Prevent OpenMP oversubscription
-    os.environ["OMP_NUM_THREADS"] = "1"
-
-    # Step 1: Initialize metadata peek
-    detector_peek = SimpleDetector(
-        pathname=infile, varname=varname, time_range=time_range, engine=engine
-    )
-    if filter:
-        from .tracker import SimpleTracker
-
-        tracker = SimpleTracker()
-        data_xr = tracker.preprocess_standard_track(
-            detector_peek.get_xarray(),
-            lmin=lmin,
-            lmax=lmax,
-            taper_points=taper_points,
+    t0 = timeit.default_timer()
+    if rank == root:
+        detector_peek = SimpleDetector(
+            pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
-    else:
         data_xr = detector_peek.get_xarray()
 
-    time_dim = detector_peek._loader.get_coords()[0]
-    full_times = data_xr[time_dim].values
-    n_frames = len(full_times)
+        if filter:
+            from .tracker import SimpleTracker
 
-    # Parallel split
-    chunk_size = n_frames // size
-    remainder = n_frames % size
-    s_idx = rank * chunk_size + min(rank, remainder)
-    e_idx = (rank + 1) * chunk_size + min(rank + 1, remainder)
+            data_xr = SimpleTracker().preprocess_standard_track(
+                data_xr,
+                lmin=lmin,
+                lmax=lmax,
+                taper_points=taper_points,
+            )
 
-    if s_idx < e_idx:
-        # Step 2: Extract local frames
-        local_data = data_xr.isel({time_dim: slice(s_idx, e_idx)})
-        local_detector = SimpleDetector.from_xarray(local_data)
-
-        # Step 3: Local Detection
-        window_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
-        local_raw = _detect_and_link(
-            local_detector, size=window_size, threshold=threshold, mode=mode
-        )
+        detector_obj = SimpleDetector.from_xarray(data_xr)
+        detectors: list[SimpleDetector] | None = detector_obj.split(size)
     else:
-        local_raw = []
+        detectors = None
 
-    # Step 4: Gather
-    all_raw = comm.gather(local_raw, root=0)
+    detector: SimpleDetector = comm.scatter(detectors, root=root)
+    t_scatter = timeit.default_timer()
+    if rank == root:
+        print(f"    [MPI] Prep & Scatter time: {t_scatter - t0:.4f}s")
 
-    # Step 5: Final Link
-    if rank == 0:
-        flat_raw = [step for sublist in all_raw for step in sublist]  # type: ignore[union-attr]
-        return _link_centers(flat_raw, time_range=detector_peek.time_range)
+    t1 = timeit.default_timer()
+    ext_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+    raw_chunk = _detect_and_link(
+        detector, size=ext_size, threshold=threshold, mode=mode
+    )
 
+    # Gather all raw chunks at root
+    all_raw_chunks = comm.gather(raw_chunk, root=root)
+    t3 = timeit.default_timer()
+
+    if rank == root:
+        print(f"    [MPI] Detection & Gather time: {t3 - t1:.4f}s")
+        assert all_raw_chunks is not None
+        all_raw_steps: list[RawDetectionStep] = [
+            step for chunk in all_raw_chunks for step in chunk
+        ]
+        t4 = timeit.default_timer()
+        tracks = _link_centers(all_raw_steps, time_range=time_range)
+        t5 = timeit.default_timer()
+        print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
+        return tracks
+
+    # Non-root ranks return empty Tracks
     return Tracks()
-
-
-def run_simple_dask(
-    infile: str,
-    varname: str,
-    time_range: TimeRange | None,
-    mode: Literal["min", "max"],
-    n_workers: int | None = None,
-    max_chunk_size: int | None = None,
-    threshold: float | None = None,
-    engine: str | None = None,
-    filter: bool = False,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
-    **kwargs: float | int | str | None,
-) -> Tracks:
-    """Dask Orchestrator: Maps detection tasks using threads."""
-    # Prevent OpenMP oversubscription when using threads
-    os.environ["OMP_NUM_THREADS"] = "1"
-
-    detector_peek = SimpleDetector(
-        pathname=infile, varname=varname, time_range=time_range, engine=engine
-    )
-    if filter:
-        from .tracker import SimpleTracker
-
-        tracker = SimpleTracker()
-        data_xr = tracker.preprocess_standard_track(
-            detector_peek.get_xarray(),
-            lmin=lmin,
-            lmax=lmax,
-            taper_points=taper_points,
-        )
-    else:
-        data_xr = detector_peek.get_xarray()
-
-    time_dim = detector_peek._loader.get_coords()[0]
-    n_frames = data_xr.sizes[time_dim]
-
-    if max_chunk_size is None or max_chunk_size <= 0:
-        max_chunk_size = 60
-
-    # Ensure we at least split into tasks
-    tasks = []
-    start_idx = 0
-    window_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
-
-    while start_idx < n_frames:
-        end_idx = min(start_idx + max_chunk_size, n_frames)
-        chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
-
-        # Create delayed task
-        task = dask.delayed(_detect_and_link)(
-            SimpleDetector.from_xarray(chunk_data),
-            window_size,
-            threshold,
-            mode,
-        )
-        tasks.append(task)
-        start_idx = end_idx
-
-    # Execute using threaded scheduler
-    results = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
-
-    # Flatten and Link
-    flat_raw = [step for sublist in results for step in sublist]
-    return _link_centers(flat_raw, time_range=detector_peek.time_range)
