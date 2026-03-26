@@ -20,11 +20,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: amd64
-            arch: amd64
+          - arch: amd64
             os: ubuntu-24.04
-          - name: arm64
-            arch: arm64
+          - arch: arm64
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
     if: |
@@ -36,8 +34,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
+    env:
+      DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+      GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -61,7 +60,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
 
-      - name: Build and push Docker image by digest
+      - name: Build and push Docker image with SHA tag
         id: push
         uses: docker/build-push-action@v7
         with:
@@ -70,7 +69,9 @@ jobs:
           provenance: false
           sbom: false
           platforms: linux/${{ matrix.arch }}
-          outputs: type=registry
+          tags: |
+            ${{ env.DOCKER_HUB_IMAGE }}:${{ github.event.workflow_run.head_sha || github.sha }}-${{ matrix.arch }}
+            ${{ env.GHCR_IMAGE }}:${{ github.event.workflow_run.head_sha || github.sha }}-${{ matrix.arch }}
           cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
 
@@ -114,21 +115,17 @@ jobs:
 
       - name: Create and push manifest
         id: manifest
-        env:
-          DIGESTS: ${{ needs.build-and-push-platform.outputs.digest }}
         run: |
-          amd64_digest=$(echo $DIGESTS | jq -r .amd64)
-          arm64_digest=$(echo $DIGESTS | jq -r .arm64)
-
           tags_with_commas="${{ steps.meta.outputs.tags }}"
           tags_with_spaces=$(echo "$tags_with_commas" | tr ',' ' ')
           manifest_digest=""
 
           for tag in $tags_with_spaces; do
+            base_image=$(echo "$tag" | cut -d: -f1)
             echo "Creating manifest for $tag"
             docker buildx imagetools create -t "$tag" 
-              "${{ env.DOCKER_HUB_IMAGE }}@${amd64_digest}" 
-              "${{ env.DOCKER_HUB_IMAGE }}@${arm64_digest}"
+              "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-amd64" 
+              "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-arm64"
             if [[ "$tag" == *":latest" ]]; then
               manifest_digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
             fi
