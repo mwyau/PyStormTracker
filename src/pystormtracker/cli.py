@@ -57,7 +57,6 @@ def run_tracker(
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
     overlap: int = model_constants.OVERLAP_DEFAULT,
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -85,7 +84,7 @@ def run_tracker(
         try:
             from mpi4py import MPI
 
-            rank = MPI.COMM_WORLD.Get_rank()
+            rank = comm.Get_rank() if (comm := MPI.COMM_WORLD) else 0
             if n_workers is None:
                 n_workers = MPI.COMM_WORLD.Get_size()
         except ImportError:
@@ -113,28 +112,24 @@ def run_tracker(
     if algorithm == "simple":
         tracker = SimpleTracker()
     else:
-        # Pass only provided values to use tracker defaults
-        hodges_kwargs: dict[str, float | int | np.ndarray] = {}
-        if w1 is not None:
-            hodges_kwargs["w1"] = w1
-        if w2 is not None:
-            hodges_kwargs["w2"] = w2
-        if dmax is not None:
-            hodges_kwargs["dmax"] = dmax
-        if phimax is not None:
-            hodges_kwargs["phimax"] = phimax
-        if n_iterations is not None:
-            hodges_kwargs["n_iterations"] = n_iterations
-        if min_lifetime is not None:
-            hodges_kwargs["min_lifetime"] = min_lifetime
-        if max_missing is not None:
-            hodges_kwargs["max_missing"] = max_missing
-        if zones is not None:
-            hodges_kwargs["zones"] = zones
-        if adapt_params is not None:
-            hodges_kwargs["adapt_params"] = adapt_params
-
-        tracker = HodgesTracker(**hodges_kwargs)  # type: ignore[arg-type]
+        # Initialize with standard defaults and override if provided
+        tracker = HodgesTracker(
+            w1=w1 if w1 is not None else constants.W1_DEFAULT,
+            w2=w2 if w2 is not None else constants.W2_DEFAULT,
+            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
+            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
+            n_iterations=n_iterations
+            if n_iterations is not None
+            else constants.ITERATIONS_DEFAULT,
+            min_lifetime=min_lifetime
+            if min_lifetime is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing=max_missing
+            if max_missing is not None
+            else constants.MISSING_DEFAULT,
+            zones=zones,
+            adapt_params=adapt_params,
+        )
 
     tracks = tracker.track(
         infile=infile,
@@ -153,7 +148,6 @@ def run_tracker(
         lmax=lmax,
         taper_points=taper_points,
         overlap=overlap,
-        sht_engine=sht_engine,
     )
 
     # Export Phase
@@ -239,13 +233,6 @@ def parse_args() -> Namespace:
         help="Disable default T5-42 spectral filtering.",
     )
     # Default is determined in main() based on algorithm
-
-    general.add_argument(
-        "--sht-engine",
-        choices=["auto", "shtns", "ducc0"],
-        default="auto",
-        help="SHT backend for filtering and derivatives. Default 'auto'.",
-    )
 
     general.add_argument(
         "-n", "--num", type=int, help="Number of time steps to process."
@@ -464,7 +451,6 @@ def main() -> None:
         lmax=lmax,
         taper_points=args.taper,
         overlap=args.overlap,
-        sht_engine=args.sht_engine,
     )
 
 

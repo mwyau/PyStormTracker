@@ -27,9 +27,9 @@ def run_simple_dask(
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     **kwargs: float | int | str | None,
 ) -> Tracks:
+    """Dask Orchestrator: Maps detection tasks using threads."""
     import dask
 
     if n_workers is None or n_workers <= 0:
@@ -48,7 +48,6 @@ def run_simple_dask(
             lmin=lmin,
             lmax=lmax,
             taper_points=taper_points,
-            sht_engine=sht_engine,
         )
 
     detector_obj = SimpleDetector.from_xarray(data_xr)
@@ -110,9 +109,9 @@ def run_simple_mpi(
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     **kwargs: float | int | str | None,
 ) -> Tracks:
+    """MPI Orchestrator: Splits frames across ranks, gathers raw detections."""
     from mpi4py import MPI
 
     comm: MPI.Intracomm = MPI.COMM_WORLD
@@ -135,7 +134,6 @@ def run_simple_mpi(
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
-                sht_engine=sht_engine,
             )
 
         detector_obj = SimpleDetector.from_xarray(data_xr)

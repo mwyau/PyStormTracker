@@ -26,7 +26,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 - **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, executing with C-level efficiency while releasing the GIL for multi-process execution.
 - **Multiple Algorithms**:
   - **Simple (Default)**: Fast, heuristic linking optimized for higher resolutions.
-  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization.
+  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization. **[Accuracy Metrics](docs/spectral_accuracy.md)**.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
 - **Scalable Backends**: 
   - **Serial**: Standard sequential execution. Default fallback.
@@ -58,10 +58,8 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- **SHT Backends**: Supported engines for filtering and derivatives:
-  - `ducc0`: **Core dependency**. High-precision C++ library (Distinctly Useful Code Collection) providing high performance spherical harmonic transforms.
-  - `shtns`: (Optional) High-performance C library (`pip install PyStormTracker[shtns]`). Recommended for large datasets.
-- **Windows**: GRIB support is experimental. SHTns is not supported on Windows; `ducc0` will be used automatically.
+- **SHT Backend**: `ducc0` (**Core dependency**). High-precision C++ library providing high performance spherical harmonic transforms. Evaluated against `SHTns` and `pyshtools` and selected for superior multi-frame performance and portability.
+- **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
@@ -72,7 +70,6 @@ Using `pip`:
 pip install PyStormTracker
 
 # With optional components
-pip install PyStormTracker[hodges]  # Includes SHTns for Hodges algorithm
 pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
@@ -134,7 +131,6 @@ stormtracker -i data.nc -v msl -o my_tracks.txt
 | `--threshold` | `-t` | Intensity threshold for feature detection. |
 | `--filter-range` | | Spectral filter range (min-max). Default '5-42'. |
 | `--no-filter` | | Disable default T5-42 spectral filtering. |
-| `--sht-engine` | | SHT backend: `auto`, `shtns`, `ducc0`. |
 | `--num` | `-n` | Number of time steps to process. |
 | **Performance** | | |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |

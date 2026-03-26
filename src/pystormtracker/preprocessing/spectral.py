@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import threading
 import warnings
 from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
@@ -11,13 +10,6 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-try:
-    import shtns  # type: ignore[import-untyped]
-
-    SHTNS_AVAILABLE = True
-except ImportError:
-    SHTNS_AVAILABLE = False
-
 
 class FilterKwargs(TypedDict, total=False):
     lmin: int
@@ -25,112 +17,23 @@ class FilterKwargs(TypedDict, total=False):
     lat_reverse: bool
     backend: str
     nthreads: int
-    sht_engine: str
-
-
-def _resolve_engine(
-    sht_engine: Literal["auto", "shtns", "ducc0"],
-) -> Literal["shtns", "ducc0"]:
-    """Resolves 'auto' engine to the best available backend."""
-    if sht_engine == "auto":
-        return "ducc0"
-    return sht_engine
 
 
 def _get_filter_config(
-    sht_engine: Literal["auto", "shtns", "ducc0"],
     lmin: int,
     lmax: int,
     lat_reverse: bool,
     nthreads: int = 1,
 ) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
-    """Returns the filter function and kwargs for the resolved engine."""
-    resolved_engine = _resolve_engine(sht_engine)
+    """Returns the filter function and kwargs for the ducc0 engine."""
     kwargs: FilterKwargs = {
         "lmin": lmin,
         "lmax": lmax,
         "lat_reverse": lat_reverse,
+        "nthreads": nthreads,
     }
 
-    if resolved_engine == "shtns":
-        if not SHTNS_AVAILABLE:
-            raise ImportError("shtns is requested but not available.")
-        return _filter_shtns_frame, kwargs
-
-    # ducc0
-    kwargs["nthreads"] = nthreads
-
     return _filter_ducc0_frame, kwargs
-
-
-# Thread-local storage to ensure each Dask thread has its own SHTns object.
-# Sharing one SHTns object across threads is UNSAFE due to internal buffers.
-_thread_local = threading.local()
-
-
-def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
-    """
-    Retrieves or creates an SHTns plan for the current thread.
-    """
-    if not hasattr(_thread_local, "cache"):
-        _thread_local.cache = {}
-
-    key = (nlat, nlon, lmax)
-    if key not in _thread_local.cache:
-        # mmax is derived from the longitude grid resolution to satisfy the
-        # sampling theorem (mmax < nlon/2).
-        mmax = min(lmax, nlon // 2 - 1)
-
-        # Use 4pi normalization (shtns.sht_fourpi) to ensure parity with
-        # NCL/Spherepack and Hodges TRACK. This ensures coefficients are
-        # scaled such that they represent the amplitude of the harmonics.
-        sh = shtns.sht(lmax, mmax, norm=shtns.sht_fourpi)
-
-        # shtns.sht_reg_poles is the standard equidistant latitude grid
-        # including poles, which is the most common format for climate data (e.g. ERA5).
-        # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
-        sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
-        _thread_local.cache[key] = sh
-
-    return _thread_local.cache[key]
-
-
-def _filter_shtns_frame(
-    frame: NDArray[np.float64], lmin: int, lmax: int, lat_reverse: bool = False
-) -> NDArray[np.float64]:
-    """Filters a single 2D frame using SHTns."""
-    if lat_reverse:
-        frame = frame[::-1, :]
-
-    nlat, nlon = frame.shape
-    # Basic check against the sampling theorem limit for the latitude grid.
-    grid_lmax = (nlat - 1) // 2
-    if lmin > grid_lmax:
-        raise ValueError(
-            f"Unsupported shape for spectral filter: {frame.shape}. "
-            f"Grid resolution (lmax={grid_lmax}) is too low for lmin={lmin}."
-        )
-
-    # Ensure frame is contiguous for SHTns C-routines
-    frame = np.ascontiguousarray(frame, dtype=np.float64)
-
-    # Resolve plan for this thread.
-    sh = _get_shtns_plan(nlat, nlon, lmax)
-
-    # Forward transform (Spatial -> Spectral)
-    ylm = sh.analys(frame)
-
-    # Apply Bandpass Mask (Zero out coefficients outside [lmin, lmax])
-    mask = (sh.l < lmin) | (sh.l > lmax)
-    ylm[mask] = 0.0
-
-    # Backward transform (Spectral -> Spatial)
-    out = cast(NDArray[np.float64], sh.synth(ylm))
-
-    if lat_reverse:
-        out = out[::-1, :]
-
-    return out
 
 
 def _filter_ducc0_frame(
@@ -194,10 +97,7 @@ def _filter_ducc0_frame(
 
 class SpectralFilter:
     """
-    Spectral bandpass filter (truncation) for lat-lon grid data.
-    Backends (in order of preference):
-    - shtns: Highly optimized for performance, requires C library installation.
-    - ducc0: Pure Python/C++ library with no external C dependencies, easy installation.
+    Spectral bandpass filter (truncation) for lat-lon grid data using ducc0.
     """
 
     def __init__(
@@ -205,7 +105,6 @@ class SpectralFilter:
         lmin: int = 5,
         lmax: int = 42,
         lat_reverse: bool = False,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     ) -> None:
         """
         Initialize the filter with wave number bounds.
@@ -214,14 +113,10 @@ class SpectralFilter:
             lmin (int): Minimum total wave number to retain.
             lmax (int): Maximum total wave number to retain.
             lat_reverse (bool): If True, assume latitude is stored from South to North.
-            sht_engine (str): Engine to use ('auto', 'shtns', 'ducc0').
-                - 'shtns' is preferred for high-performance iterative filters.
-                - 'ducc0' is used for robust, thread-safe transforms.
         """
         self.lmin = lmin
         self.lmax = lmax
         self.lat_reverse = lat_reverse
-        self.sht_engine = sht_engine
 
     @overload
     def filter(
@@ -255,7 +150,7 @@ class SpectralFilter:
         if isinstance(data, np.ndarray):
             nthreads = 1 if backend in ("mpi", "dask") else 0
             filter_func, kwargs = _get_filter_config(
-                self.sht_engine, self.lmin, self.lmax, self.lat_reverse, nthreads
+                self.lmin, self.lmax, self.lat_reverse, nthreads
             )
 
             if data.ndim == 2:
@@ -274,7 +169,6 @@ class SpectralFilter:
             self.lmax,
             lat_reverse=self.lat_reverse,
             backend=backend,
-            sht_engine=self.sht_engine,
         )
 
 
@@ -284,10 +178,9 @@ def apply_spectral_filter(
     lmax: int = 42,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
 ) -> xr.DataArray:
     """
-    Applies a spectral bandpass filter to the input DataArray.
+    Applies a spectral bandpass filter to the input DataArray using ducc0.
 
     Args:
         data (xr.DataArray): Input data with lat/lon dimensions.
@@ -295,7 +188,6 @@ def apply_spectral_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-        sht_engine (str): Engine. Options: 'auto', 'shtns', 'ducc0'.
 
     Returns:
         xr.DataArray: The filtered data.
@@ -317,9 +209,7 @@ def apply_spectral_filter(
         )
 
     nthreads = 1 if backend in ("mpi", "dask") else 0
-    filter_func, kwargs = _get_filter_config(
-        sht_engine, lmin, lmax, lat_reverse, nthreads
-    )
+    filter_func, kwargs = _get_filter_config(lmin, lmax, lat_reverse, nthreads)
 
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 

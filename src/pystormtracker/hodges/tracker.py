@@ -80,7 +80,6 @@ class HodgesTracker(Tracker):
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     ) -> xr.DataArray:
         """
         Applies standard TRACK preprocessing: Tapering -> Spherical Harmonic Filter.
@@ -95,7 +94,7 @@ class HodgesTracker(Tracker):
             data = cast(xr.DataArray, taper.filter(data))
 
         # 2. Spectral Filtering
-        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax, sht_engine=sht_engine)
+        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
         data = spectral_filter.filter(data)
 
         return data
@@ -162,7 +161,6 @@ class HodgesTracker(Tracker):
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """
@@ -184,7 +182,6 @@ class HodgesTracker(Tracker):
             filter: If True, apply spectral filtering.
             lmin, lmax: Spectral truncation range (default T5-42).
             taper_points: Boundary tapering points.
-            sht_engine: SHT backend engine.
         """
         import timeit
 
@@ -208,7 +205,6 @@ class HodgesTracker(Tracker):
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
-                sht_engine=sht_engine,
             )
         t1 = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")

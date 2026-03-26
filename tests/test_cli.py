@@ -60,8 +60,6 @@ def test_parse_args() -> None:
         "serial",
         "-w",
         "4",
-        "--sht-engine",
-        "ducc0",
     ]
     with patch("sys.argv", test_args):
         args = parse_args()
@@ -73,7 +71,6 @@ def test_parse_args() -> None:
         assert args.mode == "max"
         assert args.backend == "serial"
         assert args.workers == 4
-        assert args.sht_engine == "ducc0"
 
 
 def test_main(msl_data: str, tmp_path: Path) -> None:

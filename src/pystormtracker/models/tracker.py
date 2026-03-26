@@ -41,6 +41,5 @@ class Tracker(Protocol):
         lmin: int = 5,
         lmax: int = 42,
         taper_points: int = 0,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
         **kwargs: float | int | str | None,
     ) -> Tracks: ...

@@ -53,16 +53,12 @@ grib = [
 netcdf4 = [
     "netCDF4>=1.6.1",
 ]
-shtns = [
-    "shtns>=3.7.3 ; platform_machine != 'aarch64' and platform_machine != 'arm64'",
-]
 all = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
     "mpi4py>=4.1.0",
     "netCDF4>=1.6.1",
-    "shtns>=3.7.3 ; platform_machine != 'aarch64' and platform_machine != 'arm64'",
 ]
 docs = [
     "myst-parser>=5.0.0",
@@ -157,4 +153,4 @@ exclude_lines = [
 
 [tool.uv]
 link-mode = "copy"
-no-binary-package = ["ducc0", "shtns"]
+no-binary-package = ["ducc0"]

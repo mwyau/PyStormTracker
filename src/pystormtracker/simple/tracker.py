@@ -50,10 +50,9 @@ class SimpleTracker:
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
     ) -> xr.DataArray:
         """
-        Applies standard spectral preprocessing.
+        Applies standard spectral preprocessing using ducc0.
         """
         from ..preprocessing.spectral import SpectralFilter
         from ..preprocessing.taper import TaperFilter
@@ -70,7 +69,7 @@ class SimpleTracker:
             data = cast(xr.DataArray, taper.filter(data))
 
         # 2. Spectral Filtering
-        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax, sht_engine=sht_engine)
+        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
         data = spectral_filter.filter(data)
 
         return data
@@ -87,7 +86,6 @@ class SimpleTracker:
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -104,7 +102,6 @@ class SimpleTracker:
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
-                sht_engine=sht_engine,
             )
         t_pre = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t_pre - t0:.4f}s")
@@ -142,7 +139,6 @@ class SimpleTracker:
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
-        sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -175,7 +171,6 @@ class SimpleTracker:
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
-                sht_engine=sht_engine,
                 **kwargs,
             )
         elif backend == "dask":
@@ -194,7 +189,6 @@ class SimpleTracker:
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
-                sht_engine=sht_engine,
                 **kwargs,
             )
         else:
@@ -209,7 +203,6 @@ class SimpleTracker:
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
-                sht_engine=sht_engine,
                 **kwargs,
             )
 

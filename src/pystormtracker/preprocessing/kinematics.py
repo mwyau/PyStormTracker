@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, TypedDict, overload
+from typing import Literal, TypedDict, cast, overload
 
 import ducc0
 import numpy as np
@@ -15,7 +15,6 @@ class KinematicsKwargs(TypedDict, total=False):
     lmax: int | None
     geometry: str
     nthreads: int
-    sht_engine: str
 
 
 def compute_vort_div(
@@ -25,10 +24,10 @@ def compute_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    sht_engine: Literal["auto", "ducc0"] = "auto",
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
-    Computes spatial divergence and relative vorticity from u and v wind components.
+    Computes spatial divergence and relative vorticity from u and v wind components
+    using ducc0.
 
     Args:
         u: Zonal wind (ntheta, nphi).
@@ -37,7 +36,6 @@ def compute_vort_div(
         lmax: Maximum spherical harmonic degree. If None, derived from ntheta.
         geometry: Grid geometry (for ducc0). Default 'CC'.
         nthreads: Number of threads (for ducc0).
-        sht_engine: Transform engine ('auto', 'ducc0').
 
     Returns:
         div: Divergence (ntheta, nphi)
@@ -55,74 +53,68 @@ def compute_vort_div(
         else:
             lmax = ntheta - 1
 
-    # Resolve engine
-    resolved_engine = "ducc0" if sht_engine == "auto" else sht_engine
+    # mmax calculation follows the sampling theorem: for a longitude grid of
+    # size nphi, the maximum resolvable wavenumber m is (nphi-1)//2 to avoid
+    # aliasing.
+    mmax = min(lmax, (nphi - 1) // 2)
 
-    if resolved_engine == "ducc0":
-        # mmax calculation follows the sampling theorem: for a longitude grid of
-        # size nphi, the maximum resolvable wavenumber m is (nphi-1)//2 to avoid
-        # aliasing.
-        mmax = min(lmax, (nphi - 1) // 2)
+    # Standard spectral derivation from wind components:
+    # For a vector field V = (u, v) on a sphere:
+    # div = 1/(R cos lat) * (du/dlon + d(v cos lat)/dlat)
+    # vo  = 1/(R cos lat) * (dv/dlon - d(u cos lat)/dlat)
+    #
+    # In spherical harmonic space, using E (divergence-like) and
+    # B (vorticity-like) modes:
+    # div_lm = -[sqrt(l(l+1))/R] * E_lm
+    # vort_lm = [sqrt(l(l+1))/R] * B_lm
+    # where the [sqrt(l(l+1))/R] term is the eigenvalue of the vector Laplacian.
+    # Analysis:
+    # ducc0.sht.analysis_2d expects (v_theta, v_phi) for spin-1 (vector) fields.
+    # v_theta (meridional) is v, v_phi (zonal) is u.
+    # This matches the convention used in NCL's Spherepack wrappers.
+    vec_map = np.stack((v, u), axis=0).astype(np.float64)
+    alm_vec = ducc0.sht.analysis_2d(
+        map=vec_map,
+        spin=1,
+        lmax=lmax,
+        mmax=mmax,
+        geometry=geometry,
+        nthreads=nthreads,
+    )
+    alm_E = alm_vec[0]
+    alm_B = alm_vec[1]
 
-        # Standard spectral derivation from wind components:
-        # For a vector field V = (u, v) on a sphere:
-        # div = 1/(R cos lat) * (du/dlon + d(v cos lat)/dlat)
-        # vo  = 1/(R cos lat) * (dv/dlon - d(u cos lat)/dlat)
-        #
-        # In spherical harmonic space, using E (divergence-like) and
-        # B (vorticity-like) modes:
-        # div_lm = -[sqrt(l(l+1))/R] * E_lm
-        # vort_lm = [sqrt(l(l+1))/R] * B_lm
-        # where the [sqrt(l(l+1))/R] term is the eigenvalue of the vector Laplacian.
-        # Analysis:
-        # ducc0.sht.analysis_2d expects (v_theta, v_phi) for spin-1 (vector) fields.
-        # v_theta (meridional) is v, v_phi (zonal) is u.
-        # This matches the convention used in NCL's Spherepack wrappers.
-        vec_map = np.stack((v, u), axis=0).astype(np.float64)
-        alm_vec = ducc0.sht.analysis_2d(
-            map=vec_map,
-            spin=1,
-            lmax=lmax,
-            mmax=mmax,
-            geometry=geometry,
-            nthreads=nthreads,
-        )
-        alm_E = alm_vec[0]
-        alm_B = alm_vec[1]
+    # Spectral Scaling:
+    # We apply the eigenvalue of the gradient/curl operators in spectral space.
+    # l_arr contains the degree 'l' for each coefficient in the alm array.
+    l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
+    eigen_scale = np.sqrt(l_arr * (l_arr + 1.0)) / R
+    alm_div = -eigen_scale * alm_E
+    alm_vort = eigen_scale * alm_B
 
-        # Spectral Scaling:
-        # We apply the eigenvalue of the gradient/curl operators in spectral space.
-        # l_arr contains the degree 'l' for each coefficient in the alm array.
-        l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
-        eigen_scale = np.sqrt(l_arr * (l_arr + 1.0)) / R
-        alm_div = -eigen_scale * alm_E
-        alm_vort = eigen_scale * alm_B
+    # Synthesis
+    div = ducc0.sht.synthesis_2d(
+        alm=np.expand_dims(alm_div, axis=0),
+        spin=0,
+        lmax=lmax,
+        mmax=mmax,
+        ntheta=ntheta,
+        nphi=nphi,
+        geometry=geometry,
+        nthreads=nthreads,
+    )[0]
+    vort = ducc0.sht.synthesis_2d(
+        alm=np.expand_dims(alm_vort, axis=0),
+        spin=0,
+        lmax=lmax,
+        mmax=mmax,
+        ntheta=ntheta,
+        nphi=nphi,
+        geometry=geometry,
+        nthreads=nthreads,
+    )[0]
 
-        # Synthesis
-        div = ducc0.sht.synthesis_2d(
-            alm=np.expand_dims(alm_div, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            ntheta=ntheta,
-            nphi=nphi,
-            geometry=geometry,
-            nthreads=nthreads,
-        )[0]
-        vort = ducc0.sht.synthesis_2d(
-            alm=np.expand_dims(alm_vort, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            ntheta=ntheta,
-            nphi=nphi,
-            geometry=geometry,
-            nthreads=nthreads,
-        )[0]
-
-        return div, vort
-
-    raise ValueError(f"Unknown engine: {sht_engine}")
+    return cast(NDArray[np.float64], div), cast(NDArray[np.float64], vort)
 
 
 def apply_vort_div(
@@ -132,11 +124,10 @@ def apply_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    sht_engine: Literal["auto", "ducc0"] = "auto",
     backend: Literal["serial", "mpi", "dask"] = "serial",
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """
-    Xarray wrapper for computing relative vorticity and divergence.
+    Xarray wrapper for computing relative vorticity and divergence using ducc0.
 
     Args:
         u: Zonal wind DataArray (lat, lon). Latitude must be North to South.
@@ -145,7 +136,6 @@ def apply_vort_div(
         lmax: Maximum spherical harmonic degree.
         geometry: Grid geometry (default 'CC').
         nthreads: Number of threads.
-        sht_engine: Transform engine.
         backend: Parallelization backend.
 
     Returns:
@@ -157,7 +147,6 @@ def apply_vort_div(
         "lmax": lmax,
         "geometry": geometry,
         "nthreads": nthreads if backend not in ("mpi", "dask") else 1,
-        "sht_engine": sht_engine,
     }
 
     # Identify spatial dimensions
@@ -188,7 +177,7 @@ def apply_vort_div(
 
 class Kinematics:
     """
-    Computes spatial derivatives and kinematic properties of the wind field.
+    Computes spatial derivatives and kinematic properties of the wind field using ducc0.
     """
 
     def __init__(
@@ -196,7 +185,6 @@ class Kinematics:
         R: float = R_EARTH_METERS,
         lmax: int | None = None,
         geometry: str = "CC",
-        sht_engine: Literal["auto", "ducc0"] = "auto",
     ) -> None:
         """
         Initialize the kinematics calculator.
@@ -205,12 +193,10 @@ class Kinematics:
             R: Planetary radius in meters.
             lmax: Maximum spherical harmonic degree.
             geometry: Grid geometry ('CC', 'DH', etc.).
-            sht_engine: Transform engine ('auto', 'ducc0').
         """
         self.R = R
         self.lmax = lmax
         self.geometry = geometry
-        self.sht_engine = sht_engine
 
     @overload
     def compute(
@@ -257,7 +243,6 @@ class Kinematics:
                 lmax=self.lmax,
                 geometry=self.geometry,
                 nthreads=nthreads,
-                sht_engine=self.sht_engine,
             )
 
         if isinstance(u, xr.DataArray) and isinstance(v, xr.DataArray):
@@ -268,7 +253,6 @@ class Kinematics:
                 lmax=self.lmax,
                 geometry=self.geometry,
                 nthreads=nthreads,
-                sht_engine=self.sht_engine,
                 backend=backend,
             )
 
