@@ -18,6 +18,7 @@
 - **Verification**: Enhanced documentation builds and expanded test coverage.
 
 ### Maintenance
+- **Spectral Backend Consolidation**: Evaluated `pyshtools`, `SHTns`, and `ducc0` for performance, accuracy, and portability. Selected **ducc0** as the exclusive backend due to its superior multi-frame performance (6.3x faster than SHTns), self-contained architecture (no external C dependencies), and near bit-wise parity with NCL for kinematics.
 - **Standardized Documentation**: Renamed documentation files to lowercase and updated internal references.
 - **Repository Cleanup**: Organized documentation and removed legacy scripts.
 - **Dependencies**: Refined optional dependency groups.
