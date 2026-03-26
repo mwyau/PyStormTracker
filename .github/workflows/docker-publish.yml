@@ -116,15 +116,15 @@ jobs:
       - name: Create and push manifest
         id: manifest
         run: |
-          tags_with_commas="${{ steps.meta.outputs.tags }}"
+          tags_with_commas="${{ steps.meta.outputs.csv_tags }}"
           tags_with_spaces=$(echo "$tags_with_commas" | tr ',' ' ')
           manifest_digest=""
 
           for tag in $tags_with_spaces; do
             base_image=$(echo "$tag" | cut -d: -f1)
             echo "Creating manifest for $tag"
-            docker buildx imagetools create -t "$tag" 
-              "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-amd64" 
+            docker buildx imagetools create -t "$tag" \
+              "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-amd64" \
               "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-arm64"
             if [[ "$tag" == *":latest" ]]; then
               manifest_digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
