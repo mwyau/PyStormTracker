@@ -134,10 +134,10 @@ jobs:
       - name: Create and push manifest
         id: manifest
         run: |
-          tags=$(echo "${{ steps.meta.outputs.tags }}" | tr ',' '
-')
+          tags_with_commas="${{ steps.meta.outputs.tags }}"
+          tags_with_spaces=$(echo "$tags_with_commas" | tr ',' ' ')
           digest=""
-          for tag in $tags; do
+          for tag in $tags_with_spaces; do
             echo "Creating manifest for $tag"
             docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64"
             if [[ "$tag" == *":latest" ]]; then
