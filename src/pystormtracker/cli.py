@@ -5,7 +5,7 @@ import json
 import os
 import timeit
 from argparse import Namespace
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 
@@ -112,28 +112,24 @@ def run_tracker(
     if algorithm == "simple":
         tracker = SimpleTracker()
     else:
-        # Pass only provided values to use tracker defaults
-        hodges_kwargs: dict[str, Any] = {}
-        if w1 is not None:
-            hodges_kwargs["w1"] = w1
-        if w2 is not None:
-            hodges_kwargs["w2"] = w2
-        if dmax is not None:
-            hodges_kwargs["dmax"] = dmax
-        if phimax is not None:
-            hodges_kwargs["phimax"] = phimax
-        if n_iterations is not None:
-            hodges_kwargs["n_iterations"] = n_iterations
-        if min_lifetime is not None:
-            hodges_kwargs["min_lifetime"] = min_lifetime
-        if max_missing is not None:
-            hodges_kwargs["max_missing"] = max_missing
-        if zones is not None:
-            hodges_kwargs["zones"] = zones
-        if adapt_params is not None:
-            hodges_kwargs["adapt_params"] = adapt_params
-
-        tracker = HodgesTracker(**hodges_kwargs)
+        # Initialize with standard defaults and override if provided
+        tracker = HodgesTracker(
+            w1=w1 if w1 is not None else constants.W1_DEFAULT,
+            w2=w2 if w2 is not None else constants.W2_DEFAULT,
+            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
+            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
+            n_iterations=n_iterations
+            if n_iterations is not None
+            else constants.ITERATIONS_DEFAULT,
+            min_lifetime=min_lifetime
+            if min_lifetime is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing=max_missing
+            if max_missing is not None
+            else constants.MISSING_DEFAULT,
+            zones=zones,
+            adapt_params=adapt_params,
+        )
 
     tracks = tracker.track(
         infile=infile,
