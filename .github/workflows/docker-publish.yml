@@ -15,10 +15,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-24.04
-    # Only run if CI succeeded (for workflow_run) or if it's a manual trigger.
-    # Exclude PR events to avoid double triggers/publishing.
+  build-and-push-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     if: |
       (github.event_name == 'workflow_run' && 
        github.event.workflow_run.conclusion == 'success' && 
@@ -26,25 +32,20 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository) ||
       github.event_name == 'workflow_dispatch'
     permissions:
-      actions: read
-      contents: write
+      contents: read
       packages: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
     env:
       DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
       GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          # Use the head_sha for workflow_run to ensure we build exactly what CI tested
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -74,6 +75,9 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short,prefix=
+          flavor: |
+            suffix=-${{ matrix.arch }}
+            latest=false
 
       - name: Build and push Docker image
         id: push
@@ -83,19 +87,74 @@ jobs:
           push: true
           provenance: false
           sbom: false
-          platforms: linux/amd64, linux/arm64
+          platforms: linux/${{ matrix.arch }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-build
-          cache-to: type=gha,mode=max,scope=docker-build
+          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
+
+  create-manifest:
+    needs: build-and-push-platform
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+      GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.DOCKER_HUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short,prefix=
+
+      - name: Create and push manifest
+        id: manifest
+        run: |
+          tags=$(echo "${{ steps.meta.outputs.tags }}" | tr ',' '
+')
+          digest=""
+          for tag in $tags; do
+            echo "Creating manifest for $tag"
+            docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64"
+            if [[ "$tag" == *":latest" ]]; then
+              # Get the digest of the 'latest' manifest to use for attestation
+              digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
+            fi
+          done
+          echo "digest=$digest" >> $GITHUB_OUTPUT
 
       - name: Attest Provenance (Docker Hub)
+        if: steps.manifest.outputs.digest != ''
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_IMAGE }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true
-
+          
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -105,9 +164,10 @@ jobs:
           format: cyclonedx-json
 
       - name: Attest SBOM (Docker Hub)
+        if: steps.manifest.outputs.digest != ''
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.DOCKER_HUB_IMAGE }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
           sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
