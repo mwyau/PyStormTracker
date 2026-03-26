@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
+from typing import Literal, Protocol, TypeAlias, runtime_checkable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -41,5 +41,5 @@ class Tracker(Protocol):
         lmin: int = 5,
         lmax: int = 42,
         taper_points: int = 0,
-        **kwargs: Any,
+        **kwargs: float | int | str | None,
     ) -> Tracks: ...
