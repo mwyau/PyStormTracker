@@ -179,70 +179,48 @@ jobs:
         run: uv run --extra docs --no-dev sphinx-build -b html docs docs/_build/html
 
   docker-build:
-    name: docker-build
+    name: docker-build (${{ matrix.arch }})
     needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
-    # Only run on merges to main, release branches, tags, or manual dispatch
-    if: |
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/release/') ||
-       startsWith(github.ref, 'refs/tags/v') ||
-       github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: |
-            ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-          tags: |
-            type=sha,format=long,prefix=
-          ref: ${{ github.sha }}
-
-      - name: Build and load image
+      - name: Build and load Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
           push: false
           load: true
-          platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-build
-          cache-to: type=gha,mode=max,scope=docker-build
+          platforms: linux/${{ matrix.arch }}
+          tags: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
+          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
 
-      - name: Build ARM64 (cache only)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: false
-          platforms: linux/arm64
-          cache-from: type=gha,scope=docker-build
-          cache-to: type=gha,mode=max,scope=docker-build
-
-      - name: Smoke test image
+      - name: Smoke test Docker image
         run: |
           # Test CLI help
-          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} --help
+          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} --help
           # Test library import
-          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }} -c "import pystormtracker as pst; print('Import success')"
+          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} -c "import pystormtracker as pst; print('Import success')"
 
-      - name: Vulnerability scan
+      - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
           format: "table"
           exit-code: "0"
           ignore-unfixed: true
