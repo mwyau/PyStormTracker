@@ -89,7 +89,9 @@ def _get_shtns_plan(nlat: int, nlon: int, lmax: int) -> shtns.sht:
         # shtns.sht_reg_poles is the standard equidistant latitude grid
         # including poles, which is the most common format for climate data (e.g. ERA5).
         # SHT_PHI_CONTIGUOUS matches standard NumPy/C row-major layout (nlat, nlon).
-        sh.set_grid(nlat, nlon, shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS)
+        # polar_opt=0.0 (equivalent to eps=0.0 in C API) disables polar
+        # optimization to ensure maximum accuracy for low-resolution grids.
+        sh.set_grid(nlat, nlon, flags=shtns.sht_reg_poles | shtns.SHT_PHI_CONTIGUOUS, polar_opt=0.0)
         _thread_local.cache[key] = sh
 
     return _thread_local.cache[key]
