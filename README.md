@@ -60,8 +60,7 @@ Full documentation, including API references and advanced usage examples, is ava
 - (Optional) OpenMPI for MPI support.
 - **SHT Backends**: Supported engines for filtering and derivatives:
   - `ducc0`: **Core dependency**. High-precision C++ library (Distinctly Useful Code Collection) providing high performance spherical harmonic transforms.
-  - `shtns`: (Optional) High-performance C library (`pip install PyStormTracker[shtns]`). Recommended for large datasets.
-- **Windows**: GRIB support is experimental. SHTns is not supported on Windows; `ducc0` will be used automatically.
+  - `ducc0`: (Optional) High-performance C library (`pip install PyStormTracker[ducc0]`). Recommended for large datasets.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
@@ -72,7 +71,6 @@ Using `pip`:
 pip install PyStormTracker
 
 # With optional components
-pip install PyStormTracker[hodges]  # Includes SHTns for Hodges algorithm
 pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
@@ -134,7 +132,6 @@ stormtracker -i data.nc -v msl -o my_tracks.txt
 | `--threshold` | `-t` | Intensity threshold for feature detection. |
 | `--filter-range` | | Spectral filter range (min-max). Default '5-42'. |
 | `--no-filter` | | Disable default T5-42 spectral filtering. |
-| `--sht-engine` | | SHT backend: `auto`, `shtns`, `ducc0`. |
 | `--num` | `-n` | Number of time steps to process. |
 | **Performance** | | |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |

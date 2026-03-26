@@ -11,9 +11,8 @@ This document details the architecture, mathematical implementation, and design 
 ## 1. Feature Identification Design
 
 ### 1.1 Preprocessing (Spectral Filtering & Derivatives)
-**Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and high-precision derivative calculation using the `shtns` or `ducc0` backends.
+**Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and high-precision derivative calculation using the `ducc0` backend.
 - **References**: `spec_filt.c`, `uv2vr.c`.
-- **CLI Options**: `--filter-range` (e.g., `5-42`), `--no-filter`, `--engine` (auto/shtns/ducc0), and `--taper`.
 - **Accuracy**: See [Spectral Filtering Accuracy](spectral_accuracy.md) for detailed RMSE/Correlation metrics against NCL.
 
 **Reasoning**: 

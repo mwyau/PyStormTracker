@@ -5,7 +5,7 @@ import json
 import os
 import timeit
 from argparse import Namespace
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 
@@ -57,7 +57,6 @@ def run_tracker(
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
     overlap: int = model_constants.OVERLAP_DEFAULT,
-    sht_engine: Literal["auto", "shtns", "ducc0"] = "auto",
 ) -> None:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -85,7 +84,7 @@ def run_tracker(
         try:
             from mpi4py import MPI
 
-            rank = MPI.COMM_WORLD.Get_rank()
+            rank = comm.Get_rank() if (comm := MPI.COMM_WORLD) else 0
             if n_workers is None:
                 n_workers = MPI.COMM_WORLD.Get_size()
         except ImportError:
@@ -114,7 +113,7 @@ def run_tracker(
         tracker = SimpleTracker()
     else:
         # Pass only provided values to use tracker defaults
-        hodges_kwargs: dict[str, float | int | np.ndarray] = {}
+        hodges_kwargs: dict[str, Any] = {}
         if w1 is not None:
             hodges_kwargs["w1"] = w1
         if w2 is not None:
@@ -134,7 +133,7 @@ def run_tracker(
         if adapt_params is not None:
             hodges_kwargs["adapt_params"] = adapt_params
 
-        tracker = HodgesTracker(**hodges_kwargs)  # type: ignore[arg-type]
+        tracker = HodgesTracker(**hodges_kwargs)
 
     tracks = tracker.track(
         infile=infile,
@@ -153,7 +152,6 @@ def run_tracker(
         lmax=lmax,
         taper_points=taper_points,
         overlap=overlap,
-        sht_engine=sht_engine,
     )
 
     # Export Phase
@@ -239,13 +237,6 @@ def parse_args() -> Namespace:
         help="Disable default T5-42 spectral filtering.",
     )
     # Default is determined in main() based on algorithm
-
-    general.add_argument(
-        "--sht-engine",
-        choices=["auto", "shtns", "ducc0"],
-        default="auto",
-        help="SHT backend for filtering and derivatives. Default 'auto'.",
-    )
 
     general.add_argument(
         "-n", "--num", type=int, help="Number of time steps to process."
@@ -464,7 +455,6 @@ def main() -> None:
         lmax=lmax,
         taper_points=args.taper,
         overlap=args.overlap,
-        sht_engine=args.sht_engine,
     )
 
 

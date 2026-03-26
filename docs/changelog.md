@@ -2,7 +2,6 @@
 
 ## v0.5.0.dev
 ### Features
-- **Spectral Backends**: Integrated support for `shtns` and `ducc0` for all spherical harmonic operations.
 - **High-Precision Derivatives**: New `vodv` module for computing relative vorticity and divergence using spin-1 vector harmonics.
 - **Planetary Constants**: Standardized Earth radius to 6,371,220 m across derivatives and tracking geometry.
 - **pst-convert & JSON Support**: New utility for format conversion and a GPU-optimized JSON format for track data.
@@ -14,9 +13,6 @@
 - **NCL Validation**: New integration test suite validated against NCL 6.6.2 reference data.
 
 ### Performance
-- **SHTns Optimization**: Optimized thread handling for spherical harmonic transforms.
-- **Backend Fallback**: Implemented native `ducc0` usage for spherical harmonic filtering and transformations, removing the previous wrapper dependency. `shtns` remains an optional alternative.
-- **ARM64 Support**: Restored full support for **ARM64** architectures in Docker and CI by making `shtns` an optional dependency.
 
 ### CI/CD & Testing
 - **Verification**: Enhanced documentation builds and expanded test coverage.

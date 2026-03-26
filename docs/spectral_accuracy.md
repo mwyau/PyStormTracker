@@ -1,5 +1,8 @@
 # Spectral Filtering Accuracy
 
+> [!NOTE]
+> As of version 0.5.0, `PyStormTracker` has transitioned to using **ducc0** as the exclusive spectral backend. Support for **SHTns** and the `sht_engine` parameter has been removed to simplify the codebase and leverage the superior multi-frame performance and portability of `ducc0`. This document remains as a technical reference for the accuracy and performance trade-offs that informed this decision.
+
 This document details the accuracy and performance of the spherical harmonic transform (SHT) backends used for spectral filtering and kinematic derivative calculations in `PyStormTracker`, comparing them against NCL (NCAR Command Language) as the ground truth reference.
 
 ## Methodology
