@@ -10,15 +10,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Install build dependencies
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+# Install build dependencies. ducc0 requires a C++17 compiler (g++).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    g++ \
     make \
     libc6-dev \
-    libfftw3-dev \
-    && rm -rf /var/lib/apt/lists/*; \
-    fi
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -29,6 +26,7 @@ COPY pyproject.toml uv.lock ./
 # 2. Install third-party dependencies first (including extras).
 # Use cache mount for uv to persist downloads and build artifacts.
 RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-workspace --extra grib --extra netcdf4 --no-editable
 
 # 3. Copy only necessary source files for the final installation step.
 COPY src/ ./src/
@@ -36,21 +34,17 @@ COPY README.md ./
 
 # 4. Final installation of the project package itself.
 RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra grib --extra netcdf4 --no-editable
 
 
 # --- Runtime Stage ---
 FROM python:3.13-slim
 
-ARG TARGETARCH
-
 WORKDIR /app
 
-# Install runtime dependencies
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends \
-    libfftw3-double3 \
-    && rm -rf /var/lib/apt/lists/*; \
-    fi
+# ducc0 only depends on standard system libraries (libstdc++, libc6),
+# which are already included in the python:slim base image.
+# No additional runtime apt packages are required.
 
 # Create data directory for mounting
 RUN mkdir /data && chmod 777 /data
