@@ -57,7 +57,9 @@ HAS_BASE_DATA = os.path.exists(MSL_FILE)
 
 @pytest.mark.skipif(not HAS_BASE_DATA, reason="Base MSL test data not found.")
 @pytest.mark.parametrize("engine", ["shtns", "ducc0"])
-@pytest.mark.parametrize("case", TEST_CASES, ids=["T5-42_2.5", "T0-42_2.5", "T5-42_0.25", "T0-42_0.25"])
+@pytest.mark.parametrize(
+    "case", TEST_CASES, ids=["T5-42_2.5", "T0-42_2.5", "T5-42_0.25", "T0-42_0.25"]
+)
 def test_spectral_filter_era5_parity_integration(
     case: FilterTestCase, engine: Literal["shtns", "ducc0"]
 ) -> None:
@@ -73,7 +75,9 @@ def test_spectral_filter_era5_parity_integration(
 
     # Determine input file based on reference filename
     if "0.25x0.25" in case["ref"]:
-        src_file = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25.nc")
+        src_file = os.path.join(
+            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25.nc"
+        )
     else:
         src_file = MSL_FILE
 
@@ -88,6 +92,7 @@ def test_spectral_filter_era5_parity_integration(
 
     filt = SpectralFilter(lmin=case["lmin"], lmax=case["lmax"], sht_engine=engine)
     import time
+
     start_time = time.perf_counter()
     filtered = filt.filter(msl)
     end_time = time.perf_counter()
@@ -103,7 +108,7 @@ def test_spectral_filter_era5_parity_integration(
     # shtns: ~0.46 Pa RMSE vs NCL (legacy Spherepack)
     # ducc0: ~0.05 Pa RMSE vs NCL (modern implementation consistency)
     rmse = np.sqrt(np.mean((filtered.values - ref.values) ** 2))
-    
+
     # Relative Error: RMSE / Mean Magnitude of the field
     ref_mean = np.mean(np.abs(ref.values))
     rel_error = rmse / ref_mean if ref_mean > 0 else 0.0
