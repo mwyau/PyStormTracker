@@ -32,6 +32,9 @@ jobs:
       id-token: write
       attestations: write
       artifact-metadata: write
+    env:
+      DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+      GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -64,8 +67,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-            ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+            ${{ env.DOCKER_HUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
             type=semver,pattern={{version}}
@@ -80,7 +83,7 @@ jobs:
           push: true
           provenance: false
           sbom: false
-          platforms: linux/amd64
+          platforms: linux/amd64, linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker-build
@@ -89,7 +92,7 @@ jobs:
       - name: Attest Provenance (Docker Hub)
         uses: actions/attest@v4
         with:
-          subject-name: ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+          subject-name: ${{ env.DOCKER_HUB_IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
@@ -104,7 +107,7 @@ jobs:
       - name: Attest SBOM (Docker Hub)
         uses: actions/attest@v4
         with:
-          subject-name: ${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+          subject-name: ${{ env.DOCKER_HUB_IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: 'sbom.cyclonedx.json'
           push-to-registry: true
