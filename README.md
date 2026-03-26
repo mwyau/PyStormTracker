@@ -26,7 +26,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 - **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, executing with C-level efficiency while releasing the GIL for multi-process execution.
 - **Multiple Algorithms**:
   - **Simple (Default)**: Fast, heuristic linking optimized for higher resolutions.
-  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization.
+  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization. **[Accuracy Metrics](docs/spectral_accuracy.md)**.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
 - **Scalable Backends**: 
   - **Serial**: Standard sequential execution. Default fallback.
