@@ -53,8 +53,6 @@ jobs:
 
   mypy-typecheck:
     runs-on: ubuntu-24.04
-    env:
-      CFLAGS: "-O3 -march=x86-64"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -64,7 +62,7 @@ jobs:
         with:
           enable-cache: true
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev libfftw3-dev
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Type check with Mypy
@@ -73,12 +71,10 @@ jobs:
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
     runs-on: ubuntu-24.04
-    env:
-      CFLAGS: "-O3 -march=x86-64"
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ['3.11', '3.12', '3.13', '3.14']
         min-deps: [false]
         include:
           - python-version: "3.11"
@@ -93,7 +89,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev libfftw3-dev
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev
       - name: Install dependencies
         if: ${{ !matrix.min-deps }}
         run: uv sync --frozen --group dev
@@ -123,16 +119,12 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-        python-version: ["3.13"]
+        python-version: ['3.13']
         include:
           - arch: amd64
             os: ubuntu-24.04
-            cflags: "-O3 -march=x86-64"
           - arch: arm64
             os: ubuntu-24.04-arm
-            cflags: "-O3"
-    env:
-      CFLAGS: ${{ matrix.cflags }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -143,19 +135,19 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev libfftw3-dev
+        run: sudo apt-get update && sudo apt-get install -y openmpi-bin libopenmpi-dev
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
-        if: matrix.python-version != '3.13'
+        if: matrix.arch != 'amd64'
         run: uv run pytest -vv tests/test_integration_*.py --run-integration
 
       - name: Run Integration Tests with Coverage
-        if: matrix.python-version == '3.13'
+        if: matrix.arch == 'amd64'
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration_*.py --run-integration
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.13'
+        if: matrix.arch == 'amd64'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
@@ -174,7 +166,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: "3.13"
+          python-version: '3.13'
       - name: Build documentation
         run: uv run --extra docs --no-dev sphinx-build -b html docs docs/_build/html
 
@@ -206,7 +198,7 @@ jobs:
           push: false
           load: true
           platforms: linux/${{ matrix.arch }}
-          tags: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
+          tags: '${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}'
           cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
 
@@ -226,25 +218,3 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-
-  pypi-build:
-    name: pypi-build
-    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
-    # Only run on merges to main, release branches, tags, or manual dispatch
-    if: |
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/release/') ||
-       startsWith(github.ref, 'refs/tags/v') ||
-       github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - name: Build release distributions
-        run: uv build --wheel --sdist
