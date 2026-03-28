@@ -24,8 +24,9 @@ def _get_filter_config(
     lmax: int,
     lat_reverse: bool,
     nthreads: int = 1,
+    backend: str = "serial",
 ) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
-    """Returns the filter function and kwargs for the ducc0 engine."""
+    """Returns the filter function and kwargs for the requested engine."""
     kwargs: FilterKwargs = {
         "lmin": lmin,
         "lmax": lmax,
@@ -33,7 +34,58 @@ def _get_filter_config(
         "nthreads": nthreads,
     }
 
+    if backend.startswith("jax"):
+        return _filter_jax_frame, kwargs
+
     return _filter_ducc0_frame, kwargs
+
+
+def _filter_jax_frame(
+    frame: NDArray[np.float64],
+    lmin: int,
+    lmax: int,
+    lat_reverse: bool = False,
+    nthreads: int = 1,
+) -> NDArray[np.float64]:
+    """Filters a single 2D frame using JAX-native SHT parity backend."""
+    try:
+        import jax
+        from .jax_sht import jax_analysis_2d, jax_synthesis_2d
+        jax.config.update("jax_enable_x64", True)
+    except ImportError as e:
+        raise ImportError(
+            "The 'jax' backend requires 'jax'. "
+            "Install via 'pip install pystormtracker[jax]'."
+        ) from e
+
+    if lat_reverse:
+        frame = frame[::-1, :]
+
+    ny, nx = frame.shape
+    mmax = min(lmax, nx // 2 - 1)
+    frame_jax = jax.device_put(frame)
+
+    # Forward transform
+    alm = jax_analysis_2d(frame_jax, lmax, mmax=mmax, geometry="CC")
+
+    # Apply Bandpass Mask
+    # We need to calculate the degree 'l' for each coefficient to mask it.
+    l_list = []
+    for m in range(mmax + 1):
+        l_list.append(jax.numpy.arange(m, lmax + 1))
+    l_arr = jax.numpy.concatenate(l_list)
+    
+    mask = (l_arr >= lmin)
+    alm_filtered = alm * mask
+
+    # Inverse transform
+    out = jax_synthesis_2d(alm_filtered, ny, nx, lmax, mmax=mmax, geometry="CC")
+    out_np = np.asarray(out)
+
+    if lat_reverse:
+        out_np = out_np[::-1, :]
+
+    return out_np
 
 
 def _filter_ducc0_frame(
@@ -122,35 +174,35 @@ class SpectralFilter:
     def filter(
         self,
         data: xr.DataArray,
-        backend: Literal["serial", "mpi", "dask"] = "serial",
+        backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
     ) -> xr.DataArray: ...
 
     @overload
     def filter(
         self,
         data: NDArray[np.float64],
-        backend: Literal["serial", "mpi", "dask"] = "serial",
+        backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
     ) -> NDArray[np.float64]: ...
 
     def filter(
         self,
         data: xr.DataArray | NDArray[np.float64],
-        backend: Literal["serial", "mpi", "dask"] = "serial",
+        backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
     ) -> xr.DataArray | NDArray[np.float64]:
         """
         Applies the filter to the input data.
 
         Args:
             data (xr.DataArray | np.ndarray): Input data.
-            backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+            backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask', 'jax', 'jax-mpi', 'jax-dask'.
 
         Returns:
             xr.DataArray | np.ndarray: The filtered data.
         """
         if isinstance(data, np.ndarray):
-            nthreads = 1 if backend in ("mpi", "dask") else 0
+            nthreads = 1 if backend in ("mpi", "dask", "jax-mpi", "jax-dask") else 0
             filter_func, kwargs = _get_filter_config(
-                self.lmin, self.lmax, self.lat_reverse, nthreads
+                self.lmin, self.lmax, self.lat_reverse, nthreads, backend=backend
             )
 
             if data.ndim == 2:
@@ -177,17 +229,17 @@ def apply_spectral_filter(
     lmin: int = 5,
     lmax: int = 42,
     lat_reverse: bool = False,
-    backend: Literal["serial", "mpi", "dask"] = "serial",
+    backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
 ) -> xr.DataArray:
     """
-    Applies a spectral bandpass filter to the input DataArray using ducc0.
+    Applies a spectral bandpass filter to the input DataArray.
 
     Args:
         data (xr.DataArray): Input data with lat/lon dimensions.
         lmin (int): Minimum total wave number to retain. Defaults to 5.
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
-        backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+        backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask', 'jax', 'jax-mpi', 'jax-dask'.
 
     Returns:
         xr.DataArray: The filtered data.
@@ -208,14 +260,16 @@ def apply_spectral_filter(
             f"Found: {list(data.dims)}"
         )
 
-    nthreads = 1 if backend in ("mpi", "dask") else 0
-    filter_func, kwargs = _get_filter_config(lmin, lmax, lat_reverse, nthreads)
+    nthreads = 1 if backend in ("mpi", "dask", "jax-mpi", "jax-dask") else 0
+    filter_func, kwargs = _get_filter_config(
+        lmin, lmax, lat_reverse, nthreads, backend=backend
+    )
 
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 
     if data.chunks:
         # If data is chunked, we must allow or parallelize dask handling
-        if backend == "dask":
+        if backend in ("dask", "jax-dask"):
             # Prevent OpenMP oversubscription when Dask is handling parallelism
             os.environ.setdefault("OMP_NUM_THREADS", "1")
             dask_mode = "parallelized"
@@ -223,7 +277,7 @@ def apply_spectral_filter(
             # For serial or MPI with chunked data, use 'allowed' to run on chunks
             dask_mode = "allowed"
 
-    if backend == "mpi":
+    if backend in ("mpi", "jax-mpi"):
         try:
             from mpi4py import MPI
 

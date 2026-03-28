@@ -15,6 +15,92 @@ class KinematicsKwargs(TypedDict, total=False):
     lmax: int | None
     geometry: str
     nthreads: int
+    backend: str
+
+
+def compute_vort_div_jax(
+    u: NDArray[np.float64],
+    v: NDArray[np.float64],
+    R: float = R_EARTH_METERS,
+    lmax: int | None = None,
+    geometry: str = "CC",
+    nthreads: int = 0,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Computes spatial divergence and relative vorticity using JAX and ducc0-parity SHT.
+    """
+    try:
+        import jax
+        from .jax_sht import jax_analysis_2d, jax_synthesis_2d
+        jax.config.update("jax_enable_x64", True)
+    except ImportError as e:
+        raise ImportError(
+            "The 'jax' backend requires 'jax'. "
+            "Install via 'pip install pystormtracker[jax]'."
+        ) from e
+
+    ny, nx = u.shape
+    if lmax is None:
+        lmax = ny - 2  # Standard for ducc0 CC
+        
+    mmax = min(lmax, nx // 2 - 1)
+
+    # ducc0 spin-1 expects (v_theta, v_phi) = (v, u)
+    vec_jax = jax.numpy.stack([v, u], axis=0)
+    
+    # Forward spin-1 transform
+    alm_e, alm_b = jax_analysis_2d(vec_jax, lmax, mmax=mmax, geometry=geometry, spin=1)
+
+    # Spectral Scaling:
+    # l_arr contains the degree 'l' for each coefficient in the alm array.
+    l_list = []
+    for m in range(mmax + 1):
+        l_start = max(m, 1)
+        if l_start <= lmax:
+            l_list.append(jax.numpy.arange(l_start, lmax + 1))
+    l_arr = jax.numpy.concatenate(l_list)
+    
+    eigen_scale = jax.numpy.sqrt(l_arr * (l_arr + 1.0)) / R
+    alm_div_active = -eigen_scale * alm_e
+    alm_vort_active = eigen_scale * alm_b
+
+    # Synthesis (Scalar transforms for divergence and vorticity)
+    # Scalar SHT expects coefficients starting from l=0 for all m.
+    # Our spin-1 analysis returned l starting from max(m, 1).
+    # Since l=0 has no div/vort (eigen_scale is 0 anyway), we just pad.
+    
+    # Reconstruct full alm for spin-0 synthesis:
+    div_list = []
+    vort_list = []
+    curr_active = 0
+    for m in range(mmax + 1):
+        l_start_active = max(m, 1)
+        n_l_active = lmax - l_start_active + 1
+        
+        # Pad l < l_start_active (i.e., l=0 if m=0)
+        # For m=0, l_start_active=1, so we pad 1 element (l=0).
+        # For m>0, l_start_active=m, so we pad m elements (l=0..m-1).
+        n_pad = l_start_active - 0 # assuming we want l starting from 0
+        
+        div_m = jax.numpy.concatenate([
+            jax.numpy.zeros(n_pad, dtype=alm_div_active.dtype),
+            alm_div_active[curr_active : curr_active + n_l_active]
+        ])
+        vort_m = jax.numpy.concatenate([
+            jax.numpy.zeros(n_pad, dtype=alm_vort_active.dtype),
+            alm_vort_active[curr_active : curr_active + n_l_active]
+        ])
+        div_list.append(div_m)
+        vort_list.append(vort_m)
+        curr_active += n_l_active
+        
+    alm_div = jax.numpy.concatenate(div_list)
+    alm_vort = jax.numpy.concatenate(vort_list)
+
+    div = jax_synthesis_2d(alm_div, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0)
+    vort = jax_synthesis_2d(alm_vort, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0)
+
+    return np.asarray(div, dtype=np.float64), np.asarray(vort, dtype=np.float64)
 
 
 def compute_vort_div(
@@ -124,10 +210,10 @@ def apply_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
-    backend: Literal["serial", "mpi", "dask"] = "serial",
+    backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """
-    Xarray wrapper for computing relative vorticity and divergence using ducc0.
+    Xarray wrapper for computing relative vorticity and divergence.
 
     Args:
         u: Zonal wind DataArray (lat, lon). Latitude must be North to South.
@@ -136,7 +222,7 @@ def apply_vort_div(
         lmax: Maximum spherical harmonic degree.
         geometry: Grid geometry (default 'CC').
         nthreads: Number of threads.
-        backend: Parallelization backend.
+        backend: Parallelization backend. Options: 'serial', 'mpi', 'dask', 'jax', 'jax-mpi', 'jax-dask'.
 
     Returns:
         div, vort: Divergence and relative vorticity DataArrays.
@@ -146,23 +232,26 @@ def apply_vort_div(
         "R": R,
         "lmax": lmax,
         "geometry": geometry,
-        "nthreads": nthreads if backend not in ("mpi", "dask") else 1,
+        "nthreads": nthreads if backend not in ("mpi", "dask", "jax-mpi", "jax-dask") else 1,
     }
 
     # Identify spatial dimensions
     lat_dim = u.dims[-2]
     lon_dim = u.dims[-1]
 
+    # Select core function based on backend
+    core_func = compute_vort_div_jax if backend.startswith("jax") else compute_vort_div
+
     # Use apply_ufunc for broad support
     div_vort = xr.apply_ufunc(
-        compute_vort_div,
+        core_func,
         u,
         v,
         input_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
         output_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
         vectorize=True,
         kwargs=kwargs,
-        dask="parallelized" if backend == "dask" else "forbidden",
+        dask="parallelized" if backend in ("dask", "jax-dask") else "forbidden",
         output_dtypes=[u.dtype, u.dtype],
     )
 
@@ -177,7 +266,7 @@ def apply_vort_div(
 
 class Kinematics:
     """
-    Computes spatial derivatives and kinematic properties of the wind field using ducc0.
+    Computes spatial derivatives and kinematic properties of the wind field.
     """
 
     def __init__(
@@ -203,7 +292,7 @@ class Kinematics:
         self,
         u: xr.DataArray,
         v: xr.DataArray,
-        backend: Literal["serial", "mpi", "dask"] = "serial",
+        backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
         nthreads: int = 0,
     ) -> tuple[xr.DataArray, xr.DataArray]: ...
 
@@ -212,7 +301,7 @@ class Kinematics:
         self,
         u: NDArray[np.float64],
         v: NDArray[np.float64],
-        backend: Literal["serial", "mpi", "dask"] = "serial",
+        backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
         nthreads: int = 0,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]: ...
 
@@ -220,7 +309,7 @@ class Kinematics:
         self,
         u: xr.DataArray | NDArray[np.float64],
         v: xr.DataArray | NDArray[np.float64],
-        backend: Literal["serial", "mpi", "dask"] = "serial",
+        backend: Literal["serial", "mpi", "dask", "jax", "jax-mpi", "jax-dask"] = "serial",
         nthreads: int = 0,
     ) -> tuple[xr.DataArray | NDArray[np.float64], xr.DataArray | NDArray[np.float64]]:
         """
@@ -229,14 +318,17 @@ class Kinematics:
         Args:
             u: Zonal wind component.
             v: Meridional wind component.
-            backend: Parallelization backend ('serial', 'mpi', 'dask').
+            backend: Parallelization backend ('serial', 'mpi', 'dask', 'jax', 'jax-mpi', 'jax-dask').
             nthreads: Number of threads (for local computation).
 
         Returns:
             div, vort: Divergence and relative vorticity.
         """
         if isinstance(u, np.ndarray) and isinstance(v, np.ndarray):
-            return compute_vort_div(
+            core_func = (
+                compute_vort_div_jax if backend.startswith("jax") else compute_vort_div
+            )
+            return core_func(
                 u,
                 v,
                 R=self.R,
