@@ -788,7 +788,7 @@ name = "eccodeslib"
 version = "2.46.1.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "eckitlib" },
+    { name = "eckitlib", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/51/579fe220c0b21c740f0c3d898630a5dad1c734c410db500464cf35b6480c/eccodeslib-2.46.1.16-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:583f17c418fd6c8d645a3ddd560780d5360df1c4c0ba1727c670838b12dbf023", size = 8891155, upload-time = "2026-03-26T19:25:58.635Z" },
@@ -1055,7 +1055,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -2794,8 +2794,8 @@ requires-dist = [
     { name = "h5netcdf", extras = ["h5py"], specifier = ">=1.0.0" },
     { name = "ipympl", marker = "extra == 'viz'", specifier = ">=0.10.0" },
     { name = "ipywidgets", marker = "extra == 'viz'", specifier = ">=8.1.8" },
-    { name = "jax", marker = "extra == 'all'", specifier = ">=0.4.0" },
-    { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.0" },
+    { name = "jax", marker = "extra == 'all'", specifier = ">=0.5.1" },
+    { name = "jax", marker = "extra == 'jax'", specifier = ">=0.5.1" },
     { name = "jupyterlab", marker = "extra == 'viz'", specifier = ">=4.5.6" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10.8" },
     { name = "mpi4py", marker = "extra == 'all'", specifier = ">=4.1.0" },
