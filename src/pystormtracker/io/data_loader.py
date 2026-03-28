@@ -65,6 +65,12 @@ class DataLoader:
                     if engine is None:
                         if is_remote:
                             if str(self.pathname).endswith(".zarr"):
+                                if importlib.util.find_spec("zarr") is None:
+                                    raise ValueError(
+                                        "zarr is required to open Zarr datasets. "
+                                        "Please install it with: `uv pip install "
+                                        "'pystormtracker[zarr]'`"
+                                    ) from None
                                 engine = "zarr"
                             elif str(self.pathname).endswith(
                                 (".grib", ".grib2", ".grb")
@@ -96,6 +102,12 @@ class DataLoader:
                                 local_path.is_dir()
                                 and (local_path / ".zmetadata").exists()
                             ):
+                                if importlib.util.find_spec("zarr") is None:
+                                    raise ValueError(
+                                        "zarr is required to open Zarr datasets. "
+                                        "Please install it with: `uv pip install "
+                                        "'pystormtracker[zarr]'`"
+                                    ) from None
                                 engine = "zarr"
                             else:
                                 engine = "h5netcdf"

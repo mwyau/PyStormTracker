@@ -117,8 +117,11 @@ def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None
     assert url in DataLoader._ds_cache
 
 
+@patch("xarray.open_dataset")
 @patch("importlib.util.find_spec")
-def test_dataloader_grib_missing_dependency(mock_find_spec: MagicMock) -> None:
+def test_dataloader_grib_missing_dependency(
+    mock_find_spec: MagicMock, mock_open: MagicMock
+) -> None:
     """Test that DataLoader raises ValueError if cfgrib is not
     installed for GRIB files.
     """
@@ -129,5 +132,6 @@ def test_dataloader_grib_missing_dependency(mock_find_spec: MagicMock) -> None:
         match=r"cfgrib is required to open GRIB files. Please install it",
     ):
         loader.ensure_open()
+    mock_open.assert_not_called()
 
 
