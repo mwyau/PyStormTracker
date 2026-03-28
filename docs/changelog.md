@@ -23,7 +23,7 @@
 - **Verification**: Enhanced documentation builds and expanded test coverage.
 
 ### Maintenance
-- **Spectral Backend Consolidation**: Evaluated `pyshtools`, `SHTns`, and `ducc0` for performance, accuracy, and portability. Selected **ducc0** as the exclusive backend due to its superior multi-frame performance (6.3x faster than SHTns), self-contained architecture (no external C dependencies), and near bit-wise parity with NCL for kinematics.
+- **Spectral Backend Consolidation**: Evaluated `pyshtools`, `SHTns`, `ducc0`, and `jax` for performance, accuracy, and portability. Selected **ducc0** as the default backend due to its superior multi-frame performance (6.3x faster than SHTns), self-contained architecture (no external C dependencies), and near bit-wise parity with NCL for kinematics. Integrated **JAX** as an experimental alternative backend for GPU-accelerated spherical harmonic transforms.
 - **Standardized Documentation**: Renamed documentation files to lowercase and updated internal references.
 - **Repository Cleanup**: Organized documentation and removed legacy scripts.
 - **Strict Typing**: Achieved 100% `mypy` compliance in core I/O modules and removed usage of `Any`.
