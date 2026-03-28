@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 from numpy.typing import NDArray
 
-from pystormtracker.io.loader import DataLoader
+from pystormtracker.io.data_loader import DataLoader
 from pystormtracker.simple.detector import SimpleDetector
 
 

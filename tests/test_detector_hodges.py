@@ -9,7 +9,7 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from pystormtracker.hodges.detector import HodgesDetector
-from pystormtracker.io.loader import DataLoader
+from pystormtracker.io.data_loader import DataLoader
 
 
 @pytest.fixture(autouse=True)

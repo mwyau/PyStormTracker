@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from ..io.loader import DataLoader
+from ..io.data_loader import DataLoader
 from ..models import TimeRange
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep

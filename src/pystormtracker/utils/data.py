@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import pooch  # type: ignore[import-untyped]
 
-DATA_RELEASE_VERSION = "v0.1.1-data"
+DATA_RELEASE_VERSION = "v0.1.3-data"
+RELEASE_URL = (
+    f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"
+)
+RAW_CONTENT_URL = f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_RELEASE_VERSION}/"
+
 
 # Define a central repository of data files
 CACHED_DATA = pooch.create(
     path=pooch.os_cache("pystormtracker"),
-    base_url=(
-        f"https://github.com/mwyau/PyStormTracker-Data/"
-        f"releases/download/{DATA_RELEASE_VERSION}/"
-    ),
+    base_url=RELEASE_URL,
     registry={
         "era5_msl_2025-2026_djf_0.25x0.25.nc": (
             "sha256:a1847093356472303585eb9acdbfb8c993795a2e643e80d5f7cc803d0919216d"
@@ -30,6 +32,12 @@ CACHED_DATA = pooch.create(
         "era5_vo850_2025-2026_djf_2.5x2.5.grib": (
             "sha256:9b92f82bb252fbafa90b507df75faa61721062cd70915b8f42da8d803a5a86d7"
         ),
+        "era5_uv850_2025-2026_djf_0.25x0.25.nc": (
+            "sha256:0e35d002edc8bdbdbe9bc5f965db76dcf983d97b613ba4e217d0a4f5d84c3e51"
+        ),
+        "era5_uv850_2025-2026_djf_2.5x2.5.nc": (
+            "sha256:43cbc346a52c5230ac34eb22c7a640800fbffad40da4058686c8042a76bc5965"
+        ),
     },
 )
 
@@ -45,20 +53,22 @@ def fetch_era5_msl(
         resolution (str): Spatial resolution of the dataset.
             Options: "2.5x2.5" or "0.25x0.25".
         season (str): Season of the dataset. Currently only "djf" is available.
-        format (str): File format. Options: "nc" (default) or "grib".
+        format (str): File format. Options: "nc" (default), "grib", or "zarr".
 
     Returns:
-        str: Absolute path to the downloaded local NetCDF/GRIB file.
+        str: Absolute path to the downloaded local file or URL for Zarr.
     """
     if resolution not in ["2.5x2.5", "0.25x0.25"]:
         raise ValueError("Resolution must be either '2.5x2.5' or '0.25x0.25'")
     if season not in ["djf"]:
         raise ValueError(f"Season '{season}' not available. Options: 'djf'")
-    if format not in ["nc", "grib"]:
-        raise ValueError("Format must be either 'nc' or 'grib'")
+    if format not in ["nc", "grib", "zarr"]:
+        raise ValueError("Format must be 'nc', 'grib', or 'zarr'")
 
-    ext = "nc" if format == "nc" else "grib"
-    return str(CACHED_DATA.fetch(f"era5_msl_2025-2026_{season}_{resolution}.{ext}"))
+    fname = f"era5_msl_2025-2026_{season}_{resolution}.{format}"
+    if format == "zarr":
+        return RAW_CONTENT_URL + fname
+    return str(CACHED_DATA.fetch(fname))
 
 
 def fetch_era5_vo850(
@@ -72,17 +82,48 @@ def fetch_era5_vo850(
         resolution (str): Spatial resolution of the dataset.
             Options: "2.5x2.5" or "0.25x0.25".
         season (str): Season of the dataset. Currently only "djf" is available.
-        format (str): File format. Options: "nc" (default) or "grib".
+        format (str): File format. Options: "nc" (default), "grib", or "zarr".
 
     Returns:
-        str: Absolute path to the downloaded local NetCDF/GRIB file.
+        str: Absolute path to the downloaded local file or URL for Zarr.
     """
     if resolution not in ["2.5x2.5", "0.25x0.25"]:
         raise ValueError("Resolution must be either '2.5x2.5' or '0.25x0.25'")
     if season not in ["djf"]:
         raise ValueError(f"Season '{season}' not available. Options: 'djf'")
-    if format not in ["nc", "grib"]:
-        raise ValueError("Format must be either 'nc' or 'grib'")
+    if format not in ["nc", "grib", "zarr"]:
+        raise ValueError("Format must be 'nc', 'grib', or 'zarr'")
 
-    ext = "nc" if format == "nc" else "grib"
-    return str(CACHED_DATA.fetch(f"era5_vo850_2025-2026_{season}_{resolution}.{ext}"))
+    fname = f"era5_vo850_2025-2026_{season}_{resolution}.{format}"
+    if format == "zarr":
+        return RAW_CONTENT_URL + fname
+    return str(CACHED_DATA.fetch(fname))
+
+
+def fetch_era5_uv850(
+    resolution: str = "2.5x2.5", season: str = "djf", format: str = "nc"
+) -> str:
+    """
+    Fetches the ERA5 850hPa u- and v-component of wind sample dataset.
+    Downloads the data on the first call and returns the path to the cached local file.
+
+    Args:
+        resolution (str): Spatial resolution of the dataset.
+            Options: "2.5x2.5" or "0.25x0.25".
+        season (str): Season of the dataset. Currently only "djf" is available.
+        format (str): File format. Options: "nc" (default) or "zarr".
+
+    Returns:
+        str: Absolute path to the downloaded local file or URL for Zarr.
+    """
+    if resolution not in ["2.5x2.5", "0.25x0.25"]:
+        raise ValueError("Resolution must be either '2.5x2.5' or '0.25x0.25'")
+    if season not in ["djf"]:
+        raise ValueError(f"Season '{season}' not available. Options: 'djf'")
+    if format not in ["nc", "zarr"]:  # UV data has no GRIB for now
+        raise ValueError("Format must be 'nc' or 'zarr'")
+
+    fname = f"era5_uv850_2025-2026_{season}_{resolution}.{format}"
+    if format == "zarr":
+        return RAW_CONTENT_URL + fname
+    return str(CACHED_DATA.fetch(fname))
