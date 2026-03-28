@@ -788,7 +788,7 @@ name = "eccodeslib"
 version = "2.46.1.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "eckitlib", marker = "sys_platform != 'win32'" },
+    { name = "eckitlib" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/51/579fe220c0b21c740f0c3d898630a5dad1c734c410db500464cf35b6480c/eccodeslib-2.46.1.16-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:583f17c418fd6c8d645a3ddd560780d5360df1c4c0ba1727c670838b12dbf023", size = 8891155, upload-time = "2026-03-26T19:25:58.635Z" },
@@ -1051,11 +1051,19 @@ wheels = [
 ]
 
 [[package]]
+name = "impi-rt"
+version = "2021.17.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/71/a7a7afdebc1c72ca7e231d660cdf1e2306440350b1555694b888c0ec1186/impi_rt-2021.17.2-py2.py3-none-win_amd64.whl", hash = "sha256:9c1fac3ea904d4580c99b249c2a2cec6384156bf398bfb0a8a1b176572e28d8c", size = 17439486, upload-time = "2026-01-22T05:30:06.498Z" },
+]
+
+[[package]]
 name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.12'" },
+    { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -2016,6 +2024,17 @@ wheels = [
 ]
 
 [[package]]
+name = "mpich"
+version = "5.0.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/5e/ce8b52b38f5301ddde1f5bc3aa4a072db20d4a241c787b4d0f2a6dc1776e/mpich-5.0.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:803897827c3feb86f0dba1b5def7147d526bd9d96e70d299be08d69165b231af", size = 9504758, upload-time = "2026-02-06T20:21:30.959Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/cf/da4f648610570b622c8098c99339de757fdcd91b9cc6881b7d7b0a9207ff/mpich-5.0.0-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:a19506a16aca35fca90b9969f456d201e76e2f1411a8f13a7912475974ca25ad", size = 12623210, upload-time = "2026-02-06T20:21:33.857Z" },
+    { url = "https://files.pythonhosted.org/packages/08/91/95935bd88d51ff098dfea2376385d4fa79fb878d89647834ee458fcdeac9/mpich-5.0.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:32e99e914b8e71f3bd67e43fb16f9cc6e896a6b457e966a2babf694a9b534c95", size = 10340658, upload-time = "2026-02-06T20:21:36.092Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/43/038e99fc0a7a285d9d3e863f7dc48afe2a58199d27dbd38aad7e6ee0aeb6/mpich-5.0.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:83ddee2ef8b9b264200280f45eac25cd2fd0f4d77601f44e0e23df32adfababb", size = 13222276, upload-time = "2026-02-06T20:21:38.458Z" },
+]
+
+[[package]]
 name = "mypy"
 version = "1.19.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2767,12 +2786,14 @@ viz = [
     { name = "ipywidgets" },
     { name = "jupyterlab" },
     { name = "matplotlib" },
+    { name = "pandas" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "impi-rt", marker = "sys_platform == 'win32'" },
+    { name = "mpich", marker = "sys_platform != 'win32'" },
     { name = "mypy" },
-    { name = "pandas" },
     { name = "pooch" },
     { name = "pystormtracker", extra = ["all"] },
     { name = "pytest" },
@@ -2805,6 +2826,7 @@ requires-dist = [
     { name = "netcdf4", marker = "extra == 'netcdf4'", specifier = ">=1.6.1" },
     { name = "numba", specifier = ">=0.60.0" },
     { name = "numpy", specifier = ">=1.24.0" },
+    { name = "pandas", marker = "extra == 'viz'", specifier = ">=3.0.1" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.0.4" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.1.0" },
     { name = "xarray", specifier = ">=2024.9.0" },
@@ -2813,12 +2835,13 @@ provides-extras = ["mpi", "grib", "netcdf4", "jax", "all", "docs", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "impi-rt", marker = "sys_platform == 'win32'", specifier = ">=2021.11.0" },
+    { name = "mpich", marker = "sys_platform != 'win32'", specifier = ">=4.1.0" },
     { name = "mypy", specifier = ">=1.19.1" },
-    { name = "pandas", specifier = ">=3.0.1" },
     { name = "pooch", specifier = ">=1.9.0" },
     { name = "pystormtracker", extras = ["all"] },
     { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.15.5" },
 ]
 

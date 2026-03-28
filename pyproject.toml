@@ -70,6 +70,7 @@ docs = [
     "sphinx-rtd-theme>=3.1.0",
 ]
 viz = [
+    "pandas>=3.0.1",
     "matplotlib>=3.10.8",
     "cartopy>=0.25.0",
     "jupyterlab>=4.5.6",
@@ -91,9 +92,10 @@ dev = [
     "mypy>=1.19.1",
     "pooch>=1.9.0",
     "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.5",
-    "pandas>=3.0.1",
+    "impi-rt>=2021.11.0 ; sys_platform == 'win32'",
+    "mpich>=4.1.0 ; sys_platform != 'win32'",
 ]
 
 [tool.ruff]
