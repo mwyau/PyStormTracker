@@ -76,6 +76,7 @@ pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
 pip install PyStormTracker[jax]     # Includes experimental JAX SHT engine
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
+pip install PyStormTracker[zarr]    # Includes Zarr support (with remote HTTP/S3/GS)
 pip install PyStormTracker[all]     # Includes all optional components
 ```
 

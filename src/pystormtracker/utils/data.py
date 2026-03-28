@@ -3,9 +3,7 @@ from __future__ import annotations
 import pooch  # type: ignore[import-untyped]
 
 DATA_RELEASE_VERSION = "v0.1.3-data"
-RELEASE_URL = (
-    f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"
-)
+RELEASE_URL = f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"
 RAW_CONTENT_URL = f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_RELEASE_VERSION}/"
 
 

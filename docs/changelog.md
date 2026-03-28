@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.5.0.dev
+## v0.5.0.dev0
 ### Features
 - **High-Precision Derivatives**: New `vodv` module for computing relative vorticity and divergence using spin-1 vector harmonics.
 - **Planetary Constants**: Standardized Earth radius to 6,371,220 m across derivatives and tracking geometry.
@@ -8,9 +8,14 @@
 - **Interactive Track Explorer**: Web-based visualization with real-time filtering and animations.
 - **Hodges (TRACK) Parity**: Full implementation of the Hodges algorithm with TRACK parity.
 - **Preprocessing & Performance**: Improved spherical harmonic filtering and backend auto-detection.
+- **Remote Zarr Support**: Added support for remote Zarr datasets via HTTP, S3, and GS protocols.
+- **Enhanced DataLoader**: Refactored `io.loader` to `io.data_loader` with automatic format detection for NetCDF, GRIB, and Zarr.
+- **Improved UX**: Added friendly error messages with installation instructions when optional dependencies (`cfgrib`, `zarr`) are missing.
+- **Expanded Sample Data**: Integrated ERA5 UV850 sample datasets and Zarr-formatted alternatives in `utils.data`.
 
 ### Testing
 - **NCL Validation**: New integration test suite validated against NCL 6.6.2 reference data.
+- **Format Auto-detection Tests**: Added comprehensive tests for NetCDF, GRIB, and Zarr auto-detection in `DataLoader`.
 
 ### Performance
 
@@ -21,7 +26,8 @@
 - **Spectral Backend Consolidation**: Evaluated `pyshtools`, `SHTns`, and `ducc0` for performance, accuracy, and portability. Selected **ducc0** as the exclusive backend due to its superior multi-frame performance (6.3x faster than SHTns), self-contained architecture (no external C dependencies), and near bit-wise parity with NCL for kinematics.
 - **Standardized Documentation**: Renamed documentation files to lowercase and updated internal references.
 - **Repository Cleanup**: Organized documentation and removed legacy scripts.
-- **Dependencies**: Refined optional dependency groups.
+- **Strict Typing**: Achieved 100% `mypy` compliance in core I/O modules and removed usage of `Any`.
+- **Dependency Refinement**: Introduced a dedicated `zarr` optional dependency group and updated the `all` extra.
 
 ---
 

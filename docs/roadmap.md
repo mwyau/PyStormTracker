@@ -39,6 +39,8 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 *   **Modern CLI & API (Completed):** 
     *   Grouped, logical command-line interface with auto-configuration of parallel workers.
     *   Flexible `Tracker` Protocol for cross-algorithm support.
+*   **Remote Data Support (Completed):**
+    *   Native support for remote Zarr datasets via HTTP, S3, and GS protocols with automatic format detection.
 
 ## 4. Distribution & Ecosystem
 

@@ -23,8 +23,9 @@ The data models utilize a contiguous memory paradigm:
 **Benefits:** By avoiding the creation of many Python objects, memory usage is minimized, and data serialization between parallel processes is efficient. Raw NumPy arrays also enable efficient distance calculations via C-level broadcasting.
 
 ### 2.2 Shared DataLoader
-Data loading is encapsulated in a dedicated `DataLoader` class (`io/loader.py`). This component handles:
-*   **Format Abstraction**: Seamlessly detects and opens NetCDF (via `h5netcdf` or `netcdf4`) and GRIB (via `cfgrib`) files.
+Data loading is encapsulated in a dedicated `DataLoader` class (`io/data_loader.py`). This component handles:
+*   **Format Abstraction**: Seamlessly detects and opens NetCDF (via `h5netcdf` or `netcdf4`), GRIB (via `cfgrib`), and Zarr datasets.
+*   **Remote Data Support**: Native support for remote Zarr datasets via HTTP, S3, and GS protocols, utilizing `fsspec` for optimized cloud-native access.
 *   **Variable Mapping**: Automatically maps common variable aliases (e.g., `msl`/`slp`, `vo`/`rv`) and coordinate names (`latitude`/`lat`), allowing the same tracking logic to work across different data providers.
 *   **Contiguous I/O**: Performs single-block contiguous reads from disk, bypassing HDF5 lock contention.
 
