@@ -16,8 +16,9 @@ This document outlines the strategic plan for improving PyStormTracker's perform
     *   Transitioned from nested Python objects to flat, C-contiguous NumPy arrays for trajectories and centers.
 *   **JIT-Optimized Kernels (Completed):** 
     *   Implemented core mathematical filters (Laplacian, Extrema, MGE, CCL) in GIL-free Numba JIT.
-*   **GPU-Accelerated Preprocessing (Experimental):**
-    *   *Action:* Implement JAX-native spherical harmonic transforms and kinematic derivatives to enable GPU/TPU acceleration for high-resolution preprocessing. Initial support for scalar filtering and vector derivatives is complete.
+*   **GPU-Accelerated Preprocessing & Detection (Experimental):**
+    *   *Action:* Expand JAX-native capabilities beyond spherical harmonic transforms and kinematic derivatives to include local extrema detection and Laplacian filtering. This will enable full end-to-end GPU/TPU acceleration for high-resolution datasets.
+    *   *Status:* JAX-based spectral filtering and vector derivatives have been implemented as an experimental backend.
 
 ## 2. CI/CD & Testing
 
@@ -58,3 +59,5 @@ This document outlines the strategic plan for improving PyStormTracker's perform
     *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with original TRACK software.
 *   **Postprocessing (Track Metrics):**
     *   *Action:* Implement Accumulated Track Activity (ATA) and other storm track metrics from **Yau and Chang (2020)**.
+*   **JAX-Based Feature Detection (Proposed):**
+    *   *Action:* Develop JAX-native implementations of the extrema detection and intensity refinement kernels to support high-throughput, GPU-resident tracking pipelines.
