@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
 
 import ducc0
-import jax.numpy as jnp
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
@@ -35,25 +34,24 @@ def _get_filter_config(
     }
 
     if sht_engine == "jax":
-        return _filter_jax_frame, kwargs
+        return _filter_jax, kwargs
 
     return _filter_ducc0_frame, kwargs
 
 
-def _filter_jax_frame(
-    frame: NDArray[np.float64],
+def _filter_jax(
+    data: NDArray[np.float64],
     lmin: int,
     lmax: int,
     lat_reverse: bool = False,
     nthreads: int = 1,
 ) -> NDArray[np.float64]:
-    """Filters a single 2D frame using JAX-native SHT parity backend."""
+    """
+    Filters data using JAX-native SHT parity backend.
+    Handles 2D or 3D (time, lat, lon).
+    """
     try:
-        import jax
-
-        from .jax_sht import jax_analysis_2d, jax_synthesis_2d
-
-        jax.config.update("jax_enable_x64", True)
+        from .jax_sht import jax_filter
     except ImportError as e:
         raise ImportError(
             "The 'jax' backend requires 'jax'. "
@@ -61,28 +59,12 @@ def _filter_jax_frame(
         ) from e
 
     if lat_reverse:
-        frame = frame[::-1, :]
+        data = np.flip(data, axis=-2)
 
-    ny, nx = frame.shape
-    mmax = min(lmax, nx // 2 - 1)
-    frame_jax = jax.device_put(frame)
-
-    # Forward transform
-    alm = cast(jnp.ndarray, jax_analysis_2d(frame_jax, lmax, mmax=mmax, geometry="CC"))
-
-    # Apply Bandpass Mask
-    # 'alm' is now a 2D array of shape (mmax + 1, lmax + 1).
-    # Columns correspond to degree 'l'.
-    l_arr = jnp.arange(lmax + 1)
-    mask = l_arr >= lmin
-    alm_filtered = alm * mask
-
-    # Inverse transform
-    out = jax_synthesis_2d(alm_filtered, ny, nx, lmax, mmax=mmax, geometry="CC")
-    out_np = np.asarray(out)
+    out_np = jax_filter(data, lmin, lmax)
 
     if lat_reverse:
-        out_np = out_np[::-1, :]
+        out_np = np.flip(out_np, axis=-2)
 
     return out_np
 
@@ -215,6 +197,8 @@ class SpectralFilter:
             if data.ndim == 2:
                 return filter_func(data, **kwargs)
             if data.ndim == 3:
+                if sht_engine == "jax":
+                    return filter_func(data, **kwargs)
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
                     out[i] = filter_func(data[i], **kwargs)
@@ -325,7 +309,7 @@ def apply_spectral_filter(
             data,
             input_core_dims=[[lat_dim, lon_dim]],
             output_core_dims=[[lat_dim, lon_dim]],
-            vectorize=True,
+            vectorize=sht_engine != "jax",
             kwargs=kwargs,
             dask=dask_mode,
             output_dtypes=[data.dtype],

@@ -118,7 +118,7 @@ def jax_analysis_2d(
     geometry: str = "CC",
     spin: int = 0,
 ) -> jnp.ndarray | tuple[jnp.ndarray, jnp.ndarray]:
-    """JAX-native SHT analysis (Forward) matching ducc0."""
+    """JAX-native SHT analysis (Forward) matching ducc0. Handles (..., ny, nx)."""
     ny, nx = frame.shape[-2], frame.shape[-1]
     _validate_resolution(ny, lmax, geometry)
 
@@ -128,33 +128,33 @@ def jax_analysis_2d(
     if spin == 0:
         res = _get_sht_matrices(ny, nx, lmax, mmax, geometry, spin=0)
         plm, weights, _mmax_cached, _ = res
-        f_m = jnp.fft.rfft(frame, axis=-1)[:, : mmax + 1]
-        weighted_f_m = f_m * (weights[:, jnp.newaxis] / nx)
+        f_m = jnp.fft.rfft(frame, axis=-1)[..., : mmax + 1]
 
-        w_f_m = weighted_f_m.T
-        alm = jax.vmap(jnp.matmul)(plm, w_f_m)
+        # weights shape (ny,), f_m shape (..., ny, m)
+        weighted_f_m = f_m * (weights.reshape((ny, 1)) / nx)
+
+        # plm: (m, l, n), weighted_f_m: (... n, m)
+        # Result: (m, ..., l)
+        alm = jnp.einsum("mln,...nm->m...l", plm, weighted_f_m)
         return alm
 
     if spin == 1:
         res_spin1 = _get_sht_matrices(ny, nx, lmax, mmax, geometry, spin=1)
         plm_e, weights, _mmax_cached, plm_b = res_spin1
-        # plm_b is guaranteed to be non-None for spin=1
         plm_b = cast(jnp.ndarray, plm_b)
 
-        v_theta_m = jnp.fft.rfft(frame[0], axis=-1)[:, : mmax + 1]
-        v_phi_m = jnp.fft.rfft(frame[1], axis=-1)[:, : mmax + 1]
+        # frame is (2, ..., ny, nx)
+        v_theta_m = jnp.fft.rfft(frame[0], axis=-1)[..., : mmax + 1]
+        v_phi_m = jnp.fft.rfft(frame[1], axis=-1)[..., : mmax + 1]
 
-        w_v_theta_m = v_theta_m * (weights[:, jnp.newaxis] / nx)
-        w_v_phi_m = v_phi_m * (weights[:, jnp.newaxis] / nx)
+        w_v_theta_m = v_theta_m * (weights.reshape((ny, 1)) / nx)
+        w_v_phi_m = v_phi_m * (weights.reshape((ny, 1)) / nx)
 
-        w_v_theta_m = w_v_theta_m.T
-        w_v_phi_m = w_v_phi_m.T
-
-        alm_e = jax.vmap(jnp.matmul)(plm_e, w_v_theta_m) + jax.vmap(jnp.matmul)(
-            plm_b, w_v_phi_m
+        alm_e = jnp.einsum("mln,...nm->m...l", plm_e, w_v_theta_m) + jnp.einsum(
+            "mln,...nm->m...l", plm_b, w_v_phi_m
         )
-        alm_b = jax.vmap(jnp.matmul)(plm_e, w_v_phi_m) - jax.vmap(jnp.matmul)(
-            plm_b, w_v_theta_m
+        alm_b = jnp.einsum("mln,...nm->m...l", plm_e, w_v_phi_m) - jnp.einsum(
+            "mln,...nm->m...l", plm_b, w_v_theta_m
         )
 
         return alm_e, alm_b
@@ -171,44 +171,106 @@ def jax_synthesis_2d(
     geometry: str = "CC",
     spin: int = 0,
 ) -> jnp.ndarray:
-    """JAX-native SHT synthesis (Inverse) matching ducc0."""
+    """JAX-native SHT synthesis (Inverse) matching ducc0. Handles (m, ..., l)."""
     _validate_resolution(ny, lmax, geometry)
 
     if mmax is None:
         mmax = min(lmax, (nx - 1) // 2)
 
     if spin == 0:
-        # alm must be jnp.ndarray for spin=0
-        alm_arr = cast(jnp.ndarray, alm)
+        alm_arr = cast(jnp.ndarray, alm)  # (m, ..., l)
         res = _get_sht_matrices(ny, nx, lmax, mmax, geometry, spin=0)
-        plm, _, _, _ = res
+        plm, _, _, _ = res  # (m, l, n)
 
-        f_m_active = jax.vmap(jnp.matmul)(alm_arr, plm).T
-        f_m = jnp.pad(f_m_active, ((0, 0), (0, nx // 2 + 1 - (mmax + 1))))
+        # plm: (m, l, n), alm_arr: (m, ..., l)
+        # Result: (... n, m)
+        f_m_active = jnp.einsum("mln,m...l->...nm", plm, alm_arr)
+
+        f_m = jnp.pad(
+            f_m_active,
+            ((0, 0),) * (f_m_active.ndim - 1) + ((0, nx // 2 + 1 - (mmax + 1)),),
+        )
         return jnp.fft.irfft(f_m, n=nx, axis=-1) * nx
 
     if spin == 1:
-        # alm must be tuple[jnp.ndarray, jnp.ndarray] for spin=1
         alm_e, alm_b = cast(tuple[jnp.ndarray, jnp.ndarray], alm)
         res_spin1 = _get_sht_matrices(ny, nx, lmax, mmax, geometry, spin=1)
         plm_e, _, _, plm_b = res_spin1
         plm_b = cast(jnp.ndarray, plm_b)
 
-        vt_m_active = jax.vmap(jnp.matmul)(alm_e, plm_e) - jax.vmap(jnp.matmul)(
-            alm_b, plm_b
+        vt_m_active = jnp.einsum("mln,m...l->...nm", plm_e, alm_e) - jnp.einsum(
+            "mln,m...l->...nm", plm_b, alm_b
         )
-        vp_m_active = jax.vmap(jnp.matmul)(alm_e, plm_b) + jax.vmap(jnp.matmul)(
-            alm_b, plm_e
+        vp_m_active = jnp.einsum("mln,m...l->...nm", plm_e, alm_b) + jnp.einsum(
+            "mln,m...l->...nm", plm_b, alm_e
         )
 
-        vt_m = jnp.pad(vt_m_active.T, ((0, 0), (0, nx // 2 + 1 - (mmax + 1))))
-        vp_m = jnp.pad(vp_m_active.T, ((0, 0), (0, nx // 2 + 1 - (mmax + 1))))
+        vt_m = jnp.pad(
+            vt_m_active,
+            ((0, 0),) * (vt_m_active.ndim - 1) + ((0, nx // 2 + 1 - (mmax + 1)),),
+        )
+        vp_m = jnp.pad(
+            vp_m_active,
+            ((0, 0),) * (vp_m_active.ndim - 1) + ((0, nx // 2 + 1 - (mmax + 1)),),
+        )
 
         return jnp.stack(
             [
                 jnp.fft.irfft(vt_m, n=nx, axis=-1) * nx,
                 jnp.fft.irfft(vp_m, n=nx, axis=-1) * nx,
-            ]
+            ],
+            axis=0,
         )
 
     raise ValueError(f"Spin {spin} not supported in jax_sht")
+
+
+@functools.partial(jax.jit, static_argnums=(3, 4, 5, 6))
+def _jax_filter_core(
+    data: jnp.ndarray,
+    plm: jnp.ndarray,
+    weights: jnp.ndarray,
+    lmin: int,
+    lmax: int,
+    mmax: int,
+    nx: int,
+) -> jnp.ndarray:
+    """JIT-compiled core filtering logic."""
+    ny = data.shape[-2]
+
+    # Forward transform
+    f_m = jnp.fft.rfft(data, axis=-1)[..., : mmax + 1]
+    weighted_f_m = f_m * (weights.reshape((ny, 1)) / nx)
+    alm = jnp.einsum("mln,...nm->m...l", plm, weighted_f_m)
+
+    # Apply Bandpass Mask
+    l_arr = jnp.arange(lmax + 1)
+    mask = l_arr >= lmin
+    alm_f = alm * mask
+
+    # Inverse transform
+    f_m_active = jnp.einsum("mln,m...l->...nm", plm, alm_f)
+    f_m_pad = jnp.pad(
+        f_m_active, ((0, 0),) * (f_m_active.ndim - 1) + ((0, nx // 2 + 1 - (mmax + 1)),)
+    )
+    return jnp.fft.irfft(f_m_pad, n=nx, axis=-1) * nx
+
+
+def jax_filter(
+    data: np.ndarray,
+    lmin: int,
+    lmax: int,
+) -> np.ndarray:
+    """Filters data using JAX-native SHT. Handles (..., ny, nx)."""
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+
+    ny, nx = data.shape[-2], data.shape[-1]
+    mmax = min(lmax, nx // 2 - 1)
+
+    plm, weights, _, _ = _get_sht_matrices(ny, nx, lmax, mmax, geometry="CC", spin=0)
+    data_jax = jax.device_put(data)
+
+    out = _jax_filter_core(data_jax, plm, weights, lmin, lmax, mmax, nx)
+    return np.asarray(out)
