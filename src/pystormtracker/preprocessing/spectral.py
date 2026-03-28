@@ -71,12 +71,9 @@ def _filter_jax_frame(
     alm = cast(jnp.ndarray, jax_analysis_2d(frame_jax, lmax, mmax=mmax, geometry="CC"))
 
     # Apply Bandpass Mask
-    # We need to calculate the degree 'l' for each coefficient to mask it.
-    l_list = []
-    for m in range(mmax + 1):
-        l_list.append(jnp.arange(m, lmax + 1))
-    l_arr = jnp.concatenate(l_list)
-
+    # 'alm' is now a 2D array of shape (mmax + 1, lmax + 1).
+    # Columns correspond to degree 'l'.
+    l_arr = jnp.arange(lmax + 1)
     mask = l_arr >= lmin
     alm_filtered = alm * mask
 
