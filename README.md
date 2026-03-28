@@ -77,7 +77,8 @@ pip install PyStormTracker[jax]     # Includes experimental JAX SHT engine
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
 pip install PyStormTracker[zarr]    # Includes Zarr support (with remote HTTP/S3/GS)
-pip install PyStormTracker[all]     # Includes all optional components
+pip install PyStormTracker[viz]     # Includes visualization (matplotlib, cartopy, etc.)
+pip install PyStormTracker[all]     # Includes all core optional components
 ```
 
 Using `uv`:
