@@ -83,10 +83,10 @@ pip install PyStormTracker[all]     # Includes all optional components
 Using `uv`:
 ```bash
 # For use as a CLI tool
-uv tool install PyStormTracker --with hodges,mpi
+uv tool install PyStormTracker --with mpi
 
 # For use as a library in your project
-uv add PyStormTracker --extra hodges,mpi
+uv add PyStormTracker --extra mpi
 ```
 
 ### From Conda-Forge
