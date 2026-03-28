@@ -53,12 +53,16 @@ grib = [
 netcdf4 = [
     "netCDF4>=1.6.1",
 ]
+jax = [
+    "jax>=0.5.1"
+]
 all = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
     "mpi4py>=4.1.0",
     "netCDF4>=1.6.1",
+    "jax>=0.5.1",
 ]
 docs = [
     "myst-parser>=5.0.0",

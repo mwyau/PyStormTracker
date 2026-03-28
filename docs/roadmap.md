@@ -16,6 +16,8 @@ This document outlines the strategic plan for improving PyStormTracker's perform
     *   Transitioned from nested Python objects to flat, C-contiguous NumPy arrays for trajectories and centers.
 *   **JIT-Optimized Kernels (Completed):** 
     *   Implemented core mathematical filters (Laplacian, Extrema, MGE, CCL) in GIL-free Numba JIT.
+*   **GPU-Accelerated Preprocessing (Experimental):**
+    *   *Action:* Implement JAX-native spherical harmonic transforms and kinematic derivatives to enable GPU/TPU acceleration for high-resolution preprocessing. Initial support for scalar filtering and vector derivatives is complete.
 
 ## 2. CI/CD & Testing
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from typing import TypedDict
+import time
+from typing import Literal, TypedDict
 
 import numpy as np
 import pytest
@@ -14,20 +15,23 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 
 
-class FilterTestCase(TypedDict):
+class FilterTestCase(TypedDict, total=False):
     lmin: int
     lmax: int
     ref: str
+    sht_engine: Literal["ducc0", "jax"]
 
 
 # Test cases for different truncations
 TEST_CASES: list[FilterTestCase] = [
+    # 2.5-degree cases (ducc0 only)
     {
         "lmin": 5,
         "lmax": 42,
         "ref": os.path.join(
             BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t5-42_ncl.nc"
         ),
+        "sht_engine": "ducc0",
     },
     {
         "lmin": 0,
@@ -35,6 +39,16 @@ TEST_CASES: list[FilterTestCase] = [
         "ref": os.path.join(
             BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t0-42_ncl.nc"
         ),
+        "sht_engine": "ducc0",
+    },
+    # 0.25-degree cases (ducc0 and jax)
+    {
+        "lmin": 5,
+        "lmax": 42,
+        "ref": os.path.join(
+            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t5-42_ncl.nc"
+        ),
+        "sht_engine": "ducc0",
     },
     {
         "lmin": 5,
@@ -42,6 +56,7 @@ TEST_CASES: list[FilterTestCase] = [
         "ref": os.path.join(
             BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t5-42_ncl.nc"
         ),
+        "sht_engine": "jax",
     },
     {
         "lmin": 0,
@@ -49,6 +64,15 @@ TEST_CASES: list[FilterTestCase] = [
         "ref": os.path.join(
             BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t0-42_ncl.nc"
         ),
+        "sht_engine": "ducc0",
+    },
+    {
+        "lmin": 0,
+        "lmax": 42,
+        "ref": os.path.join(
+            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t0-42_ncl.nc"
+        ),
+        "sht_engine": "jax",
     },
 ]
 
@@ -57,13 +81,26 @@ HAS_BASE_DATA = os.path.exists(MSL_FILE)
 
 @pytest.mark.skipif(not HAS_BASE_DATA, reason="Base MSL test data not found.")
 @pytest.mark.parametrize(
-    "case", TEST_CASES, ids=["T0-42_2.5", "T5-42_2.5", "T0-42_0.25", "T5-42_0.25"]
+    "case",
+    TEST_CASES,
+    ids=[
+        "T5-42_2.5_ducc0",
+        "T0-42_2.5_ducc0",
+        "T5-42_0.25_ducc0",
+        "T5-42_0.25_jax",
+        "T0-42_0.25_ducc0",
+        "T0-42_0.25_jax",
+    ],
 )
 def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     """
     Verifies that the SHT backend for filtering produces results matching
     the NCL reference data for MSL across multiple truncations and resolutions.
     """
+    sht_engine: Literal["ducc0", "jax"] = case.get("sht_engine", "ducc0")
+    if sht_engine == "jax":
+        pytest.importorskip("jax")
+
     if not os.path.exists(case["ref"]):
         pytest.skip(f"Reference data not found: {case['ref']}")
 
@@ -85,19 +122,20 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     ref = ds_ref.msl
 
     filt = SpectralFilter(lmin=case["lmin"], lmax=case["lmax"])
-    import time
 
     start_time = time.perf_counter()
-    filtered = filt.filter(msl)
+    filtered = filt.filter(msl, sht_engine=sht_engine)
     end_time = time.perf_counter()
     duration = end_time - start_time
 
     # Ensure extremely high structural correlation (> 0.9999)
     corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
-    assert corr > 0.9999, f"Low correlation for T{case['lmin']}-{case['lmax']}: {corr}"
+    assert corr > 0.9999, (
+        f"Low correlation for T{case['lmin']}-{case['lmax']} ({sht_engine}): {corr}"
+    )
 
     # Ensure RMSE is within acceptable bounds for large-scale field (MSL ~10^5)
-    # ducc0: ~0.05 Pa RMSE vs NCL (modern implementation consistency)
+    # ducc0/jax: ~0.05 Pa RMSE vs NCL (modern implementation consistency)
     rmse = np.sqrt(np.mean((filtered.values - ref.values) ** 2))
 
     # Relative Error: RMSE / Mean Magnitude of the field
@@ -105,11 +143,13 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     rel_error = rmse / ref_mean if ref_mean > 0 else 0.0
 
     print(
-        f"\nT{case['lmin']}-{case['lmax']} "
+        f"\nT{case['lmin']}-{case['lmax']} ({sht_engine}) "
         f"RMSE: {rmse:.8f}, RelError: {rel_error:.12f}, "
         f"Corr: {corr:.12f}, Time: {duration:.4f}s"
     )
 
     # Threshold is slightly higher for aliased 2.5 grid
     max_rmse = 0.1
-    assert rmse < max_rmse, f"High RMSE for T{case['lmin']}-{case['lmax']}: {rmse}"
+    assert rmse < max_rmse, (
+        f"High RMSE for T{case['lmin']}-{case['lmax']} ({sht_engine}): {rmse}"
+    )

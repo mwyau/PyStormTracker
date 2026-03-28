@@ -1,26 +1,53 @@
 # Spectral Filtering Accuracy
 
-> [!NOTE]
-> As of version 0.5.0, `PyStormTracker` has transitioned to using **ducc0** as the exclusive spectral backend. Support for **SHTns** and the `sht_engine` parameter has been removed to simplify the codebase and leverage the superior multi-frame performance and portability of `ducc0`. This document remains as a technical reference for the accuracy and performance trade-offs that informed this decision.
-
-This document details the accuracy and performance of the spherical harmonic transform (SHT) backends used for spectral filtering and kinematic derivative calculations in `PyStormTracker`, comparing them against NCL (NCAR Command Language) as the ground truth reference.
+PyStormTracker supports multiple backends for spherical harmonic transforms (SHT) used in spectral filtering and kinematic derivative calculations. The choice of engine can be controlled via the `sht_engine` parameter in the Python API.
 
 ## Methodology
 
-Accuracy is evaluated using **Root Mean Square Error (RMSE)**, **Relative Error**, and **Pearson Correlation Coefficient** for ERA5 Mean Sea Level Pressure (MSL) and Wind (U/V) data. 
+Accuracy is evaluated using **Root Mean Square Error (RMSE)**, **Relative Error**, and **Pearson Correlation Coefficient** for ERA5 Mean Sea Level Pressure (MSL) and Wind (U/V) data.
 
 Two spatial resolutions are tested:
 - **2.5°x2.5°**: A low-resolution grid (73x144) where T42 truncation (requiring ~85 latitudes) results in aliasing.
 - **0.25°x0.25°**: A high-resolution grid (721x1440) where T42 truncation is alias-free.
 
-All `SHTns` results are obtained using `polar_opt=0.0` (equivalent to `eps=0` in the C API) to disable the polar optimization threshold and ensure maximum precision.
+## SHT Engines
+
+### 1. ducc0 (Default)
+**ducc0** is the standard backend for PyStormTracker. It is a high-performance C++ library that provides excellent multi-frame performance and bit-wise parity with modern SHT implementations.
+
+*   **Pros**: Extremely fast, robust, and handles aliased coarse grids gracefully. No external C dependencies (self-contained).
+*   **Cons**: Slightly less accurate than specialized legacy libraries like SHTns on specific high-resolution scalar fields.
+
+### 2. JAX (Experimental)
+The **JAX** backend provides a JAX-native implementation of the SHT algorithms. It is designed for researchers looking to leverage GPU acceleration or automatic differentiation in their preprocessing pipelines.
+
+*   **Pros**: GPU/TPU support via JAX. Machine-precision parity with `ducc0` for resolved harmonics.
+*   **Cons**: Requires the `jax` extra (`pip install pystormtracker[jax]`). Subject to significant aliasing errors on coarse grids (e.g., 2.5°) where `lmax` is close to the grid's Nyquist frequency.
+
+### 3. SHTns (Legacy Reference)
+**SHTns** was the primary backend in earlier versions. While no longer the default, its performance metrics serve as a high-precision benchmark for scalar filtering.
+
+*   **Pros**: Exceptional accuracy on high-resolution alias-free grids for scalar fields.
+*   **Cons**: Slower than `ducc0` for multi-frame workloads. Requires complex external C compilation. Significant numerical discrepancy (~10⁻⁶ RMSE) in kinematic derivative calculations compared to `Spherepack` (NCL).
 
 ## Accuracy & Performance Metrics
 
 ### Spectral Filtering (MSL)
 
-#### Resolution: 2.5°x2.5° (ERA5)
-*Note: Higher error in this resolution is primarily due to aliasing on the coarse grid. Times are for a single frame.*
+#### Parity: JAX vs ducc0
+
+| Resolution | Target lmax | Mean Relative Error | Max Relative Error | RMSE |
+| :--- | :--- | :--- | :--- | :--- |
+| **0.25°x0.25°** | 42 | **2.77e-15** | 5.49e-09 | 4.03e-16 |
+| **1.0°x1.0°** | 42 | **2.67e-14** | 1.15e-10 | 5.93e-16 |
+| **2.5°x2.5°** | 42 | 5.81e-03 | 2.71e+00 | 7.24e-04 |
+
+*Note: The high relative error at 2.5° is primarily due to differences in integration quadrature and aliasing treatment between the JAX-native matrix-vector approach and ducc0's optimized kernels.*
+
+#### Cross-Engine Accuracy (vs NCL Reference)
+
+**Resolution: 2.5°x2.5° (ERA5)**
+*Note: Higher error in this resolution is primarily due to aliasing on the coarse grid.*
 
 | Engine | Truncation | RMSE (Pa) | Rel. Error | Correlation | Time (s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -29,8 +56,8 @@ All `SHTns` results are obtained using `polar_opt=0.0` (equivalent to `eps=0` in
 | **SHTns** | T0-42 | 0.45729944 | 4.53e-06 | 0.999999918845 | 0.0009 |
 | **ducc0** | T0-42 | 0.05369308 | 5.31e-07 | 0.999999998880 | 0.0019 |
 
-#### Resolution: 0.25°x0.25° (ERA5)
-*Note: This resolution satisfies the sampling theorem for T42, resulting in near-perfect parity. Times are for a single frame.*
+**Resolution: 0.25°x0.25° (ERA5)**
+*Note: This resolution satisfies the sampling theorem for T42, resulting in near-perfect parity.*
 
 | Engine | Truncation | RMSE (Pa) | Rel. Error | Correlation | Time (s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -46,16 +73,9 @@ All `SHTns` results are obtained using `polar_opt=0.0` (equivalent to `eps=0` in
 | :--- | :--- | :--- | :--- | :--- |
 | **SHTns** | Vorticity | 9.05e-06 | 0.9899 | 0.1017 |
 | **ducc0** | Vorticity | **1.74e-14** | **1.0000** | **0.0576** |
-| **SHTns** | Divergence | 8.27e-06 | 0.9917 | 0.1017 |
-| **ducc0** | Divergence | **1.68e-14** | **1.0000** | **0.0576** |
+| **jax** | Vorticity | **1.12e-10** | **1.0000** | **3.49** |
 
-### Full Dataset Benchmark (0.25°x0.25°, 360 frames)
-*Measured total execution time for processing all frames sequentially.*
-
-| Engine | Total Time (s) | Time per Frame (ms) | Speed Comparison |
-| :--- | :--- | :--- | :--- |
-| **SHTns** | 5.9887 | 16.64 | 1.0x |
-| **ducc0** | 0.9428 | 2.62 | **6.3x faster** |
+*JAX timings are measured on CPU; significantly faster performance is expected on CUDA-enabled devices.*
 
 ## Impact of Polar Optimization (SHTns)
 
@@ -65,18 +85,6 @@ For high-resolution grids (0.25°), disabling the polar optimization threshold (
 
 Disabling the optimization is recommended for cases where strict bit-wise parity with double-precision ground truth is required.
 
-## Performance vs. Accuracy
-
-The choice of engine involves a significant trade-off between performance and bit-wise parity with legacy tools:
-
-1.  **SHTns**:
-    *   **Pros**: Exceptional accuracy on high-resolution alias-free grids (RMSE ~10⁻⁵ Pa). Provides the closest match to NCL/Spherepack ground truth for scalar filtering.
-    *   **Cons**: Slower than `ducc0` for multi-frame workloads. Higher RMSE on coarse grids due to aliasing handling differences.
-
-2.  **ducc0**:
-    *   **Pros**: **Extremely fast** (6.3x faster than SHTns for 0.25° data). Achieves near bit-wise parity with NCL for kinematics (RMSE ~10⁻¹⁴ s⁻¹). **No external C dependencies** (self-contained pocketFFT implementation).
-    *   **Cons**: Slightly less accurate than SHTns on high-resolution grids compared to NCL ground truth for scalar filtering.
-
 ## Summary
 
-For standard storm tracking applications, both engines are scientifically equivalent. **ducc0** is the recommended default for its superior performance, robustness, and ease of installation. **SHTns** (with `polar_opt=0.0`) is preferred when maximum bit-wise parity with NCL is required for high-resolution validation of scalar fields.
+For standard storm tracking applications, all engines are scientifically equivalent. **ducc0** is the recommended default for its balance of speed, robustness, and ease of installation. It also provides the highest parity with legacy `Spherepack` references for kinematics. The **JAX** backend is an excellent choice for high-resolution datasets where alias-free transforms ensure parity while enabling GPU acceleration. **SHTns** (with `polar_opt=0.0`) remains a high-precision benchmark for scalar fields, though it was passed over as the primary engine due to its numerical discrepancies in derivative calculations compared to standard meteorological tools.

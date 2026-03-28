@@ -77,7 +77,7 @@ tracks.write("output.txt", format="imilast")
 
 To further optimize scalability and memory efficiency for native-resolution climate datasets (e.g., 0.25° ERA5), the architecture is evolving towards deeper integration with the scientific Python ecosystem:
 
-*   **Idiomatic Xarray (`apply_ufunc`):** Transitioning away from custom MPI/Dask chunking in favor of Xarray's native `apply_ufunc(..., dask="parallelized")`. This is already implemented for the new spectral backends and derivatives, delegating chunk management and distributed execution entirely to Xarray/Dask.
+*   **Idiomatic Xarray (`apply_ufunc`):** Transitioning away from custom MPI/Dask chunking in favor of Xarray's native `apply_ufunc(..., dask="parallelized")`. This is already implemented for the new spectral backends and derivatives, delegating chunk management and distributed execution entirely to Xarray/Dask. This architecture now supports both the production-ready **ducc0** engine and an experimental **JAX-native** engine for GPU acceleration.
 *   **Lazy Evaluation & Thread Topology:** Shifting from eager chunk-loading to lazy, frame-by-frame memory access to eliminate out-of-memory risks on large domains. Concurrently, strictly pinning Numba thread topologies to prevent CPU oversubscription in multi-process backends.
 *   **Tree-based Linking:** Upgrading the current NumPy-broadcasting linker to utilize C-level tree structures (e.g., `scipy.spatial.cKDTree`), breaking the $O(N^2)$ scaling barrier for extremely long or dense trajectory sequences.
 

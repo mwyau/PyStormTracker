@@ -17,6 +17,61 @@ class KinematicsKwargs(TypedDict, total=False):
     nthreads: int
 
 
+def compute_vort_div_jax(
+    u: NDArray[np.float64],
+    v: NDArray[np.float64],
+    R: float = R_EARTH_METERS,
+    lmax: int | None = None,
+    geometry: str = "CC",
+    nthreads: int = 0,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Computes spatial divergence and relative vorticity using JAX and ducc0-parity SHT.
+    """
+    try:
+        import jax
+
+        from .jax_sht import jax_analysis_2d, jax_synthesis_2d
+
+        jax.config.update("jax_enable_x64", True)
+    except ImportError as e:
+        raise ImportError(
+            "The 'jax' backend requires 'jax'. "
+            "Install via 'pip install pystormtracker[jax]'."
+        ) from e
+
+    ny, nx = u.shape
+    if lmax is None:
+        lmax = ny - 2  # Standard for ducc0 CC
+
+    mmax = min(lmax, nx // 2 - 1)
+
+    # ducc0 spin-1 expects (v_theta, v_phi) = (v, u)
+    vec_jax = jax.numpy.stack([v, u], axis=0)
+
+    # Forward spin-1 transform
+    alm_e, alm_b = jax_analysis_2d(vec_jax, lmax, mmax=mmax, geometry=geometry, spin=1)
+
+    # Spectral Scaling:
+    # l_arr contains the degree 'l' for each coefficient in the alm array.
+    # Standard ducc0 packed format: for each m, l goes from m to lmax.
+    l_list = []
+    for m in range(mmax + 1):
+        l_list.append(jax.numpy.arange(m, lmax + 1))
+    l_arr = jax.numpy.concatenate(l_list)
+
+    eigen_scale = jax.numpy.sqrt(l_arr * (l_arr + 1.0)) / R
+    alm_div = -eigen_scale * alm_e
+    alm_vort = eigen_scale * alm_b
+
+    div = jax_synthesis_2d(alm_div, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0)
+    vort = jax_synthesis_2d(
+        alm_vort, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0
+    )
+
+    return np.asarray(div, dtype=np.float64), np.asarray(vort, dtype=np.float64)
+
+
 def compute_vort_div(
     u: NDArray[np.float64],
     v: NDArray[np.float64],
@@ -127,7 +182,7 @@ def apply_vort_div(
     backend: Literal["serial", "mpi", "dask"] = "serial",
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """
-    Xarray wrapper for computing relative vorticity and divergence using ducc0.
+    Xarray wrapper for computing relative vorticity and divergence.
 
     Args:
         u: Zonal wind DataArray (lat, lon). Latitude must be North to South.
@@ -136,7 +191,7 @@ def apply_vort_div(
         lmax: Maximum spherical harmonic degree.
         geometry: Grid geometry (default 'CC').
         nthreads: Number of threads.
-        backend: Parallelization backend.
+        backend: Parallelization backend. Options: 'serial', 'mpi', 'dask'.
 
     Returns:
         div, vort: Divergence and relative vorticity DataArrays.
@@ -153,9 +208,12 @@ def apply_vort_div(
     lat_dim = u.dims[-2]
     lon_dim = u.dims[-1]
 
+    # Select core function
+    core_func = compute_vort_div
+
     # Use apply_ufunc for broad support
     div_vort = xr.apply_ufunc(
-        compute_vort_div,
+        core_func,
         u,
         v,
         input_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
@@ -177,7 +235,7 @@ def apply_vort_div(
 
 class Kinematics:
     """
-    Computes spatial derivatives and kinematic properties of the wind field using ducc0.
+    Computes spatial derivatives and kinematic properties of the wind field.
     """
 
     def __init__(

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
 
 import ducc0
+import jax.numpy as jnp
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
@@ -15,7 +16,6 @@ class FilterKwargs(TypedDict, total=False):
     lmin: int
     lmax: int
     lat_reverse: bool
-    backend: str
     nthreads: int
 
 
@@ -24,8 +24,9 @@ def _get_filter_config(
     lmax: int,
     lat_reverse: bool,
     nthreads: int = 1,
+    sht_engine: Literal["ducc0", "jax"] = "ducc0",
 ) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
-    """Returns the filter function and kwargs for the ducc0 engine."""
+    """Returns the filter function and kwargs for the requested engine."""
     kwargs: FilterKwargs = {
         "lmin": lmin,
         "lmax": lmax,
@@ -33,7 +34,60 @@ def _get_filter_config(
         "nthreads": nthreads,
     }
 
+    if sht_engine == "jax":
+        return _filter_jax_frame, kwargs
+
     return _filter_ducc0_frame, kwargs
+
+
+def _filter_jax_frame(
+    frame: NDArray[np.float64],
+    lmin: int,
+    lmax: int,
+    lat_reverse: bool = False,
+    nthreads: int = 1,
+) -> NDArray[np.float64]:
+    """Filters a single 2D frame using JAX-native SHT parity backend."""
+    try:
+        import jax
+
+        from .jax_sht import jax_analysis_2d, jax_synthesis_2d
+
+        jax.config.update("jax_enable_x64", True)
+    except ImportError as e:
+        raise ImportError(
+            "The 'jax' backend requires 'jax'. "
+            "Install via 'pip install pystormtracker[jax]'."
+        ) from e
+
+    if lat_reverse:
+        frame = frame[::-1, :]
+
+    ny, nx = frame.shape
+    mmax = min(lmax, nx // 2 - 1)
+    frame_jax = jax.device_put(frame)
+
+    # Forward transform
+    alm = cast(jnp.ndarray, jax_analysis_2d(frame_jax, lmax, mmax=mmax, geometry="CC"))
+
+    # Apply Bandpass Mask
+    # We need to calculate the degree 'l' for each coefficient to mask it.
+    l_list = []
+    for m in range(mmax + 1):
+        l_list.append(jnp.arange(m, lmax + 1))
+    l_arr = jnp.concatenate(l_list)
+
+    mask = l_arr >= lmin
+    alm_filtered = alm * mask
+
+    # Inverse transform
+    out = jax_synthesis_2d(alm_filtered, ny, nx, lmax, mmax=mmax, geometry="CC")
+    out_np = np.asarray(out)
+
+    if lat_reverse:
+        out_np = out_np[::-1, :]
+
+    return out_np
 
 
 def _filter_ducc0_frame(
@@ -123,6 +177,7 @@ class SpectralFilter:
         self,
         data: xr.DataArray,
         backend: Literal["serial", "mpi", "dask"] = "serial",
+        sht_engine: Literal["ducc0", "jax"] = "ducc0",
     ) -> xr.DataArray: ...
 
     @overload
@@ -130,12 +185,14 @@ class SpectralFilter:
         self,
         data: NDArray[np.float64],
         backend: Literal["serial", "mpi", "dask"] = "serial",
+        sht_engine: Literal["ducc0", "jax"] = "ducc0",
     ) -> NDArray[np.float64]: ...
 
     def filter(
         self,
         data: xr.DataArray | NDArray[np.float64],
         backend: Literal["serial", "mpi", "dask"] = "serial",
+        sht_engine: Literal["ducc0", "jax"] = "ducc0",
     ) -> xr.DataArray | NDArray[np.float64]:
         """
         Applies the filter to the input data.
@@ -143,6 +200,7 @@ class SpectralFilter:
         Args:
             data (xr.DataArray | np.ndarray): Input data.
             backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+            sht_engine (str): SHT engine. Options: 'ducc0', 'jax'.
 
         Returns:
             xr.DataArray | np.ndarray: The filtered data.
@@ -150,18 +208,21 @@ class SpectralFilter:
         if isinstance(data, np.ndarray):
             nthreads = 1 if backend in ("mpi", "dask") else 0
             filter_func, kwargs = _get_filter_config(
-                self.lmin, self.lmax, self.lat_reverse, nthreads
+                self.lmin,
+                self.lmax,
+                self.lat_reverse,
+                nthreads,
+                sht_engine=sht_engine,
             )
 
             if data.ndim == 2:
                 return filter_func(data, **kwargs)
-            elif data.ndim == 3:
+            if data.ndim == 3:
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
                     out[i] = filter_func(data[i], **kwargs)
                 return out
-            else:
-                raise ValueError("numpy array must be 2D or 3D")
+            raise ValueError("numpy array must be 2D or 3D")
 
         return apply_spectral_filter(
             data,
@@ -169,6 +230,7 @@ class SpectralFilter:
             self.lmax,
             lat_reverse=self.lat_reverse,
             backend=backend,
+            sht_engine=sht_engine,
         )
 
 
@@ -178,9 +240,10 @@ def apply_spectral_filter(
     lmax: int = 42,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
+    sht_engine: Literal["ducc0", "jax"] = "ducc0",
 ) -> xr.DataArray:
     """
-    Applies a spectral bandpass filter to the input DataArray using ducc0.
+    Applies a spectral bandpass filter to the input DataArray.
 
     Args:
         data (xr.DataArray): Input data with lat/lon dimensions.
@@ -188,6 +251,7 @@ def apply_spectral_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
+        sht_engine (str): SHT engine. Options: 'ducc0', 'jax'.
 
     Returns:
         xr.DataArray: The filtered data.
@@ -209,7 +273,9 @@ def apply_spectral_filter(
         )
 
     nthreads = 1 if backend in ("mpi", "dask") else 0
-    filter_func, kwargs = _get_filter_config(lmin, lmax, lat_reverse, nthreads)
+    filter_func, kwargs = _get_filter_config(
+        lmin, lmax, lat_reverse, nthreads, sht_engine=sht_engine
+    )
 
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
 
