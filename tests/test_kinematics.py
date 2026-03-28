@@ -11,40 +11,38 @@ from pystormtracker.preprocessing.kinematics import (
 )
 
 
-def test_compute_vort_div_shapes() -> None:
+@pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
+def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
     pytest.importorskip("ducc0")
-
-    ntheta, nphi = 73, 144
-    u = np.random.rand(ntheta, nphi)
-    v = np.random.rand(ntheta, nphi)
+    u = np.random.rand(ny, nx)
+    v = np.random.rand(ny, nx)
 
     div, vort = compute_vort_div(u, v)
 
-    assert div.shape == (ntheta, nphi)
-    assert vort.shape == (ntheta, nphi)
+    assert div.shape == (ny, nx)
+    assert vort.shape == (ny, nx)
 
     # Check that they aren't all zeros
     assert np.any(div != 0.0)
     assert np.any(vort != 0.0)
 
 
-def test_apply_vort_div() -> None:
+@pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
+def test_apply_vort_div(ny: int, nx: int) -> None:
     pytest.importorskip("ducc0")
-
-    ntheta, nphi = 37, 72
     u = xr.DataArray(
-        np.random.rand(ntheta, nphi),
+        np.random.rand(ny, nx),
         coords={
-            "lat": np.linspace(90, -90, ntheta),
-            "lon": np.linspace(0, 360, nphi, endpoint=False),
+            "lat": np.linspace(90, -90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         dims=["lat", "lon"],
     )
     v = xr.DataArray(
-        np.random.rand(ntheta, nphi),
+        np.random.rand(ny, nx),
         coords={
-            "lat": np.linspace(90, -90, ntheta),
-            "lon": np.linspace(0, 360, nphi, endpoint=False),
+            "lat": np.linspace(90, -90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         dims=["lat", "lon"],
     )
@@ -59,32 +57,31 @@ def test_apply_vort_div() -> None:
     assert np.array_equal(vort.lon, u.lon)
 
 
-def test_kinematics_class() -> None:
+@pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
+def test_kinematics_class(ny: int, nx: int) -> None:
     pytest.importorskip("ducc0")
-
-    ntheta, nphi = 37, 72
-    u_np = np.random.rand(ntheta, nphi)
-    v_np = np.random.rand(ntheta, nphi)
+    u_np = np.random.rand(ny, nx)
+    v_np = np.random.rand(ny, nx)
 
     calc = Kinematics()
     div_np, vort_np = calc.compute(u_np, v_np)
 
-    assert div_np.shape == (ntheta, nphi)
-    assert vort_np.shape == (ntheta, nphi)
+    assert div_np.shape == (ny, nx)
+    assert vort_np.shape == (ny, nx)
 
     u_xr = xr.DataArray(
         u_np,
         coords={
-            "lat": np.linspace(90, -90, ntheta),
-            "lon": np.linspace(0, 360, nphi, endpoint=False),
+            "lat": np.linspace(90, -90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         dims=["lat", "lon"],
     )
     v_xr = xr.DataArray(
         v_np,
         coords={
-            "lat": np.linspace(90, -90, ntheta),
-            "lon": np.linspace(0, 360, nphi, endpoint=False),
+            "lat": np.linspace(90, -90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         dims=["lat", "lon"],
     )
@@ -96,7 +93,6 @@ def test_kinematics_class() -> None:
 
 def test_solid_body_rotation() -> None:
     pytest.importorskip("ducc0")
-
     # Solid body rotation: u = U0 * cos(lat)
     ntheta, nphi = 73, 144
     lat = np.linspace(np.pi / 2, -np.pi / 2, ntheta)
