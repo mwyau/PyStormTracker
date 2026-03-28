@@ -115,3 +115,19 @@ def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None
     assert loader.engine is None  # Auto-detection was used
     # Check that it was cached
     assert url in DataLoader._ds_cache
+
+
+@patch("importlib.util.find_spec")
+def test_dataloader_grib_missing_dependency(mock_find_spec: MagicMock) -> None:
+    """Test that DataLoader raises ValueError if cfgrib is not
+    installed for GRIB files.
+    """
+    mock_find_spec.return_value = None  # Simulate cfgrib not found
+    loader = DataLoader("test.grib")
+    with pytest.raises(
+        ValueError,
+        match=r"cfgrib is required to open GRIB files. Please install it",
+    ):
+        loader.ensure_open()
+
+

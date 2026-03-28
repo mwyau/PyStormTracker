@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import threading
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import xarray as xr
 
@@ -47,7 +48,7 @@ class DataLoader:
             with self._ds_lock:
                 if self.pathname not in self._ds_cache:
                     engine = self.engine
-                    storage_options: dict[str, Any] = {}
+                    storage_options: dict[str, bool] = {}
                     is_remote = isinstance(self.pathname, str) and (
                         "://" in str(self.pathname)
                     )
@@ -68,6 +69,12 @@ class DataLoader:
                             elif str(self.pathname).endswith(
                                 (".grib", ".grib2", ".grb")
                             ):
+                                if importlib.util.find_spec("cfgrib") is None:
+                                    raise ValueError(
+                                        "cfgrib is required to open GRIB files. "
+                                        "Please install it with: `uv pip install "
+                                        "'pystormtracker[grib]'`"
+                                    ) from None
                                 engine = "cfgrib"
                             else:
                                 # Default for remote that aren't zarr or grib
@@ -78,6 +85,12 @@ class DataLoader:
                             local_path = Path(self.pathname)
                             ext = local_path.suffix.lower()
                             if ext in [".grib", ".grib2", ".grb"]:
+                                if importlib.util.find_spec("cfgrib") is None:
+                                    raise ValueError(
+                                        "cfgrib is required to open GRIB files. "
+                                        "Please install it with: `uv pip install "
+                                        "'pystormtracker[grib]'`"
+                                    ) from None
                                 engine = "cfgrib"
                             elif ext == ".zarr" or (
                                 local_path.is_dir()
@@ -87,15 +100,19 @@ class DataLoader:
                             else:
                                 engine = "h5netcdf"
 
-                    open_kwargs: dict[str, Any] = {"chunks": {}}
                     if engine == "zarr" and is_remote and storage_options:
-                        open_kwargs["storage_options"] = storage_options
-
-                    self._ds_cache[self.pathname] = xr.open_dataset(
-                        self.pathname,
-                        engine=engine,
-                        **open_kwargs,
-                    )
+                        self._ds_cache[self.pathname] = xr.open_dataset(
+                            self.pathname,
+                            engine=engine,
+                            chunks={},
+                            storage_options=storage_options,
+                        )
+                    else:
+                        self._ds_cache[self.pathname] = xr.open_dataset(
+                            self.pathname,
+                            engine=engine,
+                            chunks={},
+                        )
 
                 self._ds = self._ds_cache[self.pathname]
         return self._ds
