@@ -53,14 +53,11 @@ def compute_vort_div_jax(
     alm_e, alm_b = jax_analysis_2d(vec_jax, lmax, mmax=mmax, geometry=geometry, spin=1)
 
     # Spectral Scaling:
-    # l_arr contains the degree 'l' for each coefficient in the alm array.
-    # Standard ducc0 packed format: for each m, l goes from m to lmax.
-    l_list = []
-    for m in range(mmax + 1):
-        l_list.append(jax.numpy.arange(m, lmax + 1))
-    l_arr = jax.numpy.concatenate(l_list)
-
+    # alm_e and alm_b are 2D arrays of shape (mmax + 1, lmax + 1).
+    # The columns correspond to degree 'l'.
+    l_arr = jax.numpy.arange(lmax + 1)
     eigen_scale = jax.numpy.sqrt(l_arr * (l_arr + 1.0)) / R
+
     alm_div = -eigen_scale * alm_e
     alm_vort = eigen_scale * alm_b
 
