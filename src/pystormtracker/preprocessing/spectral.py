@@ -178,8 +178,7 @@ class SpectralFilter:
         data: xr.DataArray,
         backend: Literal["serial", "mpi", "dask"] = "serial",
         sht_engine: Literal["ducc0", "jax"] = "ducc0",
-    ) -> xr.DataArray:
-        ...
+    ) -> xr.DataArray: ...
 
     @overload
     def filter(
@@ -187,8 +186,7 @@ class SpectralFilter:
         data: NDArray[np.float64],
         backend: Literal["serial", "mpi", "dask"] = "serial",
         sht_engine: Literal["ducc0", "jax"] = "ducc0",
-    ) -> NDArray[np.float64]:
-        ...
+    ) -> NDArray[np.float64]: ...
 
     def filter(
         self,

@@ -160,12 +160,12 @@ def jax_analysis_2d(
         curr = 0
         for m in range(mmax + 1):
             n_l = lmax - m + 1
-            e_m = jnp.matmul(
-                plm_e[curr : curr + n_l], w_v_theta_m[:, m]
-            ) + jnp.matmul(plm_b[curr : curr + n_l], w_v_phi_m[:, m])
-            b_m = jnp.matmul(
-                plm_e[curr : curr + n_l], w_v_phi_m[:, m]
-            ) - jnp.matmul(plm_b[curr : curr + n_l], w_v_theta_m[:, m])
+            e_m = jnp.matmul(plm_e[curr : curr + n_l], w_v_theta_m[:, m]) + jnp.matmul(
+                plm_b[curr : curr + n_l], w_v_phi_m[:, m]
+            )
+            b_m = jnp.matmul(plm_e[curr : curr + n_l], w_v_phi_m[:, m]) - jnp.matmul(
+                plm_b[curr : curr + n_l], w_v_theta_m[:, m]
+            )
             alm_e_list.append(e_m)
             alm_b_list.append(b_m)
             curr += n_l

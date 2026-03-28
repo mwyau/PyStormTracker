@@ -130,9 +130,9 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
 
     # Ensure extremely high structural correlation (> 0.9999)
     corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
-    assert (
-        corr > 0.9999
-    ), f"Low correlation for T{case['lmin']}-{case['lmax']} ({sht_engine}): {corr}"
+    assert corr > 0.9999, (
+        f"Low correlation for T{case['lmin']}-{case['lmax']} ({sht_engine}): {corr}"
+    )
 
     # Ensure RMSE is within acceptable bounds for large-scale field (MSL ~10^5)
     # ducc0/jax: ~0.05 Pa RMSE vs NCL (modern implementation consistency)
@@ -150,6 +150,6 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
 
     # Threshold is slightly higher for aliased 2.5 grid
     max_rmse = 0.1
-    assert (
-        rmse < max_rmse
-    ), f"High RMSE for T{case['lmin']}-{case['lmax']} ({sht_engine}): {rmse}"
+    assert rmse < max_rmse, (
+        f"High RMSE for T{case['lmin']}-{case['lmax']} ({sht_engine}): {rmse}"
+    )

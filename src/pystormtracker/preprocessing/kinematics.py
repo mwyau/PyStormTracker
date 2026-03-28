@@ -263,8 +263,7 @@ class Kinematics:
         v: xr.DataArray,
         backend: Literal["serial", "mpi", "dask"] = "serial",
         nthreads: int = 0,
-    ) -> tuple[xr.DataArray, xr.DataArray]:
-        ...
+    ) -> tuple[xr.DataArray, xr.DataArray]: ...
 
     @overload
     def compute(
@@ -273,8 +272,7 @@ class Kinematics:
         v: NDArray[np.float64],
         backend: Literal["serial", "mpi", "dask"] = "serial",
         nthreads: int = 0,
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        ...
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]: ...
 
     def compute(
         self,
