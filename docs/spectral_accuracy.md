@@ -24,9 +24,17 @@ The **JAX** backend provides a JAX-native implementation of the SHT algorithms. 
 *   **Pros**: GPU/TPU support via JAX. Machine-precision parity with `ducc0` for resolved harmonics.
 *   **Cons**: Requires the `jax` extra (`pip install pystormtracker[jax]`). Subject to significant aliasing errors on coarse grids (e.g., 2.5°) where `lmax` is close to the grid's Nyquist frequency.
 
+### 3. SHTns (Legacy Reference)
+**SHTns** was the primary backend in earlier versions. While no longer the default, its performance metrics serve as a high-precision benchmark for scalar filtering.
+
+*   **Pros**: Exceptional accuracy on high-resolution alias-free grids for scalar fields.
+*   **Cons**: Slower than `ducc0` for multi-frame workloads. Requires complex external C compilation. Significant numerical discrepancy (~10⁻⁶ RMSE) in kinematic derivative calculations compared to `Spherepack` (NCL).
+
 ## Accuracy & Performance Metrics
 
-### Spectral Filtering (MSL) Parity: JAX vs ducc0
+### Spectral Filtering (MSL)
+
+#### Parity: JAX vs ducc0
 
 | Resolution | Target lmax | Mean Relative Error | Max Relative Error | RMSE |
 | :--- | :--- | :--- | :--- | :--- |
@@ -36,32 +44,47 @@ The **JAX** backend provides a JAX-native implementation of the SHT algorithms. 
 
 *Note: The high relative error at 2.5° is primarily due to differences in integration quadrature and aliasing treatment between the JAX-native matrix-vector approach and ducc0's optimized kernels.*
 
+#### Cross-Engine Accuracy (vs NCL Reference)
+
+**Resolution: 2.5°x2.5° (ERA5)**
+*Note: Higher error in this resolution is primarily due to aliasing on the coarse grid.*
+
+| Engine | Truncation | RMSE (Pa) | Rel. Error | Correlation | Time (s) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **SHTns** | T5-42 | 0.45711949 | 6.40e-04 | 0.999999897272 | 0.0350 |
+| **ducc0** | T5-42 | 0.05266872 | 7.37e-05 | 0.999999998663 | 0.0030 |
+| **SHTns** | T0-42 | 0.45729944 | 4.53e-06 | 0.999999918845 | 0.0009 |
+| **ducc0** | T0-42 | 0.05369308 | 5.31e-07 | 0.999999998880 | 0.0019 |
+
+**Resolution: 0.25°x0.25° (ERA5)**
+*Note: This resolution satisfies the sampling theorem for T42, resulting in near-perfect parity.*
+
+| Engine | Truncation | RMSE (Pa) | Rel. Error | Correlation | Time (s) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **SHTns** | T5-42 | 0.00003643 | 5.16e-08 | 1.000000000000 | 0.0665 |
+| **ducc0** | T5-42 | 0.01276583 | 1.81e-05 | 0.999999999928 | 0.0041 |
+| **SHTns** | T0-42 | 0.00486497 | 4.81e-08 | 0.999999999994 | 0.0141 |
+| **ducc0** | T0-42 | 0.02114745 | 2.09e-07 | 0.999999999831 | 0.0038 |
+
 ### Kinematic Derivatives (Vorticity & Divergence)
 *Evaluated on 0.25°x0.25° ERA5 grid. Comparison against NCL `uv2vrdvF` reference.*
 
 | Engine | Variable | RMSE (s⁻¹) | Correlation | Time (s) |
 | :--- | :--- | :--- | :--- | :--- |
+| **SHTns** | Vorticity | 9.05e-06 | 0.9899 | 0.1017 |
 | **ducc0** | Vorticity | **1.74e-14** | **1.0000** | **0.0576** |
 | **jax** | Vorticity | **1.12e-10** | **1.0000** | **3.49** |
 
 *JAX timings are measured on CPU; significantly faster performance is expected on CUDA-enabled devices.*
 
-## Usage & Validation
+## Impact of Polar Optimization (SHTns)
 
-To use the JAX engine in the Python API:
+For high-resolution grids (0.25°), disabling the polar optimization threshold (`polar_opt=0.0`) ensures maximum precision. A comparison with the default setting (`1e-10`) shows:
+- **Accuracy**: RMSE difference is negligible (~10⁻¹⁵ Pa).
+- **Performance**: The default setting is approximately 1.25% faster.
 
-```python
-from pystormtracker.preprocessing import SpectralFilter
-
-filt = SpectralFilter(lmin=5, lmax=42)
-filtered = filt.filter(data, sht_engine="jax")
-```
-
-### Safety Limits
-The JAX backend enforces strict resolution checks to prevent invalid transforms:
-- **ValueError**: Raised if `lmax > ny - 2` (matching `ducc0` Clenshaw-Curtis limits).
-- **UserWarning**: Issued if `lmax > ny / 2`, warning of potential aliasing artifacts.
+Disabling the optimization is recommended for cases where strict bit-wise parity with double-precision ground truth is required.
 
 ## Summary
 
-For most users, **ducc0** remains the recommended backend for its balance of speed and robustness. The **JAX** backend is an excellent choice for high-resolution (0.25° or 0.5°) datasets where alias-free transforms ensure scientific parity with the C++ backends while enabling JAX-native acceleration.
+For standard storm tracking applications, all engines are scientifically equivalent. **ducc0** is the recommended default for its balance of speed, robustness, and ease of installation. It also provides the highest parity with legacy `Spherepack` references for kinematics. The **JAX** backend is an excellent choice for high-resolution datasets where alias-free transforms ensure parity while enabling GPU acceleration. **SHTns** (with `polar_opt=0.0`) remains a high-precision benchmark for scalar fields, though it was passed over as the primary engine due to its numerical discrepancies in derivative calculations compared to standard meteorological tools.
