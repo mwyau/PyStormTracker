@@ -25,11 +25,12 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
-    "h5netcdf[h5py]>=1.0.0",
-    "numpy>=1.24.0",
-    "numba>=0.60.0",
+    "h5netcdf[h5py]>=1.5.0",
+    "numpy>=1.26",
+    "numba>=0.62",  # numba 0.62 added support for numpy 2.3
     "ducc0>=0.33.0",
     "xarray>=2024.9.0",
+    "zarr>=3.0",
 ]
 
 [project.scripts]
@@ -51,18 +52,13 @@ grib = [
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
 ]
 netcdf4 = [
-    "netCDF4>=1.6.1",
+    "netCDF4>=1.6.0",
 ]
 jax = [
     "jax>=0.5.1"
 ]
 all = [
-    "cfgrib>=0.9.15.1",
-    "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
-    "mpi4py>=4.1.0",
-    "netCDF4>=1.6.1",
-    "jax>=0.5.1",
+    "PyStormTracker[mpi,grib,netcdf4,jax]",
 ]
 docs = [
     "myst-parser>=5.0.0",
@@ -71,8 +67,8 @@ docs = [
 ]
 viz = [
     "pandas>=3.0.1",
-    "matplotlib>=3.10.8",
-    "cartopy>=0.25.0",
+    "matplotlib>=3.10",
+    "cartopy>=0.24.0",
     "jupyterlab>=4.5.6",
     "ipywidgets>=8.1.8",
     "ipympl>=0.10.0",
@@ -89,13 +85,13 @@ exclude = [
 [dependency-groups]
 dev = [
     "PyStormTracker[all]",
-    "mypy>=1.19.1",
-    "pooch>=1.9.0",
-    "pytest>=9.0.2",
-    "pytest-cov>=7.1.0",
-    "ruff>=0.15.5",
-    "impi-rt>=2021.11.0 ; sys_platform == 'win32'",
-    "mpich>=4.1.0 ; sys_platform != 'win32'",
+    "mypy",
+    "pooch",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "impi-rt ; sys_platform == 'win32'",
+    "mpich ; sys_platform != 'win32'",
 ]
 
 [tool.ruff]
