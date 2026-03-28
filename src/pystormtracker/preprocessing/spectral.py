@@ -237,7 +237,7 @@ def apply_spectral_filter(
     Returns:
         xr.DataArray: The filtered data.
     """
-    from ..io.loader import DataLoader
+    from ..io.data_loader import DataLoader
 
     # Identify spatial dimensions
     lat_dim = next(

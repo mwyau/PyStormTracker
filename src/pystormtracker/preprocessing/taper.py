@@ -64,7 +64,7 @@ class TaperFilter:
 
     def _filter_xarray(self, data: xr.DataArray) -> xr.DataArray:
         """Applies tapering to an xarray DataArray."""
-        from ..io.loader import DataLoader
+        from ..io.data_loader import DataLoader
 
         # Identify dimensions
         lat_dim = next(

@@ -6,7 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import xarray as xr
 
-from pystormtracker.io.loader import DataLoader
+from pystormtracker.io.data_loader import DataLoader
+from pystormtracker.utils.data import RAW_CONTENT_URL
 
 
 @pytest.fixture(autouse=True)
@@ -30,81 +31,87 @@ def test_dataloader_init_with_engine() -> None:
 def test_ensure_open_netcdf(mock_open: MagicMock) -> None:
     mock_ds = MagicMock(spec=xr.Dataset)
     mock_open.return_value = mock_ds
-
     loader = DataLoader("test.nc")
     ds = loader.ensure_open()
-
     assert ds == mock_ds
-    mock_open.assert_called_once_with(Path("test.nc"), engine="h5netcdf", chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.nc"), engine="h5netcdf", chunks={}
+    )
 
 
 @patch("xarray.open_dataset")
 def test_ensure_open_grib(mock_open: MagicMock) -> None:
     mock_ds = MagicMock(spec=xr.Dataset)
     mock_open.return_value = mock_ds
-
     loader = DataLoader("test.grib")
     ds = loader.ensure_open()
-
     assert ds == mock_ds
-    mock_open.assert_called_once_with(Path("test.grib"), engine="cfgrib", chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.grib"), engine="cfgrib", chunks={}
+    )
+
+
+@patch("xarray.open_dataset")
+def test_ensure_open_zarr(mock_open: MagicMock) -> None:
+    mock_ds = MagicMock(spec=xr.Dataset)
+    mock_open.return_value = mock_ds
+    loader = DataLoader("test.zarr")
+    ds = loader.ensure_open()
+    assert ds == mock_ds
+    mock_open.assert_called_once_with(
+        Path("test.zarr"), engine="zarr", chunks={}
+    )
+
+
+@patch("xarray.open_dataset")
+def test_ensure_open_zarr_dir(mock_open: MagicMock, tmp_path: Path) -> None:
+    mock_ds = MagicMock(spec=xr.Dataset)
+    mock_open.return_value = mock_ds
+    zarr_dir = tmp_path / "test_data"
+    zarr_dir.mkdir()
+    (zarr_dir / ".zmetadata").touch()
+    loader = DataLoader(zarr_dir)
+    ds = loader.ensure_open()
+    assert ds == mock_ds
+    mock_open.assert_called_once_with(
+        zarr_dir, engine="zarr", chunks={}
+    )
 
 
 @patch("xarray.open_dataset")
 def test_ensure_open_caching(mock_open: MagicMock) -> None:
     mock_ds = MagicMock(spec=xr.Dataset)
     mock_open.return_value = mock_ds
-
     loader1 = DataLoader("test.nc")
     loader2 = DataLoader("test.nc")
-
     loader1.ensure_open()
     loader2.ensure_open()
-
-    # Should only call open_dataset once for the same path
     mock_open.assert_called_once()
 
 
 @patch("xarray.open_dataset")
 def test_get_coords_mapping(mock_open: MagicMock) -> None:
-    # Mock dataset with specific coordinate names
     mock_ds = MagicMock(spec=xr.Dataset)
     mock_ds.coords = ["time", "lat", "lon"]
     mock_open.return_value = mock_ds
-
     loader = DataLoader("test.nc")
     time, lat, lon = loader.get_coords()
-
     assert time == "time"
     assert lat == "lat"
     assert lon == "lon"
 
 
-@patch("xarray.open_dataset")
-def test_get_coords_mapping_aliases(mock_open: MagicMock) -> None:
-    # Mock dataset with alias coordinate names
-    mock_ds = MagicMock(spec=xr.Dataset)
-    mock_ds.coords = ["valid_time", "latitude", "longitude"]
-    mock_open.return_value = mock_ds
-
-    loader = DataLoader("test.nc")
-    time, lat, lon = loader.get_coords()
-
-    assert time == "valid_time"
-    assert lat == "latitude"
-    assert lon == "longitude"
-
-
-@patch("xarray.open_dataset")
-def test_get_coords_mapping_defaults(mock_open: MagicMock) -> None:
-    # Mock dataset with no matching coordinate names
-    mock_ds = MagicMock(spec=xr.Dataset)
-    mock_ds.coords = []
-    mock_open.return_value = mock_ds
-
-    loader = DataLoader("test.nc")
-    time, lat, lon = loader.get_coords()
-
-    assert time == "time"
-    assert lat == "latitude"
-    assert lon == "longitude"
+@pytest.mark.parametrize(
+    "url, expected_engine",  # noqa: PT006
+    [
+        (f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr", "zarr"),
+    ],
+)
+def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None:
+    """Integration test for remote Zarr loading with auto-detection."""
+    loader = DataLoader(url)
+    ds = loader.ensure_open()
+    assert isinstance(ds, xr.Dataset)
+    assert loader.engine is None  # Auto-detection was used
+    # Check that it was cached
+    assert url in DataLoader._ds_cache

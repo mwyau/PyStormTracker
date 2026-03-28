@@ -4,15 +4,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pystormtracker.utils.data import fetch_era5_msl, fetch_era5_vo850
+from pystormtracker.utils.data import (
+    RAW_CONTENT_URL,
+    fetch_era5_msl,
+    fetch_era5_uv850,
+    fetch_era5_vo850,
+)
 
 
 @patch("pystormtracker.utils.data.CACHED_DATA")
 def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.nc"
-
     path = fetch_era5_msl(resolution="2.5x2.5", season="djf", format="nc")
-
     assert path == "/path/to/data.nc"
     mock_pooch.fetch.assert_called_once_with("era5_msl_2025-2026_djf_2.5x2.5.nc")
 
@@ -20,11 +23,18 @@ def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
 @patch("pystormtracker.utils.data.CACHED_DATA")
 def test_fetch_era5_msl_grib(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.grib"
-
     path = fetch_era5_msl(resolution="0.25x0.25", season="djf", format="grib")
-
     assert path == "/path/to/data.grib"
     mock_pooch.fetch.assert_called_once_with("era5_msl_2025-2026_djf_0.25x0.25.grib")
+
+
+def test_fetch_era5_zarr() -> None:
+    """Test that fetching zarr format returns a URL."""
+    url = fetch_era5_msl(resolution="2.5x2.5", format="zarr")
+    expected_url = (
+        f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr"
+    )
+    assert url == expected_url
 
 
 def test_fetch_era5_msl_invalid_res() -> None:
@@ -38,15 +48,24 @@ def test_fetch_era5_msl_invalid_season() -> None:
 
 
 def test_fetch_era5_msl_invalid_format() -> None:
-    with pytest.raises(ValueError, match="Format must be either"):
+    with pytest.raises(ValueError, match="Format must be"):
         fetch_era5_msl(format="txt")
 
 
 @patch("pystormtracker.utils.data.CACHED_DATA")
 def test_fetch_era5_vo850_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/vo850.nc"
-
     path = fetch_era5_vo850(resolution="2.5x2.5", season="djf", format="nc")
-
     assert path == "/path/to/vo850.nc"
     mock_pooch.fetch.assert_called_once_with("era5_vo850_2025-2026_djf_2.5x2.5.nc")
+
+
+def test_fetch_era5_uv850_valid() -> None:
+    """Test that fetching uv850 zarr format returns a URL."""
+    url = fetch_era5_uv850(resolution="2.5x2.5", season="djf", format="zarr")
+    expected_url = (
+        f"{RAW_CONTENT_URL}era5_uv850_2025-2026_djf_2.5x2.5.zarr"
+    )
+    assert url == expected_url
+
+
