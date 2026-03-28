@@ -34,9 +34,7 @@ def test_ensure_open_netcdf(mock_open: MagicMock) -> None:
     loader = DataLoader("test.nc")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(
-        Path("test.nc"), engine="h5netcdf", chunks={}
-    )
+    mock_open.assert_called_once_with(Path("test.nc"), engine="h5netcdf", chunks={})
 
 
 @patch("xarray.open_dataset")
@@ -46,9 +44,7 @@ def test_ensure_open_grib(mock_open: MagicMock) -> None:
     loader = DataLoader("test.grib")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(
-        Path("test.grib"), engine="cfgrib", chunks={}
-    )
+    mock_open.assert_called_once_with(Path("test.grib"), engine="cfgrib", chunks={})
 
 
 @patch("xarray.open_dataset")
@@ -58,9 +54,7 @@ def test_ensure_open_zarr(mock_open: MagicMock) -> None:
     loader = DataLoader("test.zarr")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(
-        Path("test.zarr"), engine="zarr", chunks={}
-    )
+    mock_open.assert_called_once_with(Path("test.zarr"), engine="zarr", chunks={})
 
 
 @patch("xarray.open_dataset")
@@ -73,9 +67,7 @@ def test_ensure_open_zarr_dir(mock_open: MagicMock, tmp_path: Path) -> None:
     loader = DataLoader(zarr_dir)
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(
-        zarr_dir, engine="zarr", chunks={}
-    )
+    mock_open.assert_called_once_with(zarr_dir, engine="zarr", chunks={})
 
 
 @patch("xarray.open_dataset")
@@ -133,5 +125,3 @@ def test_dataloader_grib_missing_dependency(
     ):
         loader.ensure_open()
     mock_open.assert_not_called()
-
-

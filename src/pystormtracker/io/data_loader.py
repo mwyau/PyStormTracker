@@ -59,7 +59,9 @@ class DataLoader:
                         # fsspec handles anon HTTP by default; no special 'anon'
                         # key needed.
                         pass
-                    elif is_remote and str(self.pathname).startswith(("s3://", "gs://")):
+                    elif is_remote and str(self.pathname).startswith(
+                        ("s3://", "gs://")
+                    ):
                         storage_options = {"anon": True}
 
                     if engine is None:

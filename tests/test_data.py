@@ -31,9 +31,7 @@ def test_fetch_era5_msl_grib(mock_pooch: MagicMock) -> None:
 def test_fetch_era5_zarr() -> None:
     """Test that fetching zarr format returns a URL."""
     url = fetch_era5_msl(resolution="2.5x2.5", format="zarr")
-    expected_url = (
-        f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr"
-    )
+    expected_url = f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr"
     assert url == expected_url
 
 
@@ -63,9 +61,5 @@ def test_fetch_era5_vo850_valid(mock_pooch: MagicMock) -> None:
 def test_fetch_era5_uv850_valid() -> None:
     """Test that fetching uv850 zarr format returns a URL."""
     url = fetch_era5_uv850(resolution="2.5x2.5", season="djf", format="zarr")
-    expected_url = (
-        f"{RAW_CONTENT_URL}era5_uv850_2025-2026_djf_2.5x2.5.zarr"
-    )
+    expected_url = f"{RAW_CONTENT_URL}era5_uv850_2025-2026_djf_2.5x2.5.zarr"
     assert url == expected_url
-
-

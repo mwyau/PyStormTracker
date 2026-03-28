@@ -76,16 +76,18 @@ pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
 pip install PyStormTracker[jax]     # Includes experimental JAX SHT engine
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
-pip install PyStormTracker[all]     # Includes all optional components
+pip install PyStormTracker[zarr]    # Includes Zarr support (with remote HTTP/S3/GS)
+pip install PyStormTracker[viz]     # Includes visualization (matplotlib, cartopy, etc.)
+pip install PyStormTracker[all]     # Includes all core optional components
 ```
 
 Using `uv`:
 ```bash
 # For use as a CLI tool
-uv tool install PyStormTracker --with hodges,mpi
+uv tool install PyStormTracker --with mpi
 
 # For use as a library in your project
-uv add PyStormTracker --extra hodges,mpi
+uv add PyStormTracker --extra mpi
 ```
 
 ### From Conda-Forge
