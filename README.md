@@ -58,7 +58,9 @@ Full documentation, including API references and advanced usage examples, is ava
 ### Prerequisites
 - Python 3.11+
 - (Optional) OpenMPI for MPI support.
-- **SHT Backend**: `ducc0` (**Core dependency**). High-precision C++ library providing high performance spherical harmonic transforms. Evaluated against `SHTns` and `pyshtools` and selected for superior multi-frame performance and portability.
+- **SHT Backend**:
+  - `ducc0` (**Core dependency**): High-precision C++ library providing high performance spherical harmonic transforms.
+  - `jax` (**Optional**): Experimental JAX-native SHT engine for GPU acceleration. Install via `pip install pystormtracker[jax]`.
 - **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms.
 
 ### From PyPI
@@ -71,6 +73,7 @@ pip install PyStormTracker
 
 # With optional components
 pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
+pip install PyStormTracker[jax]     # Includes experimental JAX SHT engine
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
 pip install PyStormTracker[all]     # Includes all optional components
