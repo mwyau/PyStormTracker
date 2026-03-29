@@ -1,6 +1,6 @@
-# HEALPix Support: Regridding & Hodges Parity
+# HEALPix Support: Regridding and Tracking
 
-This document provides a comprehensive technical overview of the HEALPix support implemented in PyStormTracker, covering both the spectral regridding capabilities and the 1D graph-based tracking algorithm that achieves parity with the Hodges (TRACK) pipeline.
+This document provides a comprehensive technical overview of the HEALPix support implemented in PyStormTracker, covering both the spectral regridding capabilities and the 1D graph-based tracking algorithm.
 
 ## 1. Overview
 The HEALPix implementation provides a high-performance path for processing global atmospheric datasets (like ERA5) natively on 1D spherical grids. By avoiding 2D meshes, we eliminate pole singularities and cell-area distortion, while maintaining mathematical exactness through spectral transforms.
@@ -26,10 +26,10 @@ Unlike 2D meshes where neighbors are found via index offsets, HEALPix neighbors 
 ### 3.2. Connected Component Labeling (CCL)
 The tracker groups adjacent pixels into "objects" using a high-performance Numba kernel (`_numba_healpix_ccl`).
 - **Algorithm**: Iterative label propagation over the 1D graph until convergence.
-- **Constraints**: Supports `threshold` filtering and `min_points` object-size constraints, matching the TRACK logic.
+- **Constraints**: Supports `threshold` filtering and `min_points` object-size constraints.
 
 ### 3.3. Spherical Subgrid Refinement
-To achieve sub-pixel coordinate accuracy (Hodges Parity), the tracker implements a sophisticated spherical refinement pipeline (`subgrid_refine_healpix`):
+To achieve high-precision coordinate accuracy, the tracker implements a sophisticated spherical refinement pipeline (`subgrid_refine_healpix`):
 1.  **Local Projection**: For each detected extremum at pixel $P$, it projects $P$ and its 8 neighbors onto a local **equirectangular plane** centered at $P$.
 2.  **Numerical Stability**: Coordinate scaling/normalization is applied to the local projected coordinates to prevent matrix ill-conditioning when solving the least-squares system.
 3.  **Surface Fitting**: An unconstrained least-squares fit is performed to find the coefficients of a local quadratic surface: $z = Ax^2 + By^2 + Cxy + Dx + Ey + F$.
