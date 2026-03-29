@@ -125,7 +125,7 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
         max_time = max(max_time, int(t_times[-1]))
 
         duration_hrs = float((t_times[-1] - t_times[0]) / (3600 * 1000))
-        from ..utils.geo import geod_dist_km
+        from ..models.geo import geod_dist_km
 
         disp = float(geod_dist_km(t_lats[0], t_lons[0], t_lats[-1], t_lons[-1]))
 

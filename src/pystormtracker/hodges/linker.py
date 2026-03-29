@@ -4,9 +4,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.center import Center
+from ..models.geo import geod_dist
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
-from ..utils.geo import geod_dist
 from . import constants
 from .kernels import (
     _break_track,

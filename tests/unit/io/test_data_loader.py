@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import xarray as xr
+from testing_utils import RAW_CONTENT_URL
 
 from pystormtracker.io.data_loader import DataLoader
-from pystormtracker.utils.data import RAW_CONTENT_URL
 
 
 @pytest.fixture(autouse=True)

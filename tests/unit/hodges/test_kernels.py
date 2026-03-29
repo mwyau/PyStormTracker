@@ -8,7 +8,7 @@ from pystormtracker.hodges.kernels import (
     get_regional_dmax,
     subgrid_refine,
 )
-from pystormtracker.utils.geo import geod_dist
+from pystormtracker.models.geo import geod_dist
 
 
 def test_geod_dist() -> None:
