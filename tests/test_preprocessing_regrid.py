@@ -31,6 +31,7 @@ def test_regrid_to_grid() -> None:
     assert len(regridded.lat) == out_ny
     assert len(regridded.lon) == out_nx
 
+
 def test_regrid_to_healpix() -> None:
     # 2.5 degree grid (73 x 144)
     ny, nx = 73, 144
@@ -55,16 +56,17 @@ def test_regrid_to_healpix() -> None:
     assert regridded.name == "test_var"
     assert len(regridded.cell) == npix
 
+
 def test_regrid_identity() -> None:
     # Test that regridding to the same resolution results in small residuals
     # (Though spectral interpolation isn't perfectly identity if lmax is small)
     ny, nx = 73, 144
     lmax = 42
     # Create a band-limited signal
-    lon = np.linspace(0, 2*np.pi, nx, endpoint=False)
-    lat = np.linspace(-np.pi/2, np.pi/2, ny)
+    lon = np.linspace(0, 2 * np.pi, nx, endpoint=False)
+    lat = np.linspace(-np.pi / 2, np.pi / 2, ny)
     lon_grid, lat_grid = np.meshgrid(lon, lat)
-    data = np.sin(2 * lon_grid) * np.cos(lat_grid) # Simple wave
+    data = np.sin(2 * lon_grid) * np.cos(lat_grid)  # Simple wave
 
     da = xr.DataArray(
         data,
@@ -79,5 +81,6 @@ def test_regrid_identity() -> None:
     regridder = SpectralRegridder(lmax=lmax)
     regridded = regridder.to_grid(da, nlat=ny, nlon=nx, lat_reverse=True)
 
-    # We expect some difference because of spectral truncation but it should be small for a simple wave
+    # We expect some difference because of spectral truncation
+    # but it should be small for a simple wave
     np.testing.assert_allclose(da.values, regridded.values, rtol=2e-2, atol=2e-2)

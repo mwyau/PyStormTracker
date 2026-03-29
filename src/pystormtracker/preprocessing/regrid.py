@@ -110,7 +110,7 @@ class SpectralRegridder:
             out_map,
             dims=["lat", "lon"],
             coords={"lat": lat, "lon": lon},
-            name=data.name
+            name=data.name,
         )
 
     def to_healpix(
@@ -154,12 +154,7 @@ class SpectralRegridder:
         out_map = cast(
             NDArray[np.float64],
             ducc0.sht.synthesis(
-                alm=alm,
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                nthreads=nthreads,
-                **sht_kwargs
+                alm=alm, spin=0, lmax=lmax, mmax=mmax, nthreads=nthreads, **sht_kwargs
             )[0],
         )
 
@@ -167,8 +162,5 @@ class SpectralRegridder:
         cells = np.arange(hp_base.npix())
 
         return xr.DataArray(
-            out_map,
-            dims=["cell"],
-            coords={"cell": cells},
-            name=data.name
+            out_map, dims=["cell"], coords={"cell": cells}, name=data.name
         )

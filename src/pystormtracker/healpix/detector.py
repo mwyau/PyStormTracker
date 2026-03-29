@@ -11,8 +11,14 @@ from numpy.typing import NDArray
 
 from ..io.data_loader import DataLoader
 from ..models import TimeRange
+from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
-from .kernels import _numba_get_healpix_centers, _numba_healpix_extrema
+from .kernels import (
+    _numba_get_healpix_centers,
+    _numba_healpix_ccl,
+    _numba_healpix_object_extrema,
+    subgrid_refine_healpix,
+)
 
 
 class HealpixDetector:
@@ -90,11 +96,11 @@ class HealpixDetector:
 
             # Precompute neighbor table (shape: 8, npix)
             all_pix = np.arange(npix, dtype=np.int64)
-            nbors = self._hp_base.neighbors(all_pix) # Shape should be (N, 8)
-            self._neighbor_table = np.ascontiguousarray(nbors.T) # Shape (8, N)
+            nbors = self._hp_base.neighbors(all_pix)  # Shape should be (N, 8)
+            self._neighbor_table = np.ascontiguousarray(nbors.T)  # Shape (8, N)
 
             # Precompute lat/lon
-            ang = self._hp_base.pix2ang(all_pix) # Shape (N, 2)
+            ang = self._hp_base.pix2ang(all_pix)  # Shape (N, 2)
             colat = ang[:, 0]
             lon_rad = ang[:, 1]
             self._lat = 90.0 - np.degrees(colat)
@@ -158,11 +164,19 @@ class HealpixDetector:
         self,
         threshold: float | None = None,
         minmaxmode: Literal["min", "max"] = "min",
+        min_points: int = 1,
     ) -> list[RawDetectionStep]:
         self._ensure_open()
         times = self.get_time()
         if times is None:
             return []
+
+        # Set variable specific thresholds if not provided
+        if threshold is None:
+            if self.requested_varname == "vo":
+                threshold = model_constants.DEFAULT_VO_THRESHOLD
+            else:
+                threshold = model_constants.DEFAULT_MSL_THRESHOLD
 
         raw_steps: list[RawDetectionStep] = []
         is_min = minmaxmode == "min"
@@ -173,27 +187,46 @@ class HealpixDetector:
             if frame is None:
                 continue
 
-            # 1. Extreme Finding
+            # 1. Connected Component Labeling
             assert self._neighbor_table is not None
-            extrema_mask = _numba_healpix_extrema(
-                frame,
-                self._neighbor_table,
-                threshold=threshold,
-                is_min=is_min,
+            labels, num_objects = _numba_healpix_ccl(
+                frame, self._neighbor_table, threshold, is_min
             )
 
-            # 2. Extract Centers
-            p_idx, vals = _numba_get_healpix_centers(extrema_mask, frame)
+            # 2. Find Extrema within objects
+            extrema = _numba_healpix_object_extrema(
+                frame,
+                self._neighbor_table,
+                labels,
+                num_objects,
+                is_min,
+                min_points,
+            )
 
-            # 3. Map to standard Lat/Lon
-            step_lats = self._lat[p_idx]
-            step_lons = self._lon[p_idx]
+            # 3. Extract and Refine
+            p_idx, _ = _numba_get_healpix_centers(extrema, frame)
+
+            refined_lats = np.zeros(len(p_idx))
+            refined_lons = np.zeros(len(p_idx))
+            refined_vals = np.zeros(len(p_idx))
+
+            for j in range(len(p_idx)):
+                ref_lat, ref_lon, ref_val = subgrid_refine_healpix(
+                    frame,
+                    int(p_idx[j]),
+                    self._neighbor_table,
+                    self._lat,
+                    self._lon,
+                )
+                refined_lats[j] = ref_lat
+                refined_lons[j] = ref_lon
+                refined_vals[j] = ref_val
 
             raw_step = (
                 current_time,
-                step_lats,
-                step_lons,
-                {self.varname: vals},
+                refined_lats,
+                refined_lons,
+                {self.varname: refined_vals},
             )
             raw_steps.append(raw_step)
 
