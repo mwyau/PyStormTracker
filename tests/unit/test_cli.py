@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from testing_utils import fetch_era5_msl
 
 from pystormtracker.cli import main, parse_args, run_tracker
-from pystormtracker.utils.data import fetch_era5_msl
 
 
 @pytest.fixture

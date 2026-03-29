@@ -7,11 +7,12 @@ from typing import Literal, TypedDict
 import numpy as np
 import pytest
 import xarray as xr
+from testing_utils import get_base_dir
 
 from pystormtracker.preprocessing import SpectralFilter
 
 # Use local test data (Generated with NCL 6.6.2)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = get_base_dir()
 MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 
 

@@ -5,11 +5,12 @@ import os
 import numpy as np
 import pytest
 import xarray as xr
+from testing_utils import get_base_dir
 
 from pystormtracker.preprocessing.kinematics import apply_vort_div
 
 # Use local test data generated from first frame (Generated with NCL 6.6.2)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = get_base_dir()
 WIND_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_uv850_2025120100_2.5x2.5.nc")
 VODIV_FILE = os.path.join(
     BASE_DIR, "data/test/era5/era5_vodv850_2025120100_2.5x2.5_ncl.nc"

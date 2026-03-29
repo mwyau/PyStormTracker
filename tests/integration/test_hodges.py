@@ -5,10 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from testing_utils import fetch_era5_vo850
 
 from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
-from pystormtracker.utils.data import fetch_era5_vo850
 
 
 def run_command_direct(cmd_args: list[str]) -> None:

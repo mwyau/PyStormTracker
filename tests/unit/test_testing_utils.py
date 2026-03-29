@@ -3,16 +3,24 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from pystormtracker.utils.data import (
+from testing_utils import (
     RAW_CONTENT_URL,
     fetch_era5_msl,
     fetch_era5_uv850,
     fetch_era5_vo850,
+    get_base_dir,
 )
 
 
-@patch("pystormtracker.utils.data.CACHED_DATA")
+def test_get_base_dir() -> None:
+    """Test get_base_dir returns a path pointing to PyStormTracker root."""
+    base_dir = get_base_dir()
+    assert base_dir.is_dir()
+    assert (base_dir / "pyproject.toml").exists()
+    assert (base_dir / "tests").is_dir()
+
+
+@patch("testing_utils.CACHED_DATA")
 def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.nc"
     path = fetch_era5_msl(resolution="2.5x2.5", season="djf", format="nc")
@@ -20,7 +28,7 @@ def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.assert_called_once_with("era5_msl_2025-2026_djf_2.5x2.5.nc")
 
 
-@patch("pystormtracker.utils.data.CACHED_DATA")
+@patch("testing_utils.CACHED_DATA")
 def test_fetch_era5_msl_grib(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.grib"
     path = fetch_era5_msl(resolution="0.25x0.25", season="djf", format="grib")
@@ -50,7 +58,7 @@ def test_fetch_era5_msl_invalid_format() -> None:
         fetch_era5_msl(format="txt")
 
 
-@patch("pystormtracker.utils.data.CACHED_DATA")
+@patch("testing_utils.CACHED_DATA")
 def test_fetch_era5_vo850_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/vo850.nc"
     path = fetch_era5_vo850(resolution="2.5x2.5", season="djf", format="nc")

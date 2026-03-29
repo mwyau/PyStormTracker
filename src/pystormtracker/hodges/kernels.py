@@ -4,7 +4,7 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
-from ..utils.geo import DEGTORAD, geod_dist
+from ..models.geo import DEGTORAD, geod_dist
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]

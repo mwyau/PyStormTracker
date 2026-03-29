@@ -6,10 +6,12 @@ import sys
 import time
 
 try:
-    from pystormtracker.utils.data import fetch_era5_msl
+    sys.path.insert(0, os.path.abspath("tests"))
+    from testing_utils import fetch_era5_msl
 except ImportError:
-    sys.path.insert(0, os.path.abspath("src"))
-    from pystormtracker.utils.data import fetch_era5_msl
+    # If not found in tests, maybe it was in src before the move?
+    # Actually it's in tests now.
+    from testing_utils import fetch_era5_msl
 
 
 def parse_output(output: str, version: str) -> dict[str, float]:

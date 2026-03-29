@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pooch  # type: ignore[import-untyped]
 
 DATA_RELEASE_VERSION = "v0.1.3-data"
 RELEASE_URL = f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"
 RAW_CONTENT_URL = f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_RELEASE_VERSION}/"
+
+
+def get_base_dir() -> Path:
+    """Returns the project root directory."""
+    return Path(__file__).parent.parent.absolute()
 
 
 # Define a central repository of data files

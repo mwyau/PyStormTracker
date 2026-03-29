@@ -65,7 +65,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Type check with Mypy
-        run: uv run mypy src/ tests/
+        run: uv run mypy .
 
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
@@ -136,11 +136,11 @@ jobs:
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
         if: matrix.arch != 'amd64'
-        run: uv run pytest -vv tests/test_integration_*.py --run-integration
+        run: uv run pytest -vv tests/integration/ --run-integration
 
       - name: Run Integration Tests with Coverage
         if: matrix.arch == 'amd64'
-        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/test_integration_*.py --run-integration
+        run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration
 
       - name: Upload coverage reports to Codecov
         if: matrix.arch == 'amd64'

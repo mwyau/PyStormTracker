@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
+
+# Add tests directory to sys.path to allow importing testing_utils
+sys.path.insert(0, str(Path(__file__).parent.absolute()))
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
