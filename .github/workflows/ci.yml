@@ -126,9 +126,6 @@ jobs:
           - arch: amd64
             os: windows-2025
             python-version: '3.13'
-          - arch: amd64
-            os: macos-26-intel
-            python-version: '3.13'
           - arch: arm64
             os: macos-26
             python-version: '3.13'
