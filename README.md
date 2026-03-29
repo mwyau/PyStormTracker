@@ -60,7 +60,7 @@ Full documentation, including API references and advanced usage examples, is ava
 - Python 3.11+
 - **MPI Support**:
   - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
-  - **Windows**: Use `winget install Microsoft.MS-MPI` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
+  - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
 - **SHT Backend**:
   - `ducc0` (**Core dependency**): High-precision C++ library providing high performance spherical harmonic transforms.
   - `jax` (**Optional**): Experimental JAX-native SHT engine for GPU acceleration. Install via `pip install pystormtracker[jax]`.

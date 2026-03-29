@@ -75,6 +75,7 @@ def run_tracker(
     rank = 0
     if use_mpi:
         import shutil
+
         if not shutil.which("mpiexec"):
             if backend == "mpi":
                 raise RuntimeError(
@@ -83,7 +84,7 @@ def run_tracker(
                 )
             else:
                 # Auto-detected via env vars but binary missing
-                print("Warning: MPI environment detected but 'mpiexec' not found in PATH.")
+                print("Warning: MPI environment detected but 'mpiexec' missing.")
                 detected_backend = "dask" if n_workers else "serial"
                 use_mpi = False
 

@@ -3462,7 +3462,7 @@ provides-extras = ["mpi", "grib", "jax", "netcdf4", "zarr", "all", "docs", "viz"
 dev = [
     { name = "cdsapi", specifier = ">=0.7.7" },
     { name = "mypy", specifier = ">=1.19.1" },
-    { name = "openmpi", marker = "sys_platform != 'win32'", specifier = ">=5.0.0" },
+    { name = "openmpi", marker = "sys_platform != 'win32'", specifier = ">=5.0.10" },
     { name = "pooch", specifier = ">=1.9.0" },
     { name = "pystormtracker", extras = ["all"] },
     { name = "pytest", specifier = ">=9.0.2" },
