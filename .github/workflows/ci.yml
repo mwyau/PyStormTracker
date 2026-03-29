@@ -111,7 +111,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (${{ matrix.os }}, ${{ matrix.arch }})
+    name: integration-tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
