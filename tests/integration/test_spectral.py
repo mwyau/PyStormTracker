@@ -7,19 +7,16 @@ from typing import Literal, TypedDict
 import numpy as np
 import pytest
 import xarray as xr
-from testing_utils import get_base_dir
+from testing_utils import get_era5_msl_path
 
 from pystormtracker.preprocessing import SpectralFilter
-
-# Use local test data (Generated with NCL 6.6.2)
-BASE_DIR = get_base_dir()
-MSL_FILE = os.path.join(BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5.nc")
 
 
 class FilterTestCase(TypedDict, total=False):
     lmin: int
     lmax: int
-    ref: str
+    res: str
+    suffix: str
     sht_engine: Literal["ducc0", "jax"]
 
 
@@ -29,58 +26,50 @@ TEST_CASES: list[FilterTestCase] = [
     {
         "lmin": 5,
         "lmax": 42,
-        "ref": os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t5-42_ncl.nc"
-        ),
+        "res": "2.5x2.5",
+        "suffix": "t5-42_ncl",
         "sht_engine": "ducc0",
     },
     {
         "lmin": 0,
         "lmax": 42,
-        "ref": os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_2.5x2.5_t0-42_ncl.nc"
-        ),
+        "res": "2.5x2.5",
+        "suffix": "t0-42_ncl",
         "sht_engine": "ducc0",
     },
     # 0.25-degree cases (ducc0 and jax)
     {
         "lmin": 5,
         "lmax": 42,
-        "ref": os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t5-42_ncl.nc"
-        ),
+        "res": "0.25x0.25",
+        "suffix": "t5-42_ncl",
         "sht_engine": "ducc0",
     },
     {
         "lmin": 5,
         "lmax": 42,
-        "ref": os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t5-42_ncl.nc"
-        ),
+        "res": "0.25x0.25",
+        "suffix": "t5-42_ncl",
         "sht_engine": "jax",
     },
     {
         "lmin": 0,
         "lmax": 42,
-        "ref": os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t0-42_ncl.nc"
-        ),
+        "res": "0.25x0.25",
+        "suffix": "t0-42_ncl",
         "sht_engine": "ducc0",
     },
     {
         "lmin": 0,
         "lmax": 42,
-        "ref": os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25_t0-42_ncl.nc"
-        ),
+        "res": "0.25x0.25",
+        "suffix": "t0-42_ncl",
         "sht_engine": "jax",
     },
 ]
 
-HAS_BASE_DATA = os.path.exists(MSL_FILE)
 
-
-@pytest.mark.skipif(not HAS_BASE_DATA, reason="Base MSL test data not found.")
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "case",
     TEST_CASES,
@@ -102,22 +91,19 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     if sht_engine == "jax":
         pytest.importorskip("jax")
 
-    if not os.path.exists(case["ref"]):
-        pytest.skip(f"Reference data not found: {case['ref']}")
+    res = case["res"]
+    suffix = case["suffix"]
 
-    # Determine input file based on reference filename
-    if "0.25x0.25" in case["ref"]:
-        src_file = os.path.join(
-            BASE_DIR, "data/test/era5/era5_msl_2025120100_0.25x0.25.nc"
-        )
-    else:
-        src_file = MSL_FILE
+    src_file = get_era5_msl_path(res)
+    ref_file = get_era5_msl_path(res, suffix=suffix)
 
     if not os.path.exists(src_file):
         pytest.skip(f"Source data not found: {src_file}")
+    if not os.path.exists(ref_file):
+        pytest.skip(f"Reference data not found: {ref_file}")
 
     ds_msl = xr.open_dataset(src_file)
-    ds_ref = xr.open_dataset(case["ref"])
+    ds_ref = xr.open_dataset(ref_file)
 
     msl = ds_msl.msl
     ref = ds_ref.msl
