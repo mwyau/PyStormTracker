@@ -19,7 +19,8 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
     """Utility to run the tracker directly via function calls or MPI subprocess."""
     if use_mpi:
         base_cmd = f"{sys.executable} -m pystormtracker.cli"
-        full_cmd = f"uv run mpiexec -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
+        # We assume mpiexec is in the PATH (e.g., provided by openmpi or winget)
+        full_cmd = f"mpiexec -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
         try:
             subprocess.run(
                 full_cmd, shell=True, check=True, capture_output=True, text=True
@@ -201,10 +202,19 @@ def test_mpi_vs_serial(
     serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
-    try:
-        subprocess.run("mpiexec -help", shell=True, capture_output=True)
-    except FileNotFoundError:
-        pytest.skip("mpiexec not found in path")
+    import shutil
+
+    # Check for mpiexec in PATH
+    if not shutil.which("mpiexec"):
+        # Double check with a run in case it's a shell alias or something similar
+        try:
+            res = subprocess.run(
+                "mpiexec -help", shell=True, capture_output=True, text=True
+            )
+            if res.returncode != 0:
+                pytest.skip("mpiexec not found or failed to run")
+        except Exception:
+            pytest.skip("mpiexec not found in path")
 
     data_path, varname, mode, steps = config
     mpi_out = tmp_path / "integration_mpi.txt"
