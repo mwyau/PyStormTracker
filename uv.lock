@@ -938,7 +938,7 @@ name = "eccodeslib"
 version = "2.46.1.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "eckitlib" },
+    { name = "eckitlib", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/51/579fe220c0b21c740f0c3d898630a5dad1c734c410db500464cf35b6480c/eccodeslib-2.46.1.16-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:583f17c418fd6c8d645a3ddd560780d5360df1c4c0ba1727c670838b12dbf023", size = 8891155, upload-time = "2026-03-26T19:25:58.635Z" },
@@ -1356,19 +1356,11 @@ wheels = [
 ]
 
 [[package]]
-name = "impi-rt"
-version = "2021.17.2"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/71/a7a7afdebc1c72ca7e231d660cdf1e2306440350b1555694b888c0ec1186/impi_rt-2021.17.2-py2.py3-none-win_amd64.whl", hash = "sha256:9c1fac3ea904d4580c99b249c2a2cec6384156bf398bfb0a8a1b176572e28d8c", size = 17439486, upload-time = "2026-01-22T05:30:06.498Z" },
-]
-
-[[package]]
 name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -2329,17 +2321,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mpich"
-version = "5.0.0"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/5e/ce8b52b38f5301ddde1f5bc3aa4a072db20d4a241c787b4d0f2a6dc1776e/mpich-5.0.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:803897827c3feb86f0dba1b5def7147d526bd9d96e70d299be08d69165b231af", size = 9504758, upload-time = "2026-02-06T20:21:30.959Z" },
-    { url = "https://files.pythonhosted.org/packages/fd/cf/da4f648610570b622c8098c99339de757fdcd91b9cc6881b7d7b0a9207ff/mpich-5.0.0-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:a19506a16aca35fca90b9969f456d201e76e2f1411a8f13a7912475974ca25ad", size = 12623210, upload-time = "2026-02-06T20:21:33.857Z" },
-    { url = "https://files.pythonhosted.org/packages/08/91/95935bd88d51ff098dfea2376385d4fa79fb878d89647834ee458fcdeac9/mpich-5.0.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:32e99e914b8e71f3bd67e43fb16f9cc6e896a6b457e966a2babf694a9b534c95", size = 10340658, upload-time = "2026-02-06T20:21:36.092Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/43/038e99fc0a7a285d9d3e863f7dc48afe2a58199d27dbd38aad7e6ee0aeb6/mpich-5.0.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:83ddee2ef8b9b264200280f45eac25cd2fd0f4d77601f44e0e23df32adfababb", size = 13222276, upload-time = "2026-02-06T20:21:38.458Z" },
-]
-
-[[package]]
 name = "multidict"
 version = "6.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2841,6 +2822,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/d7/ba263d6bdd7f7fe61143233fead0b0fdf4907092eb2cf8f1d1db1e8e4bb6/obstore-0.9.2-pp311-pypy311_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:50bc1f25ad3881bcd74142f143ab41a26c1b7a7c0b14a72ecbf6fddc34f5a36e", size = 4273106, upload-time = "2026-03-11T19:10:14.184Z" },
     { url = "https://files.pythonhosted.org/packages/05/22/179117970abd49d8fe53e014c9326363b8ce20f4635a4389e7d1215529bb/obstore-0.9.2-pp311-pypy311_pp73-musllinux_1_2_i686.whl", hash = "sha256:cada36b244361a25df6a943f374110034cb75c4bd284375df53bc1826c4b3bb6", size = 4262228, upload-time = "2026-03-11T19:10:15.463Z" },
     { url = "https://files.pythonhosted.org/packages/24/80/2de1995c1c195f5ce7d54184a01868741445333c751153f9d979b77de9e5/obstore-0.9.2-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:66ad31b4630c2cd41b1369529b6e9a472c84a7a8df045dc62b0bfea6d922110c", size = 4445675, upload-time = "2026-03-11T19:10:16.805Z" },
+]
+
+[[package]]
+name = "openmpi"
+version = "5.0.10"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/48/47b429693ecfb64bb97caead4ef274a09e1c960242a4239929c942c6ad46/openmpi-5.0.10-py3-none-macosx_11_0_arm64.whl", hash = "sha256:6e9cd0cb0c29abd5157449343c93d31906f4aaaabf9e84fff5da67d305d1d55b", size = 3150518, upload-time = "2026-02-25T10:48:59.563Z" },
+    { url = "https://files.pythonhosted.org/packages/87/16/5f6260bd68e8bd1ed4939ebb3e3fda89e874426ee3d62db9e2e56bc7242f/openmpi-5.0.10-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:f4f524543cf443072b79b1600a71fa0019e20c2ff3291968092f4f0552a17829", size = 3527026, upload-time = "2026-02-25T10:49:01.444Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/a7/731f37279225210f8ccfa42193e526555955c54fd7a58c59bcbb28b40add/openmpi-5.0.10-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:1ce81b0d03eeddccb11768b3b776fef24a5d43230c753bd0314cf8b3f6262b11", size = 6052929, upload-time = "2026-02-25T10:49:03.284Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/13/11d1b2cbe6034d88d938bceafe30b9d2f95db33a8f7fef06fddfbcad5399/openmpi-5.0.10-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:01eb48365f8b6e6627de29df16a080a9f82f184d61859debdbfcb1c9b76ffebf", size = 6551331, upload-time = "2026-02-25T10:49:04.801Z" },
 ]
 
 [[package]]
@@ -3428,9 +3420,8 @@ zarr = [
 [package.dev-dependencies]
 dev = [
     { name = "cdsapi" },
-    { name = "impi-rt", marker = "sys_platform == 'win32'" },
-    { name = "mpich", marker = "sys_platform != 'win32'" },
     { name = "mypy" },
+    { name = "openmpi", marker = "sys_platform != 'win32'" },
     { name = "pooch" },
     { name = "pystormtracker", extra = ["all"] },
     { name = "pytest" },
@@ -3470,9 +3461,8 @@ provides-extras = ["mpi", "grib", "jax", "netcdf4", "zarr", "all", "docs", "viz"
 [package.metadata.requires-dev]
 dev = [
     { name = "cdsapi", specifier = ">=0.7.7" },
-    { name = "impi-rt", marker = "sys_platform == 'win32'", specifier = ">=2021.11.0" },
-    { name = "mpich", marker = "sys_platform != 'win32'", specifier = ">=4.1.0" },
     { name = "mypy", specifier = ">=1.19.1" },
+    { name = "openmpi", marker = "sys_platform != 'win32'", specifier = ">=5.0.10" },
     { name = "pooch", specifier = ">=1.9.0" },
     { name = "pystormtracker", extras = ["all"] },
     { name = "pytest", specifier = ">=9.0.2" },

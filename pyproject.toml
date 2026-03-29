@@ -89,9 +89,8 @@ exclude = [
 dev = [
     "PyStormTracker[all]",
     "cdsapi>=0.7.7",
-    "impi-rt>=2021.11.0 ; sys_platform == 'win32'",
-    "mpich>=4.1.0 ; sys_platform != 'win32'",
     "mypy>=1.19.1",
+    "openmpi>=5.0.10 ; sys_platform != 'win32'",
     "pooch>=1.9.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",

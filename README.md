@@ -58,11 +58,13 @@ Full documentation, including API references and advanced usage examples, is ava
 
 ### Prerequisites
 - Python 3.11+
-- (Optional) OpenMPI for MPI support.
+- **MPI Support**:
+  - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
+  - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
 - **SHT Backend**:
   - `ducc0` (**Core dependency**): High-precision C++ library providing high performance spherical harmonic transforms.
   - `jax` (**Optional**): Experimental JAX-native SHT engine for GPU acceleration. Install via `pip install pystormtracker[jax]`.
-- **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms.
+- **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms. `MS-MPI` can be installed via `winget`.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
