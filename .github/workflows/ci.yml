@@ -111,18 +111,23 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (Python ${{ matrix.python-version }}, ${{ matrix.arch }})
+    name: integration-tests (${{ matrix.os }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
-        python-version: ['3.13']
         include:
           - arch: amd64
             os: ubuntu-24.04
           - arch: arm64
             os: ubuntu-24.04-arm
+          - arch: amd64
+            os: windows-2022
+          - arch: amd64
+            os: macos-13
+          - arch: arm64
+            os: macos-14
+        python-version: ['3.13']
     steps:
       - uses: actions/checkout@v6
         with:
@@ -135,15 +140,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
-        if: matrix.arch != 'amd64'
+        if: matrix.os != 'ubuntu-24.04' || matrix.arch != 'amd64'
         run: uv run pytest -vv tests/integration/ --run-integration
 
       - name: Run Integration Tests with Coverage
-        if: matrix.arch == 'amd64'
+        if: matrix.os == 'ubuntu-24.04' && matrix.arch == 'amd64'
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration
 
       - name: Upload coverage reports to Codecov
-        if: matrix.arch == 'amd64'
+        if: matrix.os == 'ubuntu-24.04' && matrix.arch == 'amd64'
         uses: codecov/codecov-action@v6
         with:
           files: ./coverage.xml
