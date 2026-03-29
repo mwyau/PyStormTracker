@@ -132,3 +132,43 @@ def fetch_era5_uv850(
     if format == "zarr":
         return RAW_CONTENT_URL + fname
     return str(CACHED_DATA.fetch(fname))
+
+
+# --- Local Integration Test Data Helpers ---
+
+BASE_DIR = get_base_dir()
+ERA5_TEST_DIR = BASE_DIR / "data" / "test" / "era5"
+TRACKS_TEST_DIR = BASE_DIR / "data" / "test" / "tracks"
+
+
+def get_era5_msl_path(res: str = "2.5x2.5", suffix: str = "") -> Path:
+    """
+    Returns the path to the ERA5 MSL test data.
+
+    Args:
+        res: Resolution (e.g., '2.5x2.5' or '0.25x0.25').
+        suffix: Optional suffix for filtered data (e.g., 't5-42_ncl').
+    """
+    name = f"era5_msl_2025120100_{res}"
+    if suffix:
+        name += f"_{suffix}"
+    return ERA5_TEST_DIR / f"{name}.nc"
+
+
+def get_era5_uv_path(res: str = "2.5x2.5") -> Path:
+    """Returns the path to the ERA5 UV test data."""
+    return ERA5_TEST_DIR / f"era5_uv850_2025120100_{res}.nc"
+
+
+def get_era5_vodv_path(res: str = "2.5x2.5", suffix: str = "ncl") -> Path:
+    """Returns the path to the ERA5 VODV test data."""
+    return ERA5_TEST_DIR / f"era5_vodv850_2025120100_{res}_{suffix}.nc"
+
+
+def get_legacy_track_path(var: str = "msl") -> Path:
+    """Returns the path to legacy regression track files."""
+    if var == "msl":
+        return TRACKS_TEST_DIR / "era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
+    if var == "vo":
+        return TRACKS_TEST_DIR / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
+    raise ValueError(f"Unknown legacy variable: {var}")

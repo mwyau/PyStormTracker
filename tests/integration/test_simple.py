@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from testing_utils import fetch_era5_msl, fetch_era5_vo850
+from testing_utils import (
+    fetch_era5_msl,
+    fetch_era5_vo850,
+    get_legacy_track_path,
+)
 
 from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
@@ -202,8 +207,6 @@ def test_mpi_vs_serial(
     serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
-    import shutil
-
     # Check for mpiexec in PATH
     if not shutil.which("mpiexec"):
         # Double check with a run in case it's a shell alias or something similar
@@ -289,13 +292,11 @@ def test_legacy_regression(
     _, varname, _, _ = config
 
     if varname == "msl":
-        ref_file = "data/test/tracks/era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
+        ref_file = get_legacy_track_path("msl")
         l_tol, c_tol, i_tol, count_tol = 1, 15.0, 500.0, 1
     elif varname == "vo":
         pytest.skip("Legacy VO regression tests are temporarily disabled.")
-        ref_file = (
-            "data/test/tracks/era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
-        )
+        ref_file = get_legacy_track_path("vo")
         # algorithmic improvements lead to slight differences, but should still be close
         l_tol, c_tol, i_tol, count_tol = 5, 15.0, 1.0, 100
     else:
