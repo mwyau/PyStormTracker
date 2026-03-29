@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -56,39 +58,24 @@ def test_healpix_tracker_serial_integration() -> None:
         regridded = regridder.to_healpix(da.isel(time=t), nside=nside, lat_reverse=True)
         hp_frames.append(regridded)
 
-    da_hp = xr.concat(hp_frames, dim="time")
-    da_hp.coords["time"] = time
+    # 3. Track on HEALPix
+    tracker = HealpixTracker()
+    tracks = tracker.track(
+        infile=str(tmp_file),
+        varname="msl",
+        mode="min",
+        threshold=1000.0,
+    )
 
-    # Save to dummy file to simulate Tracker protocol input
-    import os
-    import uuid
+    # 4. Verify results
+    assert len(tracks) == 1
+    track = tracks[0]
+    assert len(track) == 3
 
-    tmp_file = f"/tmp/test_hp_{uuid.uuid4().hex}.nc"
-    da_hp.to_netcdf(tmp_file)
+    # Verify coordinates (with some tolerance due to regridding and
+    # HEALPix resolution)
+    # Nside=16 pixel resolution is ~3.7 degrees.
 
-    try:
-        # 3. Track on HEALPix
-        tracker = HealpixTracker()
-        tracks = tracker.track(
-            infile=tmp_file,
-            varname="msl",
-            mode="min",
-            threshold=1000.0,
-        )
-
-        # 4. Verify results
-        assert len(tracks) == 1
-        track = tracks[0]
-        assert len(track) == 3
-
-        # Verify coordinates (with some tolerance due to regridding and
-        # HEALPix resolution)
-        # Nside=16 pixel resolution is ~3.7 degrees.
-
-        for t in range(len(time)):
-            np.testing.assert_allclose(track[t].lat, expected_lats[t], atol=5.0)
-            np.testing.assert_allclose(track[t].lon, expected_lons[t], atol=5.0)
-
-    finally:
-        if os.path.exists(tmp_file):
-            os.remove(tmp_file)
+    for t in range(len(time)):
+        np.testing.assert_allclose(track[t].lat, expected_lats[t], atol=5.0)
+        np.testing.assert_allclose(track[t].lon, expected_lons[t], atol=5.0)
