@@ -1,7 +1,9 @@
 from importlib.metadata import PackageNotFoundError, version
 
+from .healpix.tracker import HealpixTracker
 from .hodges.tracker import HodgesTracker
-from .models import Center, TimeRange, Tracks
+from .models import Center, TimeRange, Tracker, Tracks
+from .preprocessing.regrid import SpectralRegridder
 from .simple import SimpleDetector, SimpleLinker, SimpleTracker
 
 try:
@@ -11,10 +13,13 @@ except PackageNotFoundError:
 
 __all__ = [
     "Center",
+    "HealpixTracker",
     "HodgesTracker",
     "SimpleDetector",
     "SimpleLinker",
     "SimpleTracker",
+    "SpectralRegridder",
     "TimeRange",
+    "Tracker",
     "Tracks",
 ]
