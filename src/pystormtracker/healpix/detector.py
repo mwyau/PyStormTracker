@@ -10,7 +10,8 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import DataLoader
-from ..models import TimeRange, constants as model_constants
+from ..models import TimeRange
+from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from .kernels import (
     _numba_get_healpix_centers,

@@ -31,7 +31,7 @@ def _detect_and_gather(
 
 class HealpixTracker(Tracker):
     """
-    A tracker specifically designed for 1D HEALPix grids with Hodges (TRACK) parity.
+    A tracker specifically designed for 1D HEALPix grids.
     """
 
     def __init__(
