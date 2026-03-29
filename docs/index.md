@@ -13,6 +13,7 @@ PyStormTracker <readme>
 
 Architecture <architecture>
 Hodges Implementation <hodges>
+HEALPix Support <healpix>
 Benchmark <benchmark>
 ```
 

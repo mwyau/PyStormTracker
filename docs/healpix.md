@@ -1,4 +1,4 @@
-# HEALPix Implementation Summary: Spectral Regridding & Hodges Parity
+# HEALPix Support: Regridding & Hodges Parity
 
 This document provides a comprehensive technical overview of the HEALPix support implemented in PyStormTracker, covering both the spectral regridding capabilities and the 1D graph-based tracking algorithm that achieves parity with the Hodges (TRACK) pipeline.
 
