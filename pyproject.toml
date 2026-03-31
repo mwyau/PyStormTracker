@@ -51,7 +51,10 @@ grib = [
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
 ]
 jax = [
-    "jax>=0.5.1"
+    "jax>=0.7.2",
+]
+cuda13 = [
+    "jax[cuda13]>=0.7.2",
 ]
 netcdf4 = [
     "netCDF4>=1.6.1",
