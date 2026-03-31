@@ -938,7 +938,7 @@ name = "eccodeslib"
 version = "2.46.1.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "eckitlib" },
+    { name = "eckitlib", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/51/579fe220c0b21c740f0c3d898630a5dad1c734c410db500464cf35b6480c/eccodeslib-2.46.1.16-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:583f17c418fd6c8d645a3ddd560780d5360df1c4c0ba1727c670838b12dbf023", size = 8891155, upload-time = "2026-03-26T19:25:58.635Z" },
@@ -1360,7 +1360,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -3594,9 +3594,10 @@ all = [
     { name = "jax" },
     { name = "mpi4py" },
     { name = "netcdf4" },
+    { name = "s2fft" },
     { name = "zarr", extra = ["remote"] },
 ]
-cuda13 = [
+cuda = [
     { name = "jax", extra = ["cuda13"] },
 ]
 docs = [
@@ -3610,14 +3611,15 @@ grib = [
     { name = "eccodes" },
     { name = "eccodeslib", marker = "sys_platform != 'win32'" },
 ]
-jax = [
-    { name = "jax" },
-]
 mpi = [
     { name = "mpi4py" },
 ]
 netcdf4 = [
     { name = "netcdf4" },
+]
+s2fft = [
+    { name = "jax" },
+    { name = "s2fft" },
 ]
 viz = [
     { name = "cartopy" },
@@ -3656,8 +3658,8 @@ requires-dist = [
     { name = "h5netcdf", extras = ["h5py"], specifier = ">=1.5.0" },
     { name = "ipympl", marker = "extra == 'viz'", specifier = ">=0.10.0" },
     { name = "ipywidgets", marker = "extra == 'viz'", specifier = ">=8.1.8" },
-    { name = "jax", marker = "extra == 'jax'", specifier = ">=0.7.2" },
-    { name = "jax", extras = ["cuda13"], marker = "extra == 'cuda13'", specifier = ">=0.7.2" },
+    { name = "jax", marker = "extra == 's2fft'", specifier = ">=0.7.2" },
+    { name = "jax", extras = ["cuda13"], marker = "extra == 'cuda'", specifier = ">=0.7.2" },
     { name = "jupyterlab", marker = "extra == 'viz'", specifier = ">=4.5.6" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10" },
     { name = "mpi4py", marker = "extra == 'mpi'", specifier = ">=4.1.0" },
@@ -3666,13 +3668,14 @@ requires-dist = [
     { name = "numba", specifier = ">=0.62" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", marker = "extra == 'viz'", specifier = ">=3.0.1" },
-    { name = "pystormtracker", extras = ["grib", "jax", "mpi", "netcdf4", "zarr"], marker = "extra == 'all'" },
+    { name = "pystormtracker", extras = ["grib", "s2fft", "mpi", "netcdf4", "zarr"], marker = "extra == 'all'" },
+    { name = "s2fft", marker = "extra == 's2fft'", specifier = ">=1.4.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.0.4" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.1.0" },
     { name = "xarray", specifier = ">=2024.9.0" },
     { name = "zarr", extras = ["remote"], marker = "extra == 'zarr'", specifier = ">=3.0" },
 ]
-provides-extras = ["mpi", "grib", "jax", "cuda13", "netcdf4", "zarr", "all", "docs", "viz"]
+provides-extras = ["mpi", "grib", "s2fft", "cuda", "netcdf4", "zarr", "all", "docs", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4081,6 +4084,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/37/e6/90b2b33419f59d0f2c4c8a48a4b74b460709a557e8e0064cf33ad894f983/ruff-0.15.8-py3-none-win32.whl", hash = "sha256:bc1f0a51254ba21767bfa9a8b5013ca8149dcf38092e6a9eb704d876de94dc34", size = 10571959, upload-time = "2026-03-26T18:39:36.117Z" },
     { url = "https://files.pythonhosted.org/packages/1f/a2/ef467cb77099062317154c63f234b8a7baf7cb690b99af760c5b68b9ee7f/ruff-0.15.8-py3-none-win_amd64.whl", hash = "sha256:04f79eff02a72db209d47d665ba7ebcad609d8918a134f86cb13dd132159fc89", size = 11743893, upload-time = "2026-03-26T18:39:25.01Z" },
     { url = "https://files.pythonhosted.org/packages/15/e2/77be4fff062fa78d9b2a4dea85d14785dac5f1d0c1fb58ed52331f0ebe28/ruff-0.15.8-py3-none-win_arm64.whl", hash = "sha256:cf891fa8e3bb430c0e7fac93851a5978fc99c8fa2c053b57b118972866f8e5f2", size = 11048175, upload-time = "2026-03-26T18:40:01.06Z" },
+]
+
+[[package]]
+name = "s2fft"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jax" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/02/60/ac5914b6a5fce9df03d4c74eeeda9338c83eb3468fd856a08ea998b7656f/s2fft-1.4.0.tar.gz", hash = "sha256:b84c0c2bb0c3dfabe3431360bf90224705554e92966ab87e92affc0fe8f956ba", size = 22770481, upload-time = "2026-02-12T11:11:49.532Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/bc/7175a55f8aa4c0e36fbe5c33b2d129309fe6025a0ad4a683e85c80cc45e6/s2fft-1.4.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:739544caa6eb7cfa34700c1cc55634739601d8557819e88c7addce9fad93c7c5", size = 129798, upload-time = "2026-02-12T11:11:38.223Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/bb/0ca3beb35de790ac66a98c5ea1f8043125f9b331af1b0c519b1e62e0e342/s2fft-1.4.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:42a521700d4793f7ac8a2308233e561065567f03c98b91747c508f02ce4a2cd4", size = 138123, upload-time = "2026-02-12T11:11:39.616Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/1f/39fc6e6f69a0c1f7de40f2defaa1ef80de33c66814b98506d850f18b0c18/s2fft-1.4.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:c5f984316b81fdfdcaffcfdcb2ba9bdf70b2c25d3ef23313f8123d360f566833", size = 129376, upload-time = "2026-02-12T11:11:40.906Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/74/7ec92e611283b1a559a0b2e535621985b66c6c48128207887a999448e472/s2fft-1.4.0-cp312-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:60ef04398dc4481232609a11d7ba4e0a9fbe3b311bbbab5a600f058dbaa7e61c", size = 137534, upload-time = "2026-02-12T11:11:42.84Z" },
+    { url = "https://files.pythonhosted.org/packages/53/10/89793a12ecda9473651c4e8f395e9601fae02081e1f18e9b4af8c9035d85/s2fft-1.4.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:647edd6533035283e38567b8200937064e4e1fda3bad68f43c5c3259732816db", size = 130318, upload-time = "2026-02-12T11:11:45.132Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/b6/77f99f38bb0f09bf85f7b3667015941d003ecd880060955c1f6ea9edeef6/s2fft-1.4.0-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9ac7d4cee989d1e5d5724ec4bfd8259bade430c30bf916e5955548b541ba0b73", size = 138646, upload-time = "2026-02-12T11:11:47.24Z" },
 ]
 
 [[package]]

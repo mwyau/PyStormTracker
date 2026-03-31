@@ -50,10 +50,11 @@ grib = [
     "eccodes>=2.43.0",
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
 ]
-jax = [
+s2fft = [
     "jax>=0.7.2",
+    "s2fft>=1.4.0",
 ]
-cuda13 = [
+cuda = [
     "jax[cuda13]>=0.7.2",
 ]
 netcdf4 = [
@@ -64,7 +65,7 @@ zarr = [
     "fsspec[http]>=2024.9.0",
 ]
 all = [
-    "PyStormTracker[grib,jax,mpi,netcdf4,zarr]",
+    "PyStormTracker[grib,s2fft,mpi,netcdf4,zarr]",
 ]
 docs = [
     "myst-parser>=5.0.0",
