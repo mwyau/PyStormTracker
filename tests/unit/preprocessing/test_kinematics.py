@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import xarray as xr
+from numpy.typing import NDArray
 
 from pystormtracker.preprocessing.kinematics import (
     Kinematics,
@@ -55,6 +56,29 @@ def test_apply_vort_div(ny: int, nx: int) -> None:
     assert vort.name == "relative_vorticity"
     assert np.array_equal(div.lat, u.lat)
     assert np.array_equal(vort.lon, u.lon)
+
+
+@pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
+def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
+    # Test latitude South to North
+    data: NDArray[np.float64] = np.random.rand(1, ny, nx)
+    u = xr.DataArray(
+        data,
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": [0],
+            "lat": np.linspace(-90, 90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
+        },
+        name="msl",
+    )
+
+    div, vort = apply_vort_div(u, u)
+
+    assert div.shape == (1, ny, nx)
+    assert div.lat[0] == -90
+    assert vort.shape == (1, ny, nx)
+    assert vort.lat[0] == -90
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])

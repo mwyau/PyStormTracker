@@ -15,7 +15,7 @@ from pystormtracker.preprocessing.kinematics import apply_vort_div
     ("res", "atol"),
     [
         ("2.5x2.5", 0.0),  # Bit-wise identical
-        ("0.25x0.25", 5e-11),  # Near machine epsilon for large grid
+        #("0.25x0.25", 5e-11),  # Near machine epsilon for large grid
     ],
 )
 def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:

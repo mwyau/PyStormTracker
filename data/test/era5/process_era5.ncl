@@ -83,8 +83,10 @@ begin
         lon@standard_name = "longitude"
 
         ; 2. Calculate VODV and SFVP
-        vo_calc = uv2vrF_Wrap(u_raw, v_raw)
-        dv_calc = uv2dvF_Wrap(u_raw, v_raw)
+        ; NOTE: NCL's uv2vrF and uv2dvF use an opposite sign convention 
+        ; to ERA5/PST for North-to-South grids. We negate them here to match.
+        vo_calc = -uv2vrF_Wrap(u_raw, v_raw)
+        dv_calc = -uv2dvF_Wrap(u_raw, v_raw)
         sfvp    = uv2sfvpF(u_raw, v_raw)
         sf_calc = sfvp(0,:,:)
         vp_calc = sfvp(1,:,:)

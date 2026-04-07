@@ -253,9 +253,13 @@ def apply_spectral_filter(
             f"Found: {list(data.dims)}"
         )
 
+    # Ensure latitude is North to South for ducc0
+    # Store original order to restore it later if needed
+    is_ascending = data[lat_dim][0] < data[lat_dim][-1]
+    data = data.sortby(lat_dim, ascending=False)
     nthreads = 1 if backend in ("mpi", "dask") else 0
     filter_func, kwargs = _get_filter_config(
-        lmin, lmax, lat_reverse, nthreads, sht_engine=sht_engine
+        lmin, lmax, lat_reverse=False, nthreads=nthreads, sht_engine=sht_engine
     )
 
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
@@ -320,4 +324,8 @@ def apply_spectral_filter(
     filtered.name = (
         f"{data.name}_spectral_filtered" if data.name else "spectral_filtered"
     )
+
+    if is_ascending:
+        filtered = filtered.sortby(lat_dim, ascending=True)
+
     return filtered
