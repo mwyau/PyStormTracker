@@ -15,6 +15,7 @@ class KinematicsKwargs(TypedDict, total=False):
     lmax: int | None
     geometry: str
     nthreads: int
+    lat_reverse: bool
 
 
 def compute_vort_div_jax(
@@ -24,6 +25,7 @@ def compute_vort_div_jax(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
+    lat_reverse: bool = False,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Computes spatial divergence and relative vorticity using JAX and ducc0-parity SHT.
@@ -40,33 +42,42 @@ def compute_vort_div_jax(
             "Install via 'pip install pystormtracker[jax]'."
         ) from e
 
+    if not lat_reverse:
+        u = np.flip(u, axis=-2)
+        v = np.flip(v, axis=-2)
+
     ny, nx = u.shape
     if lmax is None:
         lmax = ny - 2  # Standard for ducc0 CC
 
     mmax = min(lmax, nx // 2 - 1)
 
-    # ducc0 spin-1 expects (v_theta, v_phi) = (v, u)
-    vec_jax = jax.numpy.stack([v, u], axis=0)
+    # ducc0 spin-1 parity: (v_theta, v_phi) = (-v, u)
+    vec_jax = jax.numpy.stack([-v, u], axis=0)
 
     # Forward spin-1 transform
     alm_e, alm_b = jax_analysis_2d(vec_jax, lmax, mmax=mmax, geometry=geometry, spin=1)
 
     # Spectral Scaling:
-    # alm_e and alm_b are 2D arrays of shape (mmax + 1, lmax + 1).
-    # The columns correspond to degree 'l'.
     l_arr = jax.numpy.arange(lmax + 1)
     eigen_scale = jax.numpy.sqrt(l_arr * (l_arr + 1.0)) / R
 
     alm_div = -eigen_scale * alm_e
-    alm_vort = eigen_scale * alm_b
+    alm_vort = -eigen_scale * alm_b
 
     div = jax_synthesis_2d(alm_div, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0)
     vort = jax_synthesis_2d(
         alm_vort, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0
     )
 
-    return np.asarray(div, dtype=np.float64), np.asarray(vort, dtype=np.float64)
+    div_np = np.asarray(div, dtype=np.float64)
+    vort_np = np.asarray(vort, dtype=np.float64)
+
+    if not lat_reverse:
+        div_np = np.flip(div_np, axis=-2)
+        vort_np = np.flip(vort_np, axis=-2)
+
+    return div_np, vort_np
 
 
 def compute_vort_div(
@@ -76,6 +87,7 @@ def compute_vort_div(
     lmax: int | None = None,
     geometry: str = "CC",
     nthreads: int = 0,
+    lat_reverse: bool = False,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Computes spatial divergence and relative vorticity from u and v wind components
@@ -88,6 +100,7 @@ def compute_vort_div(
         lmax: Maximum spherical harmonic degree. If None, derived from ntheta.
         geometry: Grid geometry (for ducc0). Default 'CC'.
         nthreads: Number of threads (for ducc0).
+        lat_reverse: If True, assume latitude is North to South (reversed).
 
     Returns:
         div: Divergence (ntheta, nphi)
@@ -95,6 +108,10 @@ def compute_vort_div(
     """
     if u.shape != v.shape:
         raise ValueError(f"Shape mismatch: u is {u.shape}, v is {v.shape}")
+
+    if lat_reverse:
+        u = u[::-1, :]
+        v = v[::-1, :]
 
     ntheta, nphi = u.shape
     if lmax is None:
@@ -105,26 +122,10 @@ def compute_vort_div(
         else:
             lmax = ntheta - 1
 
-    # mmax calculation follows the sampling theorem: for a longitude grid of
-    # size nphi, the maximum resolvable wavenumber m is (nphi-1)//2 to avoid
-    # aliasing.
     mmax = min(lmax, (nphi - 1) // 2)
 
-    # Standard spectral derivation from wind components:
-    # For a vector field V = (u, v) on a sphere:
-    # div = 1/(R cos lat) * (du/dlon + d(v cos lat)/dlat)
-    # vo  = 1/(R cos lat) * (dv/dlon - d(u cos lat)/dlat)
-    #
-    # In spherical harmonic space, using E (divergence-like) and
-    # B (vorticity-like) modes:
-    # div_lm = -[sqrt(l(l+1))/R] * E_lm
-    # vort_lm = [sqrt(l(l+1))/R] * B_lm
-    # where the [sqrt(l(l+1))/R] term is the eigenvalue of the vector Laplacian.
-    # Analysis:
-    # ducc0.sht.analysis_2d expects (v_theta, v_phi) for spin-1 (vector) fields.
-    # v_theta (meridional) is v, v_phi (zonal) is u.
-    # This matches the convention used in NCL's Spherepack wrappers.
-    vec_map = np.stack((v, u), axis=0).astype(np.float64)
+    # parity: (v_theta, v_phi) = (-v, u)
+    vec_map = np.stack((-v, u), axis=0).astype(np.float64)
     alm_vec = ducc0.sht.analysis_2d(
         map=vec_map,
         spin=1,
@@ -137,12 +138,10 @@ def compute_vort_div(
     alm_B = alm_vec[1]
 
     # Spectral Scaling:
-    # We apply the eigenvalue of the gradient/curl operators in spectral space.
-    # l_arr contains the degree 'l' for each coefficient in the alm array.
     l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
     eigen_scale = np.sqrt(l_arr * (l_arr + 1.0)) / R
     alm_div = -eigen_scale * alm_E
-    alm_vort = eigen_scale * alm_B
+    alm_vort = -eigen_scale * alm_B
 
     # Synthesis
     div = ducc0.sht.synthesis_2d(
@@ -166,6 +165,10 @@ def compute_vort_div(
         nthreads=nthreads,
     )[0]
 
+    if not lat_reverse:
+        div = div[::-1, :]
+        vort = vort[::-1, :]
+
     return cast(NDArray[np.float64], div), cast(NDArray[np.float64], vort)
 
 
@@ -182,8 +185,8 @@ def apply_vort_div(
     Xarray wrapper for computing relative vorticity and divergence.
 
     Args:
-        u: Zonal wind DataArray (lat, lon). Latitude must be North to South.
-        v: Meridional wind DataArray (lat, lon).
+        u: Zonal wind DataArray.
+        v: Meridional wind DataArray.
         R: Planetary radius in meters. Default is R_EARTH_METERS.
         lmax: Maximum spherical harmonic degree.
         geometry: Grid geometry (default 'CC').
@@ -193,31 +196,52 @@ def apply_vort_div(
     Returns:
         div, vort: Divergence and relative vorticity DataArrays.
     """
+    from ..io.data_loader import DataLoader
+
+    # Identify spatial dimensions
+    lat_dim = next((c for c in DataLoader.VAR_MAPPING["latitude"] if c in u.dims), None)
+    lon_dim = next(
+        (c for c in DataLoader.VAR_MAPPING["longitude"] if c in u.dims), None
+    )
+
+    if not lat_dim or not lon_dim:
+        # Fallback to positional if not found in VAR_MAPPING
+        lat_dim = str(u.dims[-2])
+        lon_dim = str(u.dims[-1])
+
+    # Ensure latitude is North to South for ducc0
+    # Store original order to restore it later if needed
+    loader = DataLoader(u.dataset if hasattr(u, "dataset") else u)
+    is_ascending = not loader.is_lat_reversed()
+    u_sorted = u.sortby(lat_dim, ascending=False)
+    v_sorted = v.sortby(lat_dim, ascending=False)
+
     # Logic for handling parallel dimensions if needed (ufunc)
     kwargs: KinematicsKwargs = {
         "R": R,
         "lmax": lmax,
         "geometry": geometry,
         "nthreads": nthreads if backend not in ("mpi", "dask") else 1,
+        "lat_reverse": True,  # Already sorted to N-to-S (90 to -90)
     }
-
-    # Identify spatial dimensions
-    lat_dim = u.dims[-2]
-    lon_dim = u.dims[-1]
 
     # Select core function
     core_func = compute_vort_div
 
+    dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
+    if u_sorted.chunks or v_sorted.chunks:
+        dask_mode = "parallelized"
+
     # Use apply_ufunc for broad support
     div_vort = xr.apply_ufunc(
         core_func,
-        u,
-        v,
+        u_sorted,
+        v_sorted,
         input_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
         output_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
         vectorize=True,
         kwargs=kwargs,
-        dask="parallelized" if backend == "dask" else "forbidden",
+        dask=dask_mode,
         output_dtypes=[u.dtype, u.dtype],
     )
 
@@ -226,6 +250,10 @@ def apply_vort_div(
 
     div.name = "divergence"
     vort.name = "relative_vorticity"
+
+    if is_ascending:
+        div = div.sortby(lat_dim, ascending=True)
+        vort = vort.sortby(lat_dim, ascending=True)
 
     return div, vort
 
@@ -240,6 +268,7 @@ class Kinematics:
         R: float = R_EARTH_METERS,
         lmax: int | None = None,
         geometry: str = "CC",
+        lat_reverse: bool = False,
     ) -> None:
         """
         Initialize the kinematics calculator.
@@ -248,10 +277,12 @@ class Kinematics:
             R: Planetary radius in meters.
             lmax: Maximum spherical harmonic degree.
             geometry: Grid geometry ('CC', 'DH', etc.).
+            lat_reverse: If True, assume latitude is North to South (reversed).
         """
         self.R = R
         self.lmax = lmax
         self.geometry = geometry
+        self.lat_reverse = lat_reverse
 
     @overload
     def compute(
@@ -298,6 +329,7 @@ class Kinematics:
                 lmax=self.lmax,
                 geometry=self.geometry,
                 nthreads=nthreads,
+                lat_reverse=self.lat_reverse,
             )
 
         if isinstance(u, xr.DataArray) and isinstance(v, xr.DataArray):

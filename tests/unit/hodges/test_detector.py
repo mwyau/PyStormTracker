@@ -29,7 +29,7 @@ def test_hodges_detector_init(mock_open: MagicMock) -> None:
     detector = HodgesDetector(pathname="test.nc", varname="msl")
     detector._ensure_open()
 
-    mock_open.assert_called_once_with(Path("test.nc"), engine="h5netcdf", chunks={})
+    mock_open.assert_called_once_with(Path("test.nc"), engine=None, chunks={})
 
 
 @patch("xarray.open_dataset")

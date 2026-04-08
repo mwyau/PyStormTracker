@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import xarray as xr
+from numpy.typing import NDArray
 
 from pystormtracker.preprocessing.kinematics import (
     Kinematics,
@@ -58,12 +59,38 @@ def test_apply_vort_div(ny: int, nx: int) -> None:
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
+def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
+    # Test latitude South to North (lat_reverse=False)
+    data: NDArray[np.float64] = np.random.rand(1, ny, nx)
+    u = xr.DataArray(
+        data,
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": [0],
+            "lat": np.linspace(-90, 90, ny),  # S->N
+            "lon": np.linspace(0, 360, nx, endpoint=False),
+        },
+        name="msl",
+    )
+
+    # Kinematics detects it or we can pass it if we used the class.
+    # apply_vort_div should handle it automatically.
+    div, vort = apply_vort_div(u, u)
+
+    assert div.shape == (1, ny, nx)
+    assert div.lat[0] == -90
+    assert vort.shape == (1, ny, nx)
+    assert vort.lat[0] == -90
+
+
+@pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_kinematics_class(ny: int, nx: int) -> None:
     pytest.importorskip("ducc0")
     u_np = np.random.rand(ny, nx)
     v_np = np.random.rand(ny, nx)
 
-    calc = Kinematics()
+    # Use lat_reverse=True because we will provide N->S coordinates for the DataArray
+    calc = Kinematics(lat_reverse=True)
     div_np, vort_np = calc.compute(u_np, v_np)
 
     assert div_np.shape == (ny, nx)
@@ -72,7 +99,7 @@ def test_kinematics_class(ny: int, nx: int) -> None:
     u_xr = xr.DataArray(
         u_np,
         coords={
-            "lat": np.linspace(90, -90, ny),
+            "lat": np.linspace(90, -90, ny),  # N->S
             "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         dims=["lat", "lon"],
@@ -80,7 +107,7 @@ def test_kinematics_class(ny: int, nx: int) -> None:
     v_xr = xr.DataArray(
         v_np,
         coords={
-            "lat": np.linspace(90, -90, ny),
+            "lat": np.linspace(90, -90, ny),  # N->S
             "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         dims=["lat", "lon"],
@@ -88,6 +115,7 @@ def test_kinematics_class(ny: int, nx: int) -> None:
 
     div_xr, _vort_xr = calc.compute(u_xr, v_xr)
     assert isinstance(div_xr, xr.DataArray)
+    # Both now assume N->S, so they should match
     np.testing.assert_allclose(div_xr.values, div_np)
 
 

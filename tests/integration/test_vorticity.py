@@ -4,10 +4,10 @@ import os
 
 import numpy as np
 import pytest
-import xarray as xr
 from testing_utils import get_era5_uv_path, get_era5_vodv_path
 
-from pystormtracker.preprocessing.kinematics import apply_vort_div
+from pystormtracker.io.data_loader import DataLoader
+from pystormtracker.preprocessing.kinematics import Kinematics
 
 
 @pytest.mark.integration
@@ -29,14 +29,21 @@ def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:
     if not (os.path.exists(wind_file) and os.path.exists(vodiv_file)):
         pytest.skip(f"Integration test data for {res} not found.")
 
-    ds_uv = xr.open_dataset(wind_file)
-    ds_ref = xr.open_dataset(vodiv_file)
+    # 1. Load Data using DataLoader
+    loader_uv = DataLoader(wind_file)
+    loader_ref = DataLoader(vodiv_file)
 
-    u, v = ds_uv.u, ds_uv.v
-    vo_ref, dv_ref = ds_ref.vo, ds_ref.dv
+    ds_uv = loader_uv.ensure_open()
+    ds_ref = loader_ref.ensure_open()
 
-    div, vort = apply_vort_div(u, v)
+    # Explicitly load into memory for parity comparison
+    u, v = ds_uv.u.load(), ds_uv.v.load()
+    vo_ref, dv_ref = ds_ref.vo.load(), ds_ref.dv.load()
 
-    # Validate against NCL Spherepack reference
+    # 2. Compute using Kinematics with auto-detected lat_reverse
+    calc = Kinematics(lat_reverse=loader_uv.is_lat_reversed())
+    div, vort = calc.compute(u, v)
+
+    # 3. Validate against NCL Spherepack reference
     np.testing.assert_allclose(vort.values, vo_ref.values, rtol=atol, atol=atol)
     np.testing.assert_allclose(div.values, dv_ref.values, rtol=atol, atol=atol)

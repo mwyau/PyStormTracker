@@ -6,9 +6,9 @@ from typing import Literal, TypedDict
 
 import numpy as np
 import pytest
-import xarray as xr
 from testing_utils import get_era5_msl_path
 
+from pystormtracker.io.data_loader import DataLoader
 from pystormtracker.preprocessing import SpectralFilter
 
 
@@ -102,19 +102,29 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference data not found: {ref_file}")
 
-    ds_msl = xr.open_dataset(src_file)
-    ds_ref = xr.open_dataset(ref_file)
+    # 1. Load Data using DataLoader
+    loader_src = DataLoader(src_file)
+    loader_ref = DataLoader(ref_file)
 
-    msl = ds_msl.msl
-    ref = ds_ref.msl
+    ds_msl = loader_src.ensure_open()
+    ds_ref = loader_ref.ensure_open()
 
-    filt = SpectralFilter(lmin=case["lmin"], lmax=case["lmax"])
+    msl = ds_msl.msl.load()
+    ref = ds_ref.msl.load()
+
+    # 2. Filter using SpectralFilter with auto-detected lat_reverse
+    filt = SpectralFilter(
+        lmin=case["lmin"],
+        lmax=case["lmax"],
+        lat_reverse=loader_src.is_lat_reversed(),
+    )
 
     start_time = time.perf_counter()
     filtered = filt.filter(msl, sht_engine=sht_engine)
     end_time = time.perf_counter()
     duration = end_time - start_time
 
+    # 3. Validation
     # Ensure extremely high structural correlation (> 0.9999)
     corr = np.corrcoef(filtered.values.flatten(), ref.values.flatten())[0, 1]
     assert corr > 0.9999, (

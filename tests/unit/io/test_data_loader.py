@@ -34,7 +34,8 @@ def test_ensure_open_netcdf(mock_open: MagicMock) -> None:
     loader = DataLoader("test.nc")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(Path("test.nc"), engine="h5netcdf", chunks={})
+    # Now defaults to None for standard xarray detection
+    mock_open.assert_called_once_with(Path("test.nc"), engine=None, chunks={})
 
 
 @patch("xarray.open_dataset")
@@ -93,6 +94,20 @@ def test_get_coords_mapping(mock_open: MagicMock) -> None:
     assert lon == "lon"
 
 
+def test_is_lat_reversed_direct() -> None:
+    """Test is_lat_reversed with direct DataArray input."""
+    lats = xr.DataArray([90, 80, 70], dims="lat", coords={"lat": [90, 80, 70]})
+    ds = xr.Dataset({"var": lats})
+    loader = DataLoader(ds)
+    assert loader.is_lat_reversed() is True
+
+    lats_asc = xr.DataArray([-90, -80], dims="lat", coords={"lat": [-90, -80]})
+    ds_asc = xr.Dataset({"var": lats_asc})
+    loader_asc = DataLoader(ds_asc)
+    assert loader_asc.is_lat_reversed() is False
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "url, expected_engine",  # noqa: PT006
     [

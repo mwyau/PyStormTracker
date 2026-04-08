@@ -31,14 +31,19 @@ class SimpleDetector:
 
     def __init__(
         self,
-        pathname: str | Path,
+        pathname: str | Path | None,
         varname: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
         engine: str | None = None,
     ) -> None:
-        self.pathname = Path(pathname)
+        self.pathname = (
+            Path(pathname)
+            if pathname is not None
+            and not (isinstance(pathname, str) and "://" in pathname)
+            else pathname
+        )
         self.requested_varname = varname
         self.time_range = time_range
         self.global_start_idx = global_start_idx
@@ -182,8 +187,8 @@ class SimpleDetector:
         obj.requested_varname = str(data.name) if data.name else "var"
         obj.varname = obj.requested_varname
         obj._data = data
-        obj._loader = DataLoader(pathname="in-memory", data=data)
-        obj.pathname = Path("in-memory")
+        obj._loader = DataLoader(data)
+        obj.pathname = None
         obj.time_range = None
         obj.global_start_idx = 0
         obj.global_total_steps = None
@@ -222,7 +227,7 @@ class SimpleDetector:
             if s_idx >= e_idx:
                 continue
 
-            if self.pathname == Path("in-memory") and self._data is not None:
+            if self.pathname is None and self._data is not None:
                 # Preserve in-memory data for split detectors
                 new_obj = SimpleDetector.from_xarray(self._data)
                 new_obj.time_range = TimeRange(

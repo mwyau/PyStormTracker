@@ -14,7 +14,7 @@ class DataLoader:
     Supports NetCDF, GRIB, and Zarr formats, with thread-safe caching.
     """
 
-    _ds_cache: ClassVar[dict[str | Path, xr.Dataset]] = {}
+    _ds_cache: ClassVar[dict[str, xr.Dataset]] = {}
     _ds_lock: ClassVar[threading.Lock] = threading.Lock()
 
     # Common variable and coordinate name aliases
@@ -28,29 +28,42 @@ class DataLoader:
 
     def __init__(
         self,
-        pathname: str | Path,
+        pathname: str | Path | xr.DataArray | xr.Dataset | None = None,
         engine: str | None = None,
-        data: xr.DataArray | None = None,
     ) -> None:
-        if isinstance(pathname, str) and "://" in pathname:
-            self.pathname: str | Path = pathname
-        else:
-            self.pathname = Path(pathname)
-
         self.engine = engine
         self._ds: xr.Dataset | None = None
-        if data is not None:
-            self._ds = data.to_dataset() if isinstance(data, xr.DataArray) else data
+        self.pathname: str | Path | None
+
+        if isinstance(pathname, (xr.DataArray, xr.Dataset)):
+            self.pathname = None
+            if isinstance(pathname, xr.DataArray):
+                if pathname.name is None:
+                    pathname = pathname.rename("data")
+                self._ds = pathname.to_dataset()
+            else:
+                self._ds = pathname
+        elif pathname is None:
+            self.pathname = None
+        elif isinstance(pathname, str) and "://" in pathname:
+            self.pathname = pathname
+        else:
+            self.pathname = Path(pathname)
 
     def ensure_open(self) -> xr.Dataset:
         """Ensures the xarray dataset is open and returns it."""
         if self._ds is None:
+            if self.pathname is None:
+                raise ValueError(
+                    "Cannot open dataset without a valid pathname or data object."
+                )
             with self._ds_lock:
-                if self.pathname not in self._ds_cache:
+                cache_key = str(self.pathname)
+                if cache_key not in self._ds_cache:
                     engine = self.engine
                     storage_options: dict[str, bool] = {}
                     is_remote = isinstance(self.pathname, str) and (
-                        "://" in str(self.pathname)
+                        "://" in self.pathname
                     )
 
                     if is_remote and str(self.pathname).startswith(
@@ -66,7 +79,8 @@ class DataLoader:
 
                     if engine is None:
                         if is_remote:
-                            if str(self.pathname).endswith(".zarr"):
+                            pathname_str = str(self.pathname)
+                            if pathname_str.endswith(".zarr"):
                                 if importlib.util.find_spec("zarr") is None:
                                     raise ValueError(
                                         "zarr is required to open Zarr datasets. "
@@ -74,9 +88,7 @@ class DataLoader:
                                         "'pystormtracker[zarr]'`"
                                     ) from None
                                 engine = "zarr"
-                            elif str(self.pathname).endswith(
-                                (".grib", ".grib2", ".grb")
-                            ):
+                            elif pathname_str.endswith((".grib", ".grib2", ".grb")):
                                 if importlib.util.find_spec("cfgrib") is None:
                                     raise ValueError(
                                         "cfgrib is required to open GRIB files. "
@@ -112,23 +124,24 @@ class DataLoader:
                                     ) from None
                                 engine = "zarr"
                             else:
-                                engine = "h5netcdf"
+                                # Standard xarray detection for everything else
+                                engine = None
 
                     if engine == "zarr" and is_remote and storage_options:
-                        self._ds_cache[self.pathname] = xr.open_dataset(
+                        self._ds_cache[cache_key] = xr.open_dataset(
                             self.pathname,
                             engine=engine,
                             chunks={},
                             storage_options=storage_options,
                         )
                     else:
-                        self._ds_cache[self.pathname] = xr.open_dataset(
+                        self._ds_cache[cache_key] = xr.open_dataset(
                             self.pathname,
                             engine=engine,
                             chunks={},
                         )
 
-                self._ds = self._ds_cache[self.pathname]
+                self._ds = self._ds_cache[cache_key]
         return self._ds
 
     def get_coords(self) -> tuple[str, str, str]:
@@ -145,3 +158,14 @@ class DataLoader:
         )
 
         return time_name, lat_name, lon_name
+
+    def is_lat_reversed(self) -> bool:
+        """
+        Detects if the latitude coordinate is North-to-South (reversed).
+        Returns True if lat[0] > lat[-1].
+        """
+        ds = self.ensure_open()
+        _, lat_name, _ = self.get_coords()
+        if lat_name in ds.coords and len(ds[lat_name]) > 1:
+            return bool(ds[lat_name][0] > ds[lat_name][-1])
+        return False
