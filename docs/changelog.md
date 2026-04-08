@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.5.0.dev0
+## v0.5.0 - 2026-04-08
 ### Features
 - **High-Precision Derivatives**: New `vodv` module for computing relative vorticity and divergence using spin-1 vector harmonics.
 - **Planetary Constants**: Standardized Earth radius to 6,371,220 m across derivatives and tracking geometry.
@@ -17,15 +17,11 @@
 - **NCL Validation**: New integration test suite validated against NCL 6.6.2 reference data.
 - **Format Auto-detection Tests**: Added comprehensive tests for NetCDF, GRIB, and Zarr auto-detection in `DataLoader`.
 
-### Performance
-
 ### CI/CD & Testing
 - **Verification**: Enhanced documentation builds and expanded test coverage.
 
 ### Maintenance
 - **Spectral Backend Consolidation**: Evaluated `pyshtools`, `SHTns`, `ducc0`, and `jax` for performance, accuracy, and portability. Selected **ducc0** as the default backend due to its superior multi-frame performance (6.3x faster than SHTns), self-contained architecture (no external C dependencies), and near bit-wise parity with NCL for kinematics. Integrated **JAX** as an experimental alternative backend for GPU-accelerated spherical harmonic transforms.
-- **Standardized Documentation**: Renamed documentation files to lowercase and updated internal references.
-- **Repository Cleanup**: Organized documentation and removed legacy scripts.
 - **Strict Typing**: Achieved 100% `mypy` compliance in core I/O modules and removed usage of `Any`.
 - **Dependency Refinement**: Introduced a dedicated `zarr` optional dependency group and updated the `all` extra.
 
