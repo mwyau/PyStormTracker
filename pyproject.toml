@@ -81,6 +81,8 @@ packages = ["src/pystormtracker"]
 [tool.hatch.build.targets.sdist]
 exclude = [
     "/benchmark",
+    "/notebooks",
+    "/tests/data",
 ]
 
 [dependency-groups]
