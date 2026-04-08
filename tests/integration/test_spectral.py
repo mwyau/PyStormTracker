@@ -17,7 +17,7 @@ class FilterTestCase(TypedDict, total=False):
     lmax: int
     res: str
     suffix: str
-    sht_engine: Literal["ducc0", "jax"]
+    sht_engine: Literal["ducc0"]
 
 
 # Test cases for different truncations
@@ -37,7 +37,7 @@ TEST_CASES: list[FilterTestCase] = [
         "suffix": "t0-42_ncl",
         "sht_engine": "ducc0",
     },
-    # 0.25-degree cases (ducc0 and jax)
+    # 0.25-degree cases (ducc0)
     {
         "lmin": 5,
         "lmax": 42,
@@ -46,25 +46,11 @@ TEST_CASES: list[FilterTestCase] = [
         "sht_engine": "ducc0",
     },
     {
-        "lmin": 5,
-        "lmax": 42,
-        "res": "0.25x0.25",
-        "suffix": "t5-42_ncl",
-        "sht_engine": "jax",
-    },
-    {
         "lmin": 0,
         "lmax": 42,
         "res": "0.25x0.25",
         "suffix": "t0-42_ncl",
         "sht_engine": "ducc0",
-    },
-    {
-        "lmin": 0,
-        "lmax": 42,
-        "res": "0.25x0.25",
-        "suffix": "t0-42_ncl",
-        "sht_engine": "jax",
     },
 ]
 
@@ -77,9 +63,7 @@ TEST_CASES: list[FilterTestCase] = [
         "T5-42_2.5_ducc0",
         "T0-42_2.5_ducc0",
         "T5-42_0.25_ducc0",
-        "T5-42_0.25_jax",
         "T0-42_0.25_ducc0",
-        "T0-42_0.25_jax",
     ],
 )
 def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
@@ -87,9 +71,7 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     Verifies that the SHT backend for filtering produces results matching
     the NCL reference data for MSL across multiple truncations and resolutions.
     """
-    sht_engine: Literal["ducc0", "jax"] = case.get("sht_engine", "ducc0")
-    if sht_engine == "jax":
-        pytest.importorskip("jax")
+    sht_engine: Literal["ducc0"] = case.get("sht_engine", "ducc0")
 
     res = case["res"]
     suffix = case["suffix"]
@@ -120,7 +102,7 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     )
 
     start_time = time.perf_counter()
-    filtered = filt.filter(msl, sht_engine=sht_engine)
+    filtered = filt.filter(msl)
     end_time = time.perf_counter()
     duration = end_time - start_time
 
