@@ -9,7 +9,6 @@
 .vscode/
 __pycache__/
 benchmark/
-data/test/
 docs/
 htmlcov/
 tests/

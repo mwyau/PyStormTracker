@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from testing_utils import (
+from utils import (
     RAW_CONTENT_URL,
     fetch_era5_msl,
     fetch_era5_uv850,
@@ -20,7 +20,7 @@ def test_get_base_dir() -> None:
     assert (base_dir / "tests").is_dir()
 
 
-@patch("testing_utils.CACHED_DATA")
+@patch("utils.CACHED_DATA")
 def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.nc"
     path = fetch_era5_msl(resolution="2.5x2.5", season="djf", format="nc")
@@ -28,7 +28,7 @@ def test_fetch_era5_msl_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.assert_called_once_with("era5_msl_2025-2026_djf_2.5x2.5.nc")
 
 
-@patch("testing_utils.CACHED_DATA")
+@patch("utils.CACHED_DATA")
 def test_fetch_era5_msl_grib(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/data.grib"
     path = fetch_era5_msl(resolution="0.25x0.25", season="djf", format="grib")
@@ -58,7 +58,7 @@ def test_fetch_era5_msl_invalid_format() -> None:
         fetch_era5_msl(format="txt")
 
 
-@patch("testing_utils.CACHED_DATA")
+@patch("utils.CACHED_DATA")
 def test_fetch_era5_vo850_valid(mock_pooch: MagicMock) -> None:
     mock_pooch.fetch.return_value = "/path/to/vo850.nc"
     path = fetch_era5_vo850(resolution="2.5x2.5", season="djf", format="nc")

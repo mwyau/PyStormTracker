@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-# Add tests directory to sys.path to allow importing testing_utils
+# Add tests directory to sys.path to allow importing utils
 sys.path.insert(0, str(Path(__file__).parent.absolute()))
 
 
