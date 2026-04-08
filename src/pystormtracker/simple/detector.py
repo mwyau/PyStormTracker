@@ -182,7 +182,7 @@ class SimpleDetector:
         obj.requested_varname = str(data.name) if data.name else "var"
         obj.varname = obj.requested_varname
         obj._data = data
-        obj._loader = DataLoader(pathname="in-memory", data=data)
+        obj._loader = DataLoader(data)
         obj.pathname = Path("in-memory")
         obj.time_range = None
         obj.global_start_idx = 0

@@ -199,17 +199,15 @@ def apply_vort_div(
     from ..io.data_loader import DataLoader
 
     # Identify spatial dimensions
-    lat_dim = next(
-        (c for c in DataLoader.VAR_MAPPING["latitude"] if c in u.dims), None
-    )
+    lat_dim = next((c for c in DataLoader.VAR_MAPPING["latitude"] if c in u.dims), None)
     lon_dim = next(
         (c for c in DataLoader.VAR_MAPPING["longitude"] if c in u.dims), None
     )
 
     if not lat_dim or not lon_dim:
         # Fallback to positional if not found in VAR_MAPPING
-        lat_dim = u.dims[-2]
-        lon_dim = u.dims[-1]
+        lat_dim = str(u.dims[-2])
+        lon_dim = str(u.dims[-1])
 
     # Ensure latitude is North to South for ducc0
     # Store original order to restore it later if needed

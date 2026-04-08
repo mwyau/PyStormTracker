@@ -261,7 +261,8 @@ def apply_spectral_filter(
 
     # Detect if original data was North-to-South (reversed from ascending)
     # lat_reverse should be True if lat[0] > lat[-1]
-    # But here we pass True to filter_func because the data we are passing is NOW N-to-S.
+    # But here we pass True to filter_func because the data we are passing is NOW
+    # N-to-S.
     nthreads = 1 if backend in ("mpi", "dask") else 0
     filter_func, kwargs = _get_filter_config(
         lmin, lmax, lat_reverse=True, nthreads=nthreads, sht_engine=sht_engine

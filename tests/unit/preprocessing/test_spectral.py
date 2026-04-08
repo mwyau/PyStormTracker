@@ -85,7 +85,6 @@ def test_spectral_filter_lat_descending(ny: int, nx: int) -> None:
     assert filtered.lat[0] == 90
 
 
-
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_numpy_ndarray(ny: int, nx: int) -> None:
     # Test passing a raw numpy array

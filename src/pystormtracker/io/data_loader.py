@@ -14,7 +14,7 @@ class DataLoader:
     Supports NetCDF, GRIB, and Zarr formats, with thread-safe caching.
     """
 
-    _ds_cache: ClassVar[dict[str | Path, xr.Dataset]] = {}
+    _ds_cache: ClassVar[dict[str, xr.Dataset]] = {}
     _ds_lock: ClassVar[threading.Lock] = threading.Lock()
 
     # Common variable and coordinate name aliases
@@ -30,10 +30,10 @@ class DataLoader:
         self,
         pathname: str | Path | xr.DataArray | xr.Dataset,
         engine: str | None = None,
-        data: xr.DataArray | None = None,
     ) -> None:
         self.engine = engine
         self._ds: xr.Dataset | None = None
+        self.pathname: str | Path
 
         if isinstance(pathname, (xr.DataArray, xr.Dataset)):
             self.pathname = "memory://"
@@ -48,23 +48,16 @@ class DataLoader:
         else:
             self.pathname = Path(pathname)
 
-        if data is not None:
-            self._ds = data.to_dataset() if isinstance(data, xr.DataArray) else data
-
     def ensure_open(self) -> xr.Dataset:
         """Ensures the xarray dataset is open and returns it."""
         if self._ds is None:
             with self._ds_lock:
-                cache_key = (
-                    str(self.pathname)
-                    if isinstance(self.pathname, Path)
-                    else self.pathname
-                )
+                cache_key = str(self.pathname)
                 if cache_key not in self._ds_cache:
                     engine = self.engine
                     storage_options: dict[str, bool] = {}
                     is_remote = isinstance(self.pathname, str) and (
-                        "://" in str(self.pathname)
+                        "://" in self.pathname
                     )
 
                     if is_remote and str(self.pathname).startswith(
@@ -80,7 +73,8 @@ class DataLoader:
 
                     if engine is None:
                         if is_remote:
-                            if str(self.pathname).endswith(".zarr"):
+                            pathname_str = str(self.pathname)
+                            if pathname_str.endswith(".zarr"):
                                 if importlib.util.find_spec("zarr") is None:
                                     raise ValueError(
                                         "zarr is required to open Zarr datasets. "
@@ -88,9 +82,7 @@ class DataLoader:
                                         "'pystormtracker[zarr]'`"
                                     ) from None
                                 engine = "zarr"
-                            elif str(self.pathname).endswith(
-                                (".grib", ".grib2", ".grb")
-                            ):
+                            elif pathname_str.endswith((".grib", ".grib2", ".grb")):
                                 if importlib.util.find_spec("cfgrib") is None:
                                     raise ValueError(
                                         "cfgrib is required to open GRIB files. "
@@ -126,6 +118,7 @@ class DataLoader:
                                     ) from None
                                 engine = "zarr"
                             else:
+                                # Standard xarray detection for everything else
                                 engine = None
 
                     if engine == "zarr" and is_remote and storage_options:
