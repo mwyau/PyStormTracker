@@ -12,7 +12,6 @@ import numpy as np
 from .hodges import constants
 from .hodges.tracker import HodgesTracker
 from .models import constants as model_constants
-from .models.tracker import Tracker
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
 
@@ -34,6 +33,9 @@ def run_tracker(
     start_time: str | np.datetime64 | None = None,
     end_time: str | np.datetime64 | None = None,
     mode: Literal["min", "max"] = "min",
+    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+    resolution: float = 100.0,
+    extent: tuple[float, float, float, float] | None = None,
     backend: Backend | None = None,
     n_workers: int | None = None,
     max_chunk_size: int | None = None,
@@ -123,8 +125,30 @@ def run_tracker(
         if n_workers:
             print(f"Workers: {n_workers}")
 
+    from .models.tracker import Tracker
+
     tracker: Tracker
-    if algorithm == "simple":
+    if map_proj == "healpix":
+        from .healpix.tracker import HealpixTracker
+
+        tracker = HealpixTracker(
+            w1=w1 if w1 is not None else constants.W1_DEFAULT,
+            w2=w2 if w2 is not None else constants.W2_DEFAULT,
+            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
+            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
+            n_iterations=n_iterations
+            if n_iterations is not None
+            else constants.ITERATIONS_DEFAULT,
+            min_lifetime=min_lifetime
+            if min_lifetime is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing=max_missing
+            if max_missing is not None
+            else constants.MISSING_DEFAULT,
+            zones=zones,
+            adapt_params=adapt_params,
+        )
+    elif algorithm == "simple":
         tracker = SimpleTracker()
     else:
         # Initialize with standard defaults and override if provided
@@ -152,6 +176,9 @@ def run_tracker(
         start_time=start_time,
         end_time=end_time,
         mode=mode,
+        map_proj=map_proj,
+        resolution=resolution,
+        extent=extent,
         backend=detected_backend,
         n_workers=n_workers,
         max_chunk_size=max_chunk_size,
@@ -220,6 +247,24 @@ def parse_args() -> Namespace:
         choices=["min", "max"],
         default="min",
         help="Detection mode: 'min' for cyclones in SLP, 'max' for vorticity.",
+    )
+    general.add_argument(
+        "--map-proj",
+        choices=["global", "nh_stereo", "sh_stereo", "healpix"],
+        default="global",
+        help="Map projection for detection. Default 'global'.",
+    )
+    general.add_argument(
+        "--resolution",
+        type=float,
+        default=100.0,
+        help="Grid resolution in km for stereographic projections. Default 100.0.",
+    )
+    general.add_argument(
+        "--extent",
+        type=str,
+        default="-13000,13000,-13000,13000",
+        help="Bounding box in km (xmin,xmax,ymin,ymax) for stereographic projections.",
     )
     general.add_argument(
         "-t",
@@ -436,6 +481,17 @@ def main() -> None:
     elif args.adapt_params:
         adapt_params_arr = np.array(json.loads(args.adapt_params), dtype=np.float64)
 
+    extent_tuple: tuple[float, float, float, float] | None = None
+    if args.extent:
+        try:
+            parts = list(map(float, args.extent.split(",")))
+            if len(parts) != 4:
+                raise ValueError
+            extent_tuple = (parts[0], parts[1], parts[2], parts[3])
+        except ValueError:
+            print(f"Warning: Could not parse extent '{args.extent}'. Using default.")
+            extent_tuple = None
+
     run_tracker(
         infile=args.input,
         varname=args.var,
@@ -443,6 +499,9 @@ def main() -> None:
         start_time=start_time,
         end_time=end_time,
         mode=args.mode,
+        map_proj=args.map_proj,
+        resolution=args.resolution,
+        extent=extent_tuple,
         backend=args.backend,
         n_workers=args.workers,
         max_chunk_size=args.chunk_size,

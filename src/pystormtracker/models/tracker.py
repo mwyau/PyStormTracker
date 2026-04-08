@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol, TypeAlias, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, runtime_checkable
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .tracks import Tracks
+
+if TYPE_CHECKING:
+    from .geo import MapExtent
 
 # Type alias for a single time step's raw detection arrays
 RawDetectionStep: TypeAlias = tuple[
@@ -30,6 +33,9 @@ class Tracker(Protocol):
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
         mode: Literal["min", "max"] = "min",
+        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+        resolution: float = 100.0,
+        extent: MapExtent | None = None,
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
         max_chunk_size: int | None = None,

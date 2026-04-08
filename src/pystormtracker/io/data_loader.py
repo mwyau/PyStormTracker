@@ -21,8 +21,8 @@ class DataLoader:
     VAR_MAPPING: ClassVar[dict[str, list[str]]] = {
         "msl": ["msl", "slp"],
         "vo": ["vo"],
-        "latitude": ["latitude", "lat"],
-        "longitude": ["longitude", "lon"],
+        "latitude": ["latitude", "lat", "y"],
+        "longitude": ["longitude", "lon", "x"],
         "time": ["time", "valid_time"],
     }
 

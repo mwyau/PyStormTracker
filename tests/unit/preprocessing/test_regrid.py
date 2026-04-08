@@ -85,3 +85,63 @@ def test_regrid_identity() -> None:
     # We expect some difference because of spectral truncation
     # but it should be small for a simple wave
     np.testing.assert_allclose(da.values, regridded.values, rtol=2e-2, atol=2e-2)
+
+
+def test_regrid_to_polar_stereo() -> None:
+    # 2.5 degree grid (73 x 144)
+    ny, nx = 73, 144
+    data = np.random.rand(ny, nx)
+    da = xr.DataArray(
+        data,
+        dims=["lat", "lon"],
+        coords={
+            "lat": np.linspace(-90, 90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
+        },
+        name="test_var",
+    )
+
+    regridder = SpectralRegridder()
+    regridded = regridder.to_polar_stereo(
+        da, hemisphere="nh", extent=(-1000.0, 1000.0, -1000.0, 1000.0), resolution=100.0
+    )
+
+    assert regridded.shape == (21, 21)
+    assert regridded.dims == ("y", "x")
+    assert regridded.name == "test_var"
+    assert regridded.attrs["projection"] == "nh_stereo"
+    assert regridded.attrs["resolution_km"] == 100.0
+    assert len(regridded.y) == 21
+    assert len(regridded.x) == 21
+
+
+def test_regrid_to_polar_stereo_with_filter() -> None:
+    # 2.5 degree grid
+    ny, nx = 73, 144
+    # Create a simple field with a low frequency component (l=1)
+    # and some noise
+    lat = np.linspace(-90, 90, ny)
+    lon = np.linspace(0, 360, nx, endpoint=False)
+    LAT, _ = np.meshgrid(lat, lon, indexing="ij")
+    data = np.sin(np.radians(LAT)) + 0.1 * np.random.rand(ny, nx)
+
+    da = xr.DataArray(
+        data,
+        dims=["lat", "lon"],
+        coords={"lat": lat, "lon": lon},
+        name="test_var",
+    )
+
+    regridder = SpectralRegridder()
+    # No filter
+    regridded_raw = regridder.to_polar_stereo(
+        da, hemisphere="nh", extent=(-1000.0, 1000.0, -1000.0, 1000.0), filter_lmin=None
+    )
+    # With filter (remove l=1)
+    regridded_filtered = regridder.to_polar_stereo(
+        da, hemisphere="nh", extent=(-1000.0, 1000.0, -1000.0, 1000.0), filter_lmin=5
+    )
+
+    # The filtered field should have significantly lower mean/variance
+    # if low wavenumbers dominate
+    assert not np.allclose(regridded_raw.values, regridded_filtered.values)

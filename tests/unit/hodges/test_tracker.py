@@ -68,3 +68,34 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
     assert len(tracks[0]) == 2
     assert tracks[0][0].lat == 0.0
     assert tracks[0][1].lat == 1.0
+
+
+def test_hodges_tracker_preprocess_map_proj() -> None:
+    import xarray as xr
+
+    # 2.5 degree grid
+    ny, nx = 73, 144
+    time = np.array([np.datetime64("2025-12-01T00:00:00")], dtype="datetime64[ns]")
+    data = np.random.rand(1, ny, nx)
+    da = xr.DataArray(
+        data,
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": time,
+            "lat": np.linspace(-90, 90, ny),
+            "lon": np.linspace(0, 360, nx, endpoint=False),
+        },
+        name="msl",
+    )
+
+    tracker = HodgesTracker()
+
+    # Test nh_stereo
+    processed = tracker.preprocess_standard_track(da, map_proj="nh_stereo")
+    assert processed.dims == ("time", "y", "x")
+    assert processed.attrs["map_proj"] == "nh_stereo"
+
+    # Test healpix
+    processed_hp = tracker.preprocess_standard_track(da, map_proj="healpix")
+    assert processed_hp.dims == ("time", "cell")
+    assert processed_hp.attrs["map_proj"] == "healpix"
