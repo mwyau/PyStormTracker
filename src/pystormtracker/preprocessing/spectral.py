@@ -35,6 +35,24 @@ def _get_filter_config(
     return _filter_ducc0_frame, kwargs
 
 
+def apply_bandpass_mask_to_alm(
+    alm: NDArray[np.complex128],
+    lmin: int,
+    lmax: int,
+    mmax: int | None = None,
+) -> None:
+    """Applies a bandpass mask in-place to spherical harmonic coefficients."""
+    if mmax is None:
+        mmax = lmax
+    if lmin > 0:
+        l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
+        mask = l_arr < lmin
+        if alm.ndim == 2:
+            alm[0, mask] = 0.0
+        else:
+            alm[mask] = 0.0
+
+
 def _filter_ducc0_frame(
     frame: NDArray[np.float64],
     lmin: int,
@@ -64,12 +82,7 @@ def _filter_ducc0_frame(
             nthreads=nthreads,
         )
 
-        # Apply Bandpass Mask
-        # Coefficients are stored in a packed format: for each m, l goes from m to lmax.
-        l_arr = np.concatenate([np.arange(m, lmax + 1) for m in range(mmax + 1)])
-        if lmin > 0:
-            mask = l_arr < lmin
-            alm[0, mask] = 0.0
+        apply_bandpass_mask_to_alm(alm, lmin, lmax, mmax)
 
         out = cast(
             NDArray[np.float64],

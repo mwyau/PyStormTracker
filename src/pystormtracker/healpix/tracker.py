@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import timeit
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -13,6 +13,9 @@ from ..models.tracker import RawDetectionStep, Tracker
 from ..preprocessing.spectral import SpectralFilter
 from ..preprocessing.taper import TaperFilter
 from .detector import HealpixDetector
+
+if TYPE_CHECKING:
+    from ..models.geo import MapExtent
 
 
 def _detect_and_gather(
@@ -149,6 +152,9 @@ class HealpixTracker(Tracker):
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
         mode: Literal["min", "max"] = "min",
+        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+        resolution: float = 100.0,
+        extent: MapExtent | None = None,
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
         max_chunk_size: int | None = None,
@@ -162,6 +168,7 @@ class HealpixTracker(Tracker):
         taper_points: int = constants.TAPER_DEFAULT,
         **kwargs: float | int | str | None,
     ) -> Tracks:
+
         t0 = timeit.default_timer()
 
         time_range = None
@@ -220,4 +227,5 @@ class HealpixTracker(Tracker):
         t_end = timeit.default_timer()
         print(f"Total HEALPix tracking time: {t_end - t0:.4f}s")
 
+        tracks.track_type = varname
         return tracks

@@ -123,7 +123,7 @@ exclude = ["worktrees", ".venv", "notebooks", "benchmark"]
 mypy_path = "src:tests"
 
 [[tool.mypy.overrides]]
-module = ["dask.*", "numba.*", "ducc0", "ducc0.*", "testing_utils"]
+module = ["dask.*", "numba.*", "ducc0", "testing_utils"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

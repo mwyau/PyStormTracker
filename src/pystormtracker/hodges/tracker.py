@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -14,6 +14,9 @@ from ..preprocessing.taper import TaperFilter
 from . import constants
 from .detector import HodgesDetector
 from .linker import HodgesLinker
+
+if TYPE_CHECKING:
+    from ..models.geo import MapExtent
 
 
 class HodgesTracker(Tracker):
@@ -80,9 +83,13 @@ class HodgesTracker(Tracker):
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
+        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+        resolution: float = 100.0,
+        extent: MapExtent | None = None,
     ) -> xr.DataArray:
         """
         Applies standard TRACK preprocessing: Tapering -> Spherical Harmonic Filter.
+        Optionally regrids to a Polar Stereographic or HEALPix projection.
         """
         # Ensure data is loaded into memory for spectral filtering
         if data.chunks:
@@ -93,9 +100,63 @@ class HodgesTracker(Tracker):
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
 
-        # 2. Spectral Filtering
-        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
-        data = spectral_filter.filter(data)
+        # 2. Regridding and Filtering
+        if map_proj in ("nh_stereo", "sh_stereo", "healpix"):
+            from ..preprocessing.regrid import SpectralRegridder
+
+            regridder = SpectralRegridder(lmax=lmax)
+
+            # We process frame by frame
+            from ..io.data_loader import DataLoader
+
+            loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+            is_lat_reversed = loader.is_lat_reversed()
+
+            time_dim = next(
+                (c for c in DataLoader.VAR_MAPPING["time"] if c in data.dims), "time"
+            )
+
+            out_frames = []
+            for i in range(len(data[time_dim])):
+                frame = data.isel({time_dim: i}).squeeze()
+                if map_proj == "healpix":
+                    nside = int(
+                        np.sqrt(12 * (lmax + 1) ** 2 / 12)
+                    )  # Rough heuristic, can be customized
+                    nside = 2 ** int(
+                        np.round(np.log2(max(1, nside)))
+                    )  # Round to power of 2
+                    # Note: filter_lmin is not directly in to_healpix currently,
+                    # but we can filter first
+                    if lmin > 0:
+                        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+                        frame = spectral_filter.filter(frame)
+                    out_frame = regridder.to_healpix(
+                        frame, nside=nside, lat_reverse=is_lat_reversed
+                    )
+                else:
+                    hemi: Literal["nh", "sh"] = (
+                        "nh" if map_proj == "nh_stereo" else "sh"
+                    )
+
+                    out_frame = regridder.to_polar_stereo(
+                        frame,
+                        hemisphere=hemi,
+                        filter_lmin=lmin if lmin > 0 else None,
+                        lat_reverse=is_lat_reversed,
+                        resolution=resolution,
+                        extent=extent
+                        if extent is not None
+                        else (-13000.0, 13000.0, -13000.0, 13000.0),
+                    )
+                out_frames.append(out_frame)
+            # Concatenate back
+            data = xr.concat(out_frames, dim=data[time_dim])
+            data.attrs["map_proj"] = map_proj
+        else:
+            # Global grid filtering
+            spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+            data = spectral_filter.filter(data)
 
         return data
 
@@ -150,6 +211,9 @@ class HodgesTracker(Tracker):
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
         mode: Literal["min", "max"] = "min",
+        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+        resolution: float = 100.0,
+        extent: MapExtent | None = None,
         backend: Literal["serial", "mpi", "dask"] = "serial",
         n_workers: int | None = None,
         max_chunk_size: int | None = None,
@@ -199,12 +263,15 @@ class HodgesTracker(Tracker):
 
         data_xr = detector_peek.get_xarray(start_time, end_time)
 
-        if filter:
+        if filter or map_proj != "global":
             data_xr = self.preprocess_standard_track(
                 data_xr,
-                lmin=lmin,
+                lmin=lmin if filter else 0,
                 lmax=lmax,
                 taper_points=taper_points,
+                map_proj=map_proj,
+                resolution=resolution,
+                extent=extent,
             )
         t1 = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")
@@ -245,6 +312,7 @@ class HodgesTracker(Tracker):
 
         t_total_end = timeit.default_timer()
         print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
+        tracks.track_type = varname
         return tracks
 
     def _track_single_chunk_from_data(
@@ -266,6 +334,24 @@ class HodgesTracker(Tracker):
         detections = detector.detect(
             size=size, threshold=threshold, minmaxmode=mode, min_points=min_points
         )
+
+        map_proj = data.attrs.get("map_proj", "global")
+        if map_proj in ("nh_stereo", "sh_stereo"):
+            from ..models.geo import stereo_to_latlon
+
+            hemi = 1 if map_proj == "nh_stereo" else -1
+            converted_detections = []
+            for dt, lats, lons, values in detections:
+                new_lats = np.zeros_like(lats)
+                new_lons = np.zeros_like(lons)
+                for i in range(len(lats)):
+                    # Note: lons[i] is x, lats[i] is y
+                    lat, lon = stereo_to_latlon(lons[i], lats[i], hemi)
+                    new_lats[i] = lat
+                    new_lons[i] = lon
+                converted_detections.append((dt, new_lats, new_lons, values))
+            detections = converted_detections
+
         t_detect_end = timeit.default_timer()
         print(f"    [Serial] Detection time: {t_detect_end - t_detect_start:.4f}s")
 
