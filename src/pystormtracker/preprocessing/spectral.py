@@ -23,7 +23,6 @@ def _get_filter_config(
     lmax: int,
     lat_reverse: bool,
     nthreads: int = 1,
-    sht_engine: Literal["ducc0", "jax"] = "ducc0",
 ) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
     """Returns the filter function and kwargs for the requested engine."""
     kwargs: FilterKwargs = {
@@ -33,40 +32,7 @@ def _get_filter_config(
         "nthreads": nthreads,
     }
 
-    if sht_engine == "jax":
-        return _filter_jax, kwargs
-
     return _filter_ducc0_frame, kwargs
-
-
-def _filter_jax(
-    data: NDArray[np.float64],
-    lmin: int,
-    lmax: int,
-    lat_reverse: bool = False,
-    nthreads: int = 1,
-) -> NDArray[np.float64]:
-    """
-    Filters data using JAX-native SHT parity backend.
-    Handles 2D or 3D (time, lat, lon).
-    """
-    try:
-        from .jax_sht import jax_filter
-    except ImportError as e:
-        raise ImportError(
-            "The 'jax' backend requires 'jax'. "
-            "Install via 'pip install pystormtracker[jax]'."
-        ) from e
-
-    if not lat_reverse:
-        data = np.flip(data, axis=-2)
-
-    out_np = jax_filter(data, lmin, lmax)
-
-    if not lat_reverse:
-        out_np = np.flip(out_np, axis=-2)
-
-    return out_np
 
 
 def _filter_ducc0_frame(
@@ -156,7 +122,6 @@ class SpectralFilter:
         self,
         data: xr.DataArray,
         backend: Literal["serial", "mpi", "dask"] = "serial",
-        sht_engine: Literal["ducc0", "jax"] = "ducc0",
     ) -> xr.DataArray: ...
 
     @overload
@@ -164,14 +129,12 @@ class SpectralFilter:
         self,
         data: NDArray[np.float64],
         backend: Literal["serial", "mpi", "dask"] = "serial",
-        sht_engine: Literal["ducc0", "jax"] = "ducc0",
     ) -> NDArray[np.float64]: ...
 
     def filter(
         self,
         data: xr.DataArray | NDArray[np.float64],
         backend: Literal["serial", "mpi", "dask"] = "serial",
-        sht_engine: Literal["ducc0", "jax"] = "ducc0",
     ) -> xr.DataArray | NDArray[np.float64]:
         """
         Applies the filter to the input data.
@@ -179,7 +142,6 @@ class SpectralFilter:
         Args:
             data (xr.DataArray | np.ndarray): Input data.
             backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-            sht_engine (str): SHT engine. Options: 'ducc0', 'jax'.
 
         Returns:
             xr.DataArray | np.ndarray: The filtered data.
@@ -191,14 +153,11 @@ class SpectralFilter:
                 self.lmax,
                 self.lat_reverse,
                 nthreads,
-                sht_engine=sht_engine,
             )
 
             if data.ndim == 2:
                 return filter_func(data, **kwargs)
             if data.ndim == 3:
-                if sht_engine == "jax":
-                    return filter_func(data, **kwargs)
                 out = np.empty_like(data)
                 for i in range(data.shape[0]):
                     out[i] = filter_func(data[i], **kwargs)
@@ -211,7 +170,6 @@ class SpectralFilter:
             self.lmax,
             lat_reverse=self.lat_reverse,
             backend=backend,
-            sht_engine=sht_engine,
         )
 
 
@@ -221,7 +179,6 @@ def apply_spectral_filter(
     lmax: int = 42,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
-    sht_engine: Literal["ducc0", "jax"] = "ducc0",
 ) -> xr.DataArray:
     """
     Applies a spectral bandpass filter to the input DataArray.
@@ -232,7 +189,6 @@ def apply_spectral_filter(
         lmax (int): Maximum total wave number to retain. Defaults to 42.
         lat_reverse (bool): If True, assume latitude is South to North.
         backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-        sht_engine (str): SHT engine. Options: 'ducc0', 'jax'.
 
     Returns:
         xr.DataArray: The filtered data.
@@ -265,7 +221,7 @@ def apply_spectral_filter(
     # N-to-S.
     nthreads = 1 if backend in ("mpi", "dask") else 0
     filter_func, kwargs = _get_filter_config(
-        lmin, lmax, lat_reverse=True, nthreads=nthreads, sht_engine=sht_engine
+        lmin, lmax, lat_reverse=True, nthreads=nthreads
     )
 
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
@@ -319,7 +275,7 @@ def apply_spectral_filter(
             data,
             input_core_dims=[[lat_dim, lon_dim]],
             output_core_dims=[[lat_dim, lon_dim]],
-            vectorize=sht_engine != "jax",
+            vectorize=True,
             kwargs=kwargs,
             dask=dask_mode,
             output_dtypes=[data.dtype],

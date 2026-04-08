@@ -18,68 +18,6 @@ class KinematicsKwargs(TypedDict, total=False):
     lat_reverse: bool
 
 
-def compute_vort_div_jax(
-    u: NDArray[np.float64],
-    v: NDArray[np.float64],
-    R: float = R_EARTH_METERS,
-    lmax: int | None = None,
-    geometry: str = "CC",
-    nthreads: int = 0,
-    lat_reverse: bool = False,
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """
-    Computes spatial divergence and relative vorticity using JAX and ducc0-parity SHT.
-    """
-    try:
-        import jax
-
-        from .jax_sht import jax_analysis_2d, jax_synthesis_2d
-
-        jax.config.update("jax_enable_x64", True)
-    except ImportError as e:
-        raise ImportError(
-            "The 'jax' backend requires 'jax'. "
-            "Install via 'pip install pystormtracker[jax]'."
-        ) from e
-
-    if not lat_reverse:
-        u = np.flip(u, axis=-2)
-        v = np.flip(v, axis=-2)
-
-    ny, nx = u.shape
-    if lmax is None:
-        lmax = ny - 2  # Standard for ducc0 CC
-
-    mmax = min(lmax, nx // 2 - 1)
-
-    # ducc0 spin-1 parity: (v_theta, v_phi) = (-v, u)
-    vec_jax = jax.numpy.stack([-v, u], axis=0)
-
-    # Forward spin-1 transform
-    alm_e, alm_b = jax_analysis_2d(vec_jax, lmax, mmax=mmax, geometry=geometry, spin=1)
-
-    # Spectral Scaling:
-    l_arr = jax.numpy.arange(lmax + 1)
-    eigen_scale = jax.numpy.sqrt(l_arr * (l_arr + 1.0)) / R
-
-    alm_div = -eigen_scale * alm_e
-    alm_vort = -eigen_scale * alm_b
-
-    div = jax_synthesis_2d(alm_div, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0)
-    vort = jax_synthesis_2d(
-        alm_vort, ny, nx, lmax, mmax=mmax, geometry=geometry, spin=0
-    )
-
-    div_np = np.asarray(div, dtype=np.float64)
-    vort_np = np.asarray(vort, dtype=np.float64)
-
-    if not lat_reverse:
-        div_np = np.flip(div_np, axis=-2)
-        vort_np = np.flip(vort_np, axis=-2)
-
-    return div_np, vort_np
-
-
 def compute_vort_div(
     u: NDArray[np.float64],
     v: NDArray[np.float64],

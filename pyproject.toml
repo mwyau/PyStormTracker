@@ -29,6 +29,7 @@ dependencies = [
     "h5netcdf[h5py]>=1.5.0",
     "numba>=0.62",  # numba 0.62 added support for numpy 2.3
     "numpy>=1.26",
+    "scipy>=1.10.0",
     "xarray>=2024.9.0",
 ]
 
@@ -50,12 +51,6 @@ grib = [
     "eccodes>=2.43.0",
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
 ]
-jax = [
-    "jax>=0.7.2",
-]
-cuda13 = [
-    "jax[cuda13]>=0.7.2",
-]
 netcdf4 = [
     "netCDF4>=1.6.1",
 ]
@@ -64,7 +59,7 @@ zarr = [
     "fsspec[http]>=2024.9.0",
 ]
 all = [
-    "PyStormTracker[grib,jax,mpi,netcdf4,zarr]",
+    "PyStormTracker[grib,mpi,netcdf4,zarr]",
 ]
 docs = [
     "myst-parser>=5.0.0",

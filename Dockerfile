@@ -24,7 +24,7 @@ COPY pyproject.toml uv.lock ./
 # 2. Install third-party dependencies first (including extras).
 # Use cache mount for uv to persist downloads and build artifacts.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-workspace --extra grib --extra netcdf4 --extra jax --no-editable
+    uv sync --frozen --no-dev --no-install-workspace --extra grib --extra netcdf4 --no-editable
 
 # 3. Copy only necessary source files for the final installation step.
 COPY src/ ./src/
@@ -32,7 +32,7 @@ COPY README.md ./
 
 # 4. Final installation of the project package itself.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra grib --extra netcdf4 --extra jax --no-editable
+    uv sync --frozen --no-dev --extra grib --extra netcdf4 --no-editable
 
 
 # --- Runtime Stage ---

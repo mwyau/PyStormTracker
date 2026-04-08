@@ -63,7 +63,6 @@ Full documentation, including API references and advanced usage examples, is ava
   - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
 - **SHT Backend**:
   - `ducc0` (**Core dependency**): High-precision C++ library providing high performance spherical harmonic transforms.
-  - `jax` (**Optional**): Experimental JAX-native SHT engine for GPU acceleration. Install via `pip install pystormtracker[jax]`.
 - **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms. `MS-MPI` can be installed via `winget`.
 
 ### From PyPI
@@ -76,7 +75,6 @@ pip install PyStormTracker
 
 # With optional components
 pip install PyStormTracker[mpi]     # Includes mpi4py for distributed execution
-pip install PyStormTracker[jax]     # Includes experimental JAX SHT engine
 pip install PyStormTracker[grib]    # Includes GRIB support
 pip install PyStormTracker[netcdf4] # Includes NetCDF4 backend
 pip install PyStormTracker[zarr]    # Includes Zarr support (with remote HTTP/S3/GS)
