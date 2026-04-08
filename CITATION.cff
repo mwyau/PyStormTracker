@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "mwyau/PyStormTracker: v0.5.0.dev0"
+title: "mwyau/PyStormTracker: v0.5.0"
 message: "If you use this software, please cite it as below."
 type: software
 authors:
@@ -19,8 +19,8 @@ keywords:
   - dask
   - mpi
 license: BSD-3-Clause
-version: 0.5.0.dev0
-date-released: '2026-03-28'
+version: 0.5.0
+date-released: '2026-04-08'
 preferred-citation:
   type: article
   authors:
