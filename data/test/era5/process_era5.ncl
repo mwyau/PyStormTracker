@@ -4,15 +4,15 @@ load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/contributed.ncl"
 load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/shea_util.ncl"
 
 ; General script to process ERA5 data for PyStormTracker tests.
-; Usage: ncl 'dir_in="/path/to/data/"' 'dir_out="./output/"' 'date="2025120100"' 'res="0.25"' process_era5_0.25.ncl
+; Usage: ncl 'dir_in="/path/to/data/"' 'dir_out="./output/"' 'date="2025120100"' process_era5.ncl
 
 begin
     ; --- Configuration with Defaults ---
     if (.not. isvar("dir_in")) then
-        dir_in = "/home/albert/PyStormTracker-Data/"
+        dir_in = "./"
     end if
     if (.not. isvar("dir_out")) then
-        dir_out = "/home/albert/PyStormTracker/data/test/era5/"
+        dir_out = "./"
     end if
     if (.not. isvar("date")) then
         date = "2025120100"
@@ -38,14 +38,10 @@ begin
         var&longitude = lon
         
         out_name = dir_out + "era5_" + suffix + "_" + date + "_" + grid_str + ".nc"
-        if (suffix .eq. "vodv850_ncl" .or. suffix .eq. "msl_t0-42_ncl" .or. suffix .eq. "msl_t5-42_ncl") then
-             ; These are special cases handled differently or already grouped
-        else
-            system("rm -f " + out_name)
-            f_o = addfile(out_name, "c")
-            f_o->$name$ = var
-            delete(f_o)
-        end if
+        system("rm -f " + out_name)
+        f_o = addfile(out_name, "c")
+        f_o->$name$ = var
+        delete(f_o)
     end
 
     res_list = (/"0.25", "2.5"/)
@@ -65,8 +61,8 @@ begin
         msl_raw = f_msl_src->msl(0,:,:)
         
         f_uv_src = addfile(file_uv, "r")
-        u_raw = f_uv_src->u(0,0,:,:)
-        v_raw = f_uv_src->v(0,0,:,:)
+        u_raw = f_uv_src->u(0,0,::-1,:)
+        v_raw = f_uv_src->v(0,0,::-1,:)
         
         f_vo_src = addfile(file_vo, "r")
         vo_raw = f_vo_src->vo(0,0,:,:)
@@ -85,11 +81,14 @@ begin
         ; 2. Calculate VODV and SFVP
         ; NOTE: NCL's uv2vrF and uv2dvF use an opposite sign convention 
         ; to ERA5/PST for North-to-South grids. We negate them here to match.
-        vo_calc = -uv2vrF_Wrap(u_raw, v_raw)
-        dv_calc = -uv2dvF_Wrap(u_raw, v_raw)
+        vo_calc = uv2vrF_Wrap(u_raw, v_raw)
+        dv_calc = uv2dvF_Wrap(u_raw, v_raw)
         sfvp    = uv2sfvpF(u_raw, v_raw)
-        sf_calc = sfvp(0,:,:)
-        vp_calc = sfvp(1,:,:)
+        sf_latrev = sfvp(0,::-1,:)
+        vp_latrev = sfvp(1,::-1,:)
+
+        vo_latrev = vo_calc(::-1,:)
+        dv_latrev = dv_calc(::-1,:)
         
         ; 3. Spectral Filtering (T42)
         ; Determine nlon for synthesis
@@ -102,11 +101,25 @@ begin
         a_t0 = a
         a_t0(:, (lmax_trunc+1):, :) = 0.0
         msl_t0 = shseC(a_t0, nlon)
+        msl_t0@long_name = "Mean sea level pressure (T0-42)"
+        msl_t0@units = "Pa"
+        msl_t0@standard_name = "air_pressure_at_mean_sea_level"
+        msl_t0!0 = "latitude"
+        msl_t0!1 = "longitude"
+        msl_t0&latitude = lat
+        msl_t0&longitude = lon
         
         ; Band-pass (T5-42)
         a_t5 = a_t0
         a_t5(:, 0:4, :) = 0.0
         msl_t5 = shseC(a_t5, nlon)
+        msl_t5@long_name = "Mean sea level pressure (T5-42)"
+        msl_t5@units = "Pa"
+        msl_t5@standard_name = "air_pressure_at_mean_sea_level"
+        msl_t5!0 = "latitude"
+        msl_t5!1 = "longitude"
+        msl_t5&latitude = lat
+        msl_t5&longitude = lon
 
         ; 4. Save and Standardize Metadata
         
@@ -147,10 +160,10 @@ begin
         clean_save(vo_raw, "vo", "Vorticity (relative)", "s**-1", "atmosphere_relative_vorticity", "vo850", lat, lon, dir_out, date, grid_str)
 
         ; --- VODV (calculated) ---
-        vo_c = vo_calc
-        dv_c = dv_calc
+        vo_c = vo_latrev
+        dv_c = dv_latrev
         delete_VarAtts(vo_c, -1)
-        vo_c@long_name = "relative vorticity"
+        vo_c@long_name = "Vorticity (relative)"
         vo_c@units = "s**-1"
         vo_c@standard_name = "atmosphere_relative_vorticity"
         vo_c!0 = "latitude"
@@ -175,8 +188,8 @@ begin
         delete(out_vodv)
 
         ; --- SFVP (calculated) ---
-        sf_c = sf_calc
-        vp_c = vp_calc
+        sf_c = sf_latrev
+        vp_c = vp_latrev
         delete_VarAtts(sf_c, -1)
         sf_c@long_name = "stream function"
         sf_c@units = "m**2 s**-1"
@@ -206,23 +219,22 @@ begin
         clean_save(msl_raw, "msl", "Mean sea level pressure", "Pa", "air_pressure_at_mean_sea_level", "msl", lat, lon, dir_out, date, grid_str)
 
         ; --- MSL Filtered ---
-        clean_save(msl_t0, "msl", "Mean sea level pressure", "Pa", "air_pressure_at_mean_sea_level", "msl_t0-42_ncl", lat, lon, dir_out, date, grid_str)
+        clean_save(msl_t0, "msl", "Mean sea level pressure (T0-42)", "Pa", "air_pressure_at_mean_sea_level", "msl_t0-42_ncl", lat, lon, dir_out, date, grid_str)
         f_t0_out = dir_out + "era5_msl_" + date + "_" + grid_str + "_t0-42_ncl.nc"
         system("rm -f " + f_t0_out)
         out_t0 = addfile(f_t0_out, "c")
         out_t0->msl = msl_t0
         delete(out_t0)
 
-        msl_t5_f = tofloat(msl_t5)
-        clean_save(msl_t5_f, "msl", "Mean sea level pressure", "Pa", "air_pressure_at_mean_sea_level", "msl_t5-42_ncl", lat, lon, dir_out, date, grid_str)
+        clean_save(msl_t5, "msl", "Mean sea level pressure (T5-42)", "Pa", "air_pressure_at_mean_sea_level", "msl_t5-42_ncl", lat, lon, dir_out, date, grid_str)
         f_t5_out = dir_out + "era5_msl_" + date + "_" + grid_str + "_t5-42_ncl.nc"
         system("rm -f " + f_t5_out)
         out_t5 = addfile(f_t5_out, "c")
-        out_t5->msl = msl_t5_f
+        out_t5->msl = msl_t5
         delete(out_t5)
 
         ; Cleanup for next iteration
-        delete([/msl_raw, u_raw, v_raw, vo_raw, lat, lon, vo_calc, dv_calc, sfvp, sf_calc, vp_calc, dims, a, a_t0, msl_t0, a_t5, msl_t5, u_s, v_s, vo_c, dv_c, sf_c, vp_c, msl_t5_f/])
+        delete([/msl_raw, u_raw, v_raw, vo_raw, lat, lon, vo_calc, dv_calc, vo_latrev, dv_latrev, sfvp, sf_latrev, vp_latrev, dims, a, a_t0, msl_t0, a_t5, msl_t5, u_s, v_s, vo_c, dv_c, sf_c, vp_c, msl_t5_f/])
         print("Successfully processed " + grid_str + " data.")
     end do
 end
