@@ -22,7 +22,7 @@ begin
     end if
 
     ; Helper to clean and save variables
-    procedure clean_save(var_in, name, long_name, units, std_name, suffix, lat, lon, dir_out, date, grid_str)
+    procedure clean_save(var_in, name, long_name, units, std_name, prefix, suffix, lat, lon, dir_out, date, grid_str)
     local var, out_name
     begin
         var = var_in
@@ -37,7 +37,7 @@ begin
         var&latitude = lat
         var&longitude = lon
         
-        out_name = dir_out + "era5_" + suffix + "_" + date + "_" + grid_str + ".nc"
+        out_name = dir_out + "era5_" + prefix + "_" + date + "_" + grid_str + suffix + ".nc"
         system("rm -f " + out_name)
         f_o = addfile(out_name, "c")
         f_o->$name$ = var
@@ -157,7 +157,7 @@ begin
         delete(out_uv)
 
         ; --- VO850 (raw) ---
-        clean_save(vo_raw, "vo", "Vorticity (relative)", "s**-1", "atmosphere_relative_vorticity", "vo850", lat, lon, dir_out, date, grid_str)
+        clean_save(vo_raw, "vo", "Vorticity (relative)", "s**-1", "atmosphere_relative_vorticity", "vo850", "", lat, lon, dir_out, date, grid_str)
 
         ; --- VODV (calculated) ---
         vo_c = vo_latrev
@@ -172,7 +172,7 @@ begin
         vo_c&longitude = lon
         
         delete_VarAtts(dv_c, -1)
-        dv_c@long_name = "divergence"
+        dv_c@long_name = "Divergence"
         dv_c@units = "s**-1"
         dv_c@standard_name = "divergence_of_wind"
         dv_c!0 = "latitude"
@@ -191,7 +191,7 @@ begin
         sf_c = sf_latrev
         vp_c = vp_latrev
         delete_VarAtts(sf_c, -1)
-        sf_c@long_name = "stream function"
+        sf_c@long_name = "Stream function"
         sf_c@units = "m**2 s**-1"
         sf_c@standard_name = "atmosphere_horizontal_streamfunction"
         sf_c!0 = "latitude"
@@ -200,7 +200,7 @@ begin
         sf_c&longitude = lon
         
         delete_VarAtts(vp_c, -1)
-        vp_c@long_name = "velocity potential"
+        vp_c@long_name = "Velocity potential"
         vp_c@units = "m**2 s**-1"
         vp_c@standard_name = "atmosphere_horizontal_velocity_potential"
         vp_c!0 = "latitude"
@@ -216,25 +216,15 @@ begin
         delete(out_sfvp)
 
         ; --- MSL Raw ---
-        clean_save(msl_raw, "msl", "Mean sea level pressure", "Pa", "air_pressure_at_mean_sea_level", "msl", lat, lon, dir_out, date, grid_str)
+        clean_save(msl_raw, "msl", "Mean sea level pressure", "Pa", "air_pressure_at_mean_sea_level", "msl", "", lat, lon, dir_out, date, grid_str)
 
         ; --- MSL Filtered ---
-        clean_save(msl_t0, "msl", "Mean sea level pressure (T0-42)", "Pa", "air_pressure_at_mean_sea_level", "msl_t0-42_ncl", lat, lon, dir_out, date, grid_str)
-        f_t0_out = dir_out + "era5_msl_" + date + "_" + grid_str + "_t0-42_ncl.nc"
-        system("rm -f " + f_t0_out)
-        out_t0 = addfile(f_t0_out, "c")
-        out_t0->msl = msl_t0
-        delete(out_t0)
+        clean_save(msl_t0, "msl", "Mean sea level pressure (T0-42)", "Pa", "air_pressure_at_mean_sea_level", "msl", "_t0-42_ncl", lat, lon, dir_out, date, grid_str)
 
-        clean_save(msl_t5, "msl", "Mean sea level pressure (T5-42)", "Pa", "air_pressure_at_mean_sea_level", "msl_t5-42_ncl", lat, lon, dir_out, date, grid_str)
-        f_t5_out = dir_out + "era5_msl_" + date + "_" + grid_str + "_t5-42_ncl.nc"
-        system("rm -f " + f_t5_out)
-        out_t5 = addfile(f_t5_out, "c")
-        out_t5->msl = msl_t5
-        delete(out_t5)
+        clean_save(msl_t5, "msl", "Mean sea level pressure (T5-42)", "Pa", "air_pressure_at_mean_sea_level", "msl", "_t5-42_ncl", lat, lon, dir_out, date, grid_str)
 
         ; Cleanup for next iteration
-        delete([/msl_raw, u_raw, v_raw, vo_raw, lat, lon, vo_calc, dv_calc, vo_latrev, dv_latrev, sfvp, sf_latrev, vp_latrev, dims, a, a_t0, msl_t0, a_t5, msl_t5, u_s, v_s, vo_c, dv_c, sf_c, vp_c, msl_t5_f/])
+        delete([/msl_raw, u_raw, v_raw, vo_raw, lat, lon, vo_calc, dv_calc, vo_latrev, dv_latrev, sfvp, sf_latrev, vp_latrev, dims, a, a_t0, msl_t0, a_t5, msl_t5, u_s, v_s, vo_c, dv_c, sf_c, vp_c/])
         print("Successfully processed " + grid_str + " data.")
     end do
 end
