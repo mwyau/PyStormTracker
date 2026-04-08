@@ -6,7 +6,7 @@ from typing import Literal, TypedDict
 
 import numpy as np
 import pytest
-from testing_utils import get_era5_msl_path
+from utils import get_era5_msl_path
 
 from pystormtracker.io.data_loader import DataLoader
 from pystormtracker.preprocessing import SpectralFilter

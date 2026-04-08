@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 import pytest
-from testing_utils import get_era5_uv_path, get_era5_vodv_path
+from utils import get_era5_uv_path, get_era5_vodv_path
 
 from pystormtracker.io.data_loader import DataLoader
 from pystormtracker.preprocessing.kinematics import Kinematics

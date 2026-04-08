@@ -137,8 +137,8 @@ def fetch_era5_uv850(
 # --- Local Integration Test Data Helpers ---
 
 BASE_DIR = get_base_dir()
-ERA5_TEST_DIR = BASE_DIR / "data" / "test" / "era5"
-TRACKS_TEST_DIR = BASE_DIR / "data" / "test" / "tracks"
+ERA5_TEST_DIR = BASE_DIR / "tests" / "data" / "era5"
+TRACKS_TEST_DIR = BASE_DIR / "tests" / "data" / "tracks"
 
 
 def get_era5_msl_path(res: str = "2.5x2.5", suffix: str = "") -> Path:
