@@ -28,21 +28,23 @@ class DataLoader:
 
     def __init__(
         self,
-        pathname: str | Path | xr.DataArray | xr.Dataset,
+        pathname: str | Path | xr.DataArray | xr.Dataset | None = None,
         engine: str | None = None,
     ) -> None:
         self.engine = engine
         self._ds: xr.Dataset | None = None
-        self.pathname: str | Path
+        self.pathname: str | Path | None
 
         if isinstance(pathname, (xr.DataArray, xr.Dataset)):
-            self.pathname = "memory://"
+            self.pathname = None
             if isinstance(pathname, xr.DataArray):
                 if pathname.name is None:
                     pathname = pathname.rename("data")
                 self._ds = pathname.to_dataset()
             else:
                 self._ds = pathname
+        elif pathname is None:
+            self.pathname = None
         elif isinstance(pathname, str) and "://" in pathname:
             self.pathname = pathname
         else:
@@ -51,6 +53,10 @@ class DataLoader:
     def ensure_open(self) -> xr.Dataset:
         """Ensures the xarray dataset is open and returns it."""
         if self._ds is None:
+            if self.pathname is None:
+                raise ValueError(
+                    "Cannot open dataset without a valid pathname or data object."
+                )
             with self._ds_lock:
                 cache_key = str(self.pathname)
                 if cache_key not in self._ds_cache:
