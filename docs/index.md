@@ -12,7 +12,7 @@ PyStormTracker <readme>
 :caption: Technical Reference
 
 Architecture <architecture>
-Hodges Implementation <hodges>
+Hodges (TRACK) Implementation <hodges>
 HEALPix Support <healpix>
 Benchmark <benchmark>
 ```

@@ -27,8 +27,8 @@ dependencies = [
     "dask>=2024.1.0",
     "ducc0>=0.33.0",
     "h5netcdf[h5py]>=1.5.0",
-    "numba>=0.62",  # numba 0.62 added support for numpy 2.3
-    "numpy>=1.26",
+    "numba>=0.62.0",  # numba 0.62 added support for numpy 2.3
+    "numpy>=2.3.0",
     "scipy>=1.10.0",
     "xarray>=2024.9.0",
 ]
@@ -43,13 +43,13 @@ Repository = "https://github.com/mwyau/PyStormTracker.git"
 Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
 [project.optional-dependencies]
-mpi = [
-    "mpi4py>=4.1.0",
-]
 grib = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
     "eccodeslib>=2.43.0 ; sys_platform != 'win32'",
+]
+mpi = [
+    "mpi4py>=4.1.0",
 ]
 netcdf4 = [
     "netCDF4>=1.6.1",
@@ -100,7 +100,7 @@ dev = [
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-extend-exclude = ["worktrees", ".venv", "notebooks"]
+extend-exclude = [".venv", "benchmark", "notebooks", "worktrees""]
 
 [tool.ruff.lint]
 select = [
@@ -121,7 +121,7 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_untyped_calls = false
-exclude = ["worktrees", ".venv", "notebooks", "benchmark"]
+exclude = [".venv", "benchmark", "notebooks", "worktrees""]
 mypy_path = "src:tests"
 
 [[tool.mypy.overrides]]
