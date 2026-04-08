@@ -58,12 +58,12 @@ def _filter_jax(
             "Install via 'pip install pystormtracker[jax]'."
         ) from e
 
-    if lat_reverse:
+    if not lat_reverse:
         data = np.flip(data, axis=-2)
 
     out_np = jax_filter(data, lmin, lmax)
 
-    if lat_reverse:
+    if not lat_reverse:
         out_np = np.flip(out_np, axis=-2)
 
     return out_np
@@ -77,7 +77,7 @@ def _filter_ducc0_frame(
     nthreads: int = 1,
 ) -> NDArray[np.float64]:
     """Filters a single 2D frame using ducc0."""
-    if lat_reverse:
+    if not lat_reverse:
         frame = frame[::-1, :]
 
     nlat, nlon = frame.shape
@@ -119,7 +119,7 @@ def _filter_ducc0_frame(
             )[0],
         )
 
-        if lat_reverse:
+        if not lat_reverse:
             out = out[::-1, :]
 
         return out
@@ -145,7 +145,7 @@ class SpectralFilter:
         Args:
             lmin (int): Minimum total wave number to retain.
             lmax (int): Maximum total wave number to retain.
-            lat_reverse (bool): If True, assume latitude is stored from South to North.
+            lat_reverse (bool): If True, assume latitude is North to South (reversed).
         """
         self.lmin = lmin
         self.lmax = lmax
@@ -255,11 +255,16 @@ def apply_spectral_filter(
 
     # Ensure latitude is North to South for ducc0
     # Store original order to restore it later if needed
-    is_ascending = data[lat_dim][0] < data[lat_dim][-1]
+    loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+    is_ascending = not loader.is_lat_reversed()
     data = data.sortby(lat_dim, ascending=False)
+
+    # Detect if original data was North-to-South (reversed from ascending)
+    # lat_reverse should be True if lat[0] > lat[-1]
+    # But here we pass True to filter_func because the data we are passing is NOW N-to-S.
     nthreads = 1 if backend in ("mpi", "dask") else 0
     filter_func, kwargs = _get_filter_config(
-        lmin, lmax, lat_reverse=False, nthreads=nthreads, sht_engine=sht_engine
+        lmin, lmax, lat_reverse=True, nthreads=nthreads, sht_engine=sht_engine
     )
 
     dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"

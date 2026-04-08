@@ -15,7 +15,7 @@ from pystormtracker.preprocessing.kinematics import apply_vort_div
     ("res", "atol"),
     [
         ("2.5x2.5", 0.0),  # Bit-wise identical
-        #("0.25x0.25", 5e-11),  # Near machine epsilon for large grid
+        ("0.25x0.25", 5e-11),  # Near machine epsilon for large grid
     ],
 )
 def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:
@@ -29,13 +29,18 @@ def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:
     if not (os.path.exists(wind_file) and os.path.exists(vodiv_file)):
         pytest.skip(f"Integration test data for {res} not found.")
 
-    ds_uv = xr.open_dataset(wind_file)
+    from pystormtracker.io.data_loader import DataLoader
+    loader = DataLoader(wind_file)
+    ds_uv = loader.ensure_open()
     ds_ref = xr.open_dataset(vodiv_file)
 
-    u, v = ds_uv.u, ds_uv.v
-    vo_ref, dv_ref = ds_ref.vo, ds_ref.dv
+    u, v = ds_uv.u.load(), ds_uv.v.load()
+    vo_ref, dv_ref = ds_ref.vo.load(), ds_ref.dv.load()
 
-    div, vort = apply_vort_div(u, v)
+    # Use Kinematics with explicit lat_reverse detection via DataLoader
+    from pystormtracker.preprocessing.kinematics import Kinematics
+    calc = Kinematics(lat_reverse=loader.is_lat_reversed())
+    div, vort = calc.compute(u, v)
 
     # Validate against NCL Spherepack reference
     np.testing.assert_allclose(vort.values, vo_ref.values, rtol=atol, atol=atol)

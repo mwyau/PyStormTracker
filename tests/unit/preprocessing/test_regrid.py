@@ -79,7 +79,8 @@ def test_regrid_identity() -> None:
     )
 
     regridder = SpectralRegridder(lmax=lmax)
-    regridded = regridder.to_grid(da, nlat=ny, nlon=nx, lat_reverse=True)
+    # Use lat_reverse=False for South to North data
+    regridded = regridder.to_grid(da, nlat=ny, nlon=nx, lat_reverse=False)
 
     # We expect some difference because of spectral truncation
     # but it should be small for a simple wave

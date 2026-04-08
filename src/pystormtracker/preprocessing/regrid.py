@@ -55,7 +55,7 @@ class SpectralRegridder:
                 "Only 2D (lat, lon) data is currently supported for regridding."
             )
 
-        if lat_reverse:
+        if not lat_reverse:
             frame = frame[::-1, :]
 
         _in_nlat, in_nlon = frame.shape
@@ -86,18 +86,18 @@ class SpectralRegridder:
             )[0],
         )
 
-        if lat_reverse:
+        if not lat_reverse:
             out_map = out_map[::-1, :]
 
         # 3. Reconstruct DataArray
         if out_geometry == "CC":
             # ducc0 CC internally works North to South (0 to pi)
             if lat_reverse:
+                # We kept it North to South
+                lat = np.linspace(90, -90, nlat)
+            else:
                 # We flipped it back to South to North
                 lat = np.linspace(-90, 90, nlat)
-            else:
-                # It remains North to South
-                lat = np.linspace(90, -90, nlat)
         elif out_geometry == "GL":
             # For GL we don't easily have lat bounds in numpy without ducc0 help
             lat = np.arange(nlat, dtype=np.float64)
@@ -130,7 +130,7 @@ class SpectralRegridder:
                 "Only 2D (lat, lon) data is currently supported for regridding."
             )
 
-        if lat_reverse:
+        if not lat_reverse:
             frame = frame[::-1, :]
 
         _, in_nlon = frame.shape

@@ -43,14 +43,36 @@ def test_spectral_filter_invalid_shape() -> None:
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_lat_reverse(ny: int, nx: int) -> None:
-    # Test latitude South to North
+    # Test latitude South to North (lat_reverse=False)
     data: NDArray[np.float64] = np.random.rand(1, ny, nx)
     da = xr.DataArray(
         data,
         dims=["time", "lat", "lon"],
         coords={
             "time": [0],
-            "lat": np.linspace(-90, 90, ny),
+            "lat": np.linspace(-90, 90, ny),  # S->N
+            "lon": np.linspace(0, 360, nx, endpoint=False),
+        },
+        name="msl",
+    )
+
+    filt = SpectralFilter(lmin=5, lmax=42, lat_reverse=False)
+    filtered = filt.filter(da, backend="serial")
+
+    assert filtered.shape == (1, ny, nx)
+    assert filtered.lat[0] == -90
+
+
+@pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
+def test_spectral_filter_lat_descending(ny: int, nx: int) -> None:
+    # Test latitude North to South (lat_reverse=True)
+    data: NDArray[np.float64] = np.random.rand(1, ny, nx)
+    da = xr.DataArray(
+        data,
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": [0],
+            "lat": np.linspace(90, -90, ny),  # N->S
             "lon": np.linspace(0, 360, nx, endpoint=False),
         },
         name="msl",
@@ -60,7 +82,8 @@ def test_spectral_filter_lat_reverse(ny: int, nx: int) -> None:
     filtered = filt.filter(da, backend="serial")
 
     assert filtered.shape == (1, ny, nx)
-    assert filtered.lat[0] == -90
+    assert filtered.lat[0] == 90
+
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])

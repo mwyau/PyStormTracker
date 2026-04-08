@@ -28,17 +28,26 @@ class DataLoader:
 
     def __init__(
         self,
-        pathname: str | Path,
+        pathname: str | Path | xr.DataArray | xr.Dataset,
         engine: str | None = None,
         data: xr.DataArray | None = None,
     ) -> None:
-        if isinstance(pathname, str) and "://" in pathname:
-            self.pathname: str | Path = pathname
+        self.engine = engine
+        self._ds: xr.Dataset | None = None
+
+        if isinstance(pathname, (xr.DataArray, xr.Dataset)):
+            self.pathname = "memory://"
+            if isinstance(pathname, xr.DataArray):
+                if pathname.name is None:
+                    pathname = pathname.rename("data")
+                self._ds = pathname.to_dataset()
+            else:
+                self._ds = pathname
+        elif isinstance(pathname, str) and "://" in pathname:
+            self.pathname = pathname
         else:
             self.pathname = Path(pathname)
 
-        self.engine = engine
-        self._ds: xr.Dataset | None = None
         if data is not None:
             self._ds = data.to_dataset() if isinstance(data, xr.DataArray) else data
 
@@ -46,7 +55,12 @@ class DataLoader:
         """Ensures the xarray dataset is open and returns it."""
         if self._ds is None:
             with self._ds_lock:
-                if self.pathname not in self._ds_cache:
+                cache_key = (
+                    str(self.pathname)
+                    if isinstance(self.pathname, Path)
+                    else self.pathname
+                )
+                if cache_key not in self._ds_cache:
                     engine = self.engine
                     storage_options: dict[str, bool] = {}
                     is_remote = isinstance(self.pathname, str) and (
@@ -112,23 +126,23 @@ class DataLoader:
                                     ) from None
                                 engine = "zarr"
                             else:
-                                engine = "h5netcdf"
+                                engine = None
 
                     if engine == "zarr" and is_remote and storage_options:
-                        self._ds_cache[self.pathname] = xr.open_dataset(
+                        self._ds_cache[cache_key] = xr.open_dataset(
                             self.pathname,
                             engine=engine,
                             chunks={},
                             storage_options=storage_options,
                         )
                     else:
-                        self._ds_cache[self.pathname] = xr.open_dataset(
+                        self._ds_cache[cache_key] = xr.open_dataset(
                             self.pathname,
                             engine=engine,
                             chunks={},
                         )
 
-                self._ds = self._ds_cache[self.pathname]
+                self._ds = self._ds_cache[cache_key]
         return self._ds
 
     def get_coords(self) -> tuple[str, str, str]:
@@ -145,3 +159,14 @@ class DataLoader:
         )
 
         return time_name, lat_name, lon_name
+
+    def is_lat_reversed(self) -> bool:
+        """
+        Detects if the latitude coordinate is North-to-South (reversed).
+        Returns True if lat[0] > lat[-1].
+        """
+        ds = self.ensure_open()
+        _, lat_name, _ = self.get_coords()
+        if lat_name in ds.coords and len(ds[lat_name]) > 1:
+            return bool(ds[lat_name][0] > ds[lat_name][-1])
+        return False

@@ -42,7 +42,7 @@ def compute_vort_div_jax(
             "Install via 'pip install pystormtracker[jax]'."
         ) from e
 
-    if lat_reverse:
+    if not lat_reverse:
         u = np.flip(u, axis=-2)
         v = np.flip(v, axis=-2)
 
@@ -73,7 +73,7 @@ def compute_vort_div_jax(
     div_np = np.asarray(div, dtype=np.float64)
     vort_np = np.asarray(vort, dtype=np.float64)
 
-    if lat_reverse:
+    if not lat_reverse:
         div_np = np.flip(div_np, axis=-2)
         vort_np = np.flip(vort_np, axis=-2)
 
@@ -100,7 +100,7 @@ def compute_vort_div(
         lmax: Maximum spherical harmonic degree. If None, derived from ntheta.
         geometry: Grid geometry (for ducc0). Default 'CC'.
         nthreads: Number of threads (for ducc0).
-        lat_reverse: If True, assume latitude is South to North.
+        lat_reverse: If True, assume latitude is North to South (reversed).
 
     Returns:
         div: Divergence (ntheta, nphi)
@@ -165,7 +165,7 @@ def compute_vort_div(
         nthreads=nthreads,
     )[0]
 
-    if lat_reverse:
+    if not lat_reverse:
         div = div[::-1, :]
         vort = vort[::-1, :]
 
@@ -213,7 +213,8 @@ def apply_vort_div(
 
     # Ensure latitude is North to South for ducc0
     # Store original order to restore it later if needed
-    is_ascending = u[lat_dim][0] < u[lat_dim][-1]
+    loader = DataLoader(u.dataset if hasattr(u, "dataset") else u)
+    is_ascending = not loader.is_lat_reversed()
     u_sorted = u.sortby(lat_dim, ascending=False)
     v_sorted = v.sortby(lat_dim, ascending=False)
 
@@ -223,11 +224,15 @@ def apply_vort_div(
         "lmax": lmax,
         "geometry": geometry,
         "nthreads": nthreads if backend not in ("mpi", "dask") else 1,
-        "lat_reverse": False,
+        "lat_reverse": True,  # Already sorted to N-to-S (90 to -90)
     }
 
     # Select core function
     core_func = compute_vort_div
+
+    dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
+    if u_sorted.chunks or v_sorted.chunks:
+        dask_mode = "parallelized"
 
     # Use apply_ufunc for broad support
     div_vort = xr.apply_ufunc(
@@ -238,7 +243,7 @@ def apply_vort_div(
         output_core_dims=[[lat_dim, lon_dim], [lat_dim, lon_dim]],
         vectorize=True,
         kwargs=kwargs,
-        dask="parallelized" if backend == "dask" else "forbidden",
+        dask=dask_mode,
         output_dtypes=[u.dtype, u.dtype],
     )
 
@@ -274,7 +279,7 @@ class Kinematics:
             R: Planetary radius in meters.
             lmax: Maximum spherical harmonic degree.
             geometry: Grid geometry ('CC', 'DH', etc.).
-            lat_reverse: If True, assume latitude is South to North.
+            lat_reverse: If True, assume latitude is North to South (reversed).
         """
         self.R = R
         self.lmax = lmax
