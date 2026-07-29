@@ -112,22 +112,10 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         if metafunc.function.__name__ == "test_legacy_regression":
             raw_params = [p for p in raw_params if p[2] is None]
 
-        params = []
-        for varname, mode, steps, test_id in raw_params:
-            marks = []
-            if (
-                metafunc.function.__name__ == "test_legacy_regression"
-                and varname == "vo"
-            ):
-                marks.append(
-                    pytest.mark.skip(
-                        reason=(
-                            "Legacy VO baseline uses a 1e-4 extrema-prominence "
-                            "threshold whose scientific validity is unresolved."
-                        )
-                    )
-                )
-            params.append(pytest.param((varname, mode, steps), id=test_id, marks=marks))
+        params = [
+            pytest.param((varname, mode, steps), id=test_id)
+            for varname, mode, steps, test_id in raw_params
+        ]
 
         metafunc.parametrize("config_params", params, scope="module")
 
@@ -312,10 +300,10 @@ def test_grib_vs_netcdf(
 @pytest.mark.integration
 @pytest.mark.slow
 def test_legacy_regression(
-    serial_reference: tuple[Path, Tracks], config: tuple[str, str, str, int | None]
+    tmp_path: Path, config: tuple[str, str, str, int | None]
 ) -> None:
     """Regression test against v0.0.2 legacy output."""
-    _, varname, _, _ = config
+    data_path, varname, mode, _ = config
 
     if varname == "msl":
         ref_file = get_legacy_track_path("msl")
@@ -329,8 +317,25 @@ def test_legacy_regression(
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference file {ref_file} not found")
 
+    output_file = tmp_path / f"legacy_{varname}.txt"
+    args = [
+        "-i",
+        data_path,
+        "-v",
+        varname,
+        "-m",
+        mode,
+        "-o",
+        str(output_file),
+        "--backend",
+        "serial",
+    ]
+    if varname == "vo":
+        args.extend(["--threshold", "1e-4"])
+
+    tracks_comp = run_command_direct(args)
+    assert tracks_comp is not None
     tracks_ref = read_imilast(ref_file)
-    _, tracks_comp = serial_reference
 
     matches = match_tracks(
         tracks_ref,

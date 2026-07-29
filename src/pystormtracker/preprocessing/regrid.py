@@ -33,9 +33,19 @@ class SpectralRegridder:
         self.lmax = lmax
         self.mmax = mmax
 
-    def _get_lmax_mmax(self, nlon: int) -> tuple[int, int]:
+    def _get_lmax_mmax(
+        self, nlon: int, lmax_override: int | None = None
+    ) -> tuple[int, int]:
         """Infer lmax and mmax from grid dimensions if not provided."""
-        lmax = self.lmax if self.lmax is not None else nlon // 2 - 1
+        lmax = (
+            lmax_override
+            if lmax_override is not None
+            else self.lmax
+            if self.lmax is not None
+            else nlon // 2 - 1
+        )
+        if lmax < 0:
+            raise ValueError("lmax must be nonnegative")
         mmax = self.mmax if self.mmax is not None else lmax
         return lmax, min(mmax, lmax)
 
@@ -237,6 +247,7 @@ class SpectralRegridder:
         resolution: float = 100.0,
         lon_0: float = 0.0,
         filter_lmin: int | None = None,
+        lmax: int | None = None,
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
@@ -247,6 +258,7 @@ class SpectralRegridder:
         Args:
             extent: Bounding box from pole in km (xmin, xmax, ymin, ymax).
             resolution: Grid spacing in km.
+            lmax: Maximum total wave number. Overrides the constructor value.
         """
         from ..models.constants import R_EARTH_KM
         from .spectral import apply_bandpass_mask_to_alm
@@ -261,7 +273,7 @@ class SpectralRegridder:
             frame = frame[::-1, :]
 
         _, in_nlon = frame.shape
-        lmax, mmax = self._get_lmax_mmax(in_nlon)
+        lmax, mmax = self._get_lmax_mmax(in_nlon, lmax)
 
         # 1. Analyze
         alm = ducc0.sht.analysis_2d(
@@ -323,5 +335,9 @@ class SpectralRegridder:
             dims=["y", "x"],
             coords={"y": y, "x": x},
             name=data.name,
-            attrs={"projection": f"{hemisphere}_stereo", "resolution_km": resolution},
+            attrs={
+                "projection": f"{hemisphere}_stereo",
+                "resolution_km": resolution,
+                "lmax": lmax,
+            },
         )

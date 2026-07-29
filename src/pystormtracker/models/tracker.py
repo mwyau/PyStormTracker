@@ -49,5 +49,6 @@ class Tracker(Protocol):
         lmin: int = 5,
         lmax: int = 42,
         taper_points: int = 0,
+        subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks: ...

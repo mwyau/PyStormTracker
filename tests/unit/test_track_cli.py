@@ -80,7 +80,10 @@ def test_main_without_command_prints_help(capsys: pytest.CaptureFixture[str]) ->
         ("--workers", "0"),
         ("--chunk-size", "0"),
         ("--extent", "1,0,-1,1"),
+        ("--extent", "nan,1,-1,1"),
         ("--filter-range", "42-5"),
+        ("--resolution", "nan"),
+        ("--threshold", "inf"),
     ],
 )
 def test_track_rejects_invalid_cli_values(option: str, value: str) -> None:
@@ -117,6 +120,7 @@ def test_filter_range_enables_simple_filter() -> None:
         "unused.txt",
         "--filter-range",
         "3-21",
+        "--subgrid-refine",
     ]
     with (
         patch.object(sys, "argv", test_args),
@@ -127,6 +131,127 @@ def test_filter_range_enables_simple_filter() -> None:
     assert mocked_run.call_args.kwargs["filter"] is True
     assert mocked_run.call_args.kwargs["lmin"] == 3
     assert mocked_run.call_args.kwargs["lmax"] == 21
+    assert mocked_run.call_args.kwargs["subgrid_refine"] is True
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "option", "expected"),
+    [
+        ("simple", None, False),
+        ("simple", "--filter", True),
+        ("hodges", None, True),
+        ("hodges", "--no-filter", False),
+    ],
+)
+def test_filter_uses_algorithm_default_or_explicit_override(
+    algorithm: str, option: str | None, expected: bool
+) -> None:
+    test_args = [
+        "stormtracker",
+        "track",
+        "-i",
+        "unused.nc",
+        "-v",
+        "msl",
+        "-o",
+        "unused.txt",
+        "--algorithm",
+        algorithm,
+    ]
+    if option is not None:
+        test_args.append(option)
+
+    with (
+        patch.object(sys, "argv", test_args),
+        patch("pystormtracker.track.run_tracker", return_value=Tracks()) as mocked_run,
+    ):
+        main()
+
+    assert mocked_run.call_args.kwargs["filter"] is expected
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "option", "expected"),
+    [
+        ("simple", None, None),
+        ("simple", "--subgrid-refine", True),
+        ("hodges", None, None),
+        ("hodges", "--no-subgrid-refine", False),
+    ],
+)
+def test_subgrid_refinement_uses_algorithm_default_or_override(
+    algorithm: str, option: str | None, expected: bool | None
+) -> None:
+    test_args = [
+        "stormtracker",
+        "track",
+        "-i",
+        "unused.nc",
+        "-v",
+        "msl",
+        "-o",
+        "unused.txt",
+        "--algorithm",
+        algorithm,
+    ]
+    if option is not None:
+        test_args.append(option)
+
+    with (
+        patch.object(sys, "argv", test_args),
+        patch("pystormtracker.track.run_tracker", return_value=Tracks()) as mocked_run,
+    ):
+        main()
+
+    assert mocked_run.call_args.kwargs["subgrid_refine"] is expected
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "expected"), [("simple", False), ("hodges", True)]
+)
+def test_run_tracker_resolves_subgrid_default_by_algorithm(
+    tmp_path: Path, algorithm: str, expected: bool
+) -> None:
+    tracker_target = (
+        "pystormtracker.track.SimpleTracker.track"
+        if algorithm == "simple"
+        else "pystormtracker.track.HodgesTracker.track"
+    )
+    with patch(tracker_target, return_value=Tracks()) as mocked_track:
+        run_tracker(
+            infile="unused.nc",
+            varname="msl",
+            outfile=str(tmp_path / "tracks.json"),
+            algorithm=algorithm,  # type: ignore[arg-type]
+            output_format="json",
+            subgrid_refine=None,
+        )
+
+    assert mocked_track.call_args.kwargs["subgrid_refine"] is expected
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "expected"), [("simple", False), ("hodges", True)]
+)
+def test_run_tracker_resolves_filter_default_by_algorithm(
+    tmp_path: Path, algorithm: str, expected: bool
+) -> None:
+    tracker_target = (
+        "pystormtracker.track.SimpleTracker.track"
+        if algorithm == "simple"
+        else "pystormtracker.track.HodgesTracker.track"
+    )
+    with patch(tracker_target, return_value=Tracks()) as mocked_track:
+        run_tracker(
+            infile="unused.nc",
+            varname="msl",
+            outfile=str(tmp_path / "tracks.json"),
+            algorithm=algorithm,  # type: ignore[arg-type]
+            output_format="json",
+            filter=None,
+        )
+
+    assert mocked_track.call_args.kwargs["filter"] is expected
 
 
 def test_runtime_validation_reports_clean_cli_error(

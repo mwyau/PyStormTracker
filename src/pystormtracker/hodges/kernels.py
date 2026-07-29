@@ -6,6 +6,7 @@ from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD, KM_PER_DEG, R_EARTH_KM
 from ..models.geo import geod_dist
+from ..preprocessing.refinement import subgrid_refine as subgrid_refine
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
@@ -30,93 +31,6 @@ def _numba_get_centers(
     for i in range(len(r_idx)):
         vals[i] = frame[r_idx[i], c_idx[i]]
     return r_idx, c_idx, vals
-
-
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
-def subgrid_refine(
-    frame: NDArray[np.float64],
-    r: int,
-    c: int,
-    lat: NDArray[np.float64],
-    lon: NDArray[np.float64],
-) -> tuple[float, float, float]:
-    """
-    Refines an extremum position using local quadratic interpolation.
-
-    Fits f(y, x) = a*y^2 + b*x^2 + c*y*x + d*y + e*x + f to a 3x3 neighborhood.
-    The refined center is where partial derivatives are zero.
-    This provides sub-grid precision without the need for global B-splines
-    (which would require Cholesky pre-processing as seen in original TRACK).
-
-    Args:
-        frame: 2D data frame.
-        r, c: Row and column index of the grid-level extremum.
-        lat, lon: Coordinate arrays.
-
-    Returns:
-        (refined_lat, refined_lon, refined_intensity).
-    """
-    ny, nx = frame.shape
-
-    # Boundary check: need 3x3 neighborhood
-    if r < 1 or r >= ny - 1:
-        return lat[r], lon[c], frame[r, c]
-
-    # Extract 3x3 neighborhood with longitude wrapping
-    cm = (c - 1) % nx
-    cp = (c + 1) % nx
-
-    z = np.zeros((3, 3))
-    z[0, 0] = frame[r - 1, cm]
-    z[0, 1] = frame[r - 1, c]
-    z[0, 2] = frame[r - 1, cp]
-    z[1, 0] = frame[r, cm]
-    z[1, 1] = frame[r, c]
-    z[1, 2] = frame[r, cp]
-    z[2, 0] = frame[r + 1, cm]
-    z[2, 1] = frame[r + 1, c]
-    z[2, 2] = frame[r + 1, cp]
-
-    # Use finite differences to find quadratic surface coefficients
-    f_yy = z[0, 1] - 2 * z[1, 1] + z[2, 1]
-    f_xx = z[1, 0] - 2 * z[1, 1] + z[1, 2]
-    f_yx = 0.25 * (z[2, 2] - z[2, 0] - z[0, 2] + z[0, 0])
-    f_y = 0.5 * (z[2, 1] - z[0, 1])
-    f_x = 0.5 * (z[1, 2] - z[1, 0])
-
-    det = f_yy * f_xx - f_yx**2
-    if abs(det) < 1e-10:
-        return lat[r], lon[c], frame[r, c]
-
-    # Offset from grid center
-    dy = (f_yx * f_x - f_xx * f_y) / det
-    dx = (f_yx * f_y - f_yy * f_x) / det
-
-    # Validation: refined point must remain within the grid cell
-    if abs(dy) > 1.0 or abs(dx) > 1.0:
-        return lat[r], lon[c], frame[r, c]
-
-    # Precision interpolation using local grid intervals
-    if dy > 0:
-        ref_lat = lat[r] + dy * (lat[r + 1] - lat[r])
-    else:
-        ref_lat = lat[r] + abs(dy) * (lat[r - 1] - lat[r])
-
-    if dx > 0:
-        lon_next = lon[cp] if cp > c else lon[cp] + 360.0
-        ref_lon = lon[c] + dx * (lon_next - lon[c])
-    else:
-        lon_prev = lon[cm] if cm < c else lon[cm] - 360.0
-        ref_lon = lon[c] + abs(dx) * (lon_prev - lon[c])
-
-    if ref_lon >= 360.0:
-        ref_lon -= 360.0
-    if ref_lon < 0.0:
-        ref_lon += 360.0
-
-    ref_val = z[1, 1] + 0.5 * (f_y * dy + f_x * dx)
-
-    return ref_lat, ref_lon, ref_val
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
@@ -681,6 +595,7 @@ def _break_track(
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
 def _numba_ccl(
     binary_mask: NDArray[np.float64],
+    periodic_x: bool = True,
 ) -> tuple[NDArray[np.int32], int]:
     """
     8-connectivity Connected Component Labeling (CCL) in Numba.
@@ -722,7 +637,11 @@ def _numba_ccl(
                     if ni < 0 or ni >= ny:
                         continue
                     for dj in range(-1, 2):
-                        nj = (j + dj) % nx
+                        nj = j + dj
+                        if periodic_x:
+                            nj %= nx
+                        elif nj < 0 or nj >= nx:
+                            continue
                         if labels[ni, nj] > 0 and labels[ni, nj] < cur:
                             cur = labels[ni, nj]
                 if cur != labels[i, j]:
@@ -740,7 +659,11 @@ def _numba_ccl(
                     if ni < 0 or ni >= ny:
                         continue
                     for dj in range(-1, 2):
-                        nj = (j + dj) % nx
+                        nj = j + dj
+                        if periodic_x:
+                            nj %= nx
+                        elif nj < 0 or nj >= nx:
+                            continue
                         if labels[ni, nj] > 0 and labels[ni, nj] < cur:
                             cur = labels[ni, nj]
                 if cur != labels[i, j]:
@@ -770,6 +693,7 @@ def _numba_object_extrema(
     size: int,
     is_min: bool,
     min_points: int,
+    periodic_x: bool = True,
 ) -> NDArray[np.float64]:
     """
     Finds local extrema within thresholded objects.
@@ -813,7 +737,11 @@ def _numba_object_extrema(
                 for dj in range(-half, half + 1):
                     if di == 0 and dj == 0:
                         continue
-                    nj = (j + dj) % nx
+                    nj = j + dj
+                    if periodic_x:
+                        nj %= nx
+                    elif nj < 0 or nj >= nx:
+                        continue
                     nval = frame[ni, nj]
 
                     if is_min:
@@ -851,6 +779,7 @@ def _numba_object_properties(
     lon: NDArray[np.float64],
     threshold: float,
     is_min: bool,
+    spherical_coords: bool = True,
 ) -> tuple[
     NDArray[np.float64],
     NDArray[np.float64],
@@ -877,12 +806,22 @@ def _numba_object_properties(
     m20 = np.zeros(num_objects + 1, dtype=np.float64)
     m02 = np.zeros(num_objects + 1, dtype=np.float64)
     m11 = np.zeros(num_objects + 1, dtype=np.float64)
+    reference_x = np.zeros(num_objects + 1, dtype=np.float64)
+    has_reference_x = np.zeros(num_objects + 1, dtype=np.bool_)
 
-    dlat = abs(lat[1] - lat[0]) if ny > 1 else 1.0
-    dlon = abs(lon[1] - lon[0]) if nx > 1 else 1.0
+    if spherical_coords:
+        for i in range(ny):
+            for j in range(nx):
+                obj_id = labeled_mask[i, j]
+                if obj_id > 0 and not has_reference_x[obj_id]:
+                    reference_x[obj_id] = lon[j]
+                    has_reference_x[obj_id] = True
+
+    dy = abs(lat[1] - lat[0]) if ny > 1 else 1.0
+    dx = abs(lon[1] - lon[0]) if nx > 1 else 1.0
 
     for i in range(ny):
-        area_cell = _numba_cell_area(lat[i], dlat, dlon)
+        area_cell = _numba_cell_area(lat[i], dy, dx) if spherical_coords else dy * dx
         for j in range(nx):
             obj_id = labeled_mask[i, j]
             if obj_id == 0:
@@ -897,6 +836,9 @@ def _numba_object_properties(
             # Use lat/lon directly for moments
             y = lat[i]
             x = lon[j]
+            if spherical_coords:
+                reference = reference_x[obj_id]
+                x = reference + (x - reference + 180.0) % 360.0 - 180.0
 
             m00[obj_id] += weight
             m10[obj_id] += weight * x
@@ -918,13 +860,15 @@ def _numba_object_properties(
         mu02 = m02[obj_id] / m00[obj_id] - cy**2
         mu11 = m11[obj_id] / m00[obj_id] - cx * cy
 
-        # Convert to km (approximate at centroid latitude)
-        km_per_deg_lon = KM_PER_DEG * np.cos(cy * DEGTORAD)
-
-        # Scaled covariance matrix components
-        a = mu20 * km_per_deg_lon**2
-        b = mu11 * km_per_deg_lon * KM_PER_DEG
-        c = mu02 * KM_PER_DEG**2
+        if spherical_coords:
+            km_per_deg_lon = KM_PER_DEG * np.cos(cy * DEGTORAD)
+            a = mu20 * km_per_deg_lon**2
+            b = mu11 * km_per_deg_lon * KM_PER_DEG
+            c = mu02 * KM_PER_DEG**2
+        else:
+            a = mu20
+            b = mu11
+            c = mu02
 
         # Eigenvalues of the covariance matrix
         # (lambda - a)(lambda - c) - b^2 = 0

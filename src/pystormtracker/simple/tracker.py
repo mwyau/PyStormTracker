@@ -34,13 +34,36 @@ def _detect_and_link(
     size: int,
     threshold: float | None,
     mode: Literal["min", "max"],
+    subgrid_refine: bool = False,
 ) -> list[RawDetectionStep]:
     """Worker task: Detects centers and returns raw results for central linking."""
     return detector.detect(
         size=size,
         threshold=threshold,
         minmaxmode=mode,
+        subgrid_refine=subgrid_refine,
     )
+
+
+def _convert_stereo_steps(
+    raw_steps: list[RawDetectionStep],
+    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"],
+) -> list[RawDetectionStep]:
+    """Convert projected detection coordinates back to latitude and longitude."""
+    if map_proj not in ("nh_stereo", "sh_stereo"):
+        return raw_steps
+
+    from ..models.geo import stereo_to_latlon
+
+    hemisphere = 1 if map_proj == "nh_stereo" else -1
+    converted: list[RawDetectionStep] = []
+    for time, y, x, values in raw_steps:
+        lats = np.empty_like(y)
+        lons = np.empty_like(x)
+        for i in range(len(y)):
+            lats[i], lons[i] = stereo_to_latlon(x[i], y[i], hemisphere)
+        converted.append((time, lats, lons, values))
+    return converted
 
 
 class SimpleTracker:
@@ -69,12 +92,10 @@ class SimpleTracker:
         from ..preprocessing.taper import TaperFilter
 
         loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-        _lat_dim, lon_dim, _ = loader.get_coords()
+        _time_dim, _lat_dim, _lon_dim = loader.get_coords()
 
         if filter_type == "auto":
-            # Heuristic: if longitude range < 350 degrees, assume regional (DCT)
-            lon_range = float(data[lon_dim].max() - data[lon_dim].min())
-            filter_type = "dct" if lon_range < 350 else "sht"
+            filter_type = "sht" if loader.is_global_longitude() else "dct"
 
         # Ensure data is loaded into memory for spectral filtering
         if data.chunks:
@@ -120,6 +141,7 @@ class SimpleTracker:
                         frame,
                         hemisphere=hemi,
                         filter_lmin=lmin if lmin > 0 else None,
+                        lmax=lmax,
                         lat_reverse=is_lat_reversed,
                         resolution=resolution,
                         extent=extent
@@ -153,6 +175,7 @@ class SimpleTracker:
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
+        subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -180,25 +203,13 @@ class SimpleTracker:
         detector = SimpleDetector.from_xarray(data_xr)
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
         raw_steps = _detect_and_link(
-            detector, size=size, threshold=threshold, mode=mode
+            detector,
+            size=size,
+            threshold=threshold,
+            mode=mode,
+            subgrid_refine=subgrid_refine,
         )
-
-        effective_map_proj = kwargs.get("map_proj", map_proj)
-        if effective_map_proj in ("nh_stereo", "sh_stereo"):
-            from ..models.geo import stereo_to_latlon
-
-            hemi = 1 if effective_map_proj == "nh_stereo" else -1
-            converted_raw_steps = []
-            for dt, lats, lons, values in raw_steps:
-                new_lats = np.zeros_like(lats)
-                new_lons = np.zeros_like(lons)
-                for i in range(len(lats)):
-                    # Note: lons[i] is x, lats[i] is y
-                    lat, lon = stereo_to_latlon(lons[i], lats[i], hemi)
-                    new_lats[i] = lat
-                    new_lons[i] = lon
-                converted_raw_steps.append((dt, new_lats, new_lons, values))
-            raw_steps = converted_raw_steps
+        raw_steps = _convert_stereo_steps(raw_steps, map_proj)
 
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0_detect:.4f}s")
@@ -233,6 +244,7 @@ class SimpleTracker:
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
+        subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -277,24 +289,13 @@ class SimpleTracker:
             detector = SimpleDetector.from_xarray(data_xr)
             size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
             raw_steps = _detect_and_link(
-                detector, size=size, threshold=threshold, mode=mode
+                detector,
+                size=size,
+                threshold=threshold,
+                mode=mode,
+                subgrid_refine=subgrid_refine,
             )
-
-            effective_map_proj = kwargs.get("map_proj", map_proj)
-            if effective_map_proj in ("nh_stereo", "sh_stereo"):
-                from ..models.geo import stereo_to_latlon
-
-                hemi = 1 if effective_map_proj == "nh_stereo" else -1
-                converted_raw_steps = []
-                for dt, lats, lons, values in raw_steps:
-                    new_lats = np.zeros_like(lats)
-                    new_lons = np.zeros_like(lons)
-                    for i in range(len(lats)):
-                        lat, lon = stereo_to_latlon(lons[i], lats[i], hemi)
-                        new_lats[i] = lat
-                        new_lons[i] = lon
-                    converted_raw_steps.append((dt, new_lats, new_lons, values))
-                raw_steps = converted_raw_steps
+            raw_steps = _convert_stereo_steps(raw_steps, map_proj)
 
             tracks = _link_centers(raw_steps, time_range=time_range)
 
@@ -313,6 +314,9 @@ class SimpleTracker:
                 lmax=lmax,
                 taper_points=taper_points,
                 map_proj=map_proj,
+                resolution=resolution,
+                extent=extent,
+                subgrid_refine=subgrid_refine,
                 **kwargs,
             )
         elif backend == "dask":
@@ -331,6 +335,10 @@ class SimpleTracker:
                 lmin=lmin,
                 lmax=lmax,
                 taper_points=taper_points,
+                map_proj=map_proj,
+                resolution=resolution,
+                extent=extent,
+                subgrid_refine=subgrid_refine,
                 **kwargs,
             )
         else:
@@ -348,6 +356,7 @@ class SimpleTracker:
                 map_proj=map_proj,
                 resolution=resolution,
                 extent=extent,
+                subgrid_refine=subgrid_refine,
                 **kwargs,
             )
 

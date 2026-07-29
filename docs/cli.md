@@ -18,6 +18,11 @@ stormtracker track -i input.nc -v vo -o tracks.txt -m max -a hodges
 - `-a`, `--algorithm`: Tracking algorithm (`simple` or `hodges`).
 - `-m`, `--mode`: Detection mode (`min` for SLP, `max` for vorticity).
 - `--map-proj`: Map projection for detection (`global`, `nh_stereo`, `sh_stereo`, `healpix`).
+- `--filter`, `--no-filter`: Override the algorithm-specific filtering default.
+- `--filter-range`: Enable filtering with an inclusive wave-number range.
+- `--subgrid-refine`, `--no-subgrid-refine`: Override the algorithm-specific refinement default.
+
+Simple tracking defaults to no spectral filtering and no subgrid refinement. Hodges and HEALPix tracking default to both operations enabled.
 
 ## `stormtracker sample`
 

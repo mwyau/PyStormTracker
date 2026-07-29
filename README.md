@@ -29,10 +29,11 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
   - **Simple (Default)**: Fast, heuristic linking optimized for higher resolutions.
   - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization. <a href="docs/spectral_accuracy.md">Accuracy Metrics</a>.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
-- **Scalable Backends**: 
+- **Execution Backends**:
   - **Serial**: Standard sequential execution. Default fallback.
-  - **Dask**: Multi-process scaling for local or distributed environments. Selected if `--workers` is provided without MPI.
-  - **MPI**: High-performance distributed execution via `mpi4py`. Selected automatically in MPI environments.
+  - **Dask**: Threaded detection for the Simple tracker. Selected if `--workers` is provided without MPI.
+  - **MPI**: Distributed detection for the Simple tracker via `mpi4py`. Selected automatically in MPI environments.
+  - **Hodges and HEALPix**: Currently support serial execution; unsupported backends fail explicitly.
 - **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
 - **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
 
@@ -160,7 +161,8 @@ Use `stormtracker <command> --help` for detailed argument lists. Key options for
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |
 | `--workers` | `-w` | Number of parallel workers. |
 | `--filter-range`| | Spectral filter range (min-max). Default '5-42'. |
-| `--no-filter` | | Disable default spectral filtering. |
+| `--filter`, `--no-filter` | | Override algorithm-specific filtering defaults. |
+| `--subgrid-refine`, `--no-subgrid-refine` | | Override refinement defaults. Off for simple; on for Hodges and HEALPix. |
 
 ### Python API
 
@@ -245,17 +247,17 @@ If you use this software in your research, please cite the following:
 
 - **Yau, A. M. W.**, 2026: mwyau/PyStormTracker. *Zenodo*, [https://doi.org/10.5281/zenodo.18764813](https://doi.org/10.5281/zenodo.18764813).
 
-- **Yau, A. M. W. and Chang, E. K. M.**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. *J. Climate*, **33**, 10169–10186, [https://doi.org/10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
+- **Yau, A. M. W. and Chang, E. K. M.**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [https://doi.org/10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
 
 ## References
+
+- **Reinecke, M.**, 2020: DUCC: Distinctly Useful Code Collection. *Astrophysics Source Code Library*, record [ascl:2008.023](https://ascl.net/2008.023), [https://gitlab.mpcdf.mpg.de/mtr/ducc](https://gitlab.mpcdf.mpg.de/mtr/ducc).
 
 - **Yau, A. M. W., K. Paul and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. *Zenodo*, [https://doi.org/10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
 - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [https://doi.org/10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
   - IMILAST Intercomparison Protocol: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
   - IMILAST Data Download: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
-
-- **Schaeffer, N.**, 2013: Efficient spherical harmonic transforms aimed at pseudospectral numerical simulations. *Geochem. Geophys. Geosyst.*, **14**, 751–758, [https://doi.org/10.1002/ggge.20071](https://doi.org/10.1002/ggge.20071).
 
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2).
 

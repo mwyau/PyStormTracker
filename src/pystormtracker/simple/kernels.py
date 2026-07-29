@@ -7,14 +7,20 @@ from numpy.typing import NDArray
 
 @nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
 def _numba_extrema_filter(
-    data: NDArray[np.float64], size: int, threshold: float, is_min: bool
+    data: NDArray[np.float64],
+    size: int,
+    threshold: float,
+    is_min: bool,
+    periodic_x: bool = True,
 ) -> NDArray[np.float64]:
     rows, cols = data.shape
     out = np.zeros_like(data)
     half_size = size // 2
 
     for r in range(half_size, rows - half_size):
-        for c in range(cols):
+        c_start = 0 if periodic_x else half_size
+        c_end = cols if periodic_x else cols - half_size
+        for c in range(c_start, c_end):
             center_val = data[r, c]
             if np.isnan(center_val) or np.isinf(center_val):
                 continue
@@ -23,7 +29,7 @@ def _numba_extrema_filter(
             for i in range(-half_size, half_size + 1):
                 rr = r + i
                 for j in range(-half_size, half_size + 1):
-                    cc = (c + j) % cols
+                    cc = (c + j) % cols if periodic_x else c + j
                     if is_min:
                         if data[rr, cc] < center_val:
                             is_extrema = False
@@ -45,7 +51,7 @@ def _numba_extrema_filter(
                 for i in range(-half_size, half_size + 1):
                     rr = r + i
                     for j in range(-half_size, half_size + 1):
-                        cc = (c + j) % cols
+                        cc = (c + j) % cols if periodic_x else c + j
                         window[idx] = data[rr, cc]
                         idx += 1
                 window.sort()
@@ -62,17 +68,26 @@ def _numba_extrema_filter(
 
 @nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
 def _numba_laplace_masked(
-    data: NDArray[np.float64], mask: NDArray[np.float64], is_min: bool
+    data: NDArray[np.float64],
+    mask: NDArray[np.float64],
+    is_min: bool,
+    periodic_x: bool = True,
 ) -> NDArray[np.float64]:
     rows, cols = data.shape
     out = np.zeros_like(data)
     for r in range(rows):
         for c in range(cols):
             if mask[r, c] != 0:
-                up = data[(r - 1) % rows, c]
-                down = data[(r + 1) % rows, c]
-                left = data[r, (c - 1) % cols]
-                right = data[r, (c + 1) % cols]
+                if r == 0 or r == rows - 1:
+                    continue
+                if not periodic_x and (c == 0 or c == cols - 1):
+                    continue
+                up = data[r - 1, c]
+                down = data[r + 1, c]
+                left_col = (c - 1) % cols if periodic_x else c - 1
+                right_col = (c + 1) % cols if periodic_x else c + 1
+                left = data[r, left_col]
+                right = data[r, right_col]
                 center = data[r, c]
                 # Laplacian: d2f/dx2 + d2f/dy2
                 # For a local minimum, center < neighbors, so (neighbors - 4*center) > 0
@@ -86,7 +101,9 @@ def _numba_laplace_masked(
 
 
 @nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
-def _numba_remove_dup(laplacian: NDArray[np.float64], size: int) -> NDArray[np.float64]:
+def _numba_remove_dup(
+    laplacian: NDArray[np.float64], size: int, periodic_x: bool = True
+) -> NDArray[np.float64]:
     rows, cols = laplacian.shape
     out = np.zeros_like(laplacian)
     half_size = size // 2
@@ -98,9 +115,15 @@ def _numba_remove_dup(laplacian: NDArray[np.float64], size: int) -> NDArray[np.f
                 is_most_intense = True
                 abs_center = abs(center_val)
                 for i in range(-half_size, half_size + 1):
-                    rr = (r + i) % rows
+                    rr = r + i
+                    if rr < 0 or rr >= rows:
+                        continue
                     for j in range(-half_size, half_size + 1):
-                        cc = (c + j) % cols
+                        cc = c + j
+                        if periodic_x:
+                            cc %= cols
+                        elif cc < 0 or cc >= cols:
+                            continue
                         val = abs(laplacian[rr, cc])
                         if val > abs_center:
                             is_most_intense = False

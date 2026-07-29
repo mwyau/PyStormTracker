@@ -17,8 +17,8 @@ from .kernels import (
     _numba_get_centers,
     _numba_object_extrema,
     _numba_object_properties,
-    subgrid_refine,
 )
+from .kernels import subgrid_refine as refine_center
 
 
 class HodgesDetector:
@@ -156,7 +156,7 @@ class HodgesDetector:
         threshold: float | None = None,
         minmaxmode: Literal["min", "max"] = "min",
         min_points: int = 1,
-        refine_radius_deg: float = 2.5,
+        subgrid_refine: bool = True,
     ) -> list[RawDetectionStep]:
         """
         Runs the feature detection on the selected time steps.
@@ -166,7 +166,7 @@ class HodgesDetector:
             threshold: Intensity threshold for objects.
             minmaxmode: Whether to search for local minima or maxima.
             min_points: Minimum number of grid points in an object to be processed.
-            refine_radius_deg: Physical radius in degrees for the B-spline fit window.
+            subgrid_refine: Whether to refine centers with a local quadratic fit.
         """
         if threshold is None:
             if self.requested_varname == "vo":
@@ -176,6 +176,9 @@ class HodgesDetector:
 
         times = self.get_time()
         lat, lon = self.lat, self.lon
+        _, _, lon_name = self._loader.get_coords()
+        projected_xy = lon_name == "x"
+        periodic_x = not projected_xy and self._loader.is_global_longitude()
         full_var = self.get_var()
         is_min = minmaxmode == "min"
         num_steps = len(times)
@@ -197,18 +200,31 @@ class HodgesDetector:
             binary_mask = (
                 (frame <= threshold) if is_min else (frame >= threshold)
             ).astype(np.float64)
-            labeled_mask, num_objects = _numba_ccl(binary_mask)
+            labeled_mask, num_objects = _numba_ccl(binary_mask, periodic_x=periodic_x)
 
             # 2. Find local extrema (min/max) within each identified object.
             # This ensures we don't pick multiple points from the same noise spike.
             extrema = _numba_object_extrema(
-                frame, labeled_mask, num_objects, size, is_min, min_points
+                frame,
+                labeled_mask,
+                num_objects,
+                size,
+                is_min,
+                min_points,
+                periodic_x=periodic_x,
             )
 
             # 3. Compute physical object properties (Size in km^2, Ellipse fitting).
             # Uses a reverse flood-fill logic optimized with Numba.
             props = _numba_object_properties(
-                frame, labeled_mask, num_objects, lat, lon, threshold, is_min
+                frame,
+                labeled_mask,
+                num_objects,
+                lat,
+                lon,
+                threshold,
+                is_min,
+                spherical_coords=not projected_xy,
             )
             raw_areas, fitted_areas, majors, minors, orientations = props
 
@@ -228,6 +244,8 @@ class HodgesDetector:
 
             # Pre-calculate global spherical spline for the whole frame
             try:
+                if not periodic_x:
+                    raise ValueError("spherical spline requires longitude coordinates")
                 theta_global = np.deg2rad(90.0 - lat)
                 phi_global = np.deg2rad(lon)
                 # RectSphereBivariateSpline needs theta strictly increasing
@@ -241,14 +259,25 @@ class HodgesDetector:
                 global_spline = None
 
             for i in range(n_feats):
-                # Quadratic fit (3x3)
-                rlat, rlon, rval = subgrid_refine(frame, r_idx[i], c_idx[i], lat, lon)
+                if subgrid_refine:
+                    rlat, rlon, rval = refine_center(
+                        frame,
+                        r_idx[i],
+                        c_idx[i],
+                        lat,
+                        lon,
+                        periodic_x=periodic_x,
+                    )
+                else:
+                    rlat = lat[r_idx[i]]
+                    rlon = lon[c_idx[i]]
+                    rval = raw_vals[i]
                 refined_lats[i] = rlat
                 refined_lons[i] = rlon
                 quad_vals[i] = rval
 
                 # B-spline fit (Global Spherical Spline)
-                if global_spline is not None:
+                if subgrid_refine and global_spline is not None:
                     try:
                         # evaluate at sub-grid center (convert to colatitude/rad)
                         bspline_vals[i] = float(

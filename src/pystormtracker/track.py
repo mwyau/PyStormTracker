@@ -16,6 +16,7 @@ from .models.tracks import Tracks
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
 from .utils.cli import (
+    finite_float,
     nonnegative_float,
     nonnegative_int,
     positive_float,
@@ -52,6 +53,8 @@ def _parse_extent(value: str) -> tuple[float, float, float, float]:
         raise argparse.ArgumentTypeError("expected xmin,xmax,ymin,ymax") from exc
     if len(parts) != 4:
         raise argparse.ArgumentTypeError("expected xmin,xmax,ymin,ymax")
+    if not np.isfinite(parts).all():
+        raise argparse.ArgumentTypeError("extent values must be finite")
     xmin, xmax, ymin, ymax = parts
     if xmin >= xmax or ymin >= ymax:
         raise argparse.ArgumentTypeError("extent minima must be less than maxima")
@@ -61,6 +64,8 @@ def _parse_extent(value: str) -> tuple[float, float, float, float]:
 def _validate_zones(zones: np.ndarray) -> np.ndarray:
     """Validate TRACK regional constraints as rows of five values."""
     zones = np.atleast_2d(zones).astype(np.float64, copy=False)
+    if not np.isfinite(zones).all():
+        raise ValueError("zone values must be finite")
     if zones.shape[1] != 5:
         raise ValueError(
             "zones must contain rows of [lon_min, lon_max, lat_min, lat_max, dmax]"
@@ -76,6 +81,8 @@ def _validate_adapt_params(params: np.ndarray) -> np.ndarray:
     """Validate adaptive smoothness thresholds and values."""
     if params.shape != (2, 4):
         raise ValueError("adaptive parameters must have shape (2, 4)")
+    if not np.isfinite(params).all():
+        raise ValueError("adaptive parameters must be finite")
     if np.any(np.diff(params[0]) < 0.0):
         raise ValueError("adaptive distance thresholds must be nondecreasing")
     if np.any(params[1] < 0.0):
@@ -118,11 +125,12 @@ def run_tracker(
     max_missing: int | None = None,
     zones: np.ndarray | None = None,
     adapt_params: np.ndarray | None = None,
-    filter: bool = True,
+    filter: bool | None = None,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
     overlap: int = model_constants.OVERLAP_DEFAULT,
+    subgrid_refine: bool | None = None,
 ) -> Tracks:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
@@ -234,6 +242,15 @@ def run_tracker(
             adapt_params=adapt_params,
         )
 
+    effective_subgrid_refine = (
+        subgrid_refine
+        if subgrid_refine is not None
+        else algorithm != "simple" or map_proj == "healpix"
+    )
+    effective_filter = (
+        filter if filter is not None else algorithm != "simple" or map_proj == "healpix"
+    )
+
     tracks = tracker.track(
         infile=infile,
         varname=varname,
@@ -249,11 +266,12 @@ def run_tracker(
         threshold=threshold,
         engine=engine,
         min_points=min_points,
-        filter=filter,
+        filter=effective_filter,
         lmin=lmin,
         lmax=lmax,
         taper_points=taper_points,
         overlap=overlap,
+        subgrid_refine=effective_subgrid_refine,
     )
 
     # Export Phase
@@ -336,7 +354,7 @@ def setup_parser(
     general.add_argument(
         "-t",
         "--threshold",
-        type=float,
+        type=finite_float,
         default=None,
         help="Intensity threshold for features.",
     )
@@ -353,16 +371,28 @@ def setup_parser(
         ),
     )
     filter_group.add_argument(
-        "--no-filter",
-        action="store_false",
+        "--filter",
+        action=argparse.BooleanOptionalAction,
         dest="filter",
         default=None,
-        help="Disable default T5-42 spectral filtering.",
+        help=(
+            "Control spectral filtering. Disabled by default for simple tracking "
+            "and enabled by default for Hodges and HEALPix."
+        ),
     )
     # Default is determined in main() based on algorithm
 
     general.add_argument(
         "-n", "--num", type=positive_int, help="Number of time steps to process."
+    )
+    general.add_argument(
+        "--subgrid-refine",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Control quadratic subgrid refinement. Disabled by default for "
+            "simple tracking and enabled by default for Hodges and HEALPix."
+        ),
     )
 
     # 3. Performance & Parallelism
@@ -385,16 +415,16 @@ def setup_parser(
         "-c",
         "--chunk-size",
         type=positive_int,
-        default=60,
-        help="Steps per chunk for Dask/RSPLICE. Default 60.",
+        default=None,
+        help="Detection steps per chunk. Backend default when omitted.",
     )
     perf.add_argument(
         "--overlap",
         type=nonnegative_int,
         default=model_constants.OVERLAP_DEFAULT,
         help=(
-            f"Overlap steps between chunks for splicing. "
-            f"Default {model_constants.OVERLAP_DEFAULT}."
+            "Compatibility option retained for older commands; Gather-then-Link "
+            "does not require overlapping chunks."
         ),
     )
     perf.add_argument(
@@ -528,7 +558,11 @@ def run_track_command(args: Namespace) -> Tracks:
         end_time = times[num - 1]
 
     if args.filter is None:
-        args.filter = args.filter_range is not None or args.algorithm != "simple"
+        args.filter = (
+            args.filter_range is not None
+            or args.algorithm != "simple"
+            or args.map_proj == "healpix"
+        )
 
     lmin, lmax = args.filter_range or (
         constants.LMIN_DEFAULT,
@@ -599,4 +633,5 @@ def run_track_command(args: Namespace) -> Tracks:
         lmax=lmax,
         taper_points=args.taper,
         overlap=args.overlap,
+        subgrid_refine=args.subgrid_refine,
     )

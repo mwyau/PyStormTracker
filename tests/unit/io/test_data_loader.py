@@ -107,6 +107,33 @@ def test_is_lat_reversed_direct() -> None:
     assert loader_asc.is_lat_reversed() is False
 
 
+@pytest.mark.parametrize(
+    ("lon_name", "longitudes", "expected"),
+    [
+        ("lon", np.arange(0.0, 360.0, 60.0), True),
+        ("longitude", np.arange(300.0, -60.0, -60.0), True),
+        ("lon", np.arange(-180.0, 180.0, 60.0), True),
+        ("lon", np.arange(0.0, 180.0, 30.0), False),
+        ("x", np.arange(-3000.0, 3001.0, 1000.0), False),
+    ],
+)
+def test_is_global_longitude(
+    lon_name: str, longitudes: np.ndarray, expected: bool
+) -> None:
+    data = xr.DataArray(
+        np.zeros((1, 3, len(longitudes))),
+        dims=("time", "lat", lon_name),
+        coords={
+            "time": [np.datetime64("2000-01-01")],
+            "lat": [-1.0, 0.0, 1.0],
+            lon_name: longitudes,
+        },
+        name="msl",
+    )
+
+    assert DataLoader(data).is_global_longitude() is expected
+
+
 @patch("xarray.open_dataset")
 @patch("pystormtracker.io.data_loader.find_spec")
 def test_dataloader_grib_missing_dependency(

@@ -149,6 +149,26 @@ def test_regrid_to_polar_stereo() -> None:
     assert len(regridded.x) == 21
 
 
+def test_regrid_to_polar_stereo_lmax_override() -> None:
+    da = xr.DataArray(
+        np.ones((73, 144), dtype=np.float64),
+        dims=("lat", "lon"),
+        coords={
+            "lat": np.linspace(-90.0, 90.0, 73),
+            "lon": np.linspace(0.0, 360.0, 144, endpoint=False),
+        },
+    )
+
+    regridded = SpectralRegridder(lmax=42).to_polar_stereo(
+        da,
+        lmax=7,
+        extent=(-100.0, 100.0, -100.0, 100.0),
+        resolution=100.0,
+    )
+
+    assert regridded.attrs["lmax"] == 7
+
+
 def test_regrid_to_polar_stereo_with_filter() -> None:
     # 2.5 degree grid
     ny, nx = 73, 144

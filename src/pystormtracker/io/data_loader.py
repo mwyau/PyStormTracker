@@ -172,6 +172,26 @@ class DataLoader:
             return bool(ds[lat_name][0] > ds[lat_name][-1])
         return False
 
+    def is_global_longitude(self) -> bool:
+        """Return whether a 1D longitude coordinate covers a periodic globe."""
+        ds = self.ensure_open()
+        _, _, lon_name = self.get_coords()
+        if lon_name == "x" or lon_name not in ds.coords:
+            return False
+
+        lon = np.asarray(ds[lon_name].values, dtype=np.float64)
+        if lon.ndim != 1 or lon.size < 2 or not np.isfinite(lon).all():
+            return False
+
+        normalized = np.unique(np.mod(lon, 360.0))
+        if normalized.size < 2:
+            return False
+
+        cyclic = np.concatenate((normalized, normalized[:1] + 360.0))
+        gaps = np.diff(cyclic)
+        typical_gap = float(np.median(gaps))
+        return typical_gap > 0.0 and float(np.max(gaps)) <= 1.5 * typical_gap
+
     def is_reduced_gaussian(self, varname: str | None = None) -> bool:
         """Detects if the dataset represents a reduced Gaussian grid."""
         ds = self.ensure_open()

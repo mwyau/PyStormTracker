@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 
 from pystormtracker.hodges.kernels import (
+    _numba_ccl,
+    _numba_object_properties,
     geod_dev,
     get_adaptive_phimax,
     get_regional_dmax,
@@ -86,3 +88,60 @@ def test_subgrid_refine() -> None:
     rlat, rlon, rval = subgrid_refine(frame, 1, 1, lat, lon)
     assert rlat < 11.0  # Peak is between 10 and 11
     assert rlon == 101.0
+
+
+def test_ccl_does_not_join_projected_x_boundaries() -> None:
+    mask = np.zeros((3, 5), dtype=np.float64)
+    mask[1, 0] = 1.0
+    mask[1, -1] = 1.0
+
+    _, global_objects = _numba_ccl(mask, periodic_x=True)
+    _, projected_objects = _numba_ccl(mask, periodic_x=False)
+
+    assert global_objects == 1
+    assert projected_objects == 2
+
+
+def test_projected_object_area_uses_kilometer_coordinates() -> None:
+    frame = np.ones((3, 3), dtype=np.float64)
+    labels = np.ones((3, 3), dtype=np.int32)
+    y = np.array([-100.0, 0.0, 100.0])
+    x = np.array([-100.0, 0.0, 100.0])
+
+    raw_area, fitted_area, major, minor, _ = _numba_object_properties(
+        frame,
+        labels,
+        1,
+        y,
+        x,
+        threshold=0.0,
+        is_min=False,
+        spherical_coords=False,
+    )
+
+    assert raw_area[1] == 90_000.0
+    assert fitted_area[1] > 0.0
+    assert major[1] > 0.0
+    assert minor[1] > 0.0
+
+
+def test_spherical_object_moments_unwrap_longitude_seam() -> None:
+    lon = np.linspace(0.0, 360.0, 144, endpoint=False)
+    lat = np.array([-2.5, 0.0, 2.5])
+    frame = np.zeros((3, 144), dtype=np.float64)
+    labels = np.zeros((3, 144), dtype=np.int32)
+    frame[1, [0, -1]] = 1.0
+    labels[1, [0, -1]] = 1
+
+    _, _, major, _, _ = _numba_object_properties(
+        frame,
+        labels,
+        1,
+        lat,
+        lon,
+        threshold=0.0,
+        is_min=False,
+        spherical_coords=True,
+    )
+
+    assert 200.0 < major[1] < 400.0

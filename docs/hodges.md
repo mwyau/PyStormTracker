@@ -90,7 +90,7 @@ Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an
 ## 4. Orchestration & Performance
 
 ### 4.1 Hybrid Parallelism (Gather-then-Link)
-To ensure 100% bit-wise identity between serial and parallel runs, `PyStormTracker` parallelizes the computationally expensive **Detection** phase (>95% of runtime) but gathers results to a single process for the **Linking** (MGE) phase. This avoids the "track merging" complexities at process boundaries found in TRACK's `RSPLICE` utilities.
+Hodges detection can be divided into time chunks, but the raw detections are gathered before one **Linking** (MGE) pass. Chunk boundaries therefore do not alter the result, and this avoids the track-merging behavior of TRACK's `RSPLICE` utilities. Hodges currently executes these chunks serially; Dask and MPI backends are not yet implemented for this tracker.
 
 ### 4.2 Matrix Representation & Phantom Points
 Tracks are managed as a **2D integer matrix** (`n_tracks` x `n_frames`), where each cell stores the index of a feature or a **phantom point** (`-1`). This ensures the MGE matrix remains rectangular and allows trajectories to persist through missing frames up to the `max_missing` limit. (Ref: `mge_tracks.c`).
@@ -98,7 +98,7 @@ Tracks are managed as a **2D integer matrix** (`n_tracks` x `n_frames`), where e
 ### 4.3 Computational Efficiency
 - **Numba JIT**: All heavy mathematical loops (MGE, CCL, Geodesic math) are implemented as GIL-free, cache-enabled Numba kernels, matching or exceeding original C speeds.
 - **Xarray Native**: Replaces legacy binary/ASCII I/O with coordinate-aware NetCDF/GRIB handling, facilitating integration with ERA5 and CMIP6.
-- **HPC Ready**: A standard argparse-based CLI replaces interactive prompts, and the code supports **Serial**, **Dask**, and **MPI** backends with auto-detection.
+- **Execution**: A standard argparse-based CLI replaces interactive prompts. Hodges tracking currently uses the serial backend; unsupported parallel selections fail explicitly.
 
 ---
 
@@ -110,9 +110,9 @@ While `PyStormTracker` achieves parity in core tracking logic, the following tab
 | :--- | :--- | :--- | :--- |
 | **Peak Finding** | Global B-spline + CG optimizer. | 2D local quadratic surface fit. | Minor (sub-grid precision). |
 | **Segmentation** | Quad-tree data structure. | Iterative label propagation. | None (identical masks). |
-| **Orchestration** | External shell-scripted utilities. | Native Python multiprocessing/MPI. | None (serial consistent). |
+| **Orchestration** | External shell-scripted utilities. | Serial chunked detection followed by one linking pass. | None (chunk-boundary independent). |
 | **Tracking Logic** | Modified Greedy Exchange (MGE). | MGE (identical implementation). | **Full Parity**. |
-| **Parallelism** | Domain/Time splitting (RSPLICE). | Parallel Detect + Gather-then-Link. | Improved (no splitting bugs). |
+| **Parallelism** | Domain/Time splitting (RSPLICE). | Hodges parallel backends not yet implemented. | None for serial execution. |
 | **I/O Handling** | Custom binary and ASCII formats. | Xarray (NetCDF, GRIB, Zarr). | Improved (CF-compliant). |
 
 ---

@@ -24,12 +24,14 @@ def _detect_and_gather(
     threshold: float | None,
     mode: Literal["min", "max"],
     min_points: int,
+    subgrid_refine: bool,
 ) -> list[RawDetectionStep]:
     """Worker task: Detects centers on HEALPix and returns raw results."""
     return detector.detect(
         threshold=threshold,
         minmaxmode=mode,
         min_points=min_points,
+        subgrid_refine=subgrid_refine,
     )
 
 
@@ -83,7 +85,7 @@ class HealpixTracker(Tracker):
         taper_points: int = constants.TAPER_DEFAULT,
     ) -> xr.DataArray:
         """
-        Applies standard TRACK preprocessing: Tapering -> Spherical Harmonic Filter.
+        Apply spectral filtering and convert regular grids to HEALPix.
         """
         if data.chunks:
             data = data.compute()
@@ -95,14 +97,32 @@ class HealpixTracker(Tracker):
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
 
-        # 2. Spectral Filtering - Requires 2D source usually,
-        # but let's assume standard filtering.
-        # If data is already HEALPix, we'd need a HEALPix SHT.
-        # PyStormTracker's SHTFilter currently expects 2D (lat, lon).
-        # We'll skip for now if already 1D, or user regrids before.
-        if data.ndim == 3:  # (time, lat, lon)
-            spectral_filter = SHTFilter(lmin=lmin, lmax=lmax)
-            data = spectral_filter.filter(data)
+        if data.ndim == 3:
+            from ..io.data_loader import DataLoader
+            from ..preprocessing.regrid import SpectralRegridder
+
+            loader = DataLoader(data)
+            time_dim, _, _ = loader.get_coords()
+            lat_reverse = loader.is_lat_reversed()
+            nside_estimate = max(1, lmax + 1)
+            nside = 2 ** int(np.round(np.log2(nside_estimate)))
+            regridder = SpectralRegridder(lmax=lmax)
+
+            frames: list[xr.DataArray] = []
+            for index in range(data.sizes[time_dim]):
+                frame = data.isel({time_dim: index}).squeeze()
+                if lmin > 0:
+                    frame = SHTFilter(lmin=lmin, lmax=lmax).filter(frame)
+                frames.append(
+                    regridder.to_healpix(
+                        frame,
+                        nside=nside,
+                        lat_reverse=lat_reverse,
+                    )
+                )
+            data = xr.concat(frames, dim=data[time_dim])
+            data.attrs["map_proj"] = "healpix"
+            data.attrs["nside"] = nside
 
         return data
 
@@ -115,6 +135,7 @@ class HealpixTracker(Tracker):
         threshold: float | None = None,
         engine: str | None = None,
         min_points: int = 1,
+        subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         t0 = timeit.default_timer()
@@ -123,7 +144,11 @@ class HealpixTracker(Tracker):
         )
 
         raw_steps = _detect_and_gather(
-            detector, threshold=threshold, mode=mode, min_points=min_points
+            detector,
+            threshold=threshold,
+            mode=mode,
+            min_points=min_points,
+            subgrid_refine=subgrid_refine,
         )
         t1 = timeit.default_timer()
         print(f"    [Healpix] Detection time: {t1 - t0:.4f}s")
@@ -167,6 +192,7 @@ class HealpixTracker(Tracker):
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
+        subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
 
@@ -193,58 +219,35 @@ class HealpixTracker(Tracker):
                 )
                 data_xr = detector_peek.get_xarray()
 
-            if filter:
+            if data_xr.ndim == 3:
                 data_xr = self.preprocess_standard_track(
-                    data_xr, lmin=lmin, lmax=lmax, taper_points=taper_points
+                    data_xr,
+                    lmin=lmin if filter else 0,
+                    lmax=lmax,
+                    taper_points=taper_points,
                 )
-                # Now we need to detect from memory
-                detector = HealpixDetector.from_xarray(data_xr)
-                raw_steps = _detect_and_gather(
-                    detector, threshold=threshold, mode=mode, min_points=min_points
-                )
-                from ..hodges.linker import HodgesLinker
 
-                linker = HodgesLinker(
-                    w1=self.w1,
-                    w2=self.w2,
-                    dmax=self.dmax,
-                    phimax=self.phimax,
-                    n_iterations=self.n_iterations,
-                    max_missing=self.max_missing,
-                    zones=self.zones,
-                    adapt_params=self.adapt_params,
-                )
-                tracks = linker.link(raw_steps)
-            else:
-                if isinstance(infile, (xr.DataArray, xr.Dataset)):
-                    detector = HealpixDetector.from_xarray(data_xr)
-                    raw_steps = _detect_and_gather(
-                        detector, threshold=threshold, mode=mode, min_points=min_points
-                    )
-                    from ..hodges.linker import HodgesLinker
+            detector = HealpixDetector.from_xarray(data_xr)
+            raw_steps = _detect_and_gather(
+                detector,
+                threshold=threshold,
+                mode=mode,
+                min_points=min_points,
+                subgrid_refine=subgrid_refine,
+            )
+            from ..hodges.linker import HodgesLinker
 
-                    linker = HodgesLinker(
-                        w1=self.w1,
-                        w2=self.w2,
-                        dmax=self.dmax,
-                        phimax=self.phimax,
-                        n_iterations=self.n_iterations,
-                        max_missing=self.max_missing,
-                        zones=self.zones,
-                        adapt_params=self.adapt_params,
-                    )
-                    tracks = linker.link(raw_steps)
-                else:
-                    tracks = self._detect_serial(
-                        str(infile),
-                        varname,
-                        time_range,
-                        mode,
-                        threshold=threshold,
-                        engine=engine,
-                        min_points=min_points,
-                        **kwargs,
-                    )
+            linker = HodgesLinker(
+                w1=self.w1,
+                w2=self.w2,
+                dmax=self.dmax,
+                phimax=self.phimax,
+                n_iterations=self.n_iterations,
+                max_missing=self.max_missing,
+                zones=self.zones,
+                adapt_params=self.adapt_params,
+            )
+            tracks = linker.link(raw_steps)
         else:
             msg = f"Backend '{backend}' not yet implemented for HealpixTracker."
             raise NotImplementedError(msg)

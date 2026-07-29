@@ -65,3 +65,12 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
     # Refined lon should be close to 3.2
     assert np.allclose(lons_out[0], 3.2)
     assert vars_dict["msl"][0] == 1000.0
+
+    unrefined = detector.detect(
+        size=5,
+        threshold=0.0,
+        minmaxmode="max",
+        subgrid_refine=False,
+    )[0]
+    assert unrefined[2][0] == 3.0
+    assert unrefined[3]["msl"][0] == unrefined[3]["raw_val"][0]

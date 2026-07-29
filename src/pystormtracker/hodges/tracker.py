@@ -8,9 +8,8 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..models import constants as model_constants
-from ..models.tracker import Tracker
+from ..models.tracker import RawDetectionStep, Tracker
 from ..models.tracks import Tracks
-from ..preprocessing.spectral import SHTFilter
 from ..preprocessing.taper import TaperFilter
 from . import constants
 from .detector import HodgesDetector
@@ -94,14 +93,13 @@ class HodgesTracker(Tracker):
         Optionally regrids to a Polar Stereographic or HEALPix projection.
         """
         from ..io.data_loader import DataLoader
-        from ..preprocessing.spectral import DCTFilter
+        from ..preprocessing.spectral import DCTFilter, SHTFilter
 
         loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-        _lat_dim, lon_dim, _ = loader.get_coords()
+        _time_dim, _lat_dim, _lon_dim = loader.get_coords()
 
         if filter_type == "auto":
-            lon_range = float(data[lon_dim].max() - data[lon_dim].min())
-            filter_type = "dct" if lon_range < 350 else "sht"
+            filter_type = "sht" if loader.is_global_longitude() else "dct"
 
         # Ensure data is loaded into memory for spectral filtering
         if data.chunks:
@@ -150,6 +148,7 @@ class HodgesTracker(Tracker):
                         frame,
                         hemisphere=hemi,
                         filter_lmin=lmin if lmin > 0 else None,
+                        lmax=lmax,
                         lat_reverse=is_lat_reversed,
                         resolution=resolution,
                         extent=extent
@@ -167,50 +166,6 @@ class HodgesTracker(Tracker):
             data = spectral_filter.filter(data)
 
         return data
-
-    def _splice_tracks(self, tracks_all: list[Tracks], _overlap: int) -> Tracks:
-        """
-        Splices tracks from multiple overlapping time chunks.
-        Matching logic: if tracks in chunk N end with same points as chunk N+1 head.
-        """
-        if not tracks_all:
-            return Tracks()
-
-        final_tracks = tracks_all[0]
-
-        for i in range(1, len(tracks_all)):
-            next_chunk = tracks_all[i]
-            matched_next_indices = set()
-            current_tails = list(final_tracks)
-
-            for tr_tail in current_tails:
-                last_pt = tr_tail[-1]
-
-                for idx_next, tr_next in enumerate(next_chunk):
-                    if idx_next in matched_next_indices:
-                        continue
-
-                    first_pt = tr_next[0]
-
-                    # Match if time, lat, lon are identical
-                    if (
-                        last_pt.time == first_pt.time
-                        and abs(last_pt.lat - first_pt.lat) < 1e-5
-                        and abs(last_pt.lon - first_pt.lon) < 1e-5
-                    ):
-                        # Splice: extend skipping the first overlapping point
-                        for j in range(1, len(tr_next)):
-                            tr_tail.append(tr_next[j])
-
-                        matched_next_indices.add(idx_next)
-                        break
-
-            # Add unmatched tracks from next_chunk as new tracks
-            for idx_next, tr_next in enumerate(next_chunk):
-                if idx_next not in matched_next_indices:
-                    final_tracks.append(tr_next)
-
-        return final_tracks
 
     def track(
         self,
@@ -233,11 +188,14 @@ class HodgesTracker(Tracker):
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
+        subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         """
         Runs the Hodges tracking algorithm.
-        Supports time-chunking (RSPLICE) if max_chunk_size is provided.
+        Supports chunked detection if max_chunk_size is provided. Detections are
+        gathered before a single linking pass so chunk boundaries do not affect
+        the result.
 
         Args:
             infile: Path to the input data file.
@@ -249,13 +207,21 @@ class HodgesTracker(Tracker):
             max_chunk_size: Number of steps per time chunk.
             threshold: Intensity threshold for detection.
             engine: Data loading engine (netcdf4, h5netcdf, etc).
-            overlap: Overlap between chunks for splicing.
+            overlap: Retained for cross-tracker API compatibility. Hodges gathers
+                detections before linking and does not require overlap.
             min_points: Minimum grid points per object.
             filter: If True, apply spectral filtering.
             lmin, lmax: Spectral truncation range (default T5-42).
             taper_points: Boundary tapering points.
         """
         import timeit
+
+        if backend != "serial":
+            raise NotImplementedError(
+                "HodgesTracker currently supports only the serial backend."
+            )
+        if max_chunk_size is not None and max_chunk_size < 1:
+            raise ValueError("max_chunk_size must be positive")
 
         t_total_start = timeit.default_timer()
 
@@ -295,33 +261,31 @@ class HodgesTracker(Tracker):
                 mode,
                 threshold,
                 min_points=min_points,
+                subgrid_refine=subgrid_refine,
                 **kwargs,
             )
         else:
-            # 2. Time-chunking logic (RSPLICE-style)
-            time_dim = detector_peek._loader.get_coords()[0]
-            n_steps = data_xr.sizes[time_dim]
-            tracks_all = []
+            # Detection can be partitioned, but linking must see the full series.
+            from ..io.data_loader import DataLoader
 
-            start_idx = 0
-            while start_idx < n_steps:
+            time_dim = DataLoader(data_xr).get_coords()[0]
+            n_steps = data_xr.sizes[time_dim]
+            detections: list[RawDetectionStep] = []
+
+            for start_idx in range(0, n_steps, max_chunk_size):
                 end_idx = min(start_idx + max_chunk_size, n_steps)
                 chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
-
-                chunk_res = self._track_single_chunk_from_data(
-                    chunk_data,
-                    mode,
-                    threshold,
-                    min_points=min_points,
-                    **kwargs,
+                detections.extend(
+                    self._detect_single_chunk_from_data(
+                        chunk_data,
+                        mode,
+                        threshold,
+                        min_points=min_points,
+                        subgrid_refine=subgrid_refine,
+                        **kwargs,
+                    )
                 )
-                tracks_all.append(chunk_res)
-
-                if end_idx == n_steps:
-                    break
-                start_idx = end_idx - overlap
-
-            tracks = self._splice_tracks(tracks_all, overlap)
+            tracks = self._link_detections(detections)
 
         t_total_end = timeit.default_timer()
         print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
@@ -334,8 +298,28 @@ class HodgesTracker(Tracker):
         mode: Literal["min", "max"] = "min",
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
+        subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
+        detections = self._detect_single_chunk_from_data(
+            data,
+            mode,
+            threshold,
+            min_points=min_points,
+            subgrid_refine=subgrid_refine,
+            **kwargs,
+        )
+        return self._link_detections(detections)
+
+    def _detect_single_chunk_from_data(
+        self,
+        data: xr.DataArray,
+        mode: Literal["min", "max"] = "min",
+        threshold: float | None = None,
+        min_points: int = constants.MIN_POINTS_DEFAULT,
+        subgrid_refine: bool = True,
+        **kwargs: float | int | str | None,
+    ) -> list[RawDetectionStep]:
         import timeit
 
         # 1. Detection
@@ -345,7 +329,11 @@ class HodgesTracker(Tracker):
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 
         detections = detector.detect(
-            size=size, threshold=threshold, minmaxmode=mode, min_points=min_points
+            size=size,
+            threshold=threshold,
+            minmaxmode=mode,
+            min_points=min_points,
+            subgrid_refine=subgrid_refine,
         )
 
         map_proj = data.attrs.get("map_proj", "global")
@@ -368,7 +356,12 @@ class HodgesTracker(Tracker):
         t_detect_end = timeit.default_timer()
         print(f"    [Serial] Detection time: {t_detect_end - t_detect_start:.4f}s")
 
-        # 2. Linking (MGE cost function with adaptive constraints)
+        return detections
+
+    def _link_detections(self, detections: list[RawDetectionStep]) -> Tracks:
+        import timeit
+
+        # Linking uses the MGE cost function with adaptive constraints.
         # Cost = w1 * (1 - cos(theta)) + w2 * (1 - 2*sqrt(d1*d2)/(d1+d2))
         # This penalizes both changes in direction and changes in speed.
         t_link_start = timeit.default_timer()
@@ -387,7 +380,7 @@ class HodgesTracker(Tracker):
         t_link_end = timeit.default_timer()
         print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")
 
-        # 3. Pruning
+        # Pruning
         valid_tracks = []
         for tr in tracks:
             if len(tr) >= self.min_lifetime:
