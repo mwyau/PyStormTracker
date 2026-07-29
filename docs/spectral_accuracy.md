@@ -19,7 +19,7 @@ Two spatial resolutions are tested:
 *   It provides two-dimensional spherical harmonic analysis and synthesis on Clenshaw-Curtis and Gauss-Legendre grids, pseudo-analysis for reduced Gaussian grids, arbitrary-point synthesis, spin-1 vector transforms, and HEALPix geometry used by this project.
 *   The tables below report measured differences from versioned NCL reference fields.
 
-### 2. SHTns (Historical Benchmark)
+### 2. SHTns
 SHTns was a spherical harmonic transform engine in earlier versions and was used in the recorded comparison work, but it has been removed from the package code and dependencies.
 
 *   Existing scalar-filter and kinematic-derivative measurements are retained for context.

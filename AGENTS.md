@@ -9,7 +9,6 @@ Foundational mandates and engineering standards for `PyStormTracker`. These take
 - **Validation**: Parallel results MUST be bit-wise identical to serial execution. Use Gather-then-Link orchestration.
 - **Geometry**: All distance calculations MUST use the great-circle dot product formula with precision clamping.
 - **Backends**: Simple supports serial, Dask, and MPI tracking. Hodges and HEALPix are serial-only until Gather-then-Link parallel implementations exist.
-- **Coordinates**: Use `DataLoader.is_global_longitude()` for periodicity. Projected `x/y` grids are nonperiodic; propagate `map_proj`, `resolution`, `extent`, and `lmax` through every backend and convert detections back to latitude/longitude before linking.
 
 ## 2. Engineering Standards
 
