@@ -1,35 +1,28 @@
 from __future__ import annotations
 
+import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
 from ..models.center import Center
-from ..models.constants import DEGTORAD, R_EARTH_KM
+from ..models.geo import geod_dist_km
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange, Tracks
 
 
-def haversine_matrix(
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def great_circle_distance_matrix(
     lats1: NDArray[np.float64],
     lons1: NDArray[np.float64],
     lats2: NDArray[np.float64],
     lons2: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """Vectorized Haversine distance calculation returning a distance matrix in km."""
-    lats1_rad = lats1 * DEGTORAD
-    lats2_rad = lats2 * DEGTORAD
-
-    dlat = lats2_rad[None, :] - lats1_rad[:, None]
-    dlon = (lons2 * DEGTORAD)[None, :] - (lons1 * DEGTORAD)[:, None]
-
-    a = (
-        np.sin(dlat / 2.0) ** 2
-        + np.cos(lats1_rad)[:, None]
-        * np.cos(lats2_rad)[None, :]
-        * np.sin(dlon / 2.0) ** 2
-    )
-    c = 2 * np.arcsin(np.sqrt(a))
-    return np.asarray(R_EARTH_KM * c)
+    """Return clamped great-circle distances using unit-vector dot products."""
+    distances = np.empty((lats1.size, lats2.size), dtype=np.float64)
+    for i in range(lats1.size):
+        for j in range(lats2.size):
+            distances[i, j] = geod_dist_km(lats1[i], lons1[i], lats2[j], lons2[j])
+    return distances
 
 
 class SimpleLinker:
@@ -102,7 +95,9 @@ class SimpleLinker:
         tail_lats = np.array([t[-1].lat for t in tail_tracks])
         tail_lons = np.array([t[-1].lon for t in tail_tracks])
 
-        dist_matrix = haversine_matrix(tail_lats, tail_lons, new_lats, new_lons)
+        dist_matrix = great_circle_distance_matrix(
+            tail_lats, tail_lons, new_lats, new_lons
+        )
         matched_indices = np.full(num_centers, -1, dtype=np.int64)
 
         # Global greedy matching with mutual-closest constraint

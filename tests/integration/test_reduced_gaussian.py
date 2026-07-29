@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+from utils import get_reduced_gaussian_path
 
 from pystormtracker.hodges.tracker import HodgesTracker
 from pystormtracker.io.data_loader import DataLoader
@@ -14,10 +15,12 @@ from pystormtracker.preprocessing.spectral import apply_sht_filter
 
 @pytest.fixture
 def n320_msl_path() -> str:
-    path = "/home/albert/PyStormTracker-Data/era5_msl_2025-2026_djf_n320.grib"
-    if not Path(path).exists():
-        pytest.skip(f"Local test data {path} not found")
-    return path
+    path = get_reduced_gaussian_path()
+    if path is None:
+        pytest.skip("Set PYSTORMTRACKER_N320_DATA to run real N320 tests")
+    if not path.exists():
+        pytest.skip(f"Configured N320 test data {path} not found")
+    return str(path)
 
 
 @pytest.mark.integration

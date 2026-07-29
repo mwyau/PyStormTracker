@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import argparse
+import json
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
+from pystormtracker.compare import _load_tracks, main
 from pystormtracker.metrics.compare import match_tracks
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
@@ -134,3 +139,43 @@ def test_match_too_far(tracks_ref: Tracks) -> None:
 
     matches = match_tracks(tracks_ref, tracks_comp, max_dist_km=200.0)
     assert len(matches) == 0
+
+
+@pytest.mark.parametrize(
+    ("max_dist_km", "min_overlap_fraction"),
+    [(0.0, 0.1), (-1.0, 0.1), (100.0, -0.1), (100.0, 1.1)],
+)
+def test_match_rejects_invalid_parameters(
+    tracks_ref: Tracks, max_dist_km: float, min_overlap_fraction: float
+) -> None:
+    with pytest.raises(ValueError, match="must be"):
+        match_tracks(
+            tracks_ref,
+            tracks_ref,
+            max_dist_km=max_dist_km,
+            min_overlap_fraction=min_overlap_fraction,
+        )
+
+
+def test_load_tracks_rejects_unknown_extension() -> None:
+    with pytest.raises(ValueError, match="Unsupported track file extension"):
+        _load_tracks("tracks.csv")
+
+
+def test_compare_json_stdout_is_machine_readable(
+    tracks_ref: Tracks, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = argparse.Namespace(
+        ref="reference.json",
+        comp="comparison.json",
+        output=None,
+        max_dist=440.0,
+        min_overlap=0.1,
+        json=True,
+    )
+    with patch("pystormtracker.compare._load_tracks", return_value=tracks_ref):
+        main(args)
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {"1": 1, "2": 2}
+    assert "Loading reference" in captured.err

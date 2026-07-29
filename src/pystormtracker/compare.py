@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from pathlib import Path
 
 from .io.imilast import read_imilast
 from .io.json import read_json, write_json
 from .metrics.compare import match_tracks
 from .models.tracks import Tracks
+from .utils.cli import fraction, positive_float
 
 
 def setup_parser(
@@ -32,13 +35,13 @@ def setup_parser(
     )
     parser.add_argument(
         "--max-dist",
-        type=float,
+        type=positive_float,
         default=440.0,
         help="Maximum mean geodetic distance (km) allowed for a match.",
     )
     parser.add_argument(
         "--min-overlap",
-        type=float,
+        type=fraction,
         default=0.1,
         help="Minimum overlap ratio required for a match.",
     )
@@ -50,10 +53,12 @@ def setup_parser(
 
 def _load_tracks(path: str) -> Tracks:
     """Helper to load tracks from either JSON or Imilast format."""
-    if path.endswith(".json"):
+    suffix = Path(path).suffix.lower()
+    if suffix == ".json":
         return read_json(path)
-    # Default to imilast for .txt or other extensions
-    return read_imilast(path)
+    if suffix in (".txt", ".dat"):
+        return read_imilast(path)
+    raise ValueError(f"Unsupported track file extension: '{suffix or '<none>'}'")
 
 
 def main(args: argparse.Namespace) -> None:
@@ -63,13 +68,17 @@ def main(args: argparse.Namespace) -> None:
     Loads a reference set and a comparison set of tracks, performs spatial and
     temporal matching, and optionally outputs the matched tracks or a mapping.
     """
-    print(f"Loading reference tracks from {args.ref}...")
+
+    def log(message: str) -> None:
+        print(message, file=sys.stderr if args.json else sys.stdout)
+
+    log(f"Loading reference tracks from {args.ref}...")
     tracks_ref = _load_tracks(args.ref)
 
-    print(f"Loading comparison tracks from {args.comp}...")
+    log(f"Loading comparison tracks from {args.comp}...")
     tracks_comp = _load_tracks(args.comp)
 
-    print(
+    log(
         f"Matching tracks (max_dist={args.max_dist} km, "
         f"min_overlap={args.min_overlap})..."
     )
@@ -80,16 +89,15 @@ def main(args: argparse.Namespace) -> None:
         min_overlap_fraction=args.min_overlap,
     )
 
-    print(f"Matched {len(matches)} out of {len(tracks_comp)} comparison tracks.")
+    log(f"Matched {len(matches)} out of {len(tracks_comp)} comparison tracks.")
 
     if args.json:
-        print("\nMatch Mapping (comp_id -> ref_id):")
         print(json.dumps(matches, indent=2))
 
     if args.output:
-        print(f"Filtering comparison tracks and saving to {args.output}...")
+        log(f"Filtering comparison tracks and saving to {args.output}...")
         # Create a new Tracks object containing only matched tracks
-        matched_tracks = Tracks()
+        matched_tracks = Tracks(track_type=tracks_comp.track_type)
         matched_ids = set(matches.keys())
 
         for track in tracks_comp:
@@ -97,4 +105,4 @@ def main(args: argparse.Namespace) -> None:
                 matched_tracks.append(track)
 
         write_json(matched_tracks, args.output)
-        print("Done!")
+        log("Done!")

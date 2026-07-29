@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..models.constants import DEGTORAD, R_EARTH_KM
+from ..models.geo import geod_dist_km
 
 
 @dataclass(slots=True)
@@ -24,22 +25,8 @@ class Center:
         return f"[time={self.time}, lat={self.lat}, lon={self.lon}, vars={self.vars}]"
 
     def abs_dist(self, center: Center) -> float:
-        """Haversine formula for calculating the great circle distance in km."""
-        dlat = center.lat - self.lat
-        dlon = center.lon - self.lon
-
-        return (
-            R_EARTH_KM
-            * 2
-            * math.asin(
-                math.sqrt(
-                    math.sin(dlat / 2 * DEGTORAD) ** 2
-                    + math.cos(self.lat * DEGTORAD)
-                    * math.cos(center.lat * DEGTORAD)
-                    * math.sin(dlon / 2 * DEGTORAD) ** 2
-                )
-            )
-        )
+        """Calculate clamped great-circle distance in kilometers."""
+        return float(geod_dist_km(self.lat, self.lon, center.lat, center.lon))
 
     def lat_dist(self, center: Center) -> float:
         """Calculates the latitudinal distance in km."""

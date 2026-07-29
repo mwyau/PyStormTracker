@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from numpy.typing import NDArray
 
 from pystormtracker.models.tracks import Tracks
-from pystormtracker.simple.linker import SimpleLinker
+from pystormtracker.simple.linker import SimpleLinker, great_circle_distance_matrix
 
 
 def test_simple_linker_init() -> None:
@@ -39,3 +40,27 @@ def test_simple_linker_append() -> None:
     assert tracks.time_range.end == t6
     assert tracks.time_range.step == np.timedelta64(6, "h")
     assert len(tracks[0]) == 2
+
+
+def test_great_circle_distance_crosses_dateline() -> None:
+    distances = great_circle_distance_matrix(
+        np.array([0.0]),
+        np.array([179.0]),
+        np.array([0.0]),
+        np.array([-179.0]),
+    )
+
+    assert distances.shape == (1, 1)
+    assert distances[0, 0] == pytest.approx(222.39, rel=1e-3)
+
+
+def test_great_circle_distance_clamps_identical_points() -> None:
+    distances = great_circle_distance_matrix(
+        np.array([90.0]),
+        np.array([0.0]),
+        np.array([90.0]),
+        np.array([180.0]),
+    )
+
+    assert np.isfinite(distances).all()
+    assert distances[0, 0] == pytest.approx(0.0, abs=1e-5)

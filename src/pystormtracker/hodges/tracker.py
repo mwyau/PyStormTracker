@@ -398,5 +398,3 @@ class HodgesTracker(Tracker):
             out.append(tr)
 
         return out
-
-        return out

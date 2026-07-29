@@ -128,6 +128,12 @@ def _filter_ducc0_frame(
     else:
         nlat, nlon = frame.shape
 
+    if nlat < lmax + 1:
+        raise ValueError(
+            f"Unsupported shape for spectral filter: {frame.shape} cannot "
+            f"represent lmax={lmax}."
+        )
+
     mmax = min(lmax, nlon // 2 - 1)
 
     try:

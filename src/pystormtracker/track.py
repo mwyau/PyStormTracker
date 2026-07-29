@@ -15,9 +15,72 @@ from .models import constants as model_constants
 from .models.tracks import Tracks
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
+from .utils.cli import (
+    nonnegative_float,
+    nonnegative_int,
+    positive_float,
+    positive_int,
+)
 
 Backend = Literal["serial", "mpi", "dask"]
 Algorithm = Literal["simple", "hodges"]
+
+
+def _parse_filter_range(value: str) -> tuple[int, int]:
+    """Parse an inclusive spectral wave-number range."""
+    try:
+        parts = [int(part) for part in value.split("-")]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected MIN-MAX or MAX") from exc
+
+    if len(parts) == 1:
+        lmin, lmax = 0, parts[0]
+    elif len(parts) == 2:
+        lmin, lmax = parts
+    else:
+        raise argparse.ArgumentTypeError("expected MIN-MAX or MAX")
+    if lmin < 0 or lmax < lmin:
+        raise argparse.ArgumentTypeError("wave numbers must satisfy 0 <= MIN <= MAX")
+    return lmin, lmax
+
+
+def _parse_extent(value: str) -> tuple[float, float, float, float]:
+    """Parse xmin,xmax,ymin,ymax and validate both axes."""
+    try:
+        parts = tuple(float(part) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected xmin,xmax,ymin,ymax") from exc
+    if len(parts) != 4:
+        raise argparse.ArgumentTypeError("expected xmin,xmax,ymin,ymax")
+    xmin, xmax, ymin, ymax = parts
+    if xmin >= xmax or ymin >= ymax:
+        raise argparse.ArgumentTypeError("extent minima must be less than maxima")
+    return xmin, xmax, ymin, ymax
+
+
+def _validate_zones(zones: np.ndarray) -> np.ndarray:
+    """Validate TRACK regional constraints as rows of five values."""
+    zones = np.atleast_2d(zones).astype(np.float64, copy=False)
+    if zones.shape[1] != 5:
+        raise ValueError(
+            "zones must contain rows of [lon_min, lon_max, lat_min, lat_max, dmax]"
+        )
+    if np.any(zones[:, 0] >= zones[:, 1]) or np.any(zones[:, 2] >= zones[:, 3]):
+        raise ValueError("zone minima must be less than zone maxima")
+    if np.any(zones[:, 4] <= 0.0):
+        raise ValueError("zone dmax values must be greater than zero")
+    return zones
+
+
+def _validate_adapt_params(params: np.ndarray) -> np.ndarray:
+    """Validate adaptive smoothness thresholds and values."""
+    if params.shape != (2, 4):
+        raise ValueError("adaptive parameters must have shape (2, 4)")
+    if np.any(np.diff(params[0]) < 0.0):
+        raise ValueError("adaptive distance thresholds must be nondecreasing")
+    if np.any(params[1] < 0.0):
+        raise ValueError("adaptive smoothness values must be nonnegative")
+    return params.astype(np.float64, copy=False)
 
 
 def is_mpi_env() -> bool:
@@ -227,9 +290,7 @@ def setup_parser(
     required.add_argument(
         "-v", "--var", required=True, help="Variable to track (e.g., 'vo', 'msl')."
     )
-    required.add_argument(
-        "-o", "--output", required=True, help="Output track file (.txt)."
-    )
+    required.add_argument("-o", "--output", required=True, help="Output track file.")
 
     # 2. General Tracking Options
     general = parser.add_argument_group("General Tracking Options")
@@ -262,14 +323,14 @@ def setup_parser(
     )
     general.add_argument(
         "--resolution",
-        type=float,
+        type=positive_float,
         default=100.0,
         help="Grid resolution in km for stereographic projections. Default 100.0.",
     )
     general.add_argument(
         "--extent",
-        type=str,
-        default="-13000,13000,-13000,13000",
+        type=_parse_extent,
+        default=(-13000.0, 13000.0, -13000.0, 13000.0),
         help="Bounding box in km (xmin,xmax,ymin,ymax) for stereographic projections.",
     )
     general.add_argument(
@@ -284,8 +345,8 @@ def setup_parser(
     filter_group = general.add_mutually_exclusive_group()
     filter_group.add_argument(
         "--filter-range",
-        type=str,
-        default=f"{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}",
+        type=_parse_filter_range,
+        default=None,
         help=(
             f"Spectral filter range (min-max). "
             f"Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'."
@@ -301,7 +362,7 @@ def setup_parser(
     # Default is determined in main() based on algorithm
 
     general.add_argument(
-        "-n", "--num", type=int, help="Number of time steps to process."
+        "-n", "--num", type=positive_int, help="Number of time steps to process."
     )
 
     # 3. Performance & Parallelism
@@ -316,20 +377,20 @@ def setup_parser(
     perf.add_argument(
         "-w",
         "--workers",
-        type=int,
+        type=positive_int,
         default=None,
         help="Number of workers. Auto-detected for MPI. Sets Dask if not MPI.",
     )
     perf.add_argument(
         "-c",
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=60,
         help="Steps per chunk for Dask/RSPLICE. Default 60.",
     )
     perf.add_argument(
         "--overlap",
-        type=int,
+        type=nonnegative_int,
         default=model_constants.OVERLAP_DEFAULT,
         help=(
             f"Overlap steps between chunks for splicing. "
@@ -348,49 +409,55 @@ def setup_parser(
     hodges = parser.add_argument_group("Hodges (TRACK) Algorithm Options")
     hodges.add_argument(
         "--min-points",
-        type=int,
+        type=positive_int,
         default=1,
         help="Min grid points per object (noise filter).",
     )
     hodges.add_argument(
         "--taper",
-        type=int,
+        type=nonnegative_int,
         default=constants.TAPER_DEFAULT,
         help="Number of points for boundary tapering. Default 0.",
     )
     hodges.add_argument(
-        "--w1", type=float, default=None, help="Cost weight for direction. Default 0.2."
+        "--w1",
+        type=nonnegative_float,
+        default=None,
+        help="Cost weight for direction. Default 0.2.",
     )
     hodges.add_argument(
-        "--w2", type=float, default=None, help="Cost weight for speed. Default 0.8."
+        "--w2",
+        type=nonnegative_float,
+        default=None,
+        help="Cost weight for speed. Default 0.8.",
     )
     hodges.add_argument(
         "--dmax",
-        type=float,
+        type=positive_float,
         default=None,
         help="Max search radius in degrees. Default 6.5.",
     )
     hodges.add_argument(
         "--phimax",
-        type=float,
+        type=nonnegative_float,
         default=None,
         help="Smoothness penalty (static). Default 0.5.",
     )
     hodges.add_argument(
         "--iterations",
-        type=int,
+        type=positive_int,
         default=None,
         help="Max MGE optimization passes. Default 3.",
     )
     hodges.add_argument(
         "--min-lifetime",
-        type=int,
+        type=positive_int,
         default=None,
         help="Min steps for a valid track. Default 3.",
     )
     hodges.add_argument(
         "--max-missing",
-        type=int,
+        type=nonnegative_int,
         default=None,
         help="Max consecutive missing frames. Default 0.",
     )
@@ -461,21 +528,12 @@ def run_track_command(args: Namespace) -> Tracks:
         end_time = times[num - 1]
 
     if args.filter is None:
-        args.filter = args.algorithm != "simple"
+        args.filter = args.filter_range is not None or args.algorithm != "simple"
 
-    lmin, lmax = constants.LMIN_DEFAULT, constants.LMAX_DEFAULT
-    if args.filter and args.filter_range:
-        try:
-            parts = args.filter_range.split("-")
-            if len(parts) == 2:
-                lmin, lmax = int(parts[0]), int(parts[1])
-            elif len(parts) == 1:
-                lmax = int(parts[0])
-        except ValueError:
-            print(
-                f"Warning: Could not parse filter-range '{args.filter_range}'. "
-                f"Using {constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}."
-            )
+    lmin, lmax = args.filter_range or (
+        constants.LMIN_DEFAULT,
+        constants.LMAX_DEFAULT,
+    )
 
     zones_arr = None
     if args.zone_file:
@@ -483,29 +541,30 @@ def run_track_command(args: Namespace) -> Tracks:
         with open(args.zone_file) as f:
             first_line = f.readline().split()
             has_header = len(first_line) == 1
-        zones_arr = np.loadtxt(args.zone_file, skiprows=1 if has_header else 0)
+        zones_arr = _validate_zones(
+            np.loadtxt(args.zone_file, skiprows=1 if has_header else 0)
+        )
     elif args.zones:
-        zones_arr = np.array(json.loads(args.zones), dtype=np.float64)
+        try:
+            zones_arr = _validate_zones(
+                np.array(json.loads(args.zones), dtype=np.float64)
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid zones JSON: {exc.msg}") from exc
 
     adapt_params_arr = None
     if args.adapt_file:
         # Standard adapt.dat in TRACK is 4 points with (thresh, value) per line (4x2)
         # We need it as 2x4 (row 0: thresholds, row 1: values)
         arr = np.loadtxt(args.adapt_file)
-        adapt_params_arr = arr.T if arr.shape == (4, 2) else arr
+        adapt_params_arr = _validate_adapt_params(arr.T if arr.shape == (4, 2) else arr)
     elif args.adapt_params:
-        adapt_params_arr = np.array(json.loads(args.adapt_params), dtype=np.float64)
-
-    extent_tuple: tuple[float, float, float, float] | None = None
-    if args.extent:
         try:
-            parts = list(map(float, args.extent.split(",")))
-            if len(parts) != 4:
-                raise ValueError
-            extent_tuple = (parts[0], parts[1], parts[2], parts[3])
-        except ValueError:
-            print(f"Warning: Could not parse extent '{args.extent}'. Using default.")
-            extent_tuple = None
+            adapt_params_arr = _validate_adapt_params(
+                np.array(json.loads(args.adapt_params), dtype=np.float64)
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid adaptive-parameters JSON: {exc.msg}") from exc
 
     return run_tracker(
         infile=args.input,
@@ -516,7 +575,7 @@ def run_track_command(args: Namespace) -> Tracks:
         mode=args.mode,
         map_proj=args.map_proj,
         resolution=args.resolution,
-        extent=extent_tuple,
+        extent=args.extent,
         backend=args.backend,
         n_workers=args.workers,
         max_chunk_size=args.chunk_size,

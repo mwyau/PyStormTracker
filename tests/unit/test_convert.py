@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from pystormtracker.convert import generate_html
+from pystormtracker.convert import generate_html, main
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
 
@@ -50,3 +51,16 @@ def test_generate_html_split(dummy_tracks: Tracks, tmp_path: Path) -> None:
     assert 'src="explorer.tracks.js"' in html_content
     assert "window.TRACKS_DATA =" in js_content
     assert '"lat":[50.0]' in js_content
+
+
+def test_split_requires_html_output() -> None:
+    args = argparse.Namespace(
+        input="unused.json",
+        output="unused.json",
+        in_format="json",
+        out_format="json",
+        type=None,
+        split=True,
+    )
+    with pytest.raises(ValueError, match="only valid with --out-format html"):
+        main(args)

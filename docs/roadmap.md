@@ -55,7 +55,7 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 *   **HodgesTracker Integration (Completed):** 
     *   Native Python/Numba implementation of the Modified Greedy Exchange (MGE) algorithm with algorithmic parity to TRACK-1.5.2.
 *   **Preprocessing (Completed):** 
-*   **HodgesTracker Refinement (Completed):** 
+*   **HodgesTracker Refinement (Completed):**
     *   Implemented resolution-scaled B-spline surface fitting using SciPy (Dierckx wrapper) to achieve bit-wise coordinate identity with original TRACK software.
 *   **Regional Model Support:**
     *   *Action:* Implement Discrete Cosine Transforms (DCT) via `ducc0` for spectral filtering on regional models (e.g., WRF).

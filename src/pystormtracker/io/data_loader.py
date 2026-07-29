@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import importlib
 import threading
+from importlib.util import find_spec
 from pathlib import Path
 from typing import ClassVar, cast
 
@@ -83,7 +83,7 @@ class DataLoader:
                         if is_remote:
                             pathname_str = str(self.pathname)
                             if pathname_str.endswith(".zarr"):
-                                if importlib.util.find_spec("zarr") is None:
+                                if find_spec("zarr") is None:
                                     raise ValueError(
                                         "zarr is required to open Zarr datasets. "
                                         "Please install it with: `uv pip install "
@@ -91,7 +91,7 @@ class DataLoader:
                                     ) from None
                                 engine = "zarr"
                             elif pathname_str.endswith((".grib", ".grib2", ".grb")):
-                                if importlib.util.find_spec("cfgrib") is None:
+                                if find_spec("cfgrib") is None:
                                     raise ValueError(
                                         "cfgrib is required to open GRIB files. "
                                         "Please install it with: `uv pip install "
@@ -107,7 +107,7 @@ class DataLoader:
                             local_path = Path(self.pathname)
                             ext = local_path.suffix.lower()
                             if ext in [".grib", ".grib2", ".grb"]:
-                                if importlib.util.find_spec("cfgrib") is None:
+                                if find_spec("cfgrib") is None:
                                     raise ValueError(
                                         "cfgrib is required to open GRIB files. "
                                         "Please install it with: `uv pip install "
@@ -118,7 +118,7 @@ class DataLoader:
                                 local_path.is_dir()
                                 and (local_path / ".zmetadata").exists()
                             ):
-                                if importlib.util.find_spec("zarr") is None:
+                                if find_spec("zarr") is None:
                                     raise ValueError(
                                         "zarr is required to open Zarr datasets. "
                                         "Please install it with: `uv pip install "

@@ -38,10 +38,10 @@ def main() -> None:
     args = parser.parse_args()
 
     # Dispatch to the specific command's main function
-    if hasattr(args, "func"):
+    try:
         args.func(args)
-    else:
-        parser.print_help()
+    except (ImportError, KeyError, OSError, RuntimeError, ValueError) as exc:
+        parser.exit(2, f"stormtracker: error: {exc}\n")
 
 
 if __name__ == "__main__":

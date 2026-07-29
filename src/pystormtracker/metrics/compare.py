@@ -28,6 +28,11 @@ def match_tracks(
     Returns:
         A dictionary mapping comparison track IDs to reference track IDs.
     """
+    if max_dist_km <= 0.0:
+        raise ValueError("max_dist_km must be greater than zero")
+    if not 0.0 <= min_overlap_fraction <= 1.0:
+        raise ValueError("min_overlap_fraction must be between zero and one")
+
     matches: dict[int, int] = {}
 
     # 1. Index reference tracks by time for faster initial lookup

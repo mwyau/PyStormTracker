@@ -174,11 +174,7 @@ import pystormtracker as pst
 tracker = pst.HodgesTracker()
 
 # 2. Run the tracking algorithm. Returns an array-backed Tracks object.
-tracks = tracker.track(
-    infile="data.nc", 
-    varname="vo", 
-    mode="max"
-)
+tracks = tracker.track(infile="data.nc", varname="vo", mode="max")
 ```
 
 ### Analyze the results programmatically

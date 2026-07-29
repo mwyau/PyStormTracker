@@ -76,11 +76,10 @@ def run_simple_dask(
 
     size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
     tasks = [
-        dask.delayed(_detect_and_link)(d, size, threshold, mode)  # type: ignore[attr-defined]
-        for d in detectors
+        dask.delayed(_detect_and_link)(d, size, threshold, mode) for d in detectors
     ]
 
-    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)  # type: ignore[attr-defined]
+    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
 
     # Flatten chunks into a single sequence of steps
     all_raw_steps: list[RawDetectionStep] = [

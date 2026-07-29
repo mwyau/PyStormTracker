@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 import xarray as xr
 
@@ -107,7 +108,7 @@ def test_is_lat_reversed_direct() -> None:
 
 
 @patch("xarray.open_dataset")
-@patch("importlib.util.find_spec")
+@patch("pystormtracker.io.data_loader.find_spec")
 def test_dataloader_grib_missing_dependency(
     mock_find_spec: MagicMock, mock_open: MagicMock
 ) -> None:
@@ -122,3 +123,15 @@ def test_dataloader_grib_missing_dependency(
     ):
         loader.ensure_open()
     mock_open.assert_not_called()
+
+
+def test_reduced_gaussian_metadata(reduced_gaussian_data: xr.DataArray) -> None:
+    loader = DataLoader(reduced_gaussian_data)
+
+    assert loader.is_reduced_gaussian("msl")
+    np.testing.assert_array_equal(
+        loader.get_reduced_grid_pl("msl"), [4, 8, 12, 16, 16, 12, 8, 4]
+    )
+    metadata = loader.get_grid_metadata("msl")
+    assert set(metadata) == {"theta", "nphi", "phi0", "ringstart"}
+    np.testing.assert_array_equal(metadata["ringstart"], [0, 4, 12, 24, 40, 56, 68, 76])

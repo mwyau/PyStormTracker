@@ -55,13 +55,9 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 @pytest.fixture(scope="module")
 def hodges_config(
-    request: pytest.FixtureRequest,
     steps: int | None,
 ) -> int | None:
-    """Skip full tests locally if not in CI."""
-    if steps is None:
-        pytest.skip("Full Hodges integration tests are temporarily disabled.")
-
+    """Return the requested Hodges integration-test length."""
     return steps
 
 

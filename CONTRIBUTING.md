@@ -39,9 +39,10 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
 
 - **Code Style**: We use `ruff` for linting and formatting.
 - **Type Safety**: All new code should be type-hinted and pass `mypy` strict checks.
-- **Testing**: We use `pytest`. 
+- **Testing**: We use `pytest`.
   - **Unit Tests**: Coverage for individual functions and classes. Fast.
   - **Integration Tests**: Coverage for the full CLI pipeline against real data. Use `uv run pytest --run-integration`.
+  - **Slow Regressions**: Full historical comparisons. Use `uv run pytest --run-integration --run-slow`.
 - **Documentation**: Update the documentation in `docs/` if you introduce new features or change existing behavior.
 
 ## Governance

@@ -112,7 +112,22 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         if metafunc.function.__name__ == "test_legacy_regression":
             raw_params = [p for p in raw_params if p[2] is None]
 
-        params = [pytest.param((p[0], p[1], p[2]), id=p[3]) for p in raw_params]
+        params = []
+        for varname, mode, steps, test_id in raw_params:
+            marks = []
+            if (
+                metafunc.function.__name__ == "test_legacy_regression"
+                and varname == "vo"
+            ):
+                marks.append(
+                    pytest.mark.skip(
+                        reason=(
+                            "Legacy VO baseline uses a 1e-4 extrema-prominence "
+                            "threshold whose scientific validity is unresolved."
+                        )
+                    )
+                )
+            params.append(pytest.param((varname, mode, steps), id=test_id, marks=marks))
 
         metafunc.parametrize("config_params", params, scope="module")
 
@@ -133,9 +148,6 @@ def config(
 
     if steps is None and not (is_ci or run_all):
         pytest.skip("Full integration tests only run in CI or with --run-all")
-
-    if varname == "vo" and steps is None:
-        pytest.skip("vo_max_full integration tests are temporarily disabled.")
 
     return data_path, varname, mode, steps
 
@@ -298,6 +310,7 @@ def test_grib_vs_netcdf(
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_legacy_regression(
     serial_reference: tuple[Path, Tracks], config: tuple[str, str, str, int | None]
 ) -> None:
@@ -308,7 +321,6 @@ def test_legacy_regression(
         ref_file = get_legacy_track_path("msl")
         max_dist, min_overlap, min_match_rate = 220.0, 0.8, 0.95
     elif varname == "vo":
-        pytest.skip("Legacy VO regression tests are temporarily disabled.")
         ref_file = get_legacy_track_path("vo")
         max_dist, min_overlap, min_match_rate = 220.0, 0.8, 0.90
     else:

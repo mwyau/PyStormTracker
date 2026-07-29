@@ -43,7 +43,7 @@ Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
 [project.optional-dependencies]
 metrics = [
-    "xeofs>=2.0.0",
+    "xeofs[etc]>=2.0.0",
 ]
 mpi = [
     "mpi4py>=4.1.0",
@@ -61,7 +61,7 @@ zarr = [
     "fsspec[http]>=2024.9.0",
 ]
 all = [
-    "PyStormTracker[grib,mpi,netcdf4,zarr,docs]",
+    "PyStormTracker[grib,metrics,mpi,netcdf4,zarr,docs]",
 ]
 docs = [
     "myst-parser>=5.0.0",
@@ -127,8 +127,9 @@ exclude = ["worktrees", ".venv", "notebooks", "benchmark", "docs"]
 mypy_path = "src:tests"
 
 [[tool.mypy.overrides]]
-module = ["ducc0", "dask.*", "numba.*", "scipy.*", "xeofs.*"]
+module = ["ducc0", "dask.*", "numba.*", "scipy.*", "xeofs.*", "zarr.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 minversion = "8.0"

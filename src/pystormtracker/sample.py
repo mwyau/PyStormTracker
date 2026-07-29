@@ -9,6 +9,7 @@ import xarray as xr
 from .io.json import read_json, write_json
 from .models.geo import geod_dist_km
 from .models.tracks import Tracks
+from .utils.cli import nonnegative_float
 
 SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
 
@@ -36,6 +37,10 @@ def sample_tracks(
     Returns:
         The updated Tracks object.
     """
+    if method not in ("nearest", "bilinear", "mean", "max", "min"):
+        raise ValueError(f"Unsupported sampling method: {method}")
+    if radius_km < 0.0:
+        raise ValueError("Sampling radius must be nonnegative.")
     if varname not in ds:
         raise ValueError(f"Variable '{varname}' not found in dataset.")
 
@@ -106,10 +111,12 @@ def sample_tracks(
 
                 # Conservative bounding box in degrees
                 lat_buffer = (radius_km / 111.0) * 1.5
+                cos_lat = abs(float(np.cos(np.radians(center.lat))))
                 lon_buffer = (
-                    radius_km / (111.0 * np.cos(np.radians(center.lat)))
-                ) * 1.5
-                lon_buffer = min(lon_buffer, 180.0)
+                    180.0
+                    if cos_lat < 1e-12
+                    else min((radius_km / (111.0 * cos_lat)) * 1.5, 180.0)
+                )
 
                 lat_min, lat_max = center.lat - lat_buffer, center.lat + lat_buffer
                 lon_min, lon_max = center.lon - lon_buffer, center.lon + lon_buffer
@@ -188,7 +195,7 @@ def setup_parser(
     parser.add_argument(
         "-r",
         "--radius",
-        type=float,
+        type=nonnegative_float,
         default=0.0,
         help="Radius in km for spatial methods (mean, max, min).",
     )
@@ -211,6 +218,9 @@ def main(args: argparse.Namespace) -> None:
     Samples a variable from a NetCDF dataset at track coordinates using
     interpolation or spatial aggregation (mean/max/min within a radius).
     """
+    if args.method in ("mean", "max", "min") and args.radius <= 0.0:
+        raise ValueError(f"sampling method '{args.method}' requires a positive radius")
+
     print(f"Reading tracks from {args.input}...")
     tracks = read_json(args.input)
 

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import argparse
+
 import numpy as np
 import pytest
 import xarray as xr
 
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
-from pystormtracker.sample import sample_tracks
+from pystormtracker.sample import main, sample_tracks
 
 
 @pytest.fixture
@@ -113,3 +115,30 @@ def test_sample_output_name(dummy_tracks: Tracks, dummy_dataset: xr.Dataset) -> 
     )
     assert "new_name" in tracks[0][0].vars
     assert tracks[0][0].vars["new_name"] == -8.0
+
+
+def test_sample_rejects_negative_radius(
+    dummy_tracks: Tracks, dummy_dataset: xr.Dataset
+) -> None:
+    with pytest.raises(ValueError, match="radius must be nonnegative"):
+        sample_tracks(
+            dummy_tracks,
+            dummy_dataset,
+            "test_var",
+            radius_km=-1.0,
+        )
+
+
+def test_spatial_aggregation_requires_positive_radius() -> None:
+    args = argparse.Namespace(
+        input="unused.json",
+        data="unused.nc",
+        var="msl",
+        output="unused.json",
+        method="mean",
+        radius=0.0,
+        name=None,
+        engine=None,
+    )
+    with pytest.raises(ValueError, match="requires a positive radius"):
+        main(args)

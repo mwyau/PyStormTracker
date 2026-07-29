@@ -125,6 +125,9 @@ def main(args: argparse.Namespace) -> None:
     Supports conversion between IMILAST and JSON formats, and generation of
     interactive HTML explorers.
     """
+    if args.split and args.out_format != "html":
+        raise ValueError("--split is only valid with --out-format html")
+
     print(f"Reading {args.input} (format: {args.in_format})...")
 
     tracks = Tracks()

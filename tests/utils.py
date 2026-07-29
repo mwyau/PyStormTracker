@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pooch  # type: ignore[import-untyped]
@@ -172,3 +173,11 @@ def get_legacy_track_path(var: str = "msl") -> Path:
     if var == "vo":
         return TRACKS_TEST_DIR / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
     raise ValueError(f"Unknown legacy variable: {var}")
+
+
+def get_reduced_gaussian_path() -> Path | None:
+    """Return the optional real N320 fixture configured by the environment."""
+    configured = os.environ.get("PYSTORMTRACKER_N320_DATA")
+    if not configured:
+        return None
+    return Path(configured).expanduser().resolve()
