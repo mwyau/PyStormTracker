@@ -95,15 +95,15 @@ jobs:
         if: ${{ matrix.min-deps }}
         run: uv sync --group dev --resolution lowest-direct
       - name: Run Unit Tests
-        if: matrix.python-version != '3.13' || matrix.min-deps
+        if: matrix.python-version != '3.14' || matrix.min-deps
         run: uv run pytest -vv
 
       - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.13' && !matrix.min-deps
+        if: matrix.python-version == '3.14' && !matrix.min-deps
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.13' && !matrix.min-deps
+        if: matrix.python-version == '3.14' && !matrix.min-deps
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
@@ -119,22 +119,22 @@ jobs:
         include:
           - arch: amd64
             os: ubuntu-26.04
-            python-version: '3.13'
+            python-version: '3.14'
           - arch: arm64
             os: ubuntu-26.04-arm
-            python-version: '3.13'
+            python-version: '3.14'
           - arch: amd64
             os: ubuntu-24.04
-            python-version: '3.13'
+            python-version: '3.14'
           - arch: arm64
             os: ubuntu-24.04-arm
-            python-version: '3.13'
+            python-version: '3.14'
           - arch: amd64
             os: windows-2025
-            python-version: '3.13'
+            python-version: '3.14'
           - arch: arm64
             os: macos-26
-            python-version: '3.13'
+            python-version: '3.14'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -181,7 +181,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: '3.13'
+          python-version: '3.14'
       - name: Build documentation
         run: uv run --extra docs --no-dev sphinx-build -b html docs docs/_build/html
 
