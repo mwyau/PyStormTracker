@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from ..models.geo import DEGTORAD, geod_dist
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _numba_get_centers(
     extrema: NDArray[np.float64],
     frame: NDArray[np.float64],
@@ -31,7 +31,7 @@ def _numba_get_centers(
     return r_idx, c_idx, vals
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def subgrid_refine(
     frame: NDArray[np.float64],
     r: int,
@@ -118,7 +118,7 @@ def subgrid_refine(
     return ref_lat, ref_lon, ref_val
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def geod_dev(
     p0_lat: float,
     p0_lon: float,
@@ -188,7 +188,7 @@ def geod_dev(
     return float(max(0.0, phi))
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def get_regional_dmax(
     lat: float, lon: float, zones: NDArray[np.float64], default_dmax: float
 ) -> float:
@@ -226,7 +226,7 @@ def get_regional_dmax(
     return default_dmax
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def get_adaptive_phimax(
     mean_dist: float,
     adapt_params: NDArray[np.float64],
@@ -278,7 +278,7 @@ def get_adaptive_phimax(
     return default_phimax
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _get_cost(
     tracks: NDArray[np.int64],
     k: int,
@@ -325,7 +325,7 @@ def _get_cost(
     return float(geod_dev(lat0, lon0, lat1, lon1, lat2, lon2, w1, w2))
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _check_max_missing(track: NDArray[np.int64], max_missing: int) -> bool:
     """
     Checks if a track exceeds the maximum allowed consecutive missing frames.
@@ -363,7 +363,7 @@ def _check_max_missing(track: NDArray[np.int64], max_missing: int) -> bool:
     return True
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _mge_iteration(
     tracks: NDArray[np.int64],
     features_lat: NDArray[np.float64],
@@ -527,7 +527,7 @@ def _mge_iteration(
     return best_i, best_j
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _initial_break_pass(
     tracks: NDArray[np.int64],
     features_lat: NDArray[np.float64],
@@ -610,7 +610,7 @@ def _initial_break_pass(
     return out
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _break_track(
     tracks: NDArray[np.int64],
     track_idx: int,
@@ -682,7 +682,7 @@ def _break_track(
     return tracks
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _numba_ccl(
     binary_mask: NDArray[np.float64],
 ) -> tuple[NDArray[np.int32], int]:
@@ -766,7 +766,7 @@ def _numba_ccl(
     return labels, num_objects
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _numba_object_extrema(
     frame: NDArray[np.float64],
     labeled_mask: NDArray[np.int32],
