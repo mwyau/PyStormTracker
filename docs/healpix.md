@@ -44,20 +44,24 @@ Optional `subgrid_refine_healpix` applies these steps:
 
 ## 5. Usage Example
 ```python
+import xarray as xr
+
 from pystormtracker import HealpixTracker, SpectralRegridder
 
 # Regrid one ERA5 frame (CC) to HEALPix (Nside=64)
+ds = xr.open_dataset("data.nc")
+field = ds["msl"]
+frame = field.isel({field.dims[0]: 0})
 regridder = SpectralRegridder(lmax=42)
-da_hp = regridder.to_healpix(ds["msl"].isel(time=0), nside=64)
+da_hp = regridder.to_healpix(frame, nside=64)
 
-# Track an existing time-by-cell HEALPix field
+# Track the first eight time steps after automatic HEALPix conversion
 tracker = HealpixTracker()
 tracks = tracker.track(
-    infile="hp_data.nc",
+    infile=field.isel({field.dims[0]: slice(0, 8)}),
     varname="msl",
     mode="min",
-    threshold=1000.0,
 )
 ```
 
-Passing a regular three-dimensional latitude-longitude field to `HealpixTracker.track()` triggers T5-42 filtering and HEALPix conversion by default. For an already regridded time-by-cell field, preprocessing must be performed before tracking.
+The first part demonstrates one-frame regridding; the second passes a regular three-dimensional latitude-longitude field to `HealpixTracker.track()`, which triggers T5-42 filtering and HEALPix conversion by default. For an already regridded time-by-cell field, preprocessing must be performed before tracking.

@@ -13,15 +13,16 @@ This document tracks work derived from TRACK and related analysis workflows. Com
   - **Progress**: `RectSphereBivariateSpline` is fit once per global frame and its value is stored at the quadratic center. Direct optimization of the B-spline center and TRACK smoothing behavior remain to be implemented and validated.
   - **Verification**: To be verified against TRACK after center optimization is implemented.
 
-- [x] **Regional Model Support (DCT)**
+- [ ] **Regional Model Support (DCT)** — Partial
   - **Description**: Support for tracking on regional models (e.g., WRF) utilizing Discrete Cosine Transforms (DCT) for spectral filtering and domain transformations.
   - **TRACK References**: `src/track.c`, `src/statspl.F`
-  - **Relevant Papers**: MWRE 2002 (DCT implementation)
+  - **Relevant Paper**: **Denis, B., J. Côté, and R. Laprise**, 2002: Spectral Decomposition of Two-Dimensional Atmospheric Fields on Limited-Area Domains Using the Discrete Cosine Transform (DCT). *Mon. Wea. Rev.*, **130**, 1812–1829, [doi:10.1175/1520-0493(2002)130<1812:SDOTDA>2.0.CO;2](https://doi.org/10.1175/1520-0493%282002%29130%3C1812%3ASDOTDA%3E2.0.CO%3B2).
   - **Progress**: `DCTFilter` uses the `ducc0.fft.dct` type-II/type-III transform pair with a radial wave-number band and an $l(l+1)$ exponential coefficient taper. `TaperFilter` provides the separate spatial boundary taper. Automatic grid selection distinguishes periodic global longitude from regional longitude.
   - **Verification**: Verified for execution and global/regional selection by repository tests. Numerical comparison with a regional reference filter remains to be verified.
 
 - [x] **Spectral Tapering**
-  - **Description**: Apply a wave-number taper to spherical harmonic coefficients to reduce spectral ringing and sidelobes (Gibbs phenomenon) during filtering (Hoskins and Sardeshmukh 1984).
+  - **Description**: Apply a wave-number taper to spherical harmonic coefficients to reduce spectral ringing and sidelobes (Gibbs phenomenon) during filtering.
+  - **Relevant Paper**: **Sardeshmukh, P. D., and B. I. Hoskins**, 1984: Spatial Smoothing on the Sphere. *Mon. Wea. Rev.*, **112**, 2524–2529, [doi:10.1175/1520-0493(1984)112<2524:SSOTS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281984%29112%3C2524%3ASSOTS%3E2.0.CO%3B2).
   - **TRACK References**: `src/time_avg.c`, `src/spec_filt.c`
   - **Progress**: Harmonic coefficients use a configurable high-wave-number taper. `TaperFilter` provides a separate spatial boundary taper.
   - **Verification**: Verified for execution in spectral and tracker tests. Coefficient-level taper behavior remains to be verified against a reference calculation.
@@ -33,28 +34,30 @@ This document tracks work derived from TRACK and related analysis workflows. Com
 
 - [x] **Postprocessing (Track Metrics)**
   - **Description**: Implement track metrics including cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA) on a 2D spatial grid (Yau and Chang 2020).
-  - **Relevant Papers**: Yau and Chang (2020) "Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts."
+  - **Relevant Paper**: **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
   - **Verification**: Verified by Lagrangian metric unit tests.
 
 - [x] **Eulerian Metrics & Weather Impacts**
   - **Description**: Compute Eulerian variance metrics (e.g., 24-h difference filter for EKE850, Var(SLP)) and weather impact indices (e.g., 95th percentile 10-m wind speed) to evaluate against Lagrangian statistics.
-  - **Relevant Papers**: Yau and Chang (2020).
+  - **Relevant Paper**: [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1), cited under Postprocessing (Track Metrics).
   - **Progress**: Implemented in `metrics/eulerian.py`.
   - **Verification**: Verified by Eulerian metric unit tests.
 
 - [x] **CORMAX Evaluation Framework**
   - **Description**: Add the Maximum one-point correlation (CORMAX) framework to find the highest correlation between weather impacts and storm track metrics within a localized spatial region (e.g., 60°x20° box).
-  - **Relevant Papers**: Yau and Chang (2020).
+  - **Relevant Paper**: [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1), cited under Postprocessing (Track Metrics).
   - **Progress**: Implemented in `metrics/cross_validation.py`.
   - **Verification**: Verified by cross-validation and missing-data unit tests.
 
 - [x] **Spherical Kernel Gridding**
   - **Description**: Spherical kernel estimators for gridded track frequency and density.
   - **Progress**: Numba kernels support constant, Fisher, and Cressman weighting.
+  - **Relevant Paper**: **Hodges, K. I.**, 1999: Extension of Spherical Nonparametric Estimators to Nonisotropic Kernels: An Oceanographic Application. *Mon. Wea. Rev.*, **127**, 214–227, [doi:10.1175/1520-0493(1999)127<0214:EOSNET>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C0214%3AEOSNET%3E2.0.CO%3B2).
   - **Verification**: Verified by weighting and gridded Lagrangian metric unit tests.
 
 - [ ] **Statistical Distributions and Confidence Intervals**
   - **Description**: Add distribution and confidence-interval analysis for track and gridded metrics. This is separate from spherical kernel gridding.
+  - **Relevant Paper**: **Hodges, K. I.**, 2008: Confidence Intervals and Significance Tests for Spherical Data Derived from Feature Tracking. *Mon. Wea. Rev.*, **136**, 1758–1777, [doi:10.1175/2007MWR2299.1](https://doi.org/10.1175/2007MWR2299.1).
   - **Verification**: To be verified after methods and reference cases are defined and implemented.
 
 - [x] **Object Size Calculation (Reverse Flood Fill)**
@@ -87,7 +90,7 @@ This document tracks work derived from TRACK and related analysis workflows. Com
 
 - [ ] **Tropical Cyclone (TC) Specialization**
   - **Description**: Documented configurations and filtering (e.g., T63) for tracking tropical cyclones.
-  - **Relevant Papers**: Hodges et al. (2017) "How well are Tropical Cyclones represented in reanalysis data sets?"
+  - **Relevant Paper**: **Hodges, K., A. Cobb, and P. L. Vidale**, 2017: How Well Are Tropical Cyclones Represented in Reanalysis Datasets? *J. Climate*, **30**, 5243–5264, [doi:10.1175/JCLI-D-16-0557.1](https://doi.org/10.1175/JCLI-D-16-0557.1).
   - **Verification**: To be verified against a documented TC reference workflow after implementation.
 
 - [ ] **Gaussian Grid Support** — Partial
@@ -102,5 +105,5 @@ This document tracks work derived from TRACK and related analysis workflows. Com
 
 - [ ] **4D Feature-Tracking (STACKER)**
   - **Description**: Implementation of multi-dimensional tracking for cyclone systems.
-  - **Relevant Papers**: Lakkis et al. (2019) "A 4D feature-tracking algorithm."
+  - **Relevant Paper**: **Lakkis, S. G., P. Canziani, A. Yuchechen, L. Rocamora, A. Caferri, K. Hodges, and A. O'Neill**, 2019: A 4D Feature-Tracking Algorithm: A Multidimensional View of Cyclone Systems. *Quart. J. Roy. Meteor. Soc.*, **145**, 395–417, [doi:10.1002/qj.3436](https://doi.org/10.1002/qj.3436).
   - **Verification**: To be verified after implementation.

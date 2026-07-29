@@ -56,11 +56,11 @@ This document records completed, partial, and planned engineering work. `TODO.md
 *   **HodgesTracker Integration (Partial):**
     *   MGE, adaptive constraints, object detection, and properties are implemented in Python/Numba. Direct end-to-end comparison with TRACK-1.5.2 remains.
 *   **Preprocessing (Partial):**
-    *   Spherical harmonic transform (SHT), discrete cosine transform (DCT), Hoskins spatial tapering, polar stereographic, HEALPix, full-Gaussian, and reduced-Gaussian paths are implemented. Real-N320 end-to-end validation remains optional and has not yet been completed.
+    *   Spherical harmonic transform (SHT), discrete cosine transform (DCT), Sardeshmukh-Hoskins spectral tapering, polar stereographic, HEALPix, full-Gaussian, and reduced-Gaussian paths are implemented. Real-N320 end-to-end validation remains optional and has not yet been completed.
 *   **HodgesTracker Refinement (Partial):**
     *   Quadratic centers and spherical-spline values are implemented. Direct B-spline center optimization and TRACK coordinate comparison remain.
-*   **Regional Model Support (Completed):**
-    *   DCT filtering and nonperiodic boundary behavior are implemented and tested.
+*   **Regional Model Support (Partial):**
+    *   DCT filtering and nonperiodic boundary behavior are implemented and tested for execution. Numerical comparison with the Denis et al. (2002) limited-area DCT method remains.
 *   **Spectral Tapering (Completed):**
     *   Harmonic coefficient tapering and a separate spatial boundary taper are implemented.
 *   **Spherical Kernel Gridding (Completed):**
