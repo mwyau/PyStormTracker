@@ -4,45 +4,44 @@
   <img src="_static/era5_msl_nh.png" width="600" alt="Hodges Tracking Example">
 </p>
 
-This document details the architecture, mathematical implementation, and design rationale for the Hodges tracking algorithm in `PyStormTracker`. The primary goal is **algorithmic parity** with the TRACK software (Hodges 1994, 1995, 1999) while updating the interface and performance.
+This document describes the Hodges tracker and its relationship to TRACK (Hodges 1994, 1995, 1999). TRACK parity is a design target. The sections below distinguish implemented behavior from reference validation that remains.
 
 ---
 
 ## 1. Feature Identification Design
 
 ### 1.1 Preprocessing (Spectral Filtering & Derivatives)
-**Design Choice**: Integrated native spherical harmonic filtering (e.g., T42 truncation) and high-precision derivative calculation using the `ducc0` backend.
+**Implementation**: Spherical harmonic filtering and wind-derived vorticity/divergence use `ducc0`.
 - **References**: `spec_filt.c`, `uv2vr.c`.
 - **Accuracy**: See [Spectral Filtering Accuracy](spectral_accuracy.md) for detailed RMSE/Correlation metrics against NCL.
 
 **Reasoning**: 
-Original TRACK workflows typically require offline spectral filtering to remove the planetary background and high-frequency noise. `PyStormTracker` incorporates this directly into its preprocessing module for on-the-fly execution. By default, the Hodges algorithm applies a T5-42 band-pass filter unless `--no-filter` is specified. The system also supports high-precision **Relative Vorticity** and **Divergence** calculation from wind components using spin-1 vector harmonics, ensuring bit-wise parity with NCL/Spherepack when using the `ducc0` backend.
+Original TRACK workflows commonly filter fields before tracking. PyStormTracker applies a T5-42 filter by default for Hodges tracking unless `--no-filter` is specified. The Python kinematics API computes relative vorticity and divergence from wind with spin-1 vector harmonics. Reference-data errors are reported in [Spectral Filtering Accuracy](spectral_accuracy.md).
 
 ### 1.2 Object-Based Detection
-**Design Choice**: Feature detection is implemented as a multi-stage pipeline: `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.
+**Implementation**: Feature detection uses `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.
 - **References**: *Hodges 1994*, Section 2; `threshold.c` and `object_local_maxs.c`.
 
 **Reasoning**: 
-Original TRACK identifies "objects" (contiguous clusters of grid points exceeding a threshold) and then searches for extrema *only* within those objects. This prevents tracking isolated grid points that may represent noise.
-- **Refinement**: The `min_points` parameter allows discarding small, insignificant features before identifying local extrema. (Ref: `object_filter.c`).
+Original TRACK identifies objects as contiguous clusters of grid points that pass a threshold and searches for extrema within those objects, rather than treating every isolated threshold exceedance as a feature. The `min_points` parameter removes objects below a specified grid-point count before extrema extraction. (Ref: `object_filter.c`).
 
 ### 1.3 Connected Component Labeling (CCL)
-**Design Choice**: Implemented `_numba_ccl` using **iterative label propagation** rather than TRACK's quad-tree approach.
+**Implementation**: `_numba_ccl` uses iterative label propagation rather than TRACK's quad-tree approach.
 - **References**: *Hodges 1994*, Section 3; `hierarc_segment.c`, `form_objects.c`.
 
-**Parity Status**: **Identical**. Both methods produce identical object masks. The Numba version is more efficient on flat-memory architectures and avoids the pointer-based recursion of the original C code.
+**Validation Status**: Unit tests cover periodic and nonperiodic connectivity. Direct mask comparison with TRACK remains to be verified.
 
 ### 1.4 Sub-grid Refinement (Peak Finding)
-**Design Choice**: Used both 2D local quadratic surface fitting and resolution-scaled B-spline interpolation for sub-grid precision.
+**Implementation**: Center coordinates come from a local 2D quadratic fit. For periodic global grids, `RectSphereBivariateSpline` is fit once per frame and evaluated at the quadratic center.
 - **References**: *Hodges 1995*, Section 3; `surfit.c`, `gdfp_optimize.c`, `spline_smooth.c`.
 
-**Parity Status**: **Full Parity**. PyStormTracker implements a local B-spline fit using SciPy (which wraps the same Dierckx FITPACK Fortran code used by TRACK). The search window for the B-spline scales dynamically with grid resolution to ensure consistent physical precision across datasets (e.g., 0.25° ERA5 vs 2.5° CMIP). Both the quadratic and B-spline intensity values are stored.
+**Validation Status**: Quadratic refinement has unit coverage for geographic and projected grids. Direct optimization of the spherical B-spline center and comparison with TRACK remain to be implemented. Raw, quadratic, and spherical-spline values are stored when available.
 
 ### 1.5 Object Properties & Size
-**Design Choice**: Extracted physical morphological properties for each thresholded object during the detection phase.
+**Implementation**: Object properties are calculated during detection.
 - **References**: `boundary_find.c`, `shape_setup.c`.
 
-**Parity Status**: **Identical + Extended**. The `raw_size_km2` implements TRACK's `ofill` logic (summing discrete grid cell areas). We extend this by calculating intensity-weighted spatial moments to fit an equivalent ellipse, providing `major_axis_km`, `minor_axis_km`, and `orientation_deg`.
+`raw_size_km2` uses reverse flood-fill object membership corresponding to TRACK's `ofill` logic and sums the member grid-cell areas. Intensity-weighted second spatial moments define an equivalent ellipse with `major_axis_km`, `minor_axis_km`, and `orientation_deg`. Tests cover global longitude seams and projected kilometre coordinates; direct property comparison with TRACK remains.
 
 ---
 
@@ -57,17 +56,17 @@ $$\psi = 0.5 w_1 [1 - \mathbf{\hat{T}}_1 \cdot \mathbf{\hat{T}}_2] + w_2 \left[ 
 The $0.5$ factor applied to the directional weight $w_1$ normalizes the term (range 0 to 2) to [0, 1], ensuring that if $w_1 + w_2 = 1$, the total cost $\psi$ is also bounded by 1.0.
 
 ### 2.2 Modified Greedy Exchange (MGE Optimization)
-**Design Choice**: Implemented alternating forward/backward passes with **one best swap per frame**.
+**Implementation**: Linking uses alternating forward and backward passes with one selected swap per frame.
 - **References**: *Hodges 1999*, Appendix; `fel_mge.c`, `mge_tracks.c`, `initialize_mge.c`.
 
-**Parity Status**: **Identical**. This implementation fully replicates the recursive "one best swap per frame" logic. Convergence is guaranteed to match the original algorithm's local minimum.
+**Validation Status**: Unit tests cover linking, constraints, breaking, and missing points. End-to-end numerical comparison with TRACK remains to be verified.
 
 ### 2.3 Physical Constraints & Track Breaking
-**Design Choice**: Integrated displacement checks directly into the MGE passes.
+**Implementation**: Displacement checks run during MGE passes.
 - **References**: *Hodges 1999*, Appendix; `track_fail.c`, `ub_disp.c`.
 
 **Reasoning**: 
-Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an exchange causes a point to exceed the maximum displacement ($d_{max}$). This implementation checks this after each swap, ensuring optimization never creates impossible physical links.
+Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an exchange causes a point to exceed the maximum displacement ($d_{max}$). This implementation checks displacement after each swap and breaks links that exceed the configured constraint.
 
 ---
 
@@ -96,24 +95,24 @@ Hodges detection can be divided into time chunks, but the raw detections are gat
 Tracks are managed as a **2D integer matrix** (`n_tracks` x `n_frames`), where each cell stores the index of a feature or a **phantom point** (`-1`). This ensures the MGE matrix remains rectangular and allows trajectories to persist through missing frames up to the `max_missing` limit. (Ref: `mge_tracks.c`).
 
 ### 4.3 Computational Efficiency
-- **Numba JIT**: All heavy mathematical loops (MGE, CCL, Geodesic math) are implemented as GIL-free, cache-enabled Numba kernels, matching or exceeding original C speeds.
-- **Xarray Native**: Replaces legacy binary/ASCII I/O with coordinate-aware NetCDF/GRIB handling, facilitating integration with ERA5 and CMIP6.
+- **Numba JIT**: MGE, CCL, object-property, subgrid-refinement, and great-circle kernels are cache-enabled and compiled with `nogil=True`.
+- **Coordinate-aware Xarray input**: `DataLoader` provides NetCDF, GRIB, and Zarr input and identifies geographic, projected, Gaussian, reduced-Gaussian, and HEALPix coordinates.
 - **Execution**: A standard argparse-based CLI replaces interactive prompts. Hodges tracking currently uses the serial backend; unsupported parallel selections fail explicitly.
 
 ---
 
 ## 5. Summary of Technical Differences
 
-While `PyStormTracker` achieves parity in core tracking logic, the following table summarizes the technical implementation differences compared to the original TRACK C source:
+The following table records known implementation differences from TRACK:
 
 | Component | TRACK (C Source) | PyStormTracker (Python/Numba) | Parity Impact |
 | :--- | :--- | :--- | :--- |
-| **Peak Finding** | Global B-spline + CG optimizer. | 2D local quadratic surface fit. | Minor (sub-grid precision). |
-| **Segmentation** | Quad-tree data structure. | Iterative label propagation. | None (identical masks). |
-| **Orchestration** | External shell-scripted utilities. | Serial chunked detection followed by one linking pass. | None (chunk-boundary independent). |
-| **Tracking Logic** | Modified Greedy Exchange (MGE). | MGE (identical implementation). | **Full Parity**. |
-| **Parallelism** | Domain/Time splitting (RSPLICE). | Hodges parallel backends not yet implemented. | None for serial execution. |
-| **I/O Handling** | Custom binary and ASCII formats. | Xarray (NetCDF, GRIB, Zarr). | Improved (CF-compliant). |
+| **Peak finding** | Global spherical B-spline surface plus conjugate-gradient optimizer. | Local quadratic stationary point; `RectSphereBivariateSpline` value evaluated at that point. | Center optimization differs and requires reference validation. |
+| **Segmentation** | Hierarchical quad-tree data structure. | Numba iterative label propagation on a grid-neighbor graph. | Method differs; reference masks remain to be compared. |
+| **Orchestration** | External shell utilities and RSPLICE. | Serial chunked detection followed by one linking pass. | Chunked and unchunked PyStormTracker results are tested equal. |
+| **Tracking logic** | Modified Greedy Exchange. | Python/Numba MGE implementation. | Component tests exist; TRACK output comparison remains. |
+| **Parallelism** | Domain/time splitting. | Hodges parallel backends not implemented. | Serial only. |
+| **I/O** | TRACK binary and ASCII formats. | Xarray input; IMILAST, tdump, and JSON track output. | Format behavior differs. |
 
 ---
 

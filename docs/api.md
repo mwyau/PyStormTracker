@@ -76,6 +76,34 @@ This page contains the automatically generated API documentation for PyStormTrac
    :members: match_tracks
 ```
 
+### Gridded Track Metrics
+
+```{eval-rst}
+.. automodule:: pystormtracker.metrics.tracks
+   :members: compute_track_metrics
+```
+
+### Eulerian Metrics
+
+```{eval-rst}
+.. automodule:: pystormtracker.metrics.eulerian
+   :members:
+```
+
+### Cross-validation
+
+```{eval-rst}
+.. automodule:: pystormtracker.metrics.cross_validation
+   :members:
+```
+
+## Input
+
+```{eval-rst}
+.. automodule:: pystormtracker.io.data_loader
+   :members: DataLoader
+```
+
 ## Preprocessing
 
 ### Kinematics
@@ -96,5 +124,12 @@ This page contains the automatically generated API documentation for PyStormTrac
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.regrid
+   :members:
+```
+
+### Spatial Taper
+
+```{eval-rst}
+.. automodule:: pystormtracker.preprocessing.taper
    :members:
 ```

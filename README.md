@@ -17,39 +17,36 @@
   <b><a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html">Storm Track Explorer (Interactive Map)</a></b>
 </p>
 
-**PyStormTracker** is a Python package for cyclone trajectory analysis. It implements the "Simple Tracker" algorithm described in **Yau and Chang (2020)** and the "Hodges (TRACK)" algorithm with adaptive constraints described in **Hodges (1999)**. It provides a scalable framework for processing large-scale climate datasets like ERA5.
-
-Initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program, PyStormTracker leverages task-parallel strategies and tree reduction algorithms to efficiently process large-scale climate datasets.
+**PyStormTracker** is a Python package for cyclone detection, trajectory construction, and track-based analysis of meteorological and climate datasets. It provides the Simple Tracker described by Yau and Chang (2020) and a Python/Numba implementation based on the TRACK methods described by Hodges (1994, 1995, 1999). It was initially developed at the **National Center for Atmospheric Research (NCAR)** as part of the **2015 SIParCS** program.
 
 ## Features
 
-- **Vectorized Architecture**: Uses an **Array-Backed** data model to eliminate Python object overhead and ensure zero-copy serialization during parallel execution. **Achieves up to 11.8x speedup in serial workloads.**
-- **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, executing with C-level efficiency while releasing the GIL for multi-process execution.
+- **Vectorized, array-backed data model**: Stores track coordinates, times, identifiers, and variables in contiguous NumPy arrays. `Track` objects are views over this storage rather than independent collections of center objects.
+- **Numba JIT-compiled kernels**: Detection, Laplacian intensity, great-circle geometry, connected-component labeling (CCL), subgrid refinement, and Modified Greedy Exchange (MGE) kernels use cached, GIL-free Numba functions.
 - **Multiple Algorithms**:
-  - **Simple (Default)**: Fast, heuristic linking optimized for higher resolutions.
-  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization. <a href="docs/spectral_accuracy.md">Accuracy Metrics</a>.
-- **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
+  - **Simple (default)**: Local-extrema detection followed by deterministic nearest-neighbor linking.
+  - **Hodges (TRACK)**: Object-based detection and Modified Greedy Exchange linking based on TRACK. See the [implementation notes](https://pystormtracker.readthedocs.io/en/latest/hodges.html).
+  - **HEALPix**: Object detection on a one-dimensional HEALPix neighbor graph.
+- **Coordinate-aware Xarray input**: `DataLoader` opens NetCDF, GRIB, and Zarr data, resolves common variable and coordinate aliases, and identifies regular latitude-longitude, full Gaussian, reduced-Gaussian, projected, and HEALPix grids.
 - **Execution Backends**:
-  - **Serial**: Standard sequential execution. Default fallback.
-  - **Dask**: Threaded detection for the Simple tracker. Selected if `--workers` is provided without MPI.
-  - **MPI**: Distributed detection for the Simple tracker via `mpi4py`. Selected automatically in MPI environments.
-  - **Hodges and HEALPix**: Currently support serial execution; unsupported backends fail explicitly.
-- **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
-- **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
+  - **Simple**: Serial, threaded Dask detection, and MPI detection. Parallel paths gather detections before one linking pass.
+  - **Hodges and HEALPix**: Serial only; unsupported backend selections raise an error.
+- **Formats and analysis**: Reads IMILAST and JSON track data; writes IMILAST, TRACK tdump, and JSON; supports sampling, matching, gridded track metrics, and cross-validation.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/docs/_static/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 Performance Improvements">
+  <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/docs/_static/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 benchmark timing breakdown">
   <br>
-  <i>Significant performance gains in v0.4.0+ compared to the v0.3.3 architecture on high-resolution ERA5 data.</i>
+  <i>Measured v0.3.3 and v0.4.0 timings for the 0.25° ERA5 benchmark described in docs/benchmark.md.</i>
 </p>
 
 ## Technical Methodology
 
-PyStormTracker treats meteorological fields as 2D images and leverages JIT-compiled Numba loops for feature detection:
+The trackers apply the following stages:
 
-- **Local Extrema Detection**: Employs an optimized sliding window filter to identify local minima (e.g., cyclones) or maxima (e.g., anticyclones, vorticity).
-- **Intensity & Refinement**: Applies the discrete **Laplacian operator** to measure the "sharpness" of the field at each candidate center. This metric resolves duplicate detections, ensuring only the most physically intense point is retained when adjacent pixels are flagged.
-- **Trajectory Linking**: Connects detected centers across consecutive time steps into continuous trajectories using a vectorized nearest-neighbor heuristic linking strategy.
+- **Preprocessing**: Optional spherical harmonic transform (SHT) filtering on global grids, discrete cosine transform (DCT) filtering on regional grids, and regridding to polar stereographic or HEALPix coordinates.
+- **Detection**: The Simple tracker applies a sliding-window local-extrema filter and uses the discrete Laplacian magnitude to select among adjacent extrema. Hodges and HEALPix use thresholding, connected-component labeling, object filtering, and local-extrema detection.
+- **Refinement**: Optional local quadratic surface fitting estimates a stationary point below the grid spacing. It is off by default for Simple and on by default for Hodges and HEALPix.
+- **Linking**: Simple uses deterministic nearest-neighbor linking with a vectorized great-circle distance matrix. Hodges and HEALPix use Modified Greedy Exchange with spherical displacement and smoothness constraints.
 
 ## Documentation
 
@@ -62,8 +59,8 @@ Full documentation, including API references and advanced usage examples, is ava
 - **MPI Support**:
   - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
   - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
-- **SHT Backend**:
-  - `ducc0` (**Core dependency**): High-precision C++ library providing high performance spherical harmonic transforms.
+- **Spherical harmonic transform (SHT) engine**:
+  - `ducc0` (**core dependency**): Provides scalar and spin-weighted spherical harmonic transforms, reduced-grid synthesis, and HEALPix geometry.
 - **Windows**: GRIB support is experimental. `ducc0` is used automatically on all platforms. `MS-MPI` can be installed via `winget`.
 
 ### From PyPI
@@ -125,14 +122,14 @@ Run the core storm tracking algorithm (e.g., tracking cyclones in MSLP):
 stormtracker track -i data.nc -v msl -o tracks.json -m min -a hodges -f json
 ```
 
-#### 2. Sample Variables (New)
+#### 2. Sample Variables
 Extract external variables (e.g., precipitation) along existing tracks:
 ```bash
 # Calculate mean precipitation within a 500km radius of storm centers
 stormtracker sample -i tracks.json -d precip.nc -v pr -o tracks_enriched.json --method mean --radius 500
 ```
 
-#### 3. Match & Intercompare (New)
+#### 3. Match and Intercompare
 Compare tracks from different datasets or ensemble members:
 ```bash
 # Match tracks from two sources with a 200km mean distance threshold
@@ -158,36 +155,33 @@ Use `stormtracker <command> --help` for detailed argument lists. Key options for
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
 | `--format` | `-f` | Output format: `imilast`, `hodges`, or `json`. |
 | `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
-| `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |
+| `--backend` | `-b` | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple. |
 | `--workers` | `-w` | Number of parallel workers. |
-| `--filter-range`| | Spectral filter range (min-max). Default '5-42'. |
+| `--filter-range` | | Spectral wave-number range. Default `5-42`. |
 | `--filter`, `--no-filter` | | Override algorithm-specific filtering defaults. |
 | `--subgrid-refine`, `--no-subgrid-refine` | | Override refinement defaults. Off for simple; on for Hodges and HEALPix. |
 
 ### Python API
 
-You can easily integrate PyStormTracker into your own scripts or Jupyter Notebooks:
+The trackers can also be called directly:
 
 ```python
 import pystormtracker as pst
 
-# 1. Instantiate the tracker (Simple or Hodges)
-# tracker = pst.SimpleTracker()
 tracker = pst.HodgesTracker()
 
-# 2. Run the tracking algorithm. Returns an array-backed Tracks object.
 tracks = tracker.track(infile="data.nc", varname="vo", mode="max")
 ```
 
 ### Analyze the results programmatically
-```
+```python
 for track in tracks:
     if len(track) >= 8:
         print(f"Track {track.track_id} lived for {len(track)} steps.")
 ```
 
 ### Export results
-```
+```python
 tracks.write("output.txt", format="imilast")
 ```
 

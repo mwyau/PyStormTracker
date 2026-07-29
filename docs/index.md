@@ -1,4 +1,4 @@
-# PyStormTracker: A High-Performance Cyclone Tracker in Python
+# PyStormTracker Documentation
 
 ```{toctree}
 :maxdepth: 2

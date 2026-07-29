@@ -18,11 +18,17 @@ stormtracker track -i input.nc -v vo -o tracks.txt -m max -a hodges
 - `-a`, `--algorithm`: Tracking algorithm (`simple` or `hodges`).
 - `-m`, `--mode`: Detection mode (`min` for SLP, `max` for vorticity).
 - `--map-proj`: Map projection for detection (`global`, `nh_stereo`, `sh_stereo`, `healpix`).
+- `--resolution`, `--extent`: Polar stereographic grid spacing and bounds in kilometres.
 - `--filter`, `--no-filter`: Override the algorithm-specific filtering default.
 - `--filter-range`: Enable filtering with an inclusive wave-number range.
 - `--subgrid-refine`, `--no-subgrid-refine`: Override the algorithm-specific refinement default.
+- `-b`, `--backend`: Select `serial`, `dask`, or `mpi`.
 
 Simple tracking defaults to no spectral filtering and no subgrid refinement. Hodges and HEALPix tracking default to both operations enabled.
+
+Simple supports serial, Dask, and MPI tracking. Dask and MPI distribute detection and gather results before one linking pass. Hodges and HEALPix currently support serial tracking only; selecting another backend raises an error.
+
+The default vorticity detection threshold is `1e-5`. The `1e-4` threshold used by legacy regression fixtures is a test-specific historical setting and is not the production default.
 
 ## `stormtracker sample`
 
@@ -59,7 +65,7 @@ stormtracker compare --ref era5.json --comp model.json --max-dist 200 --json
 
 ## `stormtracker convert`
 
-Converts PyStormTracker data between formats and generates interactive HTML visualizations.
+Converts PyStormTracker data between formats and generates HTML track explorers.
 
 **Usage:**
 ```bash
