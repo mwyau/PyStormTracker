@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 # Universal Preprocessing Defaults
 TAPER_POINTS_DEFAULT = 0
 LMIN_DEFAULT = 5
@@ -8,6 +10,12 @@ LMAX_DEFAULT = 42
 # Planetary Constants
 R_EARTH_METERS = 6371220.0  # Standard Spherepack/NCL radius
 R_EARTH_KM = R_EARTH_METERS / 1000.0
+DEGTORAD = np.pi / 180.0
+KM_PER_DEG = R_EARTH_KM * DEGTORAD
+
+# Eulerian Metric Defaults (Yau and Chang 2020)
+EULERIAN_FILTER_HOURS = 24
+WIND_PERCENTILE_DEFAULT = 0.95
 
 # Universal Tracking Defaults
 MIN_LIFETIME_DEFAULT = 3

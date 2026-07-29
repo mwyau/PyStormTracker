@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import timeit
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
@@ -10,7 +11,7 @@ from numpy.typing import NDArray
 from ..hodges import constants
 from ..models import TimeRange, Tracks
 from ..models.tracker import RawDetectionStep, Tracker
-from ..preprocessing.spectral import SpectralFilter
+from ..preprocessing.spectral import SHTFilter
 from ..preprocessing.taper import TaperFilter
 from .detector import HealpixDetector
 
@@ -97,10 +98,10 @@ class HealpixTracker(Tracker):
         # 2. Spectral Filtering - Requires 2D source usually,
         # but let's assume standard filtering.
         # If data is already HEALPix, we'd need a HEALPix SHT.
-        # PyStormTracker's SpectralFilter currently expects 2D (lat, lon).
+        # PyStormTracker's SHTFilter currently expects 2D (lat, lon).
         # We'll skip for now if already 1D, or user regrids before.
         if data.ndim == 3:  # (time, lat, lon)
-            spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+            spectral_filter = SHTFilter(lmin=lmin, lmax=lmax)
             data = spectral_filter.filter(data)
 
         return data
@@ -147,7 +148,7 @@ class HealpixTracker(Tracker):
 
     def track(
         self,
-        infile: str,
+        infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
@@ -178,9 +179,12 @@ class HealpixTracker(Tracker):
             time_range = TimeRange(start=st, end=et)
 
         if backend == "serial":
-            # For serial, we don't have an easy way to filter if infile is
-            # passed directly unless we open it first.
-            if filter:
+            # For serial, load or extract the DataArray
+            if isinstance(infile, (xr.DataArray, xr.Dataset)):
+                data_xr = infile
+                if isinstance(data_xr, xr.Dataset):
+                    data_xr = data_xr[varname]
+            else:
                 detector_peek = HealpixDetector(
                     pathname=infile,
                     varname=varname,
@@ -188,6 +192,8 @@ class HealpixTracker(Tracker):
                     engine=engine,
                 )
                 data_xr = detector_peek.get_xarray()
+
+            if filter:
                 data_xr = self.preprocess_standard_track(
                     data_xr, lmin=lmin, lmax=lmax, taper_points=taper_points
                 )
@@ -210,16 +216,35 @@ class HealpixTracker(Tracker):
                 )
                 tracks = linker.link(raw_steps)
             else:
-                tracks = self._detect_serial(
-                    infile,
-                    varname,
-                    time_range,
-                    mode,
-                    threshold=threshold,
-                    engine=engine,
-                    min_points=min_points,
-                    **kwargs,
-                )
+                if isinstance(infile, (xr.DataArray, xr.Dataset)):
+                    detector = HealpixDetector.from_xarray(data_xr)
+                    raw_steps = _detect_and_gather(
+                        detector, threshold=threshold, mode=mode, min_points=min_points
+                    )
+                    from ..hodges.linker import HodgesLinker
+
+                    linker = HodgesLinker(
+                        w1=self.w1,
+                        w2=self.w2,
+                        dmax=self.dmax,
+                        phimax=self.phimax,
+                        n_iterations=self.n_iterations,
+                        max_missing=self.max_missing,
+                        zones=self.zones,
+                        adapt_params=self.adapt_params,
+                    )
+                    tracks = linker.link(raw_steps)
+                else:
+                    tracks = self._detect_serial(
+                        str(infile),
+                        varname,
+                        time_range,
+                        mode,
+                        threshold=threshold,
+                        engine=engine,
+                        min_points=min_points,
+                        **kwargs,
+                    )
         else:
             msg = f"Backend '{backend}' not yet implemented for HealpixTracker."
             raise NotImplementedError(msg)

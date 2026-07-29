@@ -48,31 +48,65 @@ class SpectralRegridder:
         out_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
+        pl: NDArray[np.int32] | None = None,
     ) -> xr.DataArray:
         """
         Spectrally regrid to a regular 2D grid (CC or GL).
+        Supports regular 2D and reduced Gaussian 1D inputs.
         """
-        frame = data.values
-        if data.ndim != 2:
-            raise ValueError(
-                "Only 2D (lat, lon) data is currently supported for regridding."
-            )
+        from ..io.data_loader import DataLoader
 
-        if not lat_reverse:
+        varname = str(data.name) if data.name is not None else ""
+        frame = data.values
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        is_reduced = loader.is_reduced_gaussian(varname) or pl is not None
+
+        if not is_reduced and data.ndim != 2:
+            raise ValueError("Input must be 2D (lat, lon) or reduced Gaussian 1D grid.")
+
+        if not is_reduced and not lat_reverse:
             frame = frame[::-1, :]
 
-        _in_nlat, in_nlon = frame.shape
+        # Determine input dimensions
+        in_nlon: int
+        if is_reduced:
+            if pl is None:
+                pl = loader.get_reduced_grid_pl(varname)
+            if pl is None:
+                raise ValueError("pl array required for reduced grid.")
+            in_nlon = int(np.max(pl))
+        else:
+            in_nlon = frame.shape[1]
+
         lmax, mmax = self._get_lmax_mmax(in_nlon)
 
         # 1. Analyze (Forward SHT)
-        alm = ducc0.sht.analysis_2d(
-            map=np.expand_dims(frame, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            geometry=in_geometry,
-            nthreads=nthreads,
-        )
+        alm: NDArray[np.complex128]
+        if is_reduced:
+            # For reduced/unstructured grids, use iterative pseudo-analysis
+            meta = loader.get_grid_metadata(varname)
+            alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                theta=meta["theta"],
+                nphi=meta["nphi"],
+                phi0=meta["phi0"],
+                ringstart=meta["ringstart"],
+                nthreads=nthreads,
+                maxiter=100,
+                epsilon=1e-6,
+            )
+        else:
+            alm = ducc0.sht.analysis_2d(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                geometry=in_geometry,
+                nthreads=nthreads,
+            )
 
         # 2. Synthesize (Inverse SHT to target grid)
         out_map = cast(
@@ -94,16 +128,14 @@ class SpectralRegridder:
 
         # 3. Reconstruct DataArray
         if out_geometry == "CC":
-            # ducc0 CC internally works North to South (0 to pi)
-            if lat_reverse:
-                # We kept it North to South
-                lat = np.linspace(90, -90, nlat)
-            else:
-                # We flipped it back to South to North
-                lat = np.linspace(-90, 90, nlat)
+            lat = (
+                np.linspace(90, -90, nlat)
+                if lat_reverse
+                else np.linspace(-90, 90, nlat)
+            )
         elif out_geometry == "GL":
-            # For GL we don't easily have lat bounds in numpy without ducc0 help
-            lat = np.arange(nlat, dtype=np.float64)
+            lats_gl = 90.0 - np.degrees(ducc0.misc.GL_thetas(nlat))
+            lat = lats_gl if lat_reverse else lats_gl[::-1]
         else:
             lat = np.arange(nlat, dtype=np.float64)
 
@@ -123,37 +155,66 @@ class SpectralRegridder:
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
+        pl: NDArray[np.int32] | None = None,
     ) -> xr.DataArray:
         """
         Spectrally regrid to a 1D HEALPix grid.
+        Supports regular 2D and reduced Gaussian 1D inputs.
         """
-        frame = data.values
-        if data.ndim != 2:
-            raise ValueError(
-                "Only 2D (lat, lon) data is currently supported for regridding."
-            )
+        from ..io.data_loader import DataLoader
 
-        if not lat_reverse:
+        varname = str(data.name) if data.name is not None else ""
+        frame = data.values
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        is_reduced = loader.is_reduced_gaussian(varname) or pl is not None
+
+        if not is_reduced and not lat_reverse:
             frame = frame[::-1, :]
 
-        _, in_nlon = frame.shape
+        # Determine input dimensions
+        in_nlon: int
+        if is_reduced:
+            if pl is None:
+                pl = loader.get_reduced_grid_pl(varname)
+            if pl is None:
+                raise ValueError("pl array required for reduced grid.")
+            in_nlon = int(np.max(pl))
+        else:
+            in_nlon = frame.shape[1]
+
         lmax, mmax = self._get_lmax_mmax(in_nlon)
 
         # 1. Analyze
-        alm = ducc0.sht.analysis_2d(
-            map=np.expand_dims(frame, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            geometry=in_geometry,
-            nthreads=nthreads,
-        )
+        alm: NDArray[np.complex128]
+        if is_reduced:
+            meta = loader.get_grid_metadata(varname)
+            alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                theta=meta["theta"],
+                nphi=meta["nphi"],
+                phi0=meta["phi0"],
+                ringstart=meta["ringstart"],
+                nthreads=nthreads,
+                maxiter=100,
+                epsilon=1e-6,
+            )
+        else:
+            alm = ducc0.sht.analysis_2d(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                geometry=in_geometry,
+                nthreads=nthreads,
+            )
 
         # 2. Synthesize to HEALPix
         hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
         sht_kwargs = hp_base.sht_info()
 
-        # synthesis returns shape (nmaps, npix)
         out_map = cast(
             NDArray[np.float64],
             ducc0.sht.synthesis(

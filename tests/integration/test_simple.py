@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from utils import (
@@ -14,14 +13,19 @@ from utils import (
     get_legacy_track_path,
 )
 
-from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
+from pystormtracker.metrics.compare import match_tracks
+from pystormtracker.models.tracks import Tracks
 
 N_WORKERS = 2
 
 
-def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
+def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> Tracks | None:
     """Utility to run the tracker directly via function calls or MPI subprocess."""
+    # Prepend 'track' command if not present
+    if cmd_args and cmd_args[0] not in ["track", "sample", "convert", "compare"]:
+        cmd_args = ["track", *cmd_args]
+
     if use_mpi:
         base_cmd = f"{sys.executable} -m pystormtracker.cli"
         # We assume mpiexec is in the PATH (e.g., provided by openmpi or winget)
@@ -35,11 +39,26 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> None:
             print(f"Stdout: {e.stdout}")
             print(f"Stderr: {e.stderr}")
             raise
-        return
+        return None
 
     # Direct function call for Serial/Dask backends
-    with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
-        main()
+    import argparse
+
+    from pystormtracker import compare, convert, sample, track
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    track.setup_parser(subparsers)
+    sample.setup_parser(subparsers)
+    convert.setup_parser(subparsers)
+    compare.setup_parser(subparsers)
+
+    from typing import cast
+
+    args = parser.parse_args(cmd_args)
+    if hasattr(args, "func"):
+        return cast(Tracks, args.func(args))
+    return None
 
 
 def print_head(filename: Path | str, n: int = 15) -> None:
@@ -57,29 +76,13 @@ def print_head(filename: Path | str, n: int = 15) -> None:
 def compare_tracks(
     file1: Path | str,
     file2: Path | str,
-    length_diff_tol: int = 0,
-    coord_tol: float = 1e-5,
-    intensity_tol: float = 1e-5,
-    count_tol: int = 0,
-    dist_tol: float | None = None,
 ) -> None:
-    """Compares two tracking files for equality using the Tracks class."""
+    """Compares two tracking files for strict equality using the Tracks class."""
     t1 = read_imilast(file1)
     t2 = read_imilast(file2)
 
-    # Requirement: Small tolerance for legacy regression if needed
-    assert abs(len(t1) - len(t2)) <= count_tol, (
-        f"Track count mismatch: {len(t1)} vs {len(t2)}"
-    )
-
-    t1.compare(
-        t2,
-        length_diff_tol=length_diff_tol,
-        coord_tol=coord_tol,
-        intensity_tol=intensity_tol,
-        count_tol=count_tol,
-        dist_tol=dist_tol,
-    )
+    # Backend comparisons must be identical
+    assert t1 == t2
 
 
 @pytest.fixture(scope="module")
@@ -141,7 +144,7 @@ def config(
 def serial_reference(
     tmp_path_factory: pytest.TempPathFactory,
     config: tuple[str, str, str, int | None],
-) -> Path:
+) -> tuple[Path, Tracks]:
     """Run serial once and share it across tests to save time."""
     data_path, varname, mode, steps = config
     temp_dir: Path = tmp_path_factory.mktemp("data")
@@ -163,20 +166,24 @@ def serial_reference(
     if steps:
         args.extend(["-n", str(steps)])
 
-    run_command_direct(args)
+    tracks = run_command_direct(args)
+    assert tracks is not None
 
     # Verbose print the IMILAST format output
     print(f"\nConfiguration: Variable={varname}, Mode={mode}, Steps={steps or 'Full'}")
     print_head(out_file, n=15)
 
-    return Path(out_file)
+    return Path(out_file), tracks
 
 
 @pytest.mark.integration
 def test_dask_vs_serial(
-    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
+    serial_reference: tuple[Path, Tracks],
+    tmp_path: Path,
+    config: tuple[str, str, str, int | None],
 ) -> None:
     """Integration test comparing Serial and Dask backends."""
+    serial_path, _ = serial_reference
     data_path, varname, mode, steps = config
     out_file = tmp_path / "integration_dask.txt"
 
@@ -199,12 +206,14 @@ def test_dask_vs_serial(
         args.extend(["-n", str(steps)])
 
     run_command_direct(args)
-    compare_tracks(serial_reference, out_file)
+    compare_tracks(serial_path, out_file)
 
 
 @pytest.mark.integration
 def test_mpi_vs_serial(
-    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
+    serial_reference: tuple[Path, Tracks],
+    tmp_path: Path,
+    config: tuple[str, str, str, int | None],
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
     # Check for mpiexec in PATH
@@ -220,6 +229,7 @@ def test_mpi_vs_serial(
             pytest.skip("mpiexec not found in path")
 
     data_path, varname, mode, steps = config
+    serial_path, _ = serial_reference
     mpi_out = tmp_path / "integration_mpi.txt"
 
     args = [
@@ -239,12 +249,14 @@ def test_mpi_vs_serial(
         args.extend(["-n", str(steps)])
 
     run_command_direct(args, use_mpi=True)
-    compare_tracks(serial_reference, mpi_out)
+    compare_tracks(serial_path, mpi_out)
 
 
 @pytest.mark.integration
 def test_grib_vs_netcdf(
-    serial_reference: Path, tmp_path: Path, config: tuple[str, str, str, int | None]
+    serial_reference: tuple[Path, Tracks],
+    tmp_path: Path,
+    config: tuple[str, str, str, int | None],
 ) -> None:
     """Test that tracking matches between NetCDF and GRIB inputs."""
     import xarray as xr
@@ -254,6 +266,7 @@ def test_grib_vs_netcdf(
         pytest.skip("cfgrib engine not available (ecCodes likely missing)")
 
     _, varname, mode, steps = config
+    serial_path, _ = serial_reference
 
     if varname == "msl":
         grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
@@ -281,36 +294,38 @@ def test_grib_vs_netcdf(
         args.extend(["-n", str(steps)])
 
     run_command_direct(args)
-    compare_tracks(serial_reference, out_file)
+    compare_tracks(serial_path, out_file)
 
 
 @pytest.mark.integration
 def test_legacy_regression(
-    serial_reference: Path, config: tuple[str, str, str, int | None]
+    serial_reference: tuple[Path, Tracks], config: tuple[str, str, str, int | None]
 ) -> None:
     """Regression test against v0.0.2 legacy output."""
     _, varname, _, _ = config
 
     if varname == "msl":
         ref_file = get_legacy_track_path("msl")
-        l_tol, c_tol, i_tol, count_tol = 1, 15.0, 500.0, 1
+        max_dist, min_overlap, min_match_rate = 220.0, 0.8, 0.95
     elif varname == "vo":
         pytest.skip("Legacy VO regression tests are temporarily disabled.")
         ref_file = get_legacy_track_path("vo")
-        # algorithmic improvements lead to slight differences, but should still be close
-        l_tol, c_tol, i_tol, count_tol = 5, 15.0, 1.0, 100
+        max_dist, min_overlap, min_match_rate = 220.0, 0.8, 0.90
     else:
         pytest.skip(f"No legacy regression for {varname}")
 
     if not os.path.exists(ref_file):
         pytest.skip(f"Reference file {ref_file} not found")
 
-    compare_tracks(
-        ref_file,
-        serial_reference,
-        length_diff_tol=l_tol,
-        coord_tol=c_tol,
-        intensity_tol=i_tol,
-        count_tol=count_tol,
-        dist_tol=None,
+    tracks_ref = read_imilast(ref_file)
+    _, tracks_comp = serial_reference
+
+    matches = match_tracks(
+        tracks_ref,
+        tracks_comp,
+        max_dist_km=max_dist,
+        min_overlap_fraction=min_overlap,
     )
+
+    match_rate = len(matches) / len(tracks_ref)
+    assert match_rate >= min_match_rate

@@ -50,7 +50,23 @@ To ensure that parallel results are bit-wise identical to serial runs, PyStormTr
 
 ---
 
-## 3. The `Tracker` Protocol
+## 3. Command Line Interface Architecture
+
+PyStormTracker uses a modular CLI router designed for extensibility and memory efficiency.
+
+### 3.1 Modular Router Pattern
+The `cli.py` module acts as a thin entry point. It utilizes `argparse` subparsers to delegate argument definition and execution to specialized modules:
+*   **`track.py`**: Core tracking pipeline.
+*   **`sample.py`**: Post-processing for variable enrichment (e.g., sampling precipitation along tracks).
+*   **`compare.py`**: Intercomparison utilities for matching tracks between datasets.
+*   **`convert.py`**: IO conversion and visualization generation.
+
+### 3.2 Decoupled Analysis
+By separating tracking from sampling and comparison, PyStormTracker minimizes its peak memory footprint. Users can track a primary variable (e.g., MSLP) once, save to a lightweight JSON file, and then iteratively "enrich" those tracks with additional data using the `sample` command without re-loading the large 3D meteorological cubes used for tracking.
+
+---
+
+## 4. The `Tracker` Protocol
 
 The `Tracker` Protocol (defined in `src/pystormtracker/models/tracker.py`) provides a standardized interface for all tracking algorithms:
 

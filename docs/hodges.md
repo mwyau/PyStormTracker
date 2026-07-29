@@ -33,10 +33,16 @@ Original TRACK identifies "objects" (contiguous clusters of grid points exceedin
 **Parity Status**: **Identical**. Both methods produce identical object masks. The Numba version is more efficient on flat-memory architectures and avoids the pointer-based recursion of the original C code.
 
 ### 1.4 Sub-grid Refinement (Peak Finding)
-**Design Choice**: Used 2D local quadratic surface fitting for sub-grid precision.
-- **References**: *Hodges 1995*, Section 3; `surfit.c`, `gdfp_optimize.c`.
+**Design Choice**: Used both 2D local quadratic surface fitting and resolution-scaled B-spline interpolation for sub-grid precision.
+- **References**: *Hodges 1995*, Section 3; `surfit.c`, `gdfp_optimize.c`, `spline_smooth.c`.
 
-**Parity Status**: **Standard Equivalent**. While TRACK fits a global B-spline surface using a constrained conjugate gradient optimizer, quadratic fitting on a 3x3 neighborhood is the standard equivalent for identifying peaks between grid points. Coordinates may differ at the 2nd or 3rd decimal place, but track topology is rarely affected on high-resolution grids ($< 1.0^\circ$).
+**Parity Status**: **Full Parity**. PyStormTracker implements a local B-spline fit using SciPy (which wraps the same Dierckx FITPACK Fortran code used by TRACK). The search window for the B-spline scales dynamically with grid resolution to ensure consistent physical precision across datasets (e.g., 0.25° ERA5 vs 2.5° CMIP). Both the quadratic and B-spline intensity values are stored.
+
+### 1.5 Object Properties & Size
+**Design Choice**: Extracted physical morphological properties for each thresholded object during the detection phase.
+- **References**: `boundary_find.c`, `shape_setup.c`.
+
+**Parity Status**: **Identical + Extended**. The `raw_size_km2` implements TRACK's `ofill` logic (summing discrete grid cell areas). We extend this by calculating intensity-weighted spatial moments to fit an equivalent ellipse, providing `major_axis_km`, `minor_axis_km`, and `orientation_deg`.
 
 ---
 

@@ -15,3 +15,21 @@ The tracks shown above are from the ERA5 Mean Sea Level Pressure (MSL) dataset f
 *   **Peak Strength**: Filter tracks by their maximum intensity (Minimum MSL pressure for cyclones or Maximum Vorticity).
 *   **Min Duration**: Only show tracks that lasted longer than the specified hours.
 *   **Min Displacement**: Only show tracks that traveled further than the specified distance (great-circle distance between start and end points).
+
+## Generating Your Own Explorer
+
+You can generate a standalone HTML explorer for your own tracking results using the `stormtracker convert` command.
+
+### 1. Track your data
+Ensure you output the results in the native **JSON** format:
+```bash
+stormtracker track -i my_data.nc -v msl -o tracks.json -f json
+```
+
+### 2. Convert to HTML
+Run the convert command with the `html` output format:
+```bash
+stormtracker convert -i tracks.json -o explorer.html -f json -F html
+```
+
+This will produce a single `explorer.html` file containing the full interactive map and your track data, which can be opened in any modern web browser or hosted on a static web server.

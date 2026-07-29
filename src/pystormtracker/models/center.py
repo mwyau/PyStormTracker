@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..models.constants import DEGTORAD, R_EARTH_KM
+
 
 @dataclass(slots=True)
 class Center:
@@ -14,11 +16,6 @@ class Center:
     lat: float
     lon: float
     vars: dict[str, float]
-
-    # Earth radius in kilometers
-    R: float = 6367.0
-    # Conversion factor from degrees to radians
-    DEGTORAD: float = math.pi / 180.0
 
     def __repr__(self) -> str:
         return str(self.vars)
@@ -32,14 +29,14 @@ class Center:
         dlon = center.lon - self.lon
 
         return (
-            self.R
+            R_EARTH_KM
             * 2
             * math.asin(
                 math.sqrt(
-                    math.sin(dlat / 2 * self.DEGTORAD) ** 2
-                    + math.cos(self.lat * self.DEGTORAD)
-                    * math.cos(center.lat * self.DEGTORAD)
-                    * math.sin(dlon / 2 * self.DEGTORAD) ** 2
+                    math.sin(dlat / 2 * DEGTORAD) ** 2
+                    + math.cos(self.lat * DEGTORAD)
+                    * math.cos(center.lat * DEGTORAD)
+                    * math.sin(dlon / 2 * DEGTORAD) ** 2
                 )
             )
         )
@@ -47,10 +44,10 @@ class Center:
     def lat_dist(self, center: Center) -> float:
         """Calculates the latitudinal distance in km."""
         dlat = center.lat - self.lat
-        return self.R * dlat * self.DEGTORAD
+        return R_EARTH_KM * dlat * DEGTORAD
 
     def lon_dist(self, center: Center) -> float:
         """Calculates the longitudinal distance in km, adjusted for latitude."""
         avglat = (self.lat + center.lat) / 2
         dlon = center.lon - self.lon
-        return self.R * dlon * self.DEGTORAD * math.cos(avglat * self.DEGTORAD)
+        return R_EARTH_KM * dlon * DEGTORAD * math.cos(avglat * DEGTORAD)

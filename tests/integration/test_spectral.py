@@ -9,7 +9,7 @@ import pytest
 from utils import get_era5_msl_path
 
 from pystormtracker.io.data_loader import DataLoader
-from pystormtracker.preprocessing import SpectralFilter
+from pystormtracker.preprocessing import SHTFilter
 
 
 class FilterTestCase(TypedDict, total=False):
@@ -94,11 +94,13 @@ def test_spectral_filter_era5_parity_integration(case: FilterTestCase) -> None:
     msl = ds_msl.msl.load()
     ref = ds_ref.msl.load()
 
-    # 2. Filter using SpectralFilter with auto-detected lat_reverse
-    filt = SpectralFilter(
+    # 2. Filter using SHTFilter with auto-detected lat_reverse
+    # Reference data (NCL) uses sharp truncation (no tapering)
+    filt = SHTFilter(
         lmin=case["lmin"],
         lmax=case["lmax"],
         lat_reverse=loader_src.is_lat_reversed(),
+        taper_val=1.0,
     )
 
     start_time = time.perf_counter()

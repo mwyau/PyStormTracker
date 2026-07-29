@@ -114,8 +114,10 @@ def test_tracks_imilast_io(tmp_path: Path) -> None:
 
     assert len(t2) == 2
 
-    # Check that we can compare them (compare handles sorting internally)
-    t.compare(t2)
+    # Check that we can compare them (must sort first as order isn't guaranteed in IO)
+    t.sort()
+    t2.sort()
+    assert t == t2
 
 
 def test_track_methods() -> None:

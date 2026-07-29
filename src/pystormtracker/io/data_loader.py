@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib
 import threading
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, cast
 
+import ducc0
+import numpy as np
 import xarray as xr
 
 
@@ -169,3 +171,100 @@ class DataLoader:
         if lat_name in ds.coords and len(ds[lat_name]) > 1:
             return bool(ds[lat_name][0] > ds[lat_name][-1])
         return False
+
+    def is_reduced_gaussian(self, varname: str | None = None) -> bool:
+        """Detects if the dataset represents a reduced Gaussian grid."""
+        ds = self.ensure_open()
+        # If varname not provided, check the first data variable
+        if varname is None:
+            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+
+        if varname and varname in ds:
+            da = ds[varname]
+            # cfgrib tags reduced Gaussian grids with this attribute
+            if da.attrs.get("GRIB_gridType") == "reduced_gg":
+                return True
+            # Alternative: check if latitude/longitude are 1D coordinates of a
+            # non-spatial dimension
+            if "values" in da.dims and da.ndim == 2:  # (time, values)
+                return True
+        return False
+
+    def get_reduced_grid_pl(self, varname: str | None = None) -> np.ndarray | None:
+        """Returns the 'pl' array (points per latitude) for a reduced grid."""
+        ds = self.ensure_open()
+        if varname is None:
+            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+
+        if varname and varname in ds:
+            da = ds[varname]
+            pl = da.attrs.get("GRIB_pl")
+            if pl is not None:
+                return np.array(pl, dtype=np.int32)
+        return None
+
+    def _get_theta(self, ntheta: int, geometry: str) -> np.ndarray:
+        """Calculates colatitudes (theta) for a given geometry and resolution."""
+        if geometry == "GL":
+            # ducc0.misc.GL_thetas returns North-to-South (0 to pi)
+            return cast(np.ndarray, ducc0.misc.GL_thetas(ntheta))
+        if geometry == "CC":
+            return np.linspace(0, np.pi, ntheta)
+        # Default to equidistant
+        return np.linspace(0, np.pi, ntheta)
+
+    def get_grid_metadata(self, varname: str | None = None) -> dict[str, np.ndarray]:
+        """
+        Returns grid metadata (theta, nphi, phi0, ringstart) for SHT.
+        Works for reduced Gaussian and HEALPix grids.
+        """
+        ds = self.ensure_open()
+        if varname is None:
+            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+
+        da = ds[varname] if varname else next(iter(ds.data_vars.values()))
+
+        # 1. Check for HEALPix
+        if da.attrs.get("grid_type") == "healpix" or "cell" in da.dims:
+            npix = da.sizes.get("cell", da.sizes.get("values", 0))
+            nside = int(np.sqrt(npix / 12))
+            hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
+            return cast(dict[str, np.ndarray], hp_base.sht_info())
+
+        # 2. Check for Reduced Gaussian
+        if self.is_reduced_gaussian(varname):
+            pl = self.get_reduced_grid_pl(varname)
+            if pl is not None:
+                # Gaussian latitudes for N rings
+                ntheta = len(pl)
+                theta = self._get_theta(ntheta, "GL")
+                phi0 = np.zeros(ntheta, dtype=np.float64)
+                ringstart = np.concatenate(([0], np.cumsum(pl)[:-1])).astype(np.uint64)
+                return {
+                    "theta": theta,
+                    "nphi": pl.astype(np.uint64),
+                    "phi0": phi0,
+                    "ringstart": ringstart,
+                }
+
+        # 3. Default: regular grid (handled by analysis_2d, but provide here too)
+        _time_name, lat_name, lon_name = self.get_coords()
+        lat = da[lat_name].values
+        lon = da[lon_name].values
+
+        if self.is_lat_reversed():
+            theta = np.radians(90.0 - lat)
+        else:
+            theta = np.radians(90.0 - lat[::-1])
+
+        ntheta, nphi_val = len(lat), len(lon)
+        nphi = np.full(ntheta, nphi_val, dtype=np.uint64)
+        phi0 = np.zeros(ntheta, dtype=np.float64)
+        ringstart = (np.arange(ntheta) * nphi_val).astype(np.uint64)
+
+        return {
+            "theta": theta,
+            "nphi": nphi,
+            "phi0": phi0,
+            "ringstart": ringstart,
+        }

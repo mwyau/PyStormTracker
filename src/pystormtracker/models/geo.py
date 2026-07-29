@@ -5,12 +5,10 @@ from typing import TypeAlias
 import numba as nb
 import numpy as np
 
-from ..models.constants import R_EARTH_KM
+from ..models.constants import DEGTORAD, R_EARTH_KM
 
 # Type alias for a map bounding box (xmin, xmax, ymin, ymax) in km
 MapExtent: TypeAlias = tuple[float, float, float, float]
-
-DEGTORAD = np.pi / 180.0
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]

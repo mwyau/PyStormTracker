@@ -6,6 +6,7 @@ from typing import Literal
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
+from scipy.interpolate import RectSphereBivariateSpline
 
 from ..io.data_loader import DataLoader
 from ..models import constants as model_constants
@@ -15,6 +16,7 @@ from .kernels import (
     _numba_ccl,
     _numba_get_centers,
     _numba_object_extrema,
+    _numba_object_properties,
     subgrid_refine,
 )
 
@@ -154,6 +156,7 @@ class HodgesDetector:
         threshold: float | None = None,
         minmaxmode: Literal["min", "max"] = "min",
         min_points: int = 1,
+        refine_radius_deg: float = 2.5,
     ) -> list[RawDetectionStep]:
         """
         Runs the feature detection on the selected time steps.
@@ -163,11 +166,9 @@ class HodgesDetector:
             threshold: Intensity threshold for objects.
             minmaxmode: Whether to search for local minima or maxima.
             min_points: Minimum number of grid points in an object to be processed.
+            refine_radius_deg: Physical radius in degrees for the B-spline fit window.
         """
         if threshold is None:
-            # Standard thresholds based on Hodges (1994, 1995, 1999)
-            # Vo: typically 1.0e-5 for weak systems, 3.0e-5 for more intense.
-            # MSL: Usually local minima search with no strict global threshold
             if self.requested_varname == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
@@ -191,32 +192,100 @@ class HodgesDetector:
 
             frame = full_var[it]
 
-            # 1. Threshold and Segment (CCL)
+            # 1. Threshold and Segment using Connected Component Labeling (CCL).
+            # This partitions the grid into discrete storm 'objects' based on intensity.
             binary_mask = (
                 (frame <= threshold) if is_min else (frame >= threshold)
             ).astype(np.float64)
             labeled_mask, num_objects = _numba_ccl(binary_mask)
 
-            # 2. Find Extrema within objects
+            # 2. Find local extrema (min/max) within each identified object.
+            # This ensures we don't pick multiple points from the same noise spike.
             extrema = _numba_object_extrema(
                 frame, labeled_mask, num_objects, size, is_min, min_points
             )
 
-            # 3. Extract and Refine
-            r_idx, c_idx, _ = _numba_get_centers(extrema, frame)
+            # 3. Compute physical object properties (Size in km^2, Ellipse fitting).
+            # Uses a reverse flood-fill logic optimized with Numba.
+            props = _numba_object_properties(
+                frame, labeled_mask, num_objects, lat, lon, threshold, is_min
+            )
+            raw_areas, fitted_areas, majors, minors, orientations = props
 
-            refined_lats = np.zeros(len(r_idx))
-            refined_lons = np.zeros(len(r_idx))
-            refined_vals = np.zeros(len(r_idx))
+            # 4. Extract centers and perform sub-grid refinement.
+            r_idx, c_idx, raw_vals = _numba_get_centers(extrema, frame)
 
-            for i in range(len(r_idx)):
+            n_feats = len(r_idx)
+            refined_lats = np.zeros(n_feats)
+            refined_lons = np.zeros(n_feats)
+            quad_vals = np.zeros(n_feats)
+            bspline_vals = np.zeros(n_feats)
+            f_raw_size = np.zeros(n_feats)
+            f_fit_size = np.zeros(n_feats)
+            f_major = np.zeros(n_feats)
+            f_minor = np.zeros(n_feats)
+            f_orient = np.zeros(n_feats)
+
+            # Pre-calculate global spherical spline for the whole frame
+            try:
+                theta_global = np.deg2rad(90.0 - lat)
+                phi_global = np.deg2rad(lon)
+                # RectSphereBivariateSpline needs theta strictly increasing
+                idx_tg = np.argsort(theta_global)
+                theta_sorted = theta_global[idx_tg]
+                frame_sorted = frame[idx_tg, :]
+                global_spline = RectSphereBivariateSpline(
+                    theta_sorted, phi_global, frame_sorted
+                )
+            except Exception:
+                global_spline = None
+
+            for i in range(n_feats):
+                # Quadratic fit (3x3)
                 rlat, rlon, rval = subgrid_refine(frame, r_idx[i], c_idx[i], lat, lon)
                 refined_lats[i] = rlat
                 refined_lons[i] = rlon
-                refined_vals[i] = rval
+                quad_vals[i] = rval
+
+                # B-spline fit (Global Spherical Spline)
+                if global_spline is not None:
+                    try:
+                        # evaluate at sub-grid center (convert to colatitude/rad)
+                        bspline_vals[i] = float(
+                            global_spline(np.deg2rad(90.0 - rlat), np.deg2rad(rlon))[
+                                0, 0
+                            ]
+                        )
+                    except Exception:
+                        bspline_vals[i] = rval
+                else:
+                    bspline_vals[i] = rval
+
+                # Attach object properties
+                obj_id = labeled_mask[r_idx[i], c_idx[i]]
+                f_raw_size[i] = raw_areas[obj_id]
+                f_fit_size[i] = fitted_areas[obj_id]
+                f_major[i] = majors[obj_id]
+                f_minor[i] = minors[obj_id]
+                f_orient[i] = orientations[obj_id]
 
             raw_results.append(
-                (t, refined_lats, refined_lons, {self.varname: refined_vals})
+                (
+                    t,
+                    refined_lats,
+                    refined_lons,
+                    {
+                        self.varname: quad_vals,
+                        "raw_val": raw_vals,
+                        "quad_val": quad_vals,
+                        "bspline_val": bspline_vals,
+                        "raw_size_km2": f_raw_size,
+                        "fitted_size_km2": f_fit_size,
+                        "major_axis_km": f_major,
+                        "minor_axis_km": f_minor,
+                        "orientation_deg": f_orient,
+                    },
+                )
             )
 
         return raw_results

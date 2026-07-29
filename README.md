@@ -27,7 +27,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
 - **JIT-Optimized Kernels**: Core mathematical filters are implemented in **Numba**, executing with C-level efficiency while releasing the GIL for multi-process execution.
 - **Multiple Algorithms**:
   - **Simple (Default)**: Fast, heuristic linking optimized for higher resolutions.
-  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization. **[Accuracy Metrics](docs/spectral_accuracy.md)**.
+  - **Hodges (TRACK)**: Algorithmic parity with the industry-standard TRACK software, including object-based detection (CCL), spherical cost functions, and recursive MGE optimization. <a href="docs/spectral_accuracy.md">Accuracy Metrics</a>.
 - **Xarray Native**: Seamlessly handles NetCDF and GRIB formats with coordinate-aware processing and robust variable alias handling (e.g., `msl`/`slp`, `lon`/`longitude`).
 - **Scalable Backends**: 
   - **Serial**: Standard sequential execution. Default fallback.
@@ -116,45 +116,51 @@ uv sync
 
 ### Command Line Interface
 
-Once installed, you can use the `stormtracker` command directly:
+Once installed, you can use the `stormtracker` command directly. It provides a unified interface with subcommands for the full analysis pipeline:
 
+#### 1. Track Features
+Run the core storm tracking algorithm (e.g., tracking cyclones in MSLP):
 ```bash
-stormtracker -i data.nc -v msl -o my_tracks.txt
+stormtracker track -i data.nc -v msl -o tracks.json -m min -a hodges -f json
 ```
 
-#### Command Line Arguments
+#### 2. Sample Variables (New)
+Extract external variables (e.g., precipitation) along existing tracks:
+```bash
+# Calculate mean precipitation within a 500km radius of storm centers
+stormtracker sample -i tracks.json -d precip.nc -v pr -o tracks_enriched.json --method mean --radius 500
+```
+
+#### 3. Match & Intercompare (New)
+Compare tracks from different datasets or ensemble members:
+```bash
+# Match tracks from two sources with a 200km mean distance threshold
+stormtracker compare --ref era5.json --comp gfs.json --max-dist 200 --json
+```
+
+#### 4. Convert & Visualize
+Convert between formats or generate interactive HTML explorers:
+```bash
+# Generate a standalone interactive map
+stormtracker convert -i tracks.json -o explorer.html -f json -F html
+```
+
+#### CLI Argument Reference
+
+Use `stormtracker <command> --help` for detailed argument lists. Key options for the `track` command include:
 
 | Argument | Short | Description |
 | :--- | :--- | :--- |
-| **Required** | | |
 | `--input` | `-i` | Path to the input NetCDF/GRIB file. |
 | `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
-| `--output` | `-o` | Path to the output track file (e.g., `tracks.txt`). |
-| **General** | | |
+| `--output` | `-o` | Path to the output track file. |
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
-| `--format` | `-f` | Output format: `imilast` (default) or `hodges`. |
+| `--format` | `-f` | Output format: `imilast`, `hodges`, or `json`. |
 | `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
-| `--threshold` | `-t` | Intensity threshold for feature detection. |
-| `--filter-range` | | Spectral filter range (min-max). Default '5-42'. |
-| `--no-filter` | | Disable default T5-42 spectral filtering. |
-| `--num` | `-n` | Number of time steps to process. |
-| **Performance** | | |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Auto-detected by default. |
-| `--workers` | `-w` | Number of parallel workers. Auto-detected for MPI; sets Dask if not MPI. |
-| `--chunk-size` | `-c` | Steps per chunk for Dask/RSPLICE (default 60). |
-| `--overlap` | | Overlap steps between chunks for splicing (default 3). |
-| `--engine` | `-e` | Xarray engine (e.g., `h5netcdf`, `netcdf4`). |
-| **Hodges-Specific** | | |
-| `--min-points` | | Minimum grid points per object (default 1). |
-| `--taper` | | Number of points for boundary tapering (default 0). |
-| `--w1`, `--w2` | | Cost weights for direction (0.2) and speed (default 0.8). |
-| `--dmax` | | Max search radius in degrees (default 6.5). |
-| `--phimax` | | Smoothness penalty (default 0.5). |
-| `--iterations` | | Max MGE optimization passes (default 3). |
-| `--min-lifetime`| | Minimum time steps for a valid track (default 3). |
-| `--max-missing` | | Max consecutive missing frames (default 0). |
-| `--zone-file` / `--zones` | | Path to legacy `zone.dat` or JSON string for regional DMAX zones. |
-| `--adapt-file` / `--adapt-params` | | Path to legacy `adapt.dat` or JSON string for adaptive smoothness (2x4 array). |
+| `--workers` | `-w` | Number of parallel workers. |
+| `--filter-range`| | Spectral filter range (min-max). Default '5-42'. |
+| `--no-filter` | | Disable default spectral filtering. |
 
 ### Python API
 

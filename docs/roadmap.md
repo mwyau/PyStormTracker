@@ -55,9 +55,19 @@ This document outlines the strategic plan for improving PyStormTracker's perform
 *   **HodgesTracker Integration (Completed):** 
     *   Native Python/Numba implementation of the Modified Greedy Exchange (MGE) algorithm with algorithmic parity to TRACK-1.5.2.
 *   **Preprocessing (Completed):** 
-*   **HodgesTracker Refinement (In Progress):** 
-    *   *Action:* Implement Dierckx B-spline surface fitting and evaluation in Numba to achieve bit-wise coordinate identity with original TRACK software.
-*   **Postprocessing (Track Metrics):**
-    *   *Action:* Implement Accumulated Track Activity (ATA) and other storm track metrics from **Yau and Chang (2020)**.
+*   **HodgesTracker Refinement (Completed):** 
+    *   Implemented resolution-scaled B-spline surface fitting using SciPy (Dierckx wrapper) to achieve bit-wise coordinate identity with original TRACK software.
+*   **Regional Model Support:**
+    *   *Action:* Implement Discrete Cosine Transforms (DCT) via `ducc0` for spectral filtering on regional models (e.g., WRF).
+*   **Spectral Tapering:**
+    *   *Action:* Implement spectral tapering to reduce ringing artifacts during time-series/spectral analysis.
+*   **Spherical Statistics:**
+    *   *Action:* Implement spherical kernel estimators for track density and confidence intervals using Spherical Quad Trees (SQT).
+*   **Object Size & Morphological Properties (Completed):**
+    *   Calculates feature size (raw km^2) and precise intensity-weighted ellipse parameters (major/minor axes, orientation).
+*   **Vorticity Tracking & Variable Support:**
+    *   *Action:* Add robust vorticity tracking support and the ability to append secondary variables (e.g., max winds, full-res MSLP minima) to tracks.
+*   **Postprocessing (Track Metrics) (Completed):**
+    *   Implemented Accumulated Track Activity (ATA), ACA, and density metrics from **Yau and Chang (2020)** with monthly aggregation and Xarray-native cross-validation (CCA/PCA).
 *   **JAX-Based Feature Detection (Proposed):**
     *   *Action:* Develop JAX-native implementations of the extrema detection and intensity refinement kernels to support high-throughput, GPU-resident tracking pipelines.

@@ -4,8 +4,8 @@ Foundational mandates and engineering standards for `PyStormTracker`. These take
 
 ## 1. Core Mandates
 
-- **Hodges Parity**: MUST maintain algorithmic parity with TRACK (Hodges 1994, 1995, 1999) as detailed in `docs/HODGES.md`. Core kernels MUST use Numba.
-- **Vectorized Architecture**: MUST use the array-backed data model and JIT-optimized kernels described in `docs/ARCHITECTURE.md`.
+- **Hodges Parity**: MUST maintain algorithmic parity with TRACK (Hodges 1994, 1995, 1999) as detailed in `docs/hodges.md`. Core kernels MUST use Numba.
+- **Vectorized Architecture**: MUST use the array-backed data model and JIT-optimized kernels described in `docs/architecture.md`.
 - **Validation**: Parallel results MUST be bit-wise identical to serial execution. Use Gather-then-Link orchestration.
 - **Geometry**: All distance calculations MUST use the great-circle dot product formula with precision clamping.
 

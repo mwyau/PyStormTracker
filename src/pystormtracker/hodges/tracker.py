@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
@@ -9,7 +10,7 @@ from numpy.typing import NDArray
 from ..models import constants as model_constants
 from ..models.tracker import Tracker
 from ..models.tracks import Tracks
-from ..preprocessing.spectral import SpectralFilter
+from ..preprocessing.spectral import SHTFilter
 from ..preprocessing.taper import TaperFilter
 from . import constants
 from .detector import HodgesDetector
@@ -86,11 +87,22 @@ class HodgesTracker(Tracker):
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
+        filter_type: Literal["sht", "dct", "auto"] = "auto",
     ) -> xr.DataArray:
         """
-        Applies standard TRACK preprocessing: Tapering -> Spherical Harmonic Filter.
+        Applies standard TRACK preprocessing: Tapering -> SHT or DCT Filter.
         Optionally regrids to a Polar Stereographic or HEALPix projection.
         """
+        from ..io.data_loader import DataLoader
+        from ..preprocessing.spectral import DCTFilter
+
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        _lat_dim, lon_dim, _ = loader.get_coords()
+
+        if filter_type == "auto":
+            lon_range = float(data[lon_dim].max() - data[lon_dim].min())
+            filter_type = "dct" if lon_range < 350 else "sht"
+
         # Ensure data is loaded into memory for spectral filtering
         if data.chunks:
             data = data.compute()
@@ -105,11 +117,6 @@ class HodgesTracker(Tracker):
             from ..preprocessing.regrid import SpectralRegridder
 
             regridder = SpectralRegridder(lmax=lmax)
-
-            # We process frame by frame
-            from ..io.data_loader import DataLoader
-
-            loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
             is_lat_reversed = loader.is_lat_reversed()
 
             time_dim = next(
@@ -129,8 +136,8 @@ class HodgesTracker(Tracker):
                     # Note: filter_lmin is not directly in to_healpix currently,
                     # but we can filter first
                     if lmin > 0:
-                        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
-                        frame = spectral_filter.filter(frame)
+                        f_obj = SHTFilter(lmin=lmin, lmax=lmax)
+                        frame = f_obj.filter(frame)
                     out_frame = regridder.to_healpix(
                         frame, nside=nside, lat_reverse=is_lat_reversed
                     )
@@ -154,8 +161,9 @@ class HodgesTracker(Tracker):
             data = xr.concat(out_frames, dim=data[time_dim])
             data.attrs["map_proj"] = map_proj
         else:
-            # Global grid filtering
-            spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+            # Global or regional grid filtering
+            f_cls = SHTFilter if filter_type == "sht" else DCTFilter
+            spectral_filter = f_cls(lmin=lmin, lmax=lmax)
             data = spectral_filter.filter(data)
 
         return data
@@ -206,7 +214,7 @@ class HodgesTracker(Tracker):
 
     def track(
         self,
-        infile: str,
+        infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
@@ -253,15 +261,20 @@ class HodgesTracker(Tracker):
 
         # 1. Load and optionally filter data
         t0 = timeit.default_timer()
-        detector_peek = HodgesDetector(infile, varname, engine=engine)
-        if start_time is None or end_time is None:
-            full_times = detector_peek.get_time()
-            if start_time is None:
-                start_time = full_times[0]
-            if end_time is None:
-                end_time = full_times[-1]
+        if isinstance(infile, (xr.DataArray, xr.Dataset)):
+            data_xr = infile
+            if isinstance(data_xr, xr.Dataset):
+                data_xr = data_xr[varname]
+        else:
+            detector_peek = HodgesDetector(infile, varname, engine=engine)
+            if start_time is None or end_time is None:
+                full_times = detector_peek.get_time()
+                if start_time is None:
+                    start_time = full_times[0]
+                if end_time is None:
+                    end_time = full_times[-1]
 
-        data_xr = detector_peek.get_xarray(start_time, end_time)
+            data_xr = detector_peek.get_xarray(start_time, end_time)
 
         if filter or map_proj != "global":
             data_xr = self.preprocess_standard_track(
@@ -355,7 +368,9 @@ class HodgesTracker(Tracker):
         t_detect_end = timeit.default_timer()
         print(f"    [Serial] Detection time: {t_detect_end - t_detect_start:.4f}s")
 
-        # 2. Linking (MGE with adaptive constraints)
+        # 2. Linking (MGE cost function with adaptive constraints)
+        # Cost = w1 * (1 - cos(theta)) + w2 * (1 - 2*sqrt(d1*d2)/(d1+d2))
+        # This penalizes both changes in direction and changes in speed.
         t_link_start = timeit.default_timer()
         linker = HodgesLinker(
             w1=self.w1,
@@ -381,5 +396,7 @@ class HodgesTracker(Tracker):
         out = Tracks()
         for tr in valid_tracks:
             out.append(tr)
+
+        return out
 
         return out

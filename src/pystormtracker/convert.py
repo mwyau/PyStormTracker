@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import os
 from pathlib import Path
@@ -76,8 +78,12 @@ def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> N
         f.write(html_content)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
+def setup_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Sets up the argument parser for the convert command."""
+    parser = subparsers.add_parser(
+        "convert",
         description=(
             "Convert PyStormTracker data between formats and generate "
             "interactive HTML visualizations. "
@@ -109,9 +115,16 @@ def main() -> None:
         action="store_true",
         help="For 'html' output, generate separate .html and .tracks.js files.",
     )
+    parser.set_defaults(func=main)
 
-    args = parser.parse_args()
 
+def main(args: argparse.Namespace) -> None:
+    """
+    Main entry point for the convert command.
+
+    Supports conversion between IMILAST and JSON formats, and generation of
+    interactive HTML explorers.
+    """
     print(f"Reading {args.input} (format: {args.in_format})...")
 
     tracks = Tracks()
@@ -143,4 +156,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    setup_parser(subparsers)
+    args = parser.parse_args()
+    if hasattr(args, "func"):
+        args.func(args)

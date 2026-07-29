@@ -4,7 +4,8 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
-from ..models.geo import DEGTORAD, geod_dist
+from ..models.constants import DEGTORAD, KM_PER_DEG, R_EARTH_KM
+from ..models.geo import geod_dist
 
 
 @nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
@@ -407,9 +408,6 @@ def _mge_iteration(
     # Target frame to swap
     target_k = k + 1 if forward else k - 1
 
-    rad_to_deg = 180.0 / np.pi
-    deg_to_rad = np.pi / 180.0
-
     # Cache current costs
     costs = np.zeros(n_tracks)
     for i in range(n_tracks):
@@ -433,7 +431,7 @@ def _mge_iteration(
                     get_regional_dmax(lat_k, lon_k, zones, default_dmax)
                     + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
                 )
-                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_i * deg_to_rad:
+                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_i * DEGTORAD:
                     valid_swap = False
 
             idx_j_k = tracks[j, k]
@@ -444,7 +442,7 @@ def _mge_iteration(
                     get_regional_dmax(lat_k, lon_k, zones, default_dmax)
                     + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
                 )
-                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_j * deg_to_rad:
+                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_j * DEGTORAD:
                     valid_swap = False
 
             if not valid_swap:
@@ -484,7 +482,7 @@ def _mge_iteration(
                     features_lon[tracks[i, k + 1]],
                 )
                 phi_max_i = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
+                    0.5 * (d1 + d2) / DEGTORAD, adapt_params, phimax
                 )
                 if new_cost_i > phi_max_i:
                     valid_swap = False
@@ -508,7 +506,7 @@ def _mge_iteration(
                     features_lon[tracks[j, k + 1]],
                 )
                 phi_max_j = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
+                    0.5 * (d1 + d2) / DEGTORAD, adapt_params, phimax
                 )
                 if new_cost_j > phi_max_j:
                     valid_swap = False
@@ -553,7 +551,6 @@ def _initial_break_pass(
     """
     n_tracks, n_frames = tracks.shape
     new_tracks_list = []
-    rad_to_deg = 180.0 / np.pi
 
     for i in range(n_tracks):
         current_track = tracks[i]
@@ -588,7 +585,7 @@ def _initial_break_pass(
                     features_lon[current_track[k + 1]],
                 )
                 phi_max = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
+                    0.5 * (d1 + d2) / DEGTORAD, adapt_params, phimax
                 )
 
                 if cost > phi_max:
@@ -640,7 +637,6 @@ def _break_track(
         The updated track matrix (potentially with a new row).
     """
     n_tracks, n_frames = tracks.shape
-    deg_to_rad = np.pi / 180.0
 
     target_k = k + 1 if forward else k - 1
     if target_k < 0 or target_k >= n_frames:
@@ -660,7 +656,7 @@ def _break_track(
         + get_regional_dmax(lat2, lon2, zones, default_dmax)
     )
 
-    if geod_dist(lat1, lon1, lat2, lon2) > dmax_eff * deg_to_rad:
+    if geod_dist(lat1, lon1, lat2, lon2) > dmax_eff * DEGTORAD:
         # Violation! Break the track.
         new_tr = np.full(n_frames, -1, dtype=np.int64)
         if forward:
@@ -835,3 +831,122 @@ def _numba_object_extrema(
                 extrema[i, j] = 1.0
 
     return extrema
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _numba_cell_area(lat: float, dlat: float, dlon: float) -> float:
+    """Calculates the area of a grid cell in km^2."""
+    # Area = R^2 * cos(lat) * dlat * dlon
+    return float(
+        R_EARTH_KM**2 * np.cos(lat * DEGTORAD) * (dlat * DEGTORAD) * (dlon * DEGTORAD)
+    )
+
+
+@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+def _numba_object_properties(
+    frame: NDArray[np.float64],
+    labeled_mask: NDArray[np.int32],
+    num_objects: int,
+    lat: NDArray[np.float64],
+    lon: NDArray[np.float64],
+    threshold: float,
+    is_min: bool,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+]:
+    """
+    Calculates physical properties for each object:
+    raw_size (km^2), fitted_size (ellipse km^2), axes, orientation.
+    Uses intensity-weighting for the ellipse fit.
+    """
+    ny, nx = frame.shape
+    raw_areas = np.zeros(num_objects + 1, dtype=np.float64)
+    fitted_areas = np.zeros(num_objects + 1, dtype=np.float64)
+    major_axes = np.zeros(num_objects + 1, dtype=np.float64)
+    minor_axes = np.zeros(num_objects + 1, dtype=np.float64)
+    orientations = np.zeros(num_objects + 1, dtype=np.float64)
+
+    # Moments for each object
+    m00 = np.zeros(num_objects + 1, dtype=np.float64)
+    m10 = np.zeros(num_objects + 1, dtype=np.float64)
+    m01 = np.zeros(num_objects + 1, dtype=np.float64)
+    m20 = np.zeros(num_objects + 1, dtype=np.float64)
+    m02 = np.zeros(num_objects + 1, dtype=np.float64)
+    m11 = np.zeros(num_objects + 1, dtype=np.float64)
+
+    dlat = abs(lat[1] - lat[0]) if ny > 1 else 1.0
+    dlon = abs(lon[1] - lon[0]) if nx > 1 else 1.0
+
+    for i in range(ny):
+        area_cell = _numba_cell_area(lat[i], dlat, dlon)
+        for j in range(nx):
+            obj_id = labeled_mask[i, j]
+            if obj_id == 0:
+                continue
+
+            raw_areas[obj_id] += area_cell
+
+            # Intensity weighting: difference from threshold
+            val = frame[i, j]
+            weight = abs(val - threshold)
+
+            # Use lat/lon directly for moments
+            y = lat[i]
+            x = lon[j]
+
+            m00[obj_id] += weight
+            m10[obj_id] += weight * x
+            m01[obj_id] += weight * y
+            m20[obj_id] += weight * x**2
+            m02[obj_id] += weight * y**2
+            m11[obj_id] += weight * x * y
+
+    for obj_id in range(1, num_objects + 1):
+        if m00[obj_id] == 0:
+            continue
+
+        # Centroid
+        cx = m10[obj_id] / m00[obj_id]
+        cy = m01[obj_id] / m00[obj_id]
+
+        # Central moments
+        mu20 = m20[obj_id] / m00[obj_id] - cx**2
+        mu02 = m02[obj_id] / m00[obj_id] - cy**2
+        mu11 = m11[obj_id] / m00[obj_id] - cx * cy
+
+        # Convert to km (approximate at centroid latitude)
+        km_per_deg_lon = KM_PER_DEG * np.cos(cy * DEGTORAD)
+
+        # Scaled covariance matrix components
+        a = mu20 * km_per_deg_lon**2
+        b = mu11 * km_per_deg_lon * KM_PER_DEG
+        c = mu02 * KM_PER_DEG**2
+
+        # Eigenvalues of the covariance matrix
+        # (lambda - a)(lambda - c) - b^2 = 0
+        # lambda^2 - (a+c)lambda + ac - b^2 = 0
+        term1 = (a + c) / 2.0
+        term2 = np.sqrt(((a - c) / 2.0) ** 2 + b**2)
+
+        lambda1 = term1 + term2
+        lambda2 = term1 - term2
+
+        # Axes (2 * sqrt(lambda) for 1-sigma ellipse)
+        major = 2.0 * np.sqrt(max(0.0, lambda1))
+        minor = 2.0 * np.sqrt(max(0.0, lambda2))
+
+        major_axes[obj_id] = major
+        minor_axes[obj_id] = minor
+        fitted_areas[obj_id] = np.pi * major * minor
+
+        # Orientation (angle of major axis)
+        if abs(a - c) < 1e-10:
+            orientations[obj_id] = 0.0
+        else:
+            orientations[obj_id] = 0.5 * np.arctan2(2.0 * b, a - c) * 180.0 / np.pi
+
+    return raw_areas, fitted_areas, major_axes, minor_axes, orientations

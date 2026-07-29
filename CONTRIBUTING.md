@@ -28,8 +28,8 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
     ```bash
     uv run ruff check . --fix
     uv run ruff format .
-    uv run mypy src/
-    uv run pytest
+    uv run mypy .
+    uv run pytest tests/unit
     ```
 5.  **Submit the Pull Request**:
     - Provide a clear description of the changes.
@@ -39,7 +39,9 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
 
 - **Code Style**: We use `ruff` for linting and formatting.
 - **Type Safety**: All new code should be type-hinted and pass `mypy` strict checks.
-- **Testing**: We use `pytest`. Ensure that your changes are covered by unit tests and, if applicable, integration tests.
+- **Testing**: We use `pytest`. 
+  - **Unit Tests**: Coverage for individual functions and classes. Fast.
+  - **Integration Tests**: Coverage for the full CLI pipeline against real data. Use `uv run pytest --run-integration`.
 - **Documentation**: Update the documentation in `docs/` if you introduce new features or change existing behavior.
 
 ## Governance

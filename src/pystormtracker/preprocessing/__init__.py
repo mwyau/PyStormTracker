@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from .kinematics import Kinematics, apply_vort_div, compute_vort_div
-from .spectral import SpectralFilter, apply_spectral_filter
+from .kinematics import Kinematics, compute_vort_div
+from .regrid import SpectralRegridder
+from .spectral import DCTFilter, SHTFilter, apply_dct_filter, apply_sht_filter
 from .taper import TaperFilter
 
 __all__ = [
+    "DCTFilter",
     "Kinematics",
-    "SpectralFilter",
+    "SHTFilter",
+    "SpectralRegridder",
     "TaperFilter",
-    "apply_spectral_filter",
-    "apply_vort_div",
+    "apply_dct_filter",
+    "apply_sht_filter",
     "compute_vort_div",
 ]

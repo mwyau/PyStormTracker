@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 from numpy.typing import NDArray
 
-from pystormtracker.preprocessing import SpectralFilter
+from pystormtracker.preprocessing import SHTFilter
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
@@ -23,7 +23,7 @@ def test_spectral_filter_serial(ny: int, nx: int) -> None:
         name="msl",
     )
 
-    filt = SpectralFilter(lmin=5, lmax=42)
+    filt = SHTFilter(lmin=5, lmax=42)
     filtered = filt.filter(da, backend="serial")
 
     assert filtered.shape == (2, ny, nx)
@@ -36,7 +36,7 @@ def test_spectral_filter_invalid_shape() -> None:
     data: NDArray[np.float64] = np.random.rand(1, 10, 15)
     da = xr.DataArray(data, dims=["time", "lat", "lon"])
 
-    filt = SpectralFilter()
+    filt = SHTFilter()
     with pytest.raises(ValueError, match="Unsupported shape for spectral filter"):
         filt.filter(da, backend="serial")
 
@@ -56,7 +56,7 @@ def test_spectral_filter_lat_reverse(ny: int, nx: int) -> None:
         name="msl",
     )
 
-    filt = SpectralFilter(lmin=5, lmax=42, lat_reverse=False)
+    filt = SHTFilter(lmin=5, lmax=42, lat_reverse=False)
     filtered = filt.filter(da, backend="serial")
 
     assert filtered.shape == (1, ny, nx)
@@ -78,7 +78,7 @@ def test_spectral_filter_lat_descending(ny: int, nx: int) -> None:
         name="msl",
     )
 
-    filt = SpectralFilter(lmin=5, lmax=42, lat_reverse=True)
+    filt = SHTFilter(lmin=5, lmax=42, lat_reverse=True)
     filtered = filt.filter(da, backend="serial")
 
     assert filtered.shape == (1, ny, nx)
@@ -90,7 +90,7 @@ def test_spectral_filter_numpy_ndarray(ny: int, nx: int) -> None:
     # Test passing a raw numpy array
     data: NDArray[np.float64] = np.random.rand(ny, nx)
 
-    filt = SpectralFilter(lmin=5, lmax=42)
+    filt = SHTFilter(lmin=5, lmax=42)
     filtered = filt.filter(data)
 
     assert isinstance(filtered, np.ndarray)
@@ -102,7 +102,7 @@ def test_spectral_filter_numpy_ndarray_3d(ny: int, nx: int) -> None:
     # Test passing a 3D numpy array (T, ny, nx)
     data: NDArray[np.float64] = np.random.rand(3, ny, nx)
 
-    filt = SpectralFilter(lmin=5, lmax=42)
+    filt = SHTFilter(lmin=5, lmax=42)
     filtered = filt.filter(data)
 
     assert isinstance(filtered, np.ndarray)

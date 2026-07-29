@@ -5,6 +5,8 @@
 :caption: Getting Started
 
 PyStormTracker <readme>
+CLI Reference <cli>
+API Reference <api>
 ```
 
 ```{toctree}
@@ -13,6 +15,7 @@ PyStormTracker <readme>
 
 Architecture <architecture>
 Hodges Implementation <hodges>
+Spectral Accuracy <spectral_accuracy>
 HEALPix Support <healpix>
 Benchmark <benchmark>
 ```

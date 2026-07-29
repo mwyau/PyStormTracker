@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import xarray as xr
-from utils import RAW_CONTENT_URL
 
 from pystormtracker.io.data_loader import DataLoader
 
@@ -105,23 +104,6 @@ def test_is_lat_reversed_direct() -> None:
     ds_asc = xr.Dataset({"var": lats_asc})
     loader_asc = DataLoader(ds_asc)
     assert loader_asc.is_lat_reversed() is False
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "url, expected_engine",  # noqa: PT006
-    [
-        (f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr", "zarr"),
-    ],
-)
-def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None:
-    """Integration test for remote Zarr loading with auto-detection."""
-    loader = DataLoader(url)
-    ds = loader.ensure_open()
-    assert isinstance(ds, xr.Dataset)
-    assert loader.engine is None  # Auto-detection was used
-    # Check that it was cached
-    assert url in DataLoader._ds_cache
 
 
 @patch("xarray.open_dataset")

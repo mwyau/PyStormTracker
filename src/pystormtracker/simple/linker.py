@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.center import Center
+from ..models.constants import DEGTORAD, R_EARTH_KM
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange, Tracks
 
@@ -15,9 +16,6 @@ def haversine_matrix(
     lons2: NDArray[np.float64],
 ) -> NDArray[np.float64]:
     """Vectorized Haversine distance calculation returning a distance matrix in km."""
-    R = 6367.0
-    DEGTORAD = np.pi / 180.0
-
     lats1_rad = lats1 * DEGTORAD
     lats2_rad = lats2 * DEGTORAD
 
@@ -31,7 +29,7 @@ def haversine_matrix(
         * np.sin(dlon / 2.0) ** 2
     )
     c = 2 * np.arcsin(np.sqrt(a))
-    return np.asarray(R * c)
+    return np.asarray(R_EARTH_KM * c)
 
 
 class SimpleLinker:

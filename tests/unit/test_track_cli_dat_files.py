@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,6 +30,7 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
     # 3. Patch run_tracker and sys.argv to run main()
     test_args = [
         "stormtracker",
+        "track",
         "-i",
         "dummy.nc",
         "-v",
@@ -44,8 +46,8 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
     ]
 
     with (
-        patch("sys.argv", test_args),
-        patch("pystormtracker.cli.run_tracker") as mock_run,
+        patch.object(sys, "argv", test_args),
+        patch("pystormtracker.track.run_tracker") as mock_run,
     ):
         main()
 
@@ -71,6 +73,7 @@ def test_cli_load_dat_json(tmp_path: Path) -> None:
 
     test_args = [
         "stormtracker",
+        "track",
         "-i",
         "dummy.nc",
         "-v",
@@ -86,8 +89,8 @@ def test_cli_load_dat_json(tmp_path: Path) -> None:
     ]
 
     with (
-        patch("sys.argv", test_args),
-        patch("pystormtracker.cli.run_tracker") as mock_run,
+        patch.object(sys, "argv", test_args),
+        patch("pystormtracker.track.run_tracker") as mock_run,
     ):
         main()
 
