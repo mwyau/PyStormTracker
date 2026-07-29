@@ -62,10 +62,7 @@ tracker = pst.SimpleTracker()
 
 # Standardized .track() method
 tracks = tracker.track(
-    infile="era5_msl.nc", 
-    varname="msl", 
-    start_time="2025-01-01",
-    backend="dask"
+    infile="era5_msl.nc", varname="msl", start_time="2025-01-01", backend="dask"
 )
 
 # Standardized export
