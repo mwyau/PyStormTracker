@@ -38,13 +38,13 @@ permissions:
 
 jobs:
   ruff-lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/ruff-action@v3
 
   ruff-format:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/ruff-action@v3
@@ -52,7 +52,7 @@ jobs:
           args: format --check
 
   mypy-typecheck:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,7 +69,7 @@ jobs:
 
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +118,12 @@ jobs:
       matrix:
         include:
           - arch: amd64
+            os: ubuntu-26.04
+            python-version: '3.13'
+          - arch: arm64
+            os: ubuntu-26.04-arm
+            python-version: '3.13'
+          - arch: amd64
             os: ubuntu-24.04
             python-version: '3.13'
           - arch: arm64
@@ -148,15 +154,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
       - name: Run Integration Tests
-        if: matrix.os != 'ubuntu-24.04' || matrix.arch != 'amd64'
+        if: matrix.os != 'ubuntu-26.04' || matrix.arch != 'amd64'
         run: uv run pytest -vv tests/integration/ --run-integration
 
       - name: Run Integration Tests with Coverage
-        if: matrix.os == 'ubuntu-24.04' && matrix.arch == 'amd64'
+        if: matrix.os == 'ubuntu-26.04' && matrix.arch == 'amd64'
         run: uv run pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration
 
       - name: Upload coverage reports to Codecov
-        if: matrix.os == 'ubuntu-24.04' && matrix.arch == 'amd64'
+        if: matrix.os == 'ubuntu-26.04' && matrix.arch == 'amd64'
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
@@ -166,7 +172,7 @@ jobs:
   docs-build:
     name: docs-build
     needs: [ruff-lint, ruff-format]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -187,9 +193,9 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            os: ubuntu-24.04
+            os: ubuntu-26.04
           - arch: arm64
-            os: ubuntu-24.04-arm
+            os: ubuntu-26.04-arm
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
