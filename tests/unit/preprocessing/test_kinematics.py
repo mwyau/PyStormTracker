@@ -14,7 +14,6 @@ from pystormtracker.preprocessing.kinematics import (
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
-    pytest.importorskip("ducc0")
     u = np.random.rand(ny, nx)
     v = np.random.rand(ny, nx)
 
@@ -30,7 +29,6 @@ def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_apply_vort_div(ny: int, nx: int) -> None:
-    pytest.importorskip("ducc0")
     u = xr.DataArray(
         np.random.rand(ny, nx),
         coords={
@@ -85,7 +83,6 @@ def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_kinematics_class(ny: int, nx: int) -> None:
-    pytest.importorskip("ducc0")
     u_np = np.random.rand(ny, nx)
     v_np = np.random.rand(ny, nx)
 
@@ -120,7 +117,6 @@ def test_kinematics_class(ny: int, nx: int) -> None:
 
 
 def test_solid_body_rotation() -> None:
-    pytest.importorskip("ducc0")
     # Solid body rotation: u = U0 * cos(lat)
     ntheta, nphi = 73, 144
     lat = np.linspace(np.pi / 2, -np.pi / 2, ntheta)
