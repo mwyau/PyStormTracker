@@ -38,6 +38,7 @@ def test_ensure_open_netcdf(mock_open: MagicMock) -> None:
     mock_open.assert_called_once_with(Path("test.nc"), engine=None, chunks={})
 
 
+@pytest.mark.importorskip("cfgrib")
 @patch("xarray.open_dataset")
 def test_ensure_open_grib(mock_open: MagicMock) -> None:
     mock_ds = MagicMock(spec=xr.Dataset)
@@ -48,6 +49,7 @@ def test_ensure_open_grib(mock_open: MagicMock) -> None:
     mock_open.assert_called_once_with(Path("test.grib"), engine="cfgrib", chunks={})
 
 
+@pytest.mark.importorskip("zarr")
 @patch("xarray.open_dataset")
 def test_ensure_open_zarr(mock_open: MagicMock) -> None:
     mock_ds = MagicMock(spec=xr.Dataset)
@@ -58,6 +60,7 @@ def test_ensure_open_zarr(mock_open: MagicMock) -> None:
     mock_open.assert_called_once_with(Path("test.zarr"), engine="zarr", chunks={})
 
 
+@pytest.mark.importorskip("zarr")
 @patch("xarray.open_dataset")
 def test_ensure_open_zarr_dir(mock_open: MagicMock, tmp_path: Path) -> None:
     mock_ds = MagicMock(spec=xr.Dataset)
