@@ -33,7 +33,7 @@ Initially developed at the **National Center for Atmospheric Research (NCAR)** a
   - **Serial**: Standard sequential execution. Default fallback.
   - **Dask**: Multi-process scaling for local or distributed environments. Selected if `--workers` is provided without MPI.
   - **MPI**: High-performance distributed execution via `mpi4py`. Selected automatically in MPI environments.
-- **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
+- **Typed Implementation**: Built for **Python 3.12+** with strict type safety and `mypy` compliance.
 - **Interoperable**: Full support for the standard **IMILAST** and **TRACK (tdump)** intercomparison formats.
 
 <p align="center">
@@ -57,7 +57,7 @@ Full documentation, including API references and advanced usage examples, is ava
 ## Installation
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.12+
 - **MPI Support**:
   - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
   - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
@@ -168,11 +168,7 @@ import pystormtracker as pst
 tracker = pst.HodgesTracker()
 
 # 2. Run the tracking algorithm. Returns an array-backed Tracks object.
-tracks = tracker.track(
-    infile="data.nc", 
-    varname="vo", 
-    mode="max"
-)
+tracks = tracker.track(infile="data.nc", varname="vo", mode="max")
 ```
 
 ### Analyze the results programmatically
