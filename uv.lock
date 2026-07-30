@@ -2958,9 +2958,9 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "cfgrib" },
-    { name = "eccodes" },
-    { name = "eccodeslib", marker = "sys_platform != 'win32'" },
+    { name = "cfgrib", marker = "python_full_version < '3.14'" },
+    { name = "eccodes", marker = "python_full_version < '3.14'" },
+    { name = "eccodeslib", marker = "python_full_version < '3.14' and sys_platform != 'win32'" },
     { name = "fsspec", extra = ["http"] },
     { name = "mpi4py" },
     { name = "netcdf4" },
@@ -2972,9 +2972,9 @@ docs = [
     { name = "sphinx-rtd-theme" },
 ]
 grib = [
-    { name = "cfgrib" },
-    { name = "eccodes" },
-    { name = "eccodeslib", marker = "sys_platform != 'win32'" },
+    { name = "cfgrib", marker = "python_full_version < '3.14'" },
+    { name = "eccodes", marker = "python_full_version < '3.14'" },
+    { name = "eccodeslib", marker = "python_full_version < '3.14' and sys_platform != 'win32'" },
 ]
 mpi = [
     { name = "mpi4py" },
@@ -3010,11 +3010,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cartopy", marker = "extra == 'viz'", specifier = ">=0.24.0" },
-    { name = "cfgrib", marker = "extra == 'grib'", specifier = ">=0.9.15.1" },
+    { name = "cfgrib", marker = "python_full_version < '3.14' and extra == 'grib'", specifier = ">=0.9.15.1" },
     { name = "dask", specifier = ">=2024.1.0" },
     { name = "ducc0", specifier = ">=0.33.0" },
-    { name = "eccodes", marker = "extra == 'grib'", specifier = ">=2.43.0" },
-    { name = "eccodeslib", marker = "sys_platform != 'win32' and extra == 'grib'", specifier = ">=2.43.0" },
+    { name = "eccodes", marker = "python_full_version < '3.14' and extra == 'grib'", specifier = ">=2.43.0" },
+    { name = "eccodeslib", marker = "python_full_version < '3.14' and sys_platform != 'win32' and extra == 'grib'", specifier = ">=2.43.0" },
     { name = "fsspec", extras = ["http"], marker = "extra == 'zarr'", specifier = ">=2024.9.0" },
     { name = "h5netcdf", extras = ["h5py"], specifier = ">=1.8.0" },
     { name = "ipympl", marker = "extra == 'viz'", specifier = ">=0.10.0" },
