@@ -37,6 +37,8 @@ def related_fields() -> tuple[xr.DataArray, xr.DataArray]:
 def test_find_best_cca_truncation(
     related_fields: tuple[xr.DataArray, xr.DataArray],
 ) -> None:
+    pytest.importorskip("xeofs")
+
     X, Y = related_fields
     result = find_best_cca_truncation(X, Y, max_modes=2, leave_n_out=3)
 
@@ -49,6 +51,8 @@ def test_find_best_cca_truncation(
 def test_train_cca_model(
     related_fields: tuple[xr.DataArray, xr.DataArray],
 ) -> None:
+    pytest.importorskip("xeofs")
+
     X, Y = related_fields
     model = train_cca_model(X, Y, n_modes=1)
     scores = model.predict(X.isel(time=slice(0, 2)))
@@ -69,6 +73,8 @@ def test_find_best_cca_truncation_validates_parameters(
     leave_n_out: int,
     message: str,
 ) -> None:
+    pytest.importorskip("xeofs")
+
     X, Y = related_fields
     with pytest.raises(ValueError, match=message):
         find_best_cca_truncation(X, Y, max_modes=max_modes, leave_n_out=leave_n_out)

@@ -28,7 +28,7 @@ def _require_cca() -> None:
     if XeofsCCA is None:
         raise ImportError(
             "The 'xeofs' library is required for cross-validation. "
-            "Install it with 'uv sync --extra metrics'."
+            "Install it with 'uv sync --extra eof'."
         )
 
 

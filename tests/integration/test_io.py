@@ -22,6 +22,8 @@ def clear_cache() -> None:
 )
 def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None:
     """Integration test for remote Zarr loading with auto-detection."""
+    pytest.importorskip("zarr")
+
     loader = DataLoader(url)
     ds = loader.ensure_open()
     assert isinstance(ds, xr.Dataset)

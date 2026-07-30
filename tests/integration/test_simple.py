@@ -216,6 +216,8 @@ def test_mpi_vs_serial(
     config: tuple[str, str, str, int | None],
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
+    pytest.importorskip("mpi4py")
+
     # Check for mpiexec in PATH
     if not shutil.which("mpiexec"):
         # Double check with a run in case it's a shell alias or something similar
@@ -259,11 +261,8 @@ def test_grib_vs_netcdf(
     config: tuple[str, str, str, int | None],
 ) -> None:
     """Test that tracking matches between NetCDF and GRIB inputs."""
+    pytest.importorskip("cfgrib")
     import xarray as xr
-
-    # Check if cfgrib engine is available
-    if "cfgrib" not in xr.backends.list_engines():
-        pytest.skip("cfgrib engine not available (ecCodes likely missing)")
 
     _, varname, mode, steps = config
     serial_path, _ = serial_reference

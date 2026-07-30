@@ -42,16 +42,16 @@ Repository = "https://github.com/mwyau/PyStormTracker.git"
 Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
 [project.optional-dependencies]
-metrics = [
+eof = [
     "xeofs[etc]>=2.0.0",
-]
-mpi = [
-    "mpi4py>=4.1.0",
 ]
 grib = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0; sys_platform != 'win32' and python_version < '3.14'",
+    "eccodeslib>=2.43.0; sys_platform != 'win32'",
+]
+mpi = [
+    "mpi4py>=4.1.0",
 ]
 netcdf4 = [
     "netCDF4>=1.6.5",
@@ -61,20 +61,7 @@ zarr = [
     "fsspec[http]>=2024.9.0",
 ]
 all = [
-    "PyStormTracker[grib,metrics,mpi,netcdf4,zarr,docs]",
-]
-docs = [
-    "myst-parser>=5.0.0",
-    "sphinx>=9.0.4",
-    "sphinx-rtd-theme>=3.1.0",
-]
-viz = [
-    "cartopy>=0.24.0",
-    "ipympl>=0.10.0",
-    "ipywidgets>=8.1.8",
-    "jupyterlab>=4.5.6",
-    "matplotlib>=3.10",
-    "pandas>=3.0.1",
+    "PyStormTracker[eof,grib,mpi,netcdf4,zarr]",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -89,14 +76,30 @@ exclude = [
 
 [dependency-groups]
 dev = [
-    "PyStormTracker[all]",
-    "cdsapi>=0.7.7",
+    { include-group = "docs" },
+    { include-group = "test" },
     "mypy>=1.19.1",
+    "ruff>=0.15.10",
+]
+docs = [
+    "myst-parser>=5.0.0",
+    "sphinx>=9.0.4",
+    "sphinx-rtd-theme>=3.1.0",
+]
+test = [
+    "cdsapi>=0.7.7",
     "openmpi>=5.0.10 ; sys_platform != 'win32'",
     "pooch>=1.9.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
-    "ruff>=0.15.10",
+]
+viz = [
+    "cartopy>=0.24.0",
+    "ipympl>=0.10.0",
+    "ipywidgets>=8.1.8",
+    "jupyterlab>=4.5.6",
+    "matplotlib>=3.10",
+    "pandas>=3.0.1",
 ]
 
 [tool.ruff]
