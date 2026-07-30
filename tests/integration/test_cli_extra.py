@@ -118,4 +118,4 @@ def test_cli_convert(sample_tracks_file: Path, tmp_path: Path) -> None:
     run_command_direct(args)
 
     assert out_file.exists()
-    assert "window.TRACKS_DATA" in out_file.read_text()
+    assert "window.TRACKS_DATA" in out_file.read_text(encoding="utf-8")
