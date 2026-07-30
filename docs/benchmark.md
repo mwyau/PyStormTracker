@@ -1,6 +1,6 @@
 # PyStormTracker Benchmark
 
-This document records Simple tracker execution times, in seconds, for the nested-object implementation in `v0.3.3` and the array-backed implementation in `v0.4.0`. These historical results do not measure the current Hodges or HEALPix trackers.
+This document provides a detailed breakdown of execution time (in seconds) comparing the legacy nested-object architecture (`v0.3.3`) and the current, Numba JIT-compiled array architecture (`v0.4.0`).
 
 ## Methodology
 - **Hardware**: AMD Ryzen 7 5800X (16 Threads), 48GB WSL Memory Limit.
@@ -8,8 +8,6 @@ This document records Simple tracker execution times, in seconds, for the nested
   - `2.5x2.5`: 144x73 grid, 360 time steps.
   - `0.25x0.25`: 1440x721 grid, 60 time steps.
 - **Execution**: Component timings (Detection, Linking, Export, IO/Overhead) were extracted from the CLI.
-
-The tables report one hardware and software configuration and should not be interpreted as general scaling results. Reproduction requires the corresponding release code and input data.
 
 ## Resolution: 2.5x2.5
 ![2.5x2.5 Breakdown](_static/benchmark_2_5x2_5_breakdown.png)

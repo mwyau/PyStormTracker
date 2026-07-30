@@ -1,22 +1,22 @@
 # HEALPix Support: Regridding and Tracking
 
-This document describes spectral regridding to HEALPix and object detection on a one-dimensional HEALPix grid.
+This document provides a comprehensive technical overview of the HEALPix support implemented in PyStormTracker, covering both the spectral regridding capabilities and the 1D graph-based tracking algorithm.
 
 ## 1. Overview
-HEALPix represents a global field as equal-area, iso-latitude pixels with a neighbor graph. The one-dimensional topology avoids the pole singularity and latitude-dependent cell areas of a regular latitude-longitude mesh. PyStormTracker can regrid a regular or reduced-Gaussian field to HEALPix and run object detection on that graph.
+The HEALPix implementation provides a high-performance path for processing global atmospheric datasets (like ERA5) natively on 1D spherical grids. By avoiding 2D meshes, we eliminate pole singularities and cell-area distortion, while maintaining mathematical exactness through spectral transforms.
 
 ## 2. Spectral Regridding (`SpectralRegridder`)
-`SpectralRegridder` uses `ducc0.sht` for spherical harmonic analysis of an input grid and synthesis on a target grid.
+The `SpectralRegridder` (located in `src/pystormtracker/preprocessing/regrid.py`) utilizes `ducc0.sht` to perform mathematically precise transformations between various grid geometries.
 
 - **Supported Inputs**: Clenshaw-Curtis (CC) and Gauss-Legendre (GL).
 - **Supported Outputs**: CC, GL, and HEALPix.
 - **Spectral Logic**:
     - **Analysis**: Extracts spherical harmonic coefficients ($a_{lm}$) from 2D grids using `ducc0.sht.analysis_2d`.
     - **Synthesis**: Projects coefficients onto the target grid. For HEALPix, it uses `ducc0.sht.synthesis` with `geometry` parameters derived from `ducc0.healpix.Healpix_Base.sht_info()`.
-    - **Spectral Truncation**: Supports explicit $L_{max}$ and $M_{max}$ band limits. If omitted, the truncation is inferred from the input longitude count.
+    - **Resolution Control**: Supports explicit $L_{max}$ and $M_{max}$ truncation to ensure band-limited consistency (defaulting to the input resolution).
 
 ## 3. HEALPix Tracking Algorithm (`HealpixTracker`)
-`HealpixTracker` implements the `Tracker` protocol for HEALPix pixel arrays. Tracking currently supports the serial backend.
+The `HealpixTracker` implements the standard `Tracker` protocol but is specifically engineered for the 1D graph topology of HEALPix pixel arrays.
 
 ### 3.1. 1D Graph Topology
 Unlike 2D meshes where neighbors are found via index offsets, HEALPix neighbors are determined via a precomputed adjacency list.
@@ -24,46 +24,39 @@ Unlike 2D meshes where neighbors are found via index offsets, HEALPix neighbors 
 - All detection kernels operate on this 1D graph, using the table for topological lookups.
 
 ### 3.2. Connected Component Labeling (CCL)
-The tracker groups adjacent pixels into objects with the Numba kernel `_numba_healpix_ccl`.
+The tracker groups adjacent pixels into "objects" using a high-performance Numba kernel (`_numba_healpix_ccl`).
 - **Algorithm**: Iterative label propagation over the 1D graph until convergence.
 - **Constraints**: Supports `threshold` filtering and `min_points` object-size constraints.
 
 ### 3.3. Spherical Subgrid Refinement
-Optional `subgrid_refine_healpix` applies these steps:
+To achieve high-precision coordinate accuracy, the tracker implements a sophisticated spherical refinement pipeline (`subgrid_refine_healpix`):
 1.  **Local Projection**: For each detected extremum at pixel $P$, it projects $P$ and its 8 neighbors onto a local **equirectangular plane** centered at $P$.
 2.  **Numerical Stability**: Coordinate scaling/normalization is applied to the local projected coordinates to prevent matrix ill-conditioning when solving the least-squares system.
 3.  **Surface Fitting**: An unconstrained least-squares fit is performed to find the coefficients of a local quadratic surface: $z = Ax^2 + By^2 + Cxy + Dx + Ey + F$.
-4.  **Analytical Stationary Point**: The candidate offset $(dx, dy)$ is found by solving the system where partial derivatives $\frac{\partial z}{\partial x} = 0$ and $\frac{\partial z}{\partial y} = 0$.
+4.  **Analytical Optimization**: The precise extremum location $(dx, dy)$ is found by solving the system where partial derivatives $\frac{\partial z}{\partial x} = 0$ and $\frac{\partial z}{\partial y} = 0$.
 5.  **Inverse Projection**: The refined coordinates are projected back to standard Latitude and Longitude.
 
 ## 4. Engineering Standards
-- **Dependencies**: HEALPix operations use the existing `ducc0` dependency; `healpy` is not required.
-- **Numba JIT**: Graph traversal and local quadratic fitting kernels are compiled with `cache=True` and `nogil=True`.
-- **Defaults**: HEALPix tracking defaults to T5-42 filtering and enabled subgrid refinement. Both can be disabled explicitly.
-- **Tracker protocol and output**: `HealpixTracker` implements the common `Tracker` protocol and returns the array-backed `Tracks` model. Dask and MPI tracking are not implemented.
+- **Zero New Dependencies**: The entire implementation relies on the existing `ducc0` dependency. No `healpy` or other libraries are required.
+- **Numba Acceleration**: All core graph-traversal and matrix-solving kernels are JIT-compiled with Numba (`nogil=True`, `cache=True`).
+- **Standard Defaults**: Default spectral filtering is set to $L_{min}=5, L_{max}=42$ for all trackers to ensure meteorological consistency.
+- **Protocol Adherence**: The `HealpixTracker` is a drop-in replacement for `SimpleTracker` or `HodgesTracker`, returning standard `Tracks` objects.
 
 ## 5. Usage Example
 ```python
-import xarray as xr
-
 from pystormtracker import HealpixTracker, SpectralRegridder
 
-# Regrid one ERA5 frame (CC) to HEALPix (Nside=64)
-ds = xr.open_dataset("data.nc")
-field = ds["msl"]
-frame = field.isel({field.dims[0]: 0})
+# 1. Regrid ERA5 (CC) to HEALPix (Nside=64)
 regridder = SpectralRegridder(lmax=42)
-da_hp = regridder.to_healpix(frame, nside=64)
+da_hp = regridder.to_healpix(ds["msl"], nside=64)
 
-# Track the first eight time steps after automatic HEALPix conversion
+# 2. Track on the HEALPix grid
 tracker = HealpixTracker()
 tracks = tracker.track(
-    infile=field.isel({field.dims[0]: slice(0, 8)}),
+    infile="hp_data.nc",  # or pass DataArray directly via backend wrappers
     varname="msl",
     mode="min",
     threshold=1000.0,
     filter=True,  # Apply T5-42 spectral filtering
 )
 ```
-
-The first part demonstrates one-frame regridding; the second passes a regular three-dimensional latitude-longitude field to `HealpixTracker.track()`, which triggers T5-42 filtering and HEALPix conversion by default. For an already regridded time-by-cell field, preprocessing must be performed before tracking.

@@ -1,12 +1,10 @@
-# PyStormTracker Documentation
+# PyStormTracker: A High-Performance Cyclone Tracker in Python
 
 ```{toctree}
 :maxdepth: 2
 :caption: Getting Started
 
 PyStormTracker <readme>
-CLI Reference <cli>
-API Reference <api>
 ```
 
 ```{toctree}
@@ -14,8 +12,7 @@ API Reference <api>
 :caption: Technical Reference
 
 Architecture <architecture>
-Hodges Implementation <hodges>
-Spectral Accuracy <spectral_accuracy>
+Hodges (TRACK) Implementation <hodges>
 HEALPix Support <healpix>
 Benchmark <benchmark>
 ```
