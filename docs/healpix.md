@@ -53,10 +53,10 @@ da_hp = regridder.to_healpix(ds["msl"], nside=64)
 # 2. Track on the HEALPix grid
 tracker = HealpixTracker()
 tracks = tracker.track(
-    infile="hp_data.nc", # or pass DataArray directly via backend wrappers
+    infile="hp_data.nc",  # or pass DataArray directly via backend wrappers
     varname="msl",
     mode="min",
     threshold=1000.0,
-    filter=True, # Apply T5-42 spectral filtering
+    filter=True,  # Apply T5-42 spectral filtering
 )
 ```

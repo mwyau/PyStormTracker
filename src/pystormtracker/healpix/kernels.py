@@ -5,7 +5,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-@nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
+@nb.njit(nogil=True, cache=True)
 def _numba_healpix_ccl(
     data: NDArray[np.float64],
     neighbor_table: NDArray[np.int64],
@@ -74,7 +74,7 @@ def _numba_healpix_ccl(
     return labels, num_objects
 
 
-@nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
+@nb.njit(nogil=True, cache=True)
 def _numba_healpix_object_extrema(
     data: NDArray[np.float64],
     neighbor_table: NDArray[np.int64],
@@ -125,7 +125,7 @@ def _numba_healpix_object_extrema(
     return extrema
 
 
-@nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
+@nb.njit(nogil=True, cache=True)
 def subgrid_refine_healpix(
     data: NDArray[np.float64],
     p_idx: int,
@@ -235,7 +235,7 @@ def subgrid_refine_healpix(
         return pixel_lats[p_idx], pixel_lons[p_idx], data[p_idx]
 
 
-@nb.njit(nogil=True, cache=True)  # type: ignore[untyped-decorator]
+@nb.njit(nogil=True, cache=True)
 def _numba_get_healpix_centers(
     extrema_mask: NDArray[np.float64],
     data: NDArray[np.float64],
