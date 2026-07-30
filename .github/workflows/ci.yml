@@ -41,13 +41,13 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@v4.1.0
 
   ruff-format:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@v4.1.0
         with:
           args: format --check
 
@@ -58,7 +58,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
@@ -83,7 +83,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -140,7 +140,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -178,7 +178,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           python-version: '3.13'
