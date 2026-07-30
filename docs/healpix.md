@@ -61,6 +61,8 @@ tracks = tracker.track(
     infile=field.isel({field.dims[0]: slice(0, 8)}),
     varname="msl",
     mode="min",
+    threshold=1000.0,
+    filter=True,  # Apply T5-42 spectral filtering
 )
 ```
 

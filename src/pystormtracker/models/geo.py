@@ -11,7 +11,7 @@ from ..models.constants import DEGTORAD, R_EARTH_KM
 MapExtent: TypeAlias = tuple[float, float, float, float]
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculates the great circle distance (angular separation) in radians."""
     phi1 = lat1 * DEGTORAD
@@ -33,13 +33,13 @@ def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return float(np.arccos(dot))
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def geod_dist_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculates the great circle distance in kilometers."""
     return float(geod_dist(lat1, lon1, lat2, lon2) * R_EARTH_KM)
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def stereo_to_latlon(
     x: float, y: float, hemisphere: int, lon_0: float = 0.0
 ) -> tuple[float, float]:

@@ -24,13 +24,14 @@
 - **Vectorized, array-backed data model**: Stores track coordinates, times, identifiers, and variables in contiguous NumPy arrays. `Track` objects are views over this storage rather than independent collections of center objects.
 - **Numba JIT-compiled kernels**: Detection, Laplacian intensity, great-circle geometry, connected-component labeling (CCL), subgrid refinement, and Modified Greedy Exchange (MGE) kernels use cached, GIL-free Numba functions.
 - **Multiple Algorithms**:
-  - **Simple (default)**: Local-extrema detection followed by deterministic nearest-neighbor linking.
-  - **Hodges (TRACK)**: Object-based detection and Modified Greedy Exchange linking based on TRACK. See the [implementation notes](https://pystormtracker.readthedocs.io/en/latest/hodges.html).
+  - **Simple (default)**: Fast, local-extrema detection and deterministic nearest-neighbor linking.
+  - **Hodges (TRACK)**: Object-based detection (CCL), spherical cost functions, and recursive MGE optimization based on TRACK. See the [implementation notes](https://pystormtracker.readthedocs.io/en/latest/hodges.html) and [Accuracy Metrics](docs/spectral_accuracy.md).
   - **HEALPix**: Object detection on a one-dimensional HEALPix neighbor graph.
 - **Coordinate-aware Xarray input**: `DataLoader` opens NetCDF, GRIB, and Zarr data, resolves common variable and coordinate aliases, and identifies regular latitude-longitude, full Gaussian, reduced-Gaussian, projected, and HEALPix grids.
 - **Execution Backends**:
   - **Simple**: Serial, threaded Dask detection, and MPI detection. Parallel paths gather detections before one linking pass.
   - **Hodges and HEALPix**: Serial only; unsupported backend selections raise an error.
+- **Typed Implementation**: Built for **Python 3.12+** with strict type safety and `mypy` compliance.
 - **Formats and analysis**: Reads IMILAST and JSON track data; writes IMILAST, TRACK tdump, and JSON; supports sampling, matching, gridded track metrics, and cross-validation.
 
 <p align="center">
@@ -55,7 +56,7 @@ Full documentation, including API references and advanced usage examples, is ava
 ## Installation
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.12+
 - **MPI Support**:
   - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
   - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
@@ -170,6 +171,10 @@ import pystormtracker as pst
 
 tracker = pst.HodgesTracker()
 
+<<<<<<< HEAD
+=======
+# 2. Run the tracking algorithm. Returns an array-backed Tracks object.
+>>>>>>> main
 tracks = tracker.track(infile="data.nc", varname="vo", mode="max")
 ```
 
