@@ -1,0 +1,120 @@
+{
+  "python_version": "3.14.6",
+  "ducc0_version": "0.41.0",
+  "shtns_available": true,
+  "spectral_filtering": [
+    {
+      "rmse": 0.052668724209070206,
+      "rel_error": 7.370188565601504e-05,
+      "correlation": 0.9999999986632203,
+      "engine": "ducc0",
+      "resolution": "2.5x2.5",
+      "truncation": "T5-42",
+      "mean_time_sec": 0.0006032450000930112,
+      "min_time_sec": 0.0002715660011745058
+    },
+    {
+      "rmse": 45.403158262260646,
+      "rel_error": 0.06353482885561931,
+      "correlation": 0.998916316726486,
+      "engine": "SHTns",
+      "resolution": "2.5x2.5",
+      "truncation": "T5-42",
+      "mean_time_sec": 0.0013420588002190925,
+      "min_time_sec": 5.791999865323305e-05
+    },
+    {
+      "rmse": 0.05369308218359947,
+      "rel_error": 5.313513832410033e-07,
+      "correlation": 0.9999999988803332,
+      "engine": "ducc0",
+      "resolution": "2.5x2.5",
+      "truncation": "T0-42",
+      "mean_time_sec": 0.0003079707996221259,
+      "min_time_sec": 0.00028892899717902765
+    },
+    {
+      "rmse": 45.40319282446298,
+      "rel_error": 0.0004493139214534677,
+      "correlation": 0.9991864683698934,
+      "engine": "SHTns",
+      "resolution": "2.5x2.5",
+      "truncation": "T0-42",
+      "mean_time_sec": 6.712740068905986e-05,
+      "min_time_sec": 5.717900057788938e-05
+    },
+    {
+      "rmse": 0.012765828520059586,
+      "rel_error": 1.8086773001841426e-05,
+      "correlation": 0.9999999999282935,
+      "engine": "ducc0",
+      "resolution": "0.25x0.25",
+      "truncation": "T5-42",
+      "mean_time_sec": 0.007746669001789996,
+      "min_time_sec": 0.0063575950007361826
+    },
+    {
+      "rmse": 3.434902703193259e-05,
+      "rel_error": 4.866609744792185e-08,
+      "correlation": 0.9999999999999993,
+      "engine": "SHTns",
+      "resolution": "0.25x0.25",
+      "truncation": "T5-42",
+      "mean_time_sec": 0.013162895799177931,
+      "min_time_sec": 0.0018876829999499023
+    },
+    {
+      "rmse": 0.02114745043218136,
+      "rel_error": 2.0928240196275494e-07,
+      "correlation": 0.999999999830818,
+      "engine": "ducc0",
+      "resolution": "0.25x0.25",
+      "truncation": "T0-42",
+      "mean_time_sec": 0.006581416199333034,
+      "min_time_sec": 0.006296329000178957
+    },
+    {
+      "rmse": 0.0037793833968308905,
+      "rel_error": 3.7402070654497205e-08,
+      "correlation": 0.9999999999980027,
+      "engine": "SHTns",
+      "resolution": "0.25x0.25",
+      "truncation": "T0-42",
+      "mean_time_sec": 0.0020599254006810953,
+      "min_time_sec": 0.0018426870010443963
+    }
+  ],
+  "kinematics": [
+    {
+      "rmse": 1.2492315812027542e-12,
+      "rel_error": 3.918279273536772e-08,
+      "correlation": 0.9999999999999999,
+      "engine": "ducc0",
+      "resolution": "0.25x0.25",
+      "variable": "Vorticity",
+      "mean_time_sec": 0.026261143599549543,
+      "min_time_sec": 0.022789392998674884
+    },
+    {
+      "rmse": 6.547065013653706e-05,
+      "rel_error": 2.0535207027665963,
+      "correlation": 0.00047773899872988304,
+      "engine": "SHTns",
+      "resolution": "0.25x0.25",
+      "variable": "Vorticity",
+      "mean_time_sec": 0.03912116680003237,
+      "min_time_sec": 0.02390132800064748
+    }
+  ],
+  "polar_optimization": {
+    "polar_opt_0.0": {
+      "rmse_vs_ncl": 3.434902703193259e-05,
+      "time_sec": 0.012007686997094424
+    },
+    "polar_opt_1e-10": {
+      "rmse_vs_ncl": 3.434902703622687e-05,
+      "time_sec": 0.038963803999649826
+    },
+    "rmse_difference": 4.886403269131796e-11
+  }
+}
