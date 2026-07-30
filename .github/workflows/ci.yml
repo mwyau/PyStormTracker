@@ -76,11 +76,11 @@ jobs:
         python-version: ['3.12', '3.13', '3.14', '3.14t']
         min-deps: [false]
         include:
-          - python-version: "3.12"
+          - python-version: '3.12'
             min-deps: true
-          - python-version: "3.14"
+          - python-version: '3.14'
             install-eccodes: true
-          - python-version: "3.14t"
+          - python-version: '3.14t'
             install-eccodes: true
     steps:
       - uses: actions/checkout@v7
@@ -112,10 +112,10 @@ jobs:
       - name: Run Unit Tests (free-threaded)
         if: matrix.python-version == '3.14t'
         env:
-          PYTHON_GIL: "0"
+          PYTHON_GIL: '0'
         run: |
           uv run python -VV
-          uv run python -c "import sys; assert not sys._is_gil_enabled()"
+          uv run python -c 'import sys; assert not sys._is_gil_enabled()'
           uv run pytest -vv
 
       - name: Run Unit Tests with Coverage
@@ -171,7 +171,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           winget install -e --id Microsoft.msmpi --accept-source-agreements --accept-package-agreements
-          "C:\Program Files\Microsoft MPI\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          'C:\Program Files\Microsoft MPI\Bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install dependencies
         run: uv sync --frozen --group dev
@@ -223,6 +223,8 @@ jobs:
           - arch: arm64
             os: ubuntu-26.04-arm
     runs-on: ${{ matrix.os }}
+    env:
+      DOCKER_IMAGE_NAME: '${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -239,23 +241,23 @@ jobs:
           push: false
           load: true
           platforms: linux/${{ matrix.arch }}
-          tags: '${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}'
+          tags: '${{ env.DOCKER_IMAGE_NAME }}'
           cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
 
       - name: Smoke test Docker image
         run: |
           # Test CLI help
-          docker run --rm ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} --help
+          docker run --rm ${{ env.DOCKER_IMAGE_NAME }} --help
           # Test library import
-          docker run --rm --entrypoint python ${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }} -c "import pystormtracker as pst; print('Import success')"
+          docker run --rm --entrypoint python ${{ env.DOCKER_IMAGE_NAME }} -c 'import pystormtracker as pst; print("Import success")'
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: "${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}"
-          format: "table"
-          exit-code: "0"
+          image-ref: '${{ env.DOCKER_IMAGE_NAME }}''
+          format: 'table'
+          exit-code: '0'
           ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
