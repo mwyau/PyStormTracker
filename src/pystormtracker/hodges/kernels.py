@@ -761,7 +761,7 @@ def _numba_object_extrema(
     return extrema
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _numba_cell_area(lat: float, dlat: float, dlon: float) -> float:
     """Calculates the area of a grid cell in km^2."""
     # Area = R^2 * cos(lat) * dlat * dlon
@@ -770,7 +770,7 @@ def _numba_cell_area(lat: float, dlat: float, dlon: float) -> float:
     )
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _numba_object_properties(
     frame: NDArray[np.float64],
     labeled_mask: NDArray[np.int32],

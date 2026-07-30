@@ -13,7 +13,7 @@ from ..models.tracks import Tracks
 from .weighting import WeightType, calculate_spherical_weight
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def _compute_weighted_stats(
     grid_lat: NDArray[np.float64],
     grid_lon: NDArray[np.float64],

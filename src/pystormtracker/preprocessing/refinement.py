@@ -5,7 +5,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def subgrid_refine(
     frame: NDArray[np.float64],
     r: int,

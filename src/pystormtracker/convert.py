@@ -18,12 +18,12 @@ def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> N
     # 1. Generate the JSON string in memory
     from tempfile import NamedTemporaryFile
 
-    with NamedTemporaryFile(mode="w+", delete=False) as tmp:
+    with NamedTemporaryFile(mode="w+", encoding="utf-8", delete=False) as tmp:
         tmp_name = tmp.name
 
     try:
         write_json(tracks, tmp_name)
-        with open(tmp_name) as f:
+        with open(tmp_name, encoding="utf-8") as f:
             json_str = f.read()
     finally:
         if os.path.exists(tmp_name):
@@ -36,7 +36,7 @@ def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> N
     if not template_path.exists():
         raise FileNotFoundError(f"HTML template not found at {template_path}")
 
-    with open(template_path) as f:
+    with open(template_path, encoding="utf-8") as f:
         html_content = f.read()
 
     # 3. Handle Split vs Standalone
@@ -44,7 +44,7 @@ def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> N
         out_path = Path(outfile)
         js_path = out_path.with_suffix(".tracks.js")
 
-        with open(js_path, "w") as f:
+        with open(js_path, "w", encoding="utf-8") as f:
             f.write(f"window.TRACKS_DATA = {json_str};")
 
         print(f"Data written to {js_path}")
@@ -74,7 +74,7 @@ def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> N
     version_str = f"v{__version__}"
     html_content = html_content.replace("{{version}}", version_str)
 
-    with open(outfile, "w") as f:
+    with open(outfile, "w", encoding="utf-8") as f:
         f.write(html_content)
 
 

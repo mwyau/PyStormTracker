@@ -16,7 +16,7 @@ class WeightType(IntEnum):
     QUADRATIC = 4  # Quadratic decay
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def calculate_spherical_weight(
     dist_km: float,
     radius_km: float,

@@ -10,7 +10,7 @@ from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange, Tracks
 
 
-@nb.njit(cache=True, nogil=True)  # type: ignore[untyped-decorator]
+@nb.njit(cache=True, nogil=True)
 def great_circle_distance_matrix(
     lats1: NDArray[np.float64],
     lons1: NDArray[np.float64],
