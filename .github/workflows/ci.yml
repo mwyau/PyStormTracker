@@ -67,7 +67,7 @@ jobs:
         run: uv sync --frozen --all-extras
 
       - name: Type check with Mypy
-        run: uv run --no-sync mypy .
+        run: uv run --frozen mypy .
 
   unit-tests:
     name: unit-tests (Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
@@ -109,23 +109,23 @@ jobs:
       - name: Run Unit Tests
         if: matrix.python-version != '3.14' && matrix.python-version != '3.14t'
         run: |
-          uv run --no-sync python -VV
-          uv run --no-sync pytest -vv
+          uv run --frozen python -VV
+          uv run --frozen pytest -vv
 
       - name: Run Unit Tests (free-threaded)
         if: matrix.python-version == '3.14t'
         env:
           PYTHON_GIL: '0'
         run: |
-          uv run --no-sync python -VV
-          uv run --no-sync python -c 'import sys; assert not sys._is_gil_enabled()'
-          uv run --no-sync pytest -vv
+          uv run --frozen python -VV
+          uv run --frozen python -c 'import sys; assert not sys._is_gil_enabled()'
+          uv run --frozen pytest -vv
 
       - name: Run Unit Tests with Coverage
         if: matrix.python-version == '3.14'
         run: |
-          uv run --no-sync python -VV
-          uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+          uv run --frozen python -VV
+          uv run --frozen pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
         if: matrix.python-version == '3.14'
@@ -183,14 +183,14 @@ jobs:
       - name: Run Integration Tests
         if: matrix.os != 'ubuntu-26.04' || matrix.arch != 'amd64'
         run: |
-          uv run --no-sync python -VV
-          uv run --no-sync pytest -vv tests/integration/ --run-integration
+          uv run --frozen python -VV
+          uv run --frozen pytest -vv tests/integration/ --run-integration
 
       - name: Run Integration Tests with Coverage
         if: matrix.os == 'ubuntu-26.04' && matrix.arch == 'amd64'
         run: |
-          uv run --no-sync python -VV
-          uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration --run-slow
+          uv run --frozen python -VV
+          uv run --frozen pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration --run-slow
 
       - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-26.04' && matrix.arch == 'amd64'
