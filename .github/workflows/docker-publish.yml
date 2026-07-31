@@ -134,7 +134,7 @@ jobs:
 
       - name: Attest Provenance (Docker Hub)
         if: steps.manifest.outputs.digest != ''
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.0
         with:
           subject-name: ${{ env.DOCKER_HUB_IMAGE }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
@@ -150,7 +150,7 @@ jobs:
 
       - name: Attest SBOM (Docker Hub)
         if: steps.manifest.outputs.digest != ''
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.0
         with:
           subject-name: ${{ env.DOCKER_HUB_IMAGE }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
