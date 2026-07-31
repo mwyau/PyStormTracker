@@ -54,7 +54,7 @@ mpi = [
     "mpi4py>=4.1.0",
 ]
 netcdf4 = [
-    "netCDF4>=1.6.5",
+    "netCDF4>=1.7.2",
 ]
 zarr = [
     "zarr[remote]>=3.0",
