@@ -17,11 +17,55 @@ permissions:
   contents: read
 
 env:
-  UV_VERSION: '0.12.0'
+  UV_VERSION: '0.12.1'
 
 jobs:
+  release_context:
+    name: Validate release context
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      python_repository: ${{ steps.release.outputs.python_repository }}
+      version: ${{ steps.release.outputs.version }}
+      docker_target: ${{ steps.release.outputs.docker_target }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag is reachable from main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Validate release tag and package version
+        id: release
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${TAG#v}"
+          PACKAGE_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+          test "$PACKAGE_VERSION" = "$VERSION"
+
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "python_repository=pypi" >> "$GITHUB_OUTPUT"
+            echo "docker_target=release" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+            echo "python_repository=testpypi" >> "$GITHUB_OUTPUT"
+            echo "docker_target=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unsupported version tag: $TAG" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   code-quality:
-    name: code quality checks
+    name: Code quality checks
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -54,8 +98,9 @@ jobs:
       - name: Mypy
         run: uv run --no-sync mypy .
 
-  unit-tests:
-    name: unit (Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', min-deps' || '' }})
+  unit-tests-full:
+    name: Unit tests (Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', min-deps' || '' }})
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     strategy:
@@ -127,8 +172,40 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  integration-tests:
-    name: integration (${{ matrix.os }})
+  unit-tests-pr:
+    name: Unit tests (Python 3.13)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Run unit tests with coverage
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: ./coverage.xml
+          disable_search: true
+          flags: unit
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  integration-tests-full:
+    name: Integration tests (${{ matrix.os }})
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
     strategy:
@@ -183,8 +260,30 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  integration-tests-pr:
+    name: Integration tests (Ubuntu AMD64)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Run integration tests
+        run: uv run --no-sync pytest -vv tests/integration/ --run-integration
+
   package-tests:
-    name: build and pip-install package
+    name: Package tests (build and installation)
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
@@ -225,8 +324,16 @@ jobs:
         if: github.event_name != 'pull_request'
         run: .sdist-venv/bin/python -c 'import pystormtracker; print("sdist import success")'
 
+      - name: Upload release distributions
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-dists
+          path: dist/
+          if-no-files-found: error
+
   docs:
-    name: documentation build test
+    name: Documentation build
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -244,7 +351,7 @@ jobs:
         run: uv run --no-dev --group docs sphinx-build -b html docs docs/_build/html
 
   dependency-review:
-    name: dependency review
+    name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
@@ -258,7 +365,7 @@ jobs:
           fail-on-severity: high
 
   docker-pr:
-    name: D8ocker PR build and test
+    name: Docker build and tests (PR)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 50
@@ -300,9 +407,10 @@ jobs:
           severity: CRITICAL
 
   docker-staging:
-    name: Docker staging (${{ matrix.arch }})
+    name: Docker staging image (${{ matrix.arch }})
     if: github.event_name != 'pull_request'
-    needs: [code-quality, unit-tests, integration-tests, package-tests, docs]
+    needs:
+      [code-quality, unit-tests-full, integration-tests-full, package-tests, docs]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
     strategy:
@@ -363,7 +471,7 @@ jobs:
           severity: CRITICAL
 
   docker-staging-manifest:
-    name: Docker staging manifest
+    name: Docker staging manifest validation
     if: github.event_name != 'pull_request'
     needs: docker-staging
     runs-on: ubuntu-26.04
@@ -386,9 +494,9 @@ jobs:
       - name: Inspect tested multi-platform staging image
         run: docker buildx imagetools inspect "$STAGING_IMAGE:$STAGING_PREFIX"
 
-  publish-docker-staging:
-    name: publish staging Docker image
-    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+  publish-docker-edge:
+    name: Publish Docker edge image
+    if: github.ref == 'refs/heads/main'
     needs: docker-staging-manifest
     permissions:
       contents: read
@@ -399,6 +507,41 @@ jobs:
     with:
       source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
       source_sha: ${{ github.sha }}
-      channel: ${{ github.ref == 'refs/heads/main' && 'edge' || 'release' }}
-      version: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-    secrets: inherit
+      target: edge
+    secrets:
+      DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+
+  publish-docker-release:
+    name: Publish Docker release image
+    if: github.ref_type == 'tag' && needs.release_context.outputs.docker_target == 'release'
+    needs: [docker-staging-manifest, release_context]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      source_sha: ${{ github.sha }}
+      target: release
+      version: ${{ needs.release_context.outputs.version }}
+    secrets:
+      DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+
+  publish-python:
+    name: Publish Python package
+    if: github.ref_type == 'tag'
+    needs:
+      [release_context, code-quality, unit-tests-full, integration-tests-full, package-tests, docs]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/python-publish.yml
+    with:
+      artifact_name: release-dists
+      repository: ${{ needs.release_context.outputs.python_repository }}
+      version: ${{ needs.release_context.outputs.version }}

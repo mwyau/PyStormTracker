@@ -11,8 +11,8 @@ on:
         description: Full commit SHA represented by the staging image
         required: true
         type: string
-      channel:
-        description: Tags to publish
+      target:
+        description: "Promotion target: private, edge, or release"
         required: true
         type: string
       version:
@@ -36,8 +36,8 @@ on:
         description: Full 40-character commit SHA
         required: true
         type: string
-      channel:
-        description: Tags to publish
+      target:
+        description: Promotion target
         required: true
         default: private
         type: choice
@@ -48,7 +48,7 @@ on:
         type: string
 
 concurrency:
-  group: docker-publish-${{ inputs.source_tag }}-${{ inputs.channel }}
+  group: docker-publish-${{ inputs.source_tag }}-${{ inputs.target }}
   cancel-in-progress: false
 
 permissions:
@@ -65,7 +65,8 @@ env:
 
 jobs:
   publish:
-    name: promote tested image
+    name: Promote tested image
+    if: inputs.target == 'private' || inputs.target == 'edge' || inputs.target == 'release'
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -93,7 +94,7 @@ jobs:
 
       - name: Resolve release version
         id: release
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.PUBLIC_DOCKER_IMAGE }}
@@ -101,18 +102,11 @@ jobs:
 
       - name: Resolve release series
         id: series
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.PUBLIC_DOCKER_IMAGE }}
-          tags: type=match,value=${{ inputs.version }},pattern=^v[0-9]+\.[0-9]+\.[0-9]+(?:\.dev[0-9]+)?$,group=1
-
-      - name: Validate commit SHA
-        run: test -n "${{ steps.sha.outputs.version }}"
-
-      - name: Validate stable release tag
-        if: inputs.channel == 'release'
-        run: test -n "${{ steps.release.outputs.version }}"
+          tags: type=match,value=${{ inputs.version }},pattern=^v([0-9]+\.[0-9]+)\.[0-9]+$,group=1
 
       - name: Publish owner SHA tag to Docker Hub
         run: docker buildx imagetools create --tag "${PRIVATE_DOCKER_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
@@ -121,44 +115,44 @@ jobs:
         run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
 
       - name: Publish edge to Docker Hub
-        if: inputs.channel == 'edge'
+        if: inputs.target == 'edge'
         run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:edge" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
 
       - name: Publish edge to GHCR
-        if: inputs.channel == 'edge'
+        if: inputs.target == 'edge'
         run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:edge" "${PUBLIC_DOCKER_IMAGE}:edge"
 
       - name: Publish release version to Docker Hub
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
 
       - name: Publish release series to Docker Hub
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.series.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
 
       - name: Publish latest to Docker Hub
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:latest" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
 
       - name: Publish release version to GHCR
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:${{ steps.release.outputs.version }}" "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}"
 
       - name: Publish release series to GHCR
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:${{ steps.series.outputs.version }}" "${PUBLIC_DOCKER_IMAGE}:${{ steps.series.outputs.version }}"
 
       - name: Publish latest to GHCR
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:latest" "${PUBLIC_DOCKER_IMAGE}:latest"
 
       - name: Read edge digest
         id: edge-digest
-        if: inputs.channel == 'edge'
+        if: inputs.target == 'edge'
         run: echo "digest=$(docker buildx imagetools inspect "${PUBLIC_DOCKER_IMAGE}:edge" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
 
       - name: Attest edge on Docker Hub
-        if: inputs.channel == 'edge'
+        if: inputs.target == 'edge'
         uses: actions/attest@v4.2.1
         with:
           subject-name: ${{ env.PUBLIC_DOCKER_IMAGE }}
@@ -167,11 +161,11 @@ jobs:
 
       - name: Read release digest
         id: release-digest
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         run: echo "digest=$(docker buildx imagetools inspect "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
 
       - name: Attest release on Docker Hub
-        if: inputs.channel == 'release'
+        if: inputs.target == 'release'
         uses: actions/attest@v4.2.1
         with:
           subject-name: ${{ env.PUBLIC_DOCKER_IMAGE }}

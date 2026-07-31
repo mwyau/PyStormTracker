@@ -133,7 +133,8 @@ Ordinary feature-branch pushes do not run CI independently. This prevents a bran
 Pull requests execute a representative suite:
 
 - code-quality and type checks;
-- Python 3.13 unit tests and Ubuntu AMD64 integration tests;
+- Python 3.13 unit tests with coverage and Ubuntu AMD64 integration tests without
+  the slow marker;
 - wheel installation, documentation, and dependency review;
 - a local AMD64 Docker build, smoke test, and vulnerability scan.
 
@@ -144,6 +145,9 @@ Pushes to `main`, version tags, and manual CI runs execute the full suite:
 - slow integration tests;
 - wheel and source-distribution installation tests;
 - native AMD64 and ARM64 staging-image builds.
+
+Pull-request Docker jobs do not receive registry credentials or push images. Native
+staging images are built only after the full non-Docker suite succeeds.
 
 ### 6.3 Tested Docker Staging Images
 
@@ -176,7 +180,17 @@ Release tags are validated with an explicit stable-version expression equivalent
 
 ### 6.5 Python Publishing and Dependency Updates
 
-Python publishing remains in `.github/workflows/python-publish.yml` and runs only after successful CI for a version tag. Docker republishing does not republish the Python package.
+CI validates that a version tag points to a commit reachable from `main` and that
+the package version matches the tag without its leading `v`. It then calls the
+reusable Python publishing workflow with the distributions built and package-tested
+in the same CI run. The reusable workflow has no manual-dispatch trigger.
+
+Stable tags matching `vX.Y.Z` publish to PyPI after the protected `pypi`
+environment approves the job. Development tags matching `vX.Y.Z.devN` publish to
+TestPyPI after the protected `testpypi` environment approves the job. Development
+tags do not publish Docker images. Docker `edge` follows the newest successful
+`main` CI run, and Docker `latest` changes only during a successful stable-tag
+release. Docker republishing does not republish the Python package.
 
 Dependabot checks `uv`, GitHub Actions, and Docker dependencies daily. Minor and patch Python updates and GitHub Actions updates may be grouped to reduce pull-request volume. Major Python updates and Docker image updates remain separate for diagnosis.
 

@@ -1,121 +1,79 @@
-# This workflow will upload a Python Package to PyPI when a release is created
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
-
-name: Upload Python Package
+name: Python Publish
 
 on:
-  workflow_run:
-    workflows: 
-      - CI
-    types:
-      - completed
-    branches:
-      - 'v*.*.*'
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: Name of the CI artifact containing tested distributions
+        required: true
+        type: string
+      repository:
+        description: Package repository to publish to
+        required: true
+        type: string
+      version:
+        description: Package version to publish
+        required: true
+        type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  group: python-publish-${{ inputs.repository }}-${{ inputs.version }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  release-build:
+  pypi-publish:
+    name: Publish to PyPI
+    if: inputs.repository == 'pypi'
     runs-on: ubuntu-26.04
-    # Only run if CI succeeded AND it was a tag push.
-    # Exclude PRs to avoid accidental triggers/publishing.
-    if: |
-      github.event.workflow_run.conclusion == 'success' && 
-      github.event.workflow_run.event == 'push' &&
-      startsWith(github.event.workflow_run.head_branch, 'v') &&
-      github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
-      contents: read
       id-token: write
       attestations: write
-    outputs:
-      is_stable: ${{ steps.check_version.outputs.is_stable }}
-      version: ${{ steps.check_version.outputs.version }}
-
+    environment:
+      name: pypi
+      url: https://pypi.org/project/PyStormTracker/${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Retrieve tested distributions
+        uses: actions/download-artifact@v8
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-
-      - name: Check version type
-        id: check_version
-        run: |
-          VERSION=${{ github.event.workflow_run.head_branch }}
-          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
-          # Regex for stable release: vX.Y.Z
-          if [[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "is_stable=true" >> $GITHUB_OUTPUT
-          # Regex for dev release: vX.Y.Z.devN
-          elif [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
-            echo "is_stable=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Unsupported version tag: $VERSION" >&2
-            exit 1
-          fi
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-
-      - name: Build release distributions
-        run: uv build --wheel --sdist
+          name: ${{ inputs.artifact_name }}
+          path: dist/
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: "dist/*"
+          subject-path: dist/*
 
-      - name: Upload distributions
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-dists
-          path: dist/
-
-  pypi-publish:
-    runs-on: ubuntu-latest
-    needs:
-      - release-build
-    if: needs.release-build.outputs.is_stable == 'true'
-    permissions:
-      id-token: write
-    environment:
-      name: pypi
-      url: https://pypi.org/project/PyStormTracker/${{ needs.release-build.outputs.version }}
-    steps:
-      - name: Retrieve release distributions
-        uses: actions/download-artifact@v8
-        with:
-          name: release-dists
-          path: dist/
-      - name: Publish release distributions to PyPI
+      - name: Publish distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
 
   test-pypi-publish:
-    runs-on: ubuntu-latest
-    needs:
-      - release-build
-    if: needs.release-build.outputs.is_stable == 'false'
+    name: Publish to TestPyPI
+    if: inputs.repository == 'testpypi'
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
+      attestations: write
     environment:
       name: testpypi
-      url: https://test.pypi.org/project/PyStormTracker/${{ needs.release-build.outputs.version }}
+      url: https://test.pypi.org/project/PyStormTracker/${{ inputs.version }}
     steps:
-      - name: Retrieve release distributions
+      - name: Retrieve tested distributions
         uses: actions/download-artifact@v8
         with:
-          name: release-dists
+          name: ${{ inputs.artifact_name }}
           path: dist/
-      - name: Publish release distributions to TestPyPI
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*
+
+      - name: Publish distributions to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
