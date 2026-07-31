@@ -2,176 +2,161 @@ name: CI
 
 on:
   pull_request:
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'Dockerfile'
-      - '.github/workflows/ci.yml'
-      - 'docs/**'
-      - 'README.md'
   push:
     branches:
       - main
-      - release/**
-      - 'v*.*'
     tags:
-      - 'v*.*'
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'Dockerfile'
-      - '.github/workflows/ci.yml'
-      - 'docs/**'
-      - 'README.md'
+      - 'v*.*.*'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: read
 
-jobs:
-  ruff-lint:
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/ruff-action@v4.1.0
+env:
+  UV_VERSION: '0.12.0'
 
-  ruff-format:
+jobs:
+  code-quality:
+    name: code quality checks
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/ruff-action@v4.1.0
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ruff lint
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          args: check
+          version-file: uv.lock
+
+      - name: Ruff format
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: format --check
-
-  mypy-typecheck:
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+          version-file: uv.lock
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v9.0.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
+          python-version: '3.13'
 
-      - name: Install dependencies
+      - name: Install type-checking environment
         run: uv sync --frozen --all-extras
 
-      - name: Type check with Mypy
-        run: uv run --frozen mypy .
+      - name: Mypy
+        run: uv run --no-sync mypy .
 
   unit-tests:
-    name: unit-tests (Python ${{ matrix.python-version }}${{ matrix.min-deps && ', min-deps' || '' }})
+    name: unit (Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', min-deps' || '' }})
     runs-on: ubuntu-26.04
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13', '3.14', '3.14t']
-        min-deps: [false]
         include:
           - python-version: '3.11'
-            min-deps: true
+            mode: normal
+          - python-version: '3.11'
+            mode: min-deps
+          - python-version: '3.12'
+            mode: normal
+          - python-version: '3.13'
+            mode: coverage
+          - python-version: '3.14'
+            mode: normal
           - python-version: '3.14t'
-            free-threaded: true
+            mode: free-threaded
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        if: ${{ !matrix.min-deps && !matrix.free-threaded }}
+        if: matrix.mode == 'normal' || matrix.mode == 'coverage'
         run: uv sync --frozen --all-extras
 
-      - name: Install dependencies (free-threaded)
-        if: matrix.free-threaded
-        run: |
-          uv sync --frozen --extra eof --extra mpi --extra netcdf4  # No grib and zarr support for 3.14 free-threaded
-
-      - name: Install dependencies (min-deps)
-        if: ${{ matrix.min-deps }}
+      - name: Install minimum direct dependencies
+        if: matrix.mode == 'min-deps'
         run: uv sync --all-extras --resolution lowest-direct
 
-      - name: Run Unit Tests
-        if: matrix.python-version != '3.13' && matrix.python-version != '3.14t'
-        run: |
-          uv run --frozen python -VV
-          uv run --frozen pytest -vv
+      - name: Install free-threaded dependencies
+        if: matrix.mode == 'free-threaded'
+        run: uv sync --frozen --extra eof --extra mpi --extra netcdf4
 
-      - name: Run Unit Tests (free-threaded)
-        if: matrix.python-version == '3.14t'
+      - name: Run unit tests
+        if: matrix.mode == 'normal' || matrix.mode == 'min-deps'
+        run: uv run --no-sync pytest -vv
+
+      - name: Run unit tests with coverage
+        if: matrix.mode == 'coverage'
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+
+      - name: Verify free-threaded Python
+        if: matrix.mode == 'free-threaded'
         env:
           PYTHON_GIL: '0'
-        run: |
-          uv run --frozen python -VV
-          uv run --frozen python -c 'import sys; assert not sys._is_gil_enabled()'
-          uv run --frozen pytest -vv
+        run: uv run --no-sync python -c 'import sys; assert not sys._is_gil_enabled()'
 
-      - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.13'
-        run: |
-          uv run --frozen python -VV
-          uv run --frozen pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+      - name: Run free-threaded unit tests
+        if: matrix.mode == 'free-threaded'
+        env:
+          PYTHON_GIL: '0'
+        run: uv run --no-sync pytest -vv
 
-      - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.13'
-        uses: codecov/codecov-action@v7
+      - name: Upload coverage
+        if: matrix.mode == 'coverage'
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
+          disable_search: true
           flags: unit
+          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: integration-tests (${{ matrix.os }})
+    name: integration (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
-            os: ubuntu-26.04
-            python-version: '3.13'
-          - arch: arm64
-            os: ubuntu-26.04-arm
-            python-version: '3.13'
-          - arch: amd64
-            os: ubuntu-24.04
-            python-version: '3.13'
-          - arch: arm64
-            os: ubuntu-24.04-arm
-            python-version: '3.13'
-          - arch: amd64
-            os: windows-2025
-            python-version: '3.13'
-          - arch: arm64
-            os: macos-26
-            python-version: '3.13'
+          - os: ubuntu-26.04
+            slow: true
+          - os: ubuntu-26.04-arm
+            slow: false
+          - os: ubuntu-24.04
+            slow: false
+          - os: windows-2025
+            slow: false
+          - os: macos-26
+            slow: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.13'
 
-      - name: Install MPI (Windows)
+      - name: Install MPI on Windows
         if: runner.os == 'Windows'
         run: |
           winget install -e --id Microsoft.msmpi --accept-source-agreements --accept-package-agreements
@@ -180,47 +165,146 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --all-extras
 
-      - name: Run Integration Tests
-        if: matrix.os != 'ubuntu-26.04' || matrix.arch != 'amd64'
-        run: |
-          uv run --frozen python -VV
-          uv run --frozen pytest -vv tests/integration/ --run-integration
+      - name: Run integration tests
+        if: matrix.slow == false
+        run: uv run --no-sync pytest -vv tests/integration/ --run-integration
 
-      - name: Run Integration Tests with Coverage
-        if: matrix.os == 'ubuntu-26.04' && matrix.arch == 'amd64'
-        run: |
-          uv run --frozen python -VV
-          uv run --frozen pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration --run-slow
+      - name: Run slow integration tests with coverage
+        if: matrix.slow == true
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration --run-slow
 
-      - name: Upload coverage reports to Codecov
-        if: matrix.os == 'ubuntu-26.04' && matrix.arch == 'amd64'
-        uses: codecov/codecov-action@v7
+      - name: Upload coverage
+        if: matrix.slow == true
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
+          disable_search: true
           flags: integration
+          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  docs-build:
-    name: docs-build
-    needs: [ruff-lint, ruff-format]
+  package-tests:
+    name: build and pip-install package
     runs-on: ubuntu-26.04
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: '3.13'
+
+      - name: Build wheel and source distribution
+        run: uv build --wheel --sdist
+
+      - name: Create wheel test environment
+        run: uv venv --seed .wheel-venv
+
+      - name: Install wheel using pip
+        run: .wheel-venv/bin/python -m pip install --no-cache-dir dist/*.whl
+
+      - name: Test wheel import
+        run: .wheel-venv/bin/python -c 'import pystormtracker; print("wheel import success")'
+
+      - name: Test wheel CLI
+        run: .wheel-venv/bin/stormtracker --help
+
+      - name: Create source-distribution test environment
+        if: github.event_name != 'pull_request'
+        run: uv venv --seed .sdist-venv
+
+      - name: Install source distribution using pip
+        if: github.event_name != 'pull_request'
+        run: .sdist-venv/bin/python -m pip install --no-cache-dir dist/*.tar.gz
+
+      - name: Test source-distribution import
+        if: github.event_name != 'pull_request'
+        run: .sdist-venv/bin/python -c 'import pystormtracker; print("sdist import success")'
+
+  docs:
+    name: documentation build test
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
           python-version: '3.13'
 
       - name: Build documentation
         run: uv run --no-dev --group docs sphinx-build -b html docs docs/_build/html
 
-  docker-build:
-    name: docker-build (${{ matrix.arch }})
-    needs: [ruff-lint, ruff-format, mypy-typecheck, unit-tests, integration-tests]
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: high
+
+  docker-pr:
+    name: D8ocker PR build and test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 50
+    env:
+      IMAGE: local/pystormtracker:${{ github.sha }}-amd64
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build and load image
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=docker-build-linux-amd64
+          cache-to: type=gha,mode=max,scope=docker-build-linux-amd64
+
+      - name: Test container CLI
+        run: docker run --rm "$IMAGE" --help
+
+      - name: Test container import
+        run: docker run --rm --entrypoint python "$IMAGE" -c 'import pystormtracker; print("container import success")'
+
+      - name: Scan critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+
+  docker-staging:
+    name: Docker staging (${{ matrix.arch }})
+    if: github.event_name != 'pull_request'
+    needs: [code-quality, unit-tests, integration-tests, package-tests, docs]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
@@ -229,42 +313,92 @@ jobs:
             os: ubuntu-26.04
           - arch: arm64
             os: ubuntu-26.04-arm
-    runs-on: ${{ matrix.os }}
     env:
-      DOCKER_IMAGE_NAME: '${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}'
+      STAGING_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+      STAGING_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@v4.2.0
 
-      - name: Build and load Docker image
-        uses: docker/build-push-action@v7
+      - name: Log in to Docker Hub staging repository
+        uses: docker/login-action@v4.5.1
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Build and push native image
+        id: build
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
-          push: false
-          load: true
+          push: true
           platforms: linux/${{ matrix.arch }}
-          tags: '${{ env.DOCKER_IMAGE_NAME }}'
-          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
+          tags: ${{ env.STAGING_IMAGE }}:${{ env.STAGING_TAG }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=docker-build-linux-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-build-linux-${{ matrix.arch }}
 
-      - name: Smoke test Docker image
-        run: |
-          # Test CLI help
-          docker run --rm ${{ env.DOCKER_IMAGE_NAME }} --help
-          # Test library import
-          docker run --rm --entrypoint python ${{ env.DOCKER_IMAGE_NAME }} -c 'import pystormtracker as pst; print("Import success")'
+      - name: Pull exact pushed image
+        run: docker pull "${STAGING_IMAGE}@${{ steps.build.outputs.digest }}"
 
-      - name: Run Trivy vulnerability scanner
+      - name: Test container CLI
+        run: docker run --rm "${STAGING_IMAGE}@${{ steps.build.outputs.digest }}" --help
+
+      - name: Test container import
+        run: docker run --rm --entrypoint python "${STAGING_IMAGE}@${{ steps.build.outputs.digest }}" -c 'import pystormtracker; print("container import success")'
+
+      - name: Scan critical vulnerabilities
+        if: matrix.arch == 'amd64'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: '${{ env.DOCKER_IMAGE_NAME }}'
-          format: 'table'
-          exit-code: '0'
+          image-ref: ${{ env.STAGING_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: table
+          exit-code: '1'
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          vuln-type: os,library
+          severity: CRITICAL
+
+  docker-staging-manifest:
+    name: Docker staging manifest
+    if: github.event_name != 'pull_request'
+    needs: docker-staging
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    env:
+      STAGING_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+      STAGING_PREFIX: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Log in to Docker Hub staging repository
+        uses: docker/login-action@v4.5.1
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Create tested multi-platform staging image
+        run: docker buildx imagetools create --tag "$STAGING_IMAGE:$STAGING_PREFIX" "$STAGING_IMAGE:$STAGING_PREFIX-amd64" "$STAGING_IMAGE:$STAGING_PREFIX-arm64"
+
+      - name: Inspect tested multi-platform staging image
+        run: docker buildx imagetools inspect "$STAGING_IMAGE:$STAGING_PREFIX"
+
+  publish-docker-staging:
+    name: publish staging Docker image
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    needs: docker-staging-manifest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      source_sha: ${{ github.sha }}
+      channel: ${{ github.ref == 'refs/heads/main' && 'edge' || 'release' }}
+      version: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+    secrets: inherit

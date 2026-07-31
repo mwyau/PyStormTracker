@@ -5,10 +5,12 @@ name: Upload Python Package
 
 on:
   workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+    workflows: 
+      - CI
+    types:
+      - completed
     branches:
-      - 'v[0-9]*'
+      - 'v*.*.*'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref_name }}
@@ -19,13 +21,11 @@ permissions:
 
 jobs:
   release-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Only run if CI succeeded AND it was a tag push.
     # Exclude PRs to avoid accidental triggers/publishing.
     if: |
-      github.event_name == 'workflow_run' && 
       github.event.workflow_run.conclusion == 'success' && 
-      github.event.workflow_run.event != 'pull_request' &&
       github.event.workflow_run.event == 'push' &&
       startsWith(github.event.workflow_run.head_branch, 'v') &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -38,7 +38,7 @@ jobs:
       version: ${{ steps.check_version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -51,8 +51,12 @@ jobs:
           # Regex for stable release: vX.Y.Z
           if [[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_stable=true" >> $GITHUB_OUTPUT
+          # Regex for dev release: vX.Y.Z.devN
+          elif [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+            echo "is_stable=false" >> "$GITHUB_OUTPUT"
           else
-            echo "is_stable=false" >> $GITHUB_OUTPUT
+            echo "Unsupported version tag: $VERSION" >&2
+            exit 1
           fi
 
       - name: Set up uv
