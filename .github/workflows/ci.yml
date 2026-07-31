@@ -28,6 +28,7 @@ jobs:
     outputs:
       python_repository: ${{ steps.release.outputs.python_repository }}
       version: ${{ steps.release.outputs.version }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
       docker_target: ${{ steps.release.outputs.docker_target }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -63,6 +64,7 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
 
   code-quality:
     name: Code quality checks
@@ -526,7 +528,7 @@ jobs:
       source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
       source_sha: ${{ github.sha }}
       target: release
-      version: ${{ needs.release_context.outputs.version }}
+      version: ${{ needs.release_context.outputs.release_tag }}
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       GHCR_PAT: ${{ secrets.GHCR_PAT }}
