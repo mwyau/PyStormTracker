@@ -1,10 +1,6 @@
 # PyStormTracker Hodges Implementation
 
-<p align="center">
-  <img src="_static/era5_msl_nh.png" width="600" alt="Hodges Tracking Example">
-</p>
-
-This document describes the Hodges tracker and its relationship to TRACK (Hodges 1994, 1995, 1999). TRACK parity is a design target. The sections below distinguish implemented behavior from reference validation that remains.
+This document describes the Hodges tracker and its relationship to TRACK (Hodges 1994, 1995, 1999).
 
 ---
 
@@ -48,7 +44,7 @@ Original TRACK identifies objects as contiguous clusters of grid points that pas
 ## 2. Trajectory Linking (MGE Optimization)
 
 ### 2.1 Spherical Cost Function ($\psi$)
-**Mathematical Formula**:
+
 $$\psi = 0.5 w_1 [1 - \mathbf{\hat{T}}_1 \cdot \mathbf{\hat{T}}_2] + w_2 \left[ 1 - \frac{2\sqrt{d_1 d_2}}{d_1 + d_2} \right]$$
 - **References**: *Hodges 1999*, Section 3, Equation 6; `geod_dev.c`, `devn.c`.
 

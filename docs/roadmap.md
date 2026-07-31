@@ -1,12 +1,11 @@
 # PyStormTracker Roadmap
 
-This document records implemented, partial, and planned engineering and scientific work.
+This document records in progress and implemented engineering and scientific work.
 
 Status terms are used as follows:
 
+- **In progress**: A subset is implemented, or reference-data and external-dataset validation remains.
 - **Implemented**: The stated scope exists in the repository and has tests for that scope.
-- **Partial**: A subset is implemented, or reference-data and external-dataset validation remains.
-- **Planned**: The implementation has not been completed.
 
 ## 1. Performance and scalability
 

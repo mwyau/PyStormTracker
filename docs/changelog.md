@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.0-dev
+## v0.6.0.dev0
 
 ### Tracking and preprocessing
 
@@ -26,13 +26,12 @@
 
 - Added the unified CLI subcommands and finite-value validation for numerical arguments.
 - Added JSON-based sampling and comparison workflows and expanded conversion to IMILAST, TRACK tdump, JSON, and HTML outputs.
-- Added the `metrics` optional dependency group for `xeofs`.
+- Added the `eof` optional dependency group for `xeofs`.
 
 ### Testing and CI
 
 - Added unit and integration tests for refinement, Gaussian and reduced-Gaussian preprocessing, projected filtering, metrics, sampling, comparison, conversion, and modular CLI commands.
 - Added `--run-slow` for slow integration and historical regression cases.
-- Enabled the legacy Simple vorticity regression with its historical `1e-4` threshold. The production default remains `1e-5`.
 - Corrected the Docker Trivy image reference and included slow integration cases in the designated Linux CI run.
 
 ---

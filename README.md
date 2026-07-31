@@ -9,15 +9,11 @@
 [![GitHub License](https://img.shields.io/github/license/mwyau/PyStormTracker)](https://github.com/mwyau/PyStormTracker/blob/main/LICENSE)
 [![Docker](https://img.shields.io/badge/docker-xddd%2Fpystormtracker-blue?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
-[![DOI](https://zenodo.org/badge/36328800.svg)](https://doi.org/10.5281/zenodo.18764813)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18764813-blue.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/docs/_static/era5_msl_nh.png" width="600" alt="PyStormTracker Example">
-  <br>
-  <b><a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html">Storm Track Explorer (Interactive Map)</a></b>
-</p>
+<p align="center"> <img src="docs/_static/explorer.png" width="600px"> <br> <strong> <a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html"> Storm Track Explorer </a> </strong> <br> <em>Interactive visualization of cyclone trajectories.</em></p>
 
-**PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba implementation of the Simple Tracker described by **Yau and Chang (2020)** and TRACK  described by **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
+**PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba implementation of the Simple Tracker described by **Yau and Chang (2020)** and TRACK algorithms described by **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
 
 ## Features
 
@@ -25,7 +21,7 @@
 - **Numba JIT-compiled kernels**: Detection, Laplacian intensity, great-circle geometry, connected-component labeling (CCL), subgrid refinement, and Modified Greedy Exchange (MGE) kernels use cached, GIL-free Numba functions.
 - **Multiple Algorithms**:
   - **Simple**: Fast, local-extrema detection and deterministic nearest-neighbor linking.
-  - **Hodges (TRACK)**: Thresholded object detection with connected-component labeling (CCL), spherical cost functions, adaptive constraints, and iterative Modified Greedy Exchange (MGE) linking based on TRACK. See the [implementation notes](https://pystormtracker.readthedocs.io/en/latest/hodges.html) and [spectral accuracy results](docs/spectral_accuracy.md).
+  - **Hodges (TRACK)**: Thresholded object detection with connected-component labeling (CCL), spherical cost functions, adaptive constraints, and iterative Modified Greedy Exchange (MGE) linking based on TRACK. See the [Hodges implementation documentation](docs/hodges.md) and [spectral filtering accuracy](docs/spectral_accuracy.md).
   - **HEALPix**: Thresholded object detection on a one-dimensional HEALPix neighbor graph, followed by the Hodges MGE linker.
 - **Coordinate-aware Xarray input**: `DataLoader` opens NetCDF, GRIB, and Zarr data, resolves common variable and coordinate aliases, and identifies regular latitude-longitude, full Gaussian, reduced-Gaussian, projected, and HEALPix grids.
 - **Execution Backends**:
@@ -34,11 +30,9 @@
 - **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
 - **Formats and analysis**: Reads IMILAST and JSON track data; writes IMILAST, TRACK tdump, and JSON. Analysis functions include secondary-variable sampling, track matching, gridded cyclone and track metrics, Eulerian variance and wind indices, CORMAX, and CCA/PCA truncation cross-validation.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mwyau/PyStormTracker/main/docs/_static/benchmark_0_25x0_25_breakdown.png" width="600" alt="v0.4.0 benchmark timing breakdown">
-  <br>
-  <i>Measured v0.3.3 and v0.4.0 timings for the 0.25° ERA5 benchmark described in docs/benchmark.md.</i>
-</p>
+![v0.4.0 benchmark timing breakdown](docs/_static/benchmark_0_25x0_25_breakdown.png)
+
+*Measured v0.3.3 and v0.4.0 timings for the 0.25° ERA5 benchmark described in the [benchmark documentation](docs/benchmark.md).*
 
 ## Technical Methodology
 
@@ -46,7 +40,7 @@ The trackers apply the following stages:
 
 - **Preprocessing**: Optional spherical harmonic transform (SHT) filtering on global grids, discrete cosine transform (DCT) filtering on regional grids, Sardeshmukh-Hoskins spectral tapering, and regridding to polar stereographic or HEALPix coordinates. Full and reduced Gaussian grids are handled through `ducc0` geometry metadata.
 - **Detection**: The Simple tracker applies a sliding-window local-extrema filter and uses the discrete Laplacian magnitude to select among adjacent extrema. Hodges and HEALPix use thresholding, connected-component labeling, object filtering, and local-extrema detection.
-- **Refinement**: Optional local quadratic surface fitting estimates a stationary point below the grid spacing. It is off by default for Simple and on by default for Hodges and HEALPix. On periodic global Hodges grids, a `RectSphereBivariateSpline` value is also evaluated at the quadratic center; the spline is not used to optimize the center coordinate.
+- **Subgrid Refinement**: Optional local quadratic surface fitting estimates a stationary point below the grid spacing. It is off by default for Simple and on by default for Hodges and HEALPix. On periodic global Hodges grids, a `RectSphereBivariateSpline` value is also evaluated at the quadratic center.
 - **Linking**: Simple uses deterministic nearest-neighbor linking with a vectorized great-circle distance matrix. Hodges and HEALPix use Modified Greedy Exchange with spherical displacement and smoothness constraints.
 
 ## Documentation
@@ -61,8 +55,9 @@ Full documentation, including API references and advanced usage examples, is ava
   - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
   - **Windows**: Use `winget install -e --id Microsoft.msmpi` (recommended) or [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
 - **Spherical Harmonic Transform (SHT) engine**:
-  - `ducc0`: Provides scalar and spin-weighted spherical harmonic transforms, reduced-grid synthesis, and HEALPix geometry.
-- **Free-threaded Python**: Python 3.14 free-threaded support is experimental. `grib` and `zarr` modules are not supported by Python `3.14t` runtime.
+  - `ducc0` provides scalar and spin-weighted spherical harmonic transforms, reduced-grid synthesis, and HEALPix geometry.
+- **Free-threaded Python**:
+  - Python 3.14 free-threaded support is experimental. `grib` and `zarr` modules are not supported by Python `3.14t` runtime.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:
@@ -240,7 +235,7 @@ uv run pytest --run-all
 
 If you use this software in your research, please cite the following:
 
-- **Yau, A. M. W.**, 2026: *mwyau/PyStormTracker: v0.5.0*. Version v0.5.0. Zenodo, [doi:10.5281/zenodo.18764813](https://doi.org/10.5281/zenodo.18764813).
+- **Yau, A. M. W.**, 2026: *mwyau/PyStormTracker*. Zenodo, [doi:10.5281/zenodo.18764813](https://doi.org/10.5281/zenodo.18764813).
 
 - **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
 
@@ -262,4 +257,4 @@ If you use this software in your research, please cite the following:
 
 ## License
 
-This project is licensed under the BSD-3-Clause terms found in the `LICENSE` file.
+This project is licensed under the BSD-3-Clause terms found in the [`LICENSE`](LICENSE) file.

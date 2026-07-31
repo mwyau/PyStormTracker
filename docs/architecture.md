@@ -4,7 +4,7 @@ This document describes the data model, tracker interfaces, preprocessing, and e
 
 ## 1. Architecture Principles
 
-The architecture has four main properties:
+The architecture has four main features:
 1.  **Unified API (Tracker Protocol):** A structural interface that allows the CLI and Python API to support multiple tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) interchangeably.
 2.  **Centralized Threshold Management:** Standard detection thresholds (for example, `1e-5` for vorticity and `0.0` for MSL) are defined in `models/constants.py` and shared by tracker paths.
 3.  **Vectorization and Numba JIT:** Numerical operations use NumPy broadcasting and cached, GIL-free Numba kernels where suitable, avoiding Python loops in the detection and linking kernels.
@@ -17,14 +17,14 @@ The architecture has four main properties:
 ### 2.1 Array-Backed Data Models (`Tracks`, `Track`, `Center`)
 The data models use contiguous array-backed storage:
 *   **`Tracks`**: The central container holding one-dimensional NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and a dictionary of additional meteorological variables.
-*   **`Track`**: A lightweight view into the `Tracks` arrays for one identifier.
-*   **`Center`**: A dataclass used for iteration and export.
+*   **`Track`**: A lightweight view into the `Tracks` arrays for one cyclone track.
+*   **`Center`**: A dataclass used for cyclone center detection.
 
 This layout avoids storing one persistent Python object per center, reduces object-allocation overhead, and supports NumPy broadcasting, selection, and serialization between parallel workers.
 
 ### 2.2 Shared DataLoader
 Data loading is encapsulated in a dedicated `DataLoader` class (`io/data_loader.py`). This component handles:
-*   **Format handling**: Opens NetCDF through `h5netcdf` or `netCDF4`, GRIB through `cfgrib`, and Zarr through Xarray engines.
+*   **Format handling**: Opens NetCDF through `h5netcdf` or `netCDF4`, GRIB through `cfgrib`, and Zarr through `zarr` engines.
 *   **Remote data**: Supports Zarr stores over HTTP, S3, and GS through `fsspec` when the optional Zarr dependencies are installed.
 *   **Variable and coordinate mapping**: Resolves common field aliases such as `msl`/`slp` and latitude/longitude/time coordinate aliases.
 *   **Grid metadata**: Detects regular latitude-longitude, full Gaussian, reduced Gaussian, projected `x/y`, and HEALPix coordinates and retains metadata required by spherical harmonic transforms and map projections.
@@ -112,7 +112,7 @@ Detailed execution timings (breaking down Detection, Linking, Export, and I/O Ov
 
 The current architecture differs from the earlier nested-object design as follows.
 
-| Feature | Legacy Architecture (v0.3.x and earlier) | Current Architecture (v0.4.0+) |
+| Feature | Legacy Architecture (v0.0.2) | Current Architecture (v0.4.0+) |
 | :--- | :--- | :--- |
 | **Data Storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
 | **Parallelism** | Threaded tree reduction. | Simple: threaded Dask or MPI detection, then centralized linking. |
