@@ -127,7 +127,7 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
-exclude = ["worktrees", ".venv", "notebooks", "benchmark", "docs"]
+exclude = [".venv", "notebooks", "benchmark", "docs", "worktrees"]
 mypy_path = "src:tests"
 
 [[tool.mypy.overrides]]
