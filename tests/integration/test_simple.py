@@ -262,7 +262,6 @@ def test_grib_vs_netcdf(
 ) -> None:
     """Test that tracking matches between NetCDF and GRIB inputs."""
     pytest.importorskip("cfgrib")
-    import xarray as xr
 
     _, varname, mode, steps = config
     serial_path, _ = serial_reference
