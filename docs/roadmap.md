@@ -22,15 +22,15 @@ Status terms are used as follows:
 
 **Planned work:** Evaluate a spherical candidate index such as `scipy.spatial.cKDTree` while preserving deterministic matching and the current distance definition.
 
-### 1.3 Manage memory pressure by chunking — Partial
+### 1.3 Manage memory pressure by chunking — 🚧 In progress
 
 Simple Dask and MPI partition detection work and gather detections before one linking pass. Hodges can partition detection into serial time chunks and also performs one linking pass after gathering. Several preprocessing paths still load complete selected arrays into memory.
 
-### 1.4 Array-backed data model — Implemented :white_check_mark:
+### 1.4 Array-backed data model — ✅ Implemented
 
 Tracks, coordinates, times, identifiers, and variables are stored in flat NumPy arrays. `Track` objects provide indexed views into this storage.
 
-### 1.5 Numba kernels — Implemented :white_check_mark:
+### 1.5 Numba kernels — ✅ Implemented
 
 Core local-extrema, Laplacian, connected-component labeling (CCL), geometric, subgrid-refinement, object-property, and Modified Greedy Exchange (MGE) operations are implemented as cached Numba kernels where applicable.
 
@@ -56,41 +56,41 @@ Historical benchmark results are documented, but CI does not enforce performance
 
 Add a scheduled CI job using `uv sync --resolution lowest-direct` and the relevant test suites to check whether direct minimum versions in `pyproject.toml` remain valid.
 
-### 2.4 Tiered testing — Implemented :white_check_mark:
+### 2.4 Tiered testing — ✅ Implemented
 
 Unit tests run by default. Integration tests require `--run-integration`; slow regression cases additionally require `--run-slow`. `--run-all` disables these collection filters.
 
 ## 3. Architecture
 
-### 3.1 Xarray generalized ufunc integration — Partial
+### 3.1 Xarray generalized ufunc integration — 🚧 In progress
 
 Spectral filtering and kinematic calculations use `xarray.apply_ufunc` in applicable paths. Detection uses explicit Xarray loading followed by NumPy and Numba kernels. Further use of `apply_ufunc` should not change serial, Dask, or MPI results.
 
-### 3.2 Distributed backends — Partial
+### 3.2 Distributed backends — 🚧 In progress
 
 Simple supports serial, Dask, and MPI detection with Gather-then-Link orchestration. Hodges and HEALPix are serial-only and reject unsupported backend selections. Hodges applies `min_lifetime` after linking. HEALPix currently stores the same constructor value without applying lifetime pruning.
 
-### 3.3 CLI and tracker protocol — Implemented :white_check_mark:
+### 3.3 CLI and tracker protocol — ✅ Implemented
 
 The `stormtracker` command has `track`, `sample`, `compare`, and `convert` subcommands. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` implement the common tracker interface. The high-level CLI implementation is in `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is currently exported.
 
-### 3.4 Remote data support — Implemented :white_check_mark:
+### 3.4 Remote data support — ✅ Implemented
 
 `DataLoader` supports remote Zarr datasets over HTTP, S3, and Google Cloud Storage when the Zarr optional dependencies are installed.
 
 ## 4. Distribution and dependencies
 
-### 4.1 Modular dependencies — Implemented :white_check_mark:
+### 4.1 Modular dependencies — ✅ Implemented
 
 Optional extras cover MPI, GRIB, NetCDF4, Zarr, metrics, documentation, and visualization. The Hodges and HEALPix implementations and `ducc0` are core package components.
 
-### 4.2 Conda-forge distribution — Implemented :white_check_mark:
+### 4.2 Conda-forge distribution — ✅ Implemented
 
 PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 ## 5. Scientific and technical feature roadmap
 
-### 5.1 B-spline detection and smoothing — Partial
+### 5.1 B-spline detection and smoothing — 🚧 In progress
 
 **Description:** Off-grid detection using a global spherical B-spline and steepest-descent optimization can provide smoother center coordinates, particularly on lower-resolution grids such as CMIP output.
 
@@ -102,7 +102,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Compare optimized coordinates, values, and resulting trajectories with TRACK after center optimization is implemented.
 
-### 5.2 Regional model support with the discrete cosine transform — Partial
+### 5.2 Regional model support with the discrete cosine transform — 🚧 In progress
 
 **Description:** Support tracking on limited-area model fields, including WRF output, with discrete cosine transform (DCT) spectral filtering and nonperiodic domain boundaries.
 
@@ -114,7 +114,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Repository tests cover execution and global-versus-regional selection. Numerical comparison with a limited-area reference calculation remains.
 
-### 5.3 Spectral tapering — Implemented :white_check_mark:
+### 5.3 Spectral tapering — ✅ Implemented
 
 **Description:** Apply a wave-number taper to spherical harmonic coefficients to reduce spectral ringing and sidelobes at the truncation boundary.
 
@@ -126,7 +126,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Spectral and tracker tests cover execution. A coefficient-level comparison with an independently calculated reference remains.
 
-### 5.4 Postprocessing track metrics — Implemented :white_check_mark:
+### 5.4 Postprocessing track metrics — ✅ Implemented
 
 **Description:** Compute cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA) on a two-dimensional latitude-longitude grid.
 
@@ -136,7 +136,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Lagrangian metric and weighting unit tests cover the implemented estimators.
 
-### 5.5 Eulerian metrics and weather-impact indices — Implemented :white_check_mark:
+### 5.5 Eulerian metrics and weather-impact indices — ✅ Implemented
 
 **Description:** Compute Eulerian variance measures using a 24-hour difference filter, Eddy Kinetic Energy (EKE), and high-wind percentile indices for comparison with Lagrangian track statistics.
 
@@ -146,7 +146,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Eulerian metric unit tests cover the implemented calculations.
 
-### 5.6 CORMAX and CCA/PCA evaluation — Implemented :white_check_mark:
+### 5.6 CORMAX and CCA/PCA evaluation — ✅ Implemented
 
 **Description:** CORMAX is the maximum one-point correlation between a weather-impact field and a storm-track metric within a local search region, such as a $60^\circ\times20^\circ$ box. Canonical correlation analysis (CCA), optionally preceded by principal component analysis (PCA), is used to evaluate field relationships and truncation sensitivity.
 
@@ -156,7 +156,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Cross-validation and missing-data tests cover the implemented scope.
 
-### 5.7 Spherical kernel gridding — Implemented :white_check_mark:
+### 5.7 Spherical kernel gridding — ✅ Implemented
 
 **Description:** Apply spherical weighting functions to gridded cyclone and track statistics.
 
@@ -174,7 +174,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Define statistical methods and versioned reference cases before implementation.
 
-### 5.9 Object size and morphological properties — Partial
+### 5.9 Object size and morphological properties — 🚧 In progress
 
 **Description:** Calculate the area and intensity-weighted ellipse properties of each thresholded storm object.
 
@@ -184,7 +184,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Remaining work and verification:** Propagate selected object diagnostics through linking, then compare object masks and properties directly with TRACK. Existing tests cover spherical, projected, boundary, and longitude-seam cases.
 
-### 5.10 Sampling secondary variables — Implemented :white_check_mark:
+### 5.10 Sampling secondary variables — ✅ Implemented
 
 **Description:** Attach secondary variables, such as maximum wind or full-resolution minimum sea-level pressure, to trajectory centers from external NetCDF datasets.
 
@@ -192,7 +192,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Sampling unit tests and CLI integration tests cover the implemented methods.
 
-### 5.11 Vorticity tracking CLI — Partial
+### 5.11 Vorticity tracking CLI — 🚧 In progress
 
 **Description:** Track an existing relative-vorticity field and expose derivation of vorticity and divergence from wind components through the CLI.
 
@@ -202,7 +202,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Python kinematic calculations have NCL-reference integration tests. The derivation CLI requires separate tests after implementation.
 
-### 5.12 Ensemble and dataset utilities — Partial
+### 5.12 Ensemble and dataset utilities — 🚧 In progress
 
 **Description:** Combine track files, match trajectories between datasets or ensemble members, and perform track-to-track intercomparison.
 
@@ -228,7 +228,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Compare with a documented tropical-cyclone reference workflow after the configuration is implemented.
 
-### 5.15 Full Gaussian grids — Partial
+### 5.15 Full Gaussian grids — 🚧 In progress
 
 **Description:** Process and regrid fields on full Gaussian grids, including N320, using Gauss-Legendre (`GL`) geometry in `ducc0.sht.analysis_2d`.
 
@@ -236,7 +236,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Verification:** Geometry-detection and `GL` synthesis paths have repository coverage. A versioned full-Gaussian input fixture remains to be tested end to end.
 
-### 5.16 Reduced Gaussian grids — Partial
+### 5.16 Reduced Gaussian grids — 🚧 In progress
 
 **Description:** Process one-dimensional reduced Gaussian fields, such as ERA5 N320 data, using the number of longitude points on each latitude ring.
 
