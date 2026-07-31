@@ -165,6 +165,7 @@ class HealpixDetector:
         threshold: float | None = None,
         minmaxmode: Literal["min", "max"] = "min",
         min_points: int = 1,
+        subgrid_refine: bool = True,
     ) -> list[RawDetectionStep]:
         self._ensure_open()
         times = self.get_time()
@@ -206,21 +207,28 @@ class HealpixDetector:
             # 3. Extract and Refine
             p_idx, _ = _numba_get_healpix_centers(extrema, frame)
 
-            refined_lats = np.zeros(len(p_idx))
-            refined_lons = np.zeros(len(p_idx))
-            refined_vals = np.zeros(len(p_idx))
+            assert self._lat is not None
+            assert self._lon is not None
+            if subgrid_refine:
+                refined_lats = np.zeros(len(p_idx))
+                refined_lons = np.zeros(len(p_idx))
+                refined_vals = np.zeros(len(p_idx))
 
-            for j in range(len(p_idx)):
-                ref_lat, ref_lon, ref_val = subgrid_refine_healpix(
-                    frame,
-                    int(p_idx[j]),
-                    self._neighbor_table,
-                    self._lat,
-                    self._lon,
-                )
-                refined_lats[j] = ref_lat
-                refined_lons[j] = ref_lon
-                refined_vals[j] = ref_val
+                for j in range(len(p_idx)):
+                    ref_lat, ref_lon, ref_val = subgrid_refine_healpix(
+                        frame,
+                        int(p_idx[j]),
+                        self._neighbor_table,
+                        self._lat,
+                        self._lon,
+                    )
+                    refined_lats[j] = ref_lat
+                    refined_lons[j] = ref_lon
+                    refined_vals[j] = ref_val
+            else:
+                refined_lats = self._lat[p_idx]
+                refined_lons = self._lon[p_idx]
+                refined_vals = frame[p_idx]
 
             raw_step = (
                 current_time,

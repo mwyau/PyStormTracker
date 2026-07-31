@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, runtime_checkable
 
 import numpy as np
+import xarray as xr
 from numpy.typing import NDArray
 
 from .tracks import Tracks
@@ -23,12 +25,12 @@ RawDetectionStep: TypeAlias = tuple[
 class Tracker(Protocol):
     """
     A structural interface representing a storm tracker.
-    Any class implementing these methods is considered a Tracker.
+    All classes implementing these methods are considered Trackers.
     """
 
     def track(
         self,
-        infile: str,
+        infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
@@ -47,5 +49,6 @@ class Tracker(Protocol):
         lmin: int = 5,
         lmax: int = 42,
         taper_points: int = 0,
+        subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks: ...

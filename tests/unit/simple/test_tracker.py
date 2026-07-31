@@ -16,6 +16,16 @@ def test_tracker_time_range() -> None:
         tracker.track("dummy.nc", "msl", end_time="2025-01-31")
 
 
+def test_tracker_defaults_disable_filter_and_refinement() -> None:
+    tracker = SimpleTracker()
+
+    with patch.object(tracker, "_detect_serial", return_value=Tracks()) as detect:
+        tracker.track("dummy.nc", "msl")
+
+    assert detect.call_args.kwargs["filter"] is False
+    assert detect.call_args.kwargs["subgrid_refine"] is False
+
+
 def test_tracker_mpi_backend() -> None:
     tracker = SimpleTracker()
 
@@ -26,8 +36,21 @@ def test_tracker_mpi_backend() -> None:
         ) as mock_run_mpi,
         patch.dict("sys.modules", {"mpi4py": MagicMock()}),
     ):
-        tracker.track("dummy.nc", "msl", backend="mpi")
+        tracker.track(
+            "dummy.nc",
+            "msl",
+            backend="mpi",
+            map_proj="sh_stereo",
+            resolution=200.0,
+            extent=(-1000.0, 1000.0, -900.0, 900.0),
+            lmax=21,
+            subgrid_refine=True,
+        )
         mock_run_mpi.assert_called_once()
+        assert mock_run_mpi.call_args.kwargs["map_proj"] == "sh_stereo"
+        assert mock_run_mpi.call_args.kwargs["resolution"] == 200.0
+        assert mock_run_mpi.call_args.kwargs["lmax"] == 21
+        assert mock_run_mpi.call_args.kwargs["subgrid_refine"] is True
 
 
 def test_tracker_dask_backend() -> None:
@@ -36,5 +59,18 @@ def test_tracker_dask_backend() -> None:
     with patch(
         "pystormtracker.simple.concurrent.run_simple_dask", return_value=Tracks()
     ) as mock_run_dask:
-        tracker.track("dummy.nc", "msl", backend="dask")
+        tracker.track(
+            "dummy.nc",
+            "msl",
+            backend="dask",
+            map_proj="nh_stereo",
+            resolution=250.0,
+            extent=(-1000.0, 1000.0, -800.0, 800.0),
+            lmax=17,
+            subgrid_refine=True,
+        )
         mock_run_dask.assert_called_once()
+        assert mock_run_dask.call_args.kwargs["map_proj"] == "nh_stereo"
+        assert mock_run_dask.call_args.kwargs["resolution"] == 250.0
+        assert mock_run_dask.call_args.kwargs["lmax"] == 17
+        assert mock_run_dask.call_args.kwargs["subgrid_refine"] is True

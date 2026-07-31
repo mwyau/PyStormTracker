@@ -12,6 +12,7 @@ from ..io.data_loader import DataLoader
 from ..models import TimeRange
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
+from ..preprocessing.refinement import subgrid_refine as refine_center
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
@@ -256,6 +257,7 @@ class SimpleDetector:
         size: int = 5,
         threshold: float | None = None,
         minmaxmode: Literal["min", "max"] = "min",
+        subgrid_refine: bool = False,
     ) -> list[RawDetectionStep]:
         if size % 2 != 1:
             raise ValueError("size must be an odd number")
@@ -269,6 +271,8 @@ class SimpleDetector:
 
         time_array = self.get_time()
         lat, lon = self.lat, self.lon
+        _, _, lon_name = self._loader.get_coords()
+        periodic_x = lon_name != "x" and self._loader.is_global_longitude()
         assert time_array is not None
         num_steps = len(time_array)
 
@@ -293,18 +297,44 @@ class SimpleDetector:
             fill = np.inf if is_min else -np.inf
             filled_frame = np.where(np.isnan(frame), fill, frame)
 
-            extrema = _numba_extrema_filter(filled_frame, size, threshold, is_min)
+            extrema = _numba_extrema_filter(
+                filled_frame, size, threshold, is_min, periodic_x
+            )
 
             if np.isnan(frame).any():
                 extrema[np.isnan(frame)] = 0
 
-            laplacian = _numba_laplace_masked(filled_frame, extrema, is_min)
-            extrema = _numba_remove_dup(laplacian, size=5)
+            laplacian = _numba_laplace_masked(filled_frame, extrema, is_min, periodic_x)
+            extrema = _numba_remove_dup(laplacian, size=5, periodic_x=periodic_x)
 
             # Extract raw data using Numba
             r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
             time_val = t.astype("datetime64[s]")
 
-            raw_results.append((time_val, lat[r_idx], lon[c_idx], {self.varname: vals}))
+            if subgrid_refine:
+                refined_lats = np.empty(len(r_idx), dtype=np.float64)
+                refined_lons = np.empty(len(r_idx), dtype=np.float64)
+                refined_vals = np.empty(len(r_idx), dtype=np.float64)
+                for i in range(len(r_idx)):
+                    refined_lats[i], refined_lons[i], refined_vals[i] = refine_center(
+                        frame,
+                        r_idx[i],
+                        c_idx[i],
+                        lat,
+                        lon,
+                        periodic_x=periodic_x,
+                    )
+                raw_results.append(
+                    (
+                        time_val,
+                        refined_lats,
+                        refined_lons,
+                        {self.varname: refined_vals, "raw_val": vals},
+                    )
+                )
+            else:
+                raw_results.append(
+                    (time_val, lat[r_idx], lon[c_idx], {self.varname: vals})
+                )
 
         return raw_results

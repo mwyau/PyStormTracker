@@ -67,7 +67,10 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
     if track_type == "msl" and np.nanmax(np.abs(raw_strength)) > 500:
         raw_strength = raw_strength / 100.0
 
-    # 3. Prepare SoA with NaN separators
+    # 3. Prepare SoA (Struct-of-Arrays) with NaN separators.
+    # This format is optimized for fast WebGL rendering: a single large array
+    # per attribute where individual tracks are separated by NaNs to break the
+    # line geometry in the browser without needing separate drawing calls.
     diff = np.diff(tracks.track_ids)
     boundaries = np.where(diff != 0)[0] + 1
 

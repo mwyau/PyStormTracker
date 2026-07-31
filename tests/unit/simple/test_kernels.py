@@ -42,6 +42,21 @@ def test_numba_extrema_filter_plateau() -> None:
     assert out[5, 6] == 1.0
 
 
+def test_numba_extrema_filter_does_not_wrap_projected_x() -> None:
+    data = np.full((7, 7), 100.0, dtype=np.float64)
+    data[3, 0] = 90.0
+
+    global_result = _numba_extrema_filter(
+        data, size=3, threshold=5.0, is_min=True, periodic_x=True
+    )
+    projected_result = _numba_extrema_filter(
+        data, size=3, threshold=5.0, is_min=True, periodic_x=False
+    )
+
+    assert global_result[3, 0] == 1.0
+    assert projected_result.sum() == 0.0
+
+
 def test_numba_laplace_masked() -> None:
     data: NDArray[np.float64] = np.zeros((5, 5), dtype=np.float64)
     data[2, 2] = -1.0  # Minimum

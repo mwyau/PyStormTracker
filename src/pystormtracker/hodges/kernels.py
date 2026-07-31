@@ -4,7 +4,9 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
-from ..models.geo import DEGTORAD, geod_dist
+from ..models.constants import DEGTORAD, KM_PER_DEG, R_EARTH_KM
+from ..models.geo import geod_dist
+from ..preprocessing.refinement import subgrid_refine as subgrid_refine
 
 
 @nb.njit(cache=True, nogil=True)
@@ -29,93 +31,6 @@ def _numba_get_centers(
     for i in range(len(r_idx)):
         vals[i] = frame[r_idx[i], c_idx[i]]
     return r_idx, c_idx, vals
-
-
-@nb.njit(cache=True, nogil=True)
-def subgrid_refine(
-    frame: NDArray[np.float64],
-    r: int,
-    c: int,
-    lat: NDArray[np.float64],
-    lon: NDArray[np.float64],
-) -> tuple[float, float, float]:
-    """
-    Refines an extremum position using local quadratic interpolation.
-
-    Fits f(y, x) = a*y^2 + b*x^2 + c*y*x + d*y + e*x + f to a 3x3 neighborhood.
-    The refined center is where partial derivatives are zero.
-    This provides sub-grid precision without the need for global B-splines
-    (which would require Cholesky pre-processing as seen in original TRACK).
-
-    Args:
-        frame: 2D data frame.
-        r, c: Row and column index of the grid-level extremum.
-        lat, lon: Coordinate arrays.
-
-    Returns:
-        (refined_lat, refined_lon, refined_intensity).
-    """
-    ny, nx = frame.shape
-
-    # Boundary check: need 3x3 neighborhood
-    if r < 1 or r >= ny - 1:
-        return lat[r], lon[c], frame[r, c]
-
-    # Extract 3x3 neighborhood with longitude wrapping
-    cm = (c - 1) % nx
-    cp = (c + 1) % nx
-
-    z = np.zeros((3, 3))
-    z[0, 0] = frame[r - 1, cm]
-    z[0, 1] = frame[r - 1, c]
-    z[0, 2] = frame[r - 1, cp]
-    z[1, 0] = frame[r, cm]
-    z[1, 1] = frame[r, c]
-    z[1, 2] = frame[r, cp]
-    z[2, 0] = frame[r + 1, cm]
-    z[2, 1] = frame[r + 1, c]
-    z[2, 2] = frame[r + 1, cp]
-
-    # Use finite differences to find quadratic surface coefficients
-    f_yy = z[0, 1] - 2 * z[1, 1] + z[2, 1]
-    f_xx = z[1, 0] - 2 * z[1, 1] + z[1, 2]
-    f_yx = 0.25 * (z[2, 2] - z[2, 0] - z[0, 2] + z[0, 0])
-    f_y = 0.5 * (z[2, 1] - z[0, 1])
-    f_x = 0.5 * (z[1, 2] - z[1, 0])
-
-    det = f_yy * f_xx - f_yx**2
-    if abs(det) < 1e-10:
-        return lat[r], lon[c], frame[r, c]
-
-    # Offset from grid center
-    dy = (f_yx * f_x - f_xx * f_y) / det
-    dx = (f_yx * f_y - f_yy * f_x) / det
-
-    # Validation: refined point must remain within the grid cell
-    if abs(dy) > 1.0 or abs(dx) > 1.0:
-        return lat[r], lon[c], frame[r, c]
-
-    # Precision interpolation using local grid intervals
-    if dy > 0:
-        ref_lat = lat[r] + dy * (lat[r + 1] - lat[r])
-    else:
-        ref_lat = lat[r] + abs(dy) * (lat[r - 1] - lat[r])
-
-    if dx > 0:
-        lon_next = lon[cp] if cp > c else lon[cp] + 360.0
-        ref_lon = lon[c] + dx * (lon_next - lon[c])
-    else:
-        lon_prev = lon[cm] if cm < c else lon[cm] - 360.0
-        ref_lon = lon[c] + abs(dx) * (lon_prev - lon[c])
-
-    if ref_lon >= 360.0:
-        ref_lon -= 360.0
-    if ref_lon < 0.0:
-        ref_lon += 360.0
-
-    ref_val = z[1, 1] + 0.5 * (f_y * dy + f_x * dx)
-
-    return ref_lat, ref_lon, ref_val
 
 
 @nb.njit(cache=True, nogil=True)
@@ -407,9 +322,6 @@ def _mge_iteration(
     # Target frame to swap
     target_k = k + 1 if forward else k - 1
 
-    rad_to_deg = 180.0 / np.pi
-    deg_to_rad = np.pi / 180.0
-
     # Cache current costs
     costs = np.zeros(n_tracks)
     for i in range(n_tracks):
@@ -433,7 +345,7 @@ def _mge_iteration(
                     get_regional_dmax(lat_k, lon_k, zones, default_dmax)
                     + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
                 )
-                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_i * deg_to_rad:
+                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_i * DEGTORAD:
                     valid_swap = False
 
             idx_j_k = tracks[j, k]
@@ -444,7 +356,7 @@ def _mge_iteration(
                     get_regional_dmax(lat_k, lon_k, zones, default_dmax)
                     + get_regional_dmax(lat_t, lon_t, zones, default_dmax)
                 )
-                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_j * deg_to_rad:
+                if geod_dist(lat_k, lon_k, lat_t, lon_t) > dmax_j * DEGTORAD:
                     valid_swap = False
 
             if not valid_swap:
@@ -484,7 +396,7 @@ def _mge_iteration(
                     features_lon[tracks[i, k + 1]],
                 )
                 phi_max_i = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
+                    0.5 * (d1 + d2) / DEGTORAD, adapt_params, phimax
                 )
                 if new_cost_i > phi_max_i:
                     valid_swap = False
@@ -508,7 +420,7 @@ def _mge_iteration(
                     features_lon[tracks[j, k + 1]],
                 )
                 phi_max_j = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
+                    0.5 * (d1 + d2) / DEGTORAD, adapt_params, phimax
                 )
                 if new_cost_j > phi_max_j:
                     valid_swap = False
@@ -553,7 +465,6 @@ def _initial_break_pass(
     """
     n_tracks, n_frames = tracks.shape
     new_tracks_list = []
-    rad_to_deg = 180.0 / np.pi
 
     for i in range(n_tracks):
         current_track = tracks[i]
@@ -588,7 +499,7 @@ def _initial_break_pass(
                     features_lon[current_track[k + 1]],
                 )
                 phi_max = get_adaptive_phimax(
-                    0.5 * (d1 + d2) * rad_to_deg, adapt_params, phimax
+                    0.5 * (d1 + d2) / DEGTORAD, adapt_params, phimax
                 )
 
                 if cost > phi_max:
@@ -640,7 +551,6 @@ def _break_track(
         The updated track matrix (potentially with a new row).
     """
     n_tracks, n_frames = tracks.shape
-    deg_to_rad = np.pi / 180.0
 
     target_k = k + 1 if forward else k - 1
     if target_k < 0 or target_k >= n_frames:
@@ -660,7 +570,7 @@ def _break_track(
         + get_regional_dmax(lat2, lon2, zones, default_dmax)
     )
 
-    if geod_dist(lat1, lon1, lat2, lon2) > dmax_eff * deg_to_rad:
+    if geod_dist(lat1, lon1, lat2, lon2) > dmax_eff * DEGTORAD:
         # Violation! Break the track.
         new_tr = np.full(n_frames, -1, dtype=np.int64)
         if forward:
@@ -685,6 +595,7 @@ def _break_track(
 @nb.njit(cache=True, nogil=True)
 def _numba_ccl(
     binary_mask: NDArray[np.float64],
+    periodic_x: bool = True,
 ) -> tuple[NDArray[np.int32], int]:
     """
     8-connectivity Connected Component Labeling (CCL) in Numba.
@@ -726,7 +637,11 @@ def _numba_ccl(
                     if ni < 0 or ni >= ny:
                         continue
                     for dj in range(-1, 2):
-                        nj = (j + dj) % nx
+                        nj = j + dj
+                        if periodic_x:
+                            nj %= nx
+                        elif nj < 0 or nj >= nx:
+                            continue
                         if labels[ni, nj] > 0 and labels[ni, nj] < cur:
                             cur = labels[ni, nj]
                 if cur != labels[i, j]:
@@ -744,7 +659,11 @@ def _numba_ccl(
                     if ni < 0 or ni >= ny:
                         continue
                     for dj in range(-1, 2):
-                        nj = (j + dj) % nx
+                        nj = j + dj
+                        if periodic_x:
+                            nj %= nx
+                        elif nj < 0 or nj >= nx:
+                            continue
                         if labels[ni, nj] > 0 and labels[ni, nj] < cur:
                             cur = labels[ni, nj]
                 if cur != labels[i, j]:
@@ -774,6 +693,7 @@ def _numba_object_extrema(
     size: int,
     is_min: bool,
     min_points: int,
+    periodic_x: bool = True,
 ) -> NDArray[np.float64]:
     """
     Finds local extrema within thresholded objects.
@@ -817,7 +737,11 @@ def _numba_object_extrema(
                 for dj in range(-half, half + 1):
                     if di == 0 and dj == 0:
                         continue
-                    nj = (j + dj) % nx
+                    nj = j + dj
+                    if periodic_x:
+                        nj %= nx
+                    elif nj < 0 or nj >= nx:
+                        continue
                     nval = frame[ni, nj]
 
                     if is_min:
@@ -835,3 +759,138 @@ def _numba_object_extrema(
                 extrema[i, j] = 1.0
 
     return extrema
+
+
+@nb.njit(cache=True, nogil=True)
+def _numba_cell_area(lat: float, dlat: float, dlon: float) -> float:
+    """Calculates the area of a grid cell in km^2."""
+    # Area = R^2 * cos(lat) * dlat * dlon
+    return float(
+        R_EARTH_KM**2 * np.cos(lat * DEGTORAD) * (dlat * DEGTORAD) * (dlon * DEGTORAD)
+    )
+
+
+@nb.njit(cache=True, nogil=True)
+def _numba_object_properties(
+    frame: NDArray[np.float64],
+    labeled_mask: NDArray[np.int32],
+    num_objects: int,
+    lat: NDArray[np.float64],
+    lon: NDArray[np.float64],
+    threshold: float,
+    is_min: bool,
+    spherical_coords: bool = True,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+]:
+    """
+    Calculates physical properties for each object:
+    raw_size (km^2), fitted_size (ellipse km^2), axes, orientation.
+    Uses intensity-weighting for the ellipse fit.
+    """
+    ny, nx = frame.shape
+    raw_areas = np.zeros(num_objects + 1, dtype=np.float64)
+    fitted_areas = np.zeros(num_objects + 1, dtype=np.float64)
+    major_axes = np.zeros(num_objects + 1, dtype=np.float64)
+    minor_axes = np.zeros(num_objects + 1, dtype=np.float64)
+    orientations = np.zeros(num_objects + 1, dtype=np.float64)
+
+    # Moments for each object
+    m00 = np.zeros(num_objects + 1, dtype=np.float64)
+    m10 = np.zeros(num_objects + 1, dtype=np.float64)
+    m01 = np.zeros(num_objects + 1, dtype=np.float64)
+    m20 = np.zeros(num_objects + 1, dtype=np.float64)
+    m02 = np.zeros(num_objects + 1, dtype=np.float64)
+    m11 = np.zeros(num_objects + 1, dtype=np.float64)
+    reference_x = np.zeros(num_objects + 1, dtype=np.float64)
+    has_reference_x = np.zeros(num_objects + 1, dtype=np.bool_)
+
+    if spherical_coords:
+        for i in range(ny):
+            for j in range(nx):
+                obj_id = labeled_mask[i, j]
+                if obj_id > 0 and not has_reference_x[obj_id]:
+                    reference_x[obj_id] = lon[j]
+                    has_reference_x[obj_id] = True
+
+    dy = abs(lat[1] - lat[0]) if ny > 1 else 1.0
+    dx = abs(lon[1] - lon[0]) if nx > 1 else 1.0
+
+    for i in range(ny):
+        area_cell = _numba_cell_area(lat[i], dy, dx) if spherical_coords else dy * dx
+        for j in range(nx):
+            obj_id = labeled_mask[i, j]
+            if obj_id == 0:
+                continue
+
+            raw_areas[obj_id] += area_cell
+
+            # Intensity weighting: difference from threshold
+            val = frame[i, j]
+            weight = abs(val - threshold)
+
+            # Use lat/lon directly for moments
+            y = lat[i]
+            x = lon[j]
+            if spherical_coords:
+                reference = reference_x[obj_id]
+                x = reference + (x - reference + 180.0) % 360.0 - 180.0
+
+            m00[obj_id] += weight
+            m10[obj_id] += weight * x
+            m01[obj_id] += weight * y
+            m20[obj_id] += weight * x**2
+            m02[obj_id] += weight * y**2
+            m11[obj_id] += weight * x * y
+
+    for obj_id in range(1, num_objects + 1):
+        if m00[obj_id] == 0:
+            continue
+
+        # Centroid
+        cx = m10[obj_id] / m00[obj_id]
+        cy = m01[obj_id] / m00[obj_id]
+
+        # Central moments
+        mu20 = m20[obj_id] / m00[obj_id] - cx**2
+        mu02 = m02[obj_id] / m00[obj_id] - cy**2
+        mu11 = m11[obj_id] / m00[obj_id] - cx * cy
+
+        if spherical_coords:
+            km_per_deg_lon = KM_PER_DEG * np.cos(cy * DEGTORAD)
+            a = mu20 * km_per_deg_lon**2
+            b = mu11 * km_per_deg_lon * KM_PER_DEG
+            c = mu02 * KM_PER_DEG**2
+        else:
+            a = mu20
+            b = mu11
+            c = mu02
+
+        # Eigenvalues of the covariance matrix
+        # (lambda - a)(lambda - c) - b^2 = 0
+        # lambda^2 - (a+c)lambda + ac - b^2 = 0
+        term1 = (a + c) / 2.0
+        term2 = np.sqrt(((a - c) / 2.0) ** 2 + b**2)
+
+        lambda1 = term1 + term2
+        lambda2 = term1 - term2
+
+        # Axes (2 * sqrt(lambda) for 1-sigma ellipse)
+        major = 2.0 * np.sqrt(max(0.0, lambda1))
+        minor = 2.0 * np.sqrt(max(0.0, lambda2))
+
+        major_axes[obj_id] = major
+        minor_axes[obj_id] = minor
+        fitted_areas[obj_id] = np.pi * major * minor
+
+        # Orientation (angle of major axis)
+        if abs(a - c) < 1e-10:
+            orientations[obj_id] = 0.0
+        else:
+            orientations[obj_id] = 0.5 * np.arctan2(2.0 * b, a - c) * 180.0 / np.pi
+
+    return raw_areas, fitted_areas, major_axes, minor_axes, orientations

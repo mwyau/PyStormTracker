@@ -4,6 +4,7 @@ import numpy as np
 import xarray as xr
 
 from pystormtracker.preprocessing.regrid import SpectralRegridder
+from pystormtracker.preprocessing.spectral import apply_sht_filter
 
 
 def test_regrid_to_grid() -> None:
@@ -55,6 +56,39 @@ def test_regrid_to_healpix() -> None:
     assert regridded.dims == ("cell",)
     assert regridded.name == "test_var"
     assert len(regridded.cell) == npix
+
+
+def test_filter_reduced_gaussian_grid(
+    reduced_gaussian_data: xr.DataArray,
+) -> None:
+    filtered = apply_sht_filter(
+        reduced_gaussian_data,
+        lmin=0,
+        lmax=3,
+        out_geometry="CC",
+        out_ntheta=8,
+        out_nphi=16,
+    )
+
+    assert filtered.dims == ("time", "latitude", "longitude")
+    assert filtered.shape == (1, 8, 16)
+    assert np.isfinite(filtered).all()
+
+
+def test_regrid_reduced_gaussian_to_regular(
+    reduced_gaussian_data: xr.DataArray,
+) -> None:
+    regridder = SpectralRegridder(lmax=3)
+    regridded = regridder.to_grid(
+        reduced_gaussian_data.isel(time=0),
+        nlat=8,
+        nlon=16,
+        in_geometry="GL",
+    )
+
+    assert regridded.dims == ("lat", "lon")
+    assert regridded.shape == (8, 16)
+    assert np.isfinite(regridded).all()
 
 
 def test_regrid_identity() -> None:
@@ -113,6 +147,26 @@ def test_regrid_to_polar_stereo() -> None:
     assert regridded.attrs["resolution_km"] == 100.0
     assert len(regridded.y) == 21
     assert len(regridded.x) == 21
+
+
+def test_regrid_to_polar_stereo_lmax_override() -> None:
+    da = xr.DataArray(
+        np.ones((73, 144), dtype=np.float64),
+        dims=("lat", "lon"),
+        coords={
+            "lat": np.linspace(-90.0, 90.0, 73),
+            "lon": np.linspace(0.0, 360.0, 144, endpoint=False),
+        },
+    )
+
+    regridded = SpectralRegridder(lmax=42).to_polar_stereo(
+        da,
+        lmax=7,
+        extent=(-100.0, 100.0, -100.0, 100.0),
+        resolution=100.0,
+    )
+
+    assert regridded.attrs["lmax"] == 7
 
 
 def test_regrid_to_polar_stereo_with_filter() -> None:

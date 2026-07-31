@@ -33,9 +33,19 @@ class SpectralRegridder:
         self.lmax = lmax
         self.mmax = mmax
 
-    def _get_lmax_mmax(self, nlon: int) -> tuple[int, int]:
+    def _get_lmax_mmax(
+        self, nlon: int, lmax_override: int | None = None
+    ) -> tuple[int, int]:
         """Infer lmax and mmax from grid dimensions if not provided."""
-        lmax = self.lmax if self.lmax is not None else nlon // 2 - 1
+        lmax = (
+            lmax_override
+            if lmax_override is not None
+            else self.lmax
+            if self.lmax is not None
+            else nlon // 2 - 1
+        )
+        if lmax < 0:
+            raise ValueError("lmax must be nonnegative")
         mmax = self.mmax if self.mmax is not None else lmax
         return lmax, min(mmax, lmax)
 
@@ -48,31 +58,65 @@ class SpectralRegridder:
         out_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
+        pl: NDArray[np.int32] | None = None,
     ) -> xr.DataArray:
         """
         Spectrally regrid to a regular 2D grid (CC or GL).
+        Supports regular 2D and reduced Gaussian 1D inputs.
         """
-        frame = data.values
-        if data.ndim != 2:
-            raise ValueError(
-                "Only 2D (lat, lon) data is currently supported for regridding."
-            )
+        from ..io.data_loader import DataLoader
 
-        if not lat_reverse:
+        varname = str(data.name) if data.name is not None else ""
+        frame = data.values
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        is_reduced = loader.is_reduced_gaussian(varname) or pl is not None
+
+        if not is_reduced and data.ndim != 2:
+            raise ValueError("Input must be 2D (lat, lon) or reduced Gaussian 1D grid.")
+
+        if not is_reduced and not lat_reverse:
             frame = frame[::-1, :]
 
-        _in_nlat, in_nlon = frame.shape
+        # Determine input dimensions
+        in_nlon: int
+        if is_reduced:
+            if pl is None:
+                pl = loader.get_reduced_grid_pl(varname)
+            if pl is None:
+                raise ValueError("pl array required for reduced grid.")
+            in_nlon = int(np.max(pl))
+        else:
+            in_nlon = frame.shape[1]
+
         lmax, mmax = self._get_lmax_mmax(in_nlon)
 
         # 1. Analyze (Forward SHT)
-        alm = ducc0.sht.analysis_2d(
-            map=np.expand_dims(frame, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            geometry=in_geometry,
-            nthreads=nthreads,
-        )
+        alm: NDArray[np.complex128]
+        if is_reduced:
+            # For reduced/unstructured grids, use iterative pseudo-analysis
+            meta = loader.get_grid_metadata(varname)
+            alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                theta=meta["theta"],
+                nphi=meta["nphi"],
+                phi0=meta["phi0"],
+                ringstart=meta["ringstart"],
+                nthreads=nthreads,
+                maxiter=100,
+                epsilon=1e-6,
+            )
+        else:
+            alm = ducc0.sht.analysis_2d(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                geometry=in_geometry,
+                nthreads=nthreads,
+            )
 
         # 2. Synthesize (Inverse SHT to target grid)
         out_map = cast(
@@ -94,16 +138,14 @@ class SpectralRegridder:
 
         # 3. Reconstruct DataArray
         if out_geometry == "CC":
-            # ducc0 CC internally works North to South (0 to pi)
-            if lat_reverse:
-                # We kept it North to South
-                lat = np.linspace(90, -90, nlat)
-            else:
-                # We flipped it back to South to North
-                lat = np.linspace(-90, 90, nlat)
+            lat = (
+                np.linspace(90, -90, nlat)
+                if lat_reverse
+                else np.linspace(-90, 90, nlat)
+            )
         elif out_geometry == "GL":
-            # For GL we don't easily have lat bounds in numpy without ducc0 help
-            lat = np.arange(nlat, dtype=np.float64)
+            lats_gl = 90.0 - np.degrees(ducc0.misc.GL_thetas(nlat))
+            lat = lats_gl if lat_reverse else lats_gl[::-1]
         else:
             lat = np.arange(nlat, dtype=np.float64)
 
@@ -123,37 +165,66 @@ class SpectralRegridder:
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
+        pl: NDArray[np.int32] | None = None,
     ) -> xr.DataArray:
         """
         Spectrally regrid to a 1D HEALPix grid.
+        Supports regular 2D and reduced Gaussian 1D inputs.
         """
-        frame = data.values
-        if data.ndim != 2:
-            raise ValueError(
-                "Only 2D (lat, lon) data is currently supported for regridding."
-            )
+        from ..io.data_loader import DataLoader
 
-        if not lat_reverse:
+        varname = str(data.name) if data.name is not None else ""
+        frame = data.values
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        is_reduced = loader.is_reduced_gaussian(varname) or pl is not None
+
+        if not is_reduced and not lat_reverse:
             frame = frame[::-1, :]
 
-        _, in_nlon = frame.shape
+        # Determine input dimensions
+        in_nlon: int
+        if is_reduced:
+            if pl is None:
+                pl = loader.get_reduced_grid_pl(varname)
+            if pl is None:
+                raise ValueError("pl array required for reduced grid.")
+            in_nlon = int(np.max(pl))
+        else:
+            in_nlon = frame.shape[1]
+
         lmax, mmax = self._get_lmax_mmax(in_nlon)
 
         # 1. Analyze
-        alm = ducc0.sht.analysis_2d(
-            map=np.expand_dims(frame, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            geometry=in_geometry,
-            nthreads=nthreads,
-        )
+        alm: NDArray[np.complex128]
+        if is_reduced:
+            meta = loader.get_grid_metadata(varname)
+            alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                theta=meta["theta"],
+                nphi=meta["nphi"],
+                phi0=meta["phi0"],
+                ringstart=meta["ringstart"],
+                nthreads=nthreads,
+                maxiter=100,
+                epsilon=1e-6,
+            )
+        else:
+            alm = ducc0.sht.analysis_2d(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                geometry=in_geometry,
+                nthreads=nthreads,
+            )
 
         # 2. Synthesize to HEALPix
         hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
         sht_kwargs = hp_base.sht_info()
 
-        # synthesis returns shape (nmaps, npix)
         out_map = cast(
             NDArray[np.float64],
             ducc0.sht.synthesis(
@@ -176,6 +247,7 @@ class SpectralRegridder:
         resolution: float = 100.0,
         lon_0: float = 0.0,
         filter_lmin: int | None = None,
+        lmax: int | None = None,
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
@@ -186,6 +258,7 @@ class SpectralRegridder:
         Args:
             extent: Bounding box from pole in km (xmin, xmax, ymin, ymax).
             resolution: Grid spacing in km.
+            lmax: Maximum total wave number. Overrides the constructor value.
         """
         from ..models.constants import R_EARTH_KM
         from .spectral import apply_bandpass_mask_to_alm
@@ -200,7 +273,7 @@ class SpectralRegridder:
             frame = frame[::-1, :]
 
         _, in_nlon = frame.shape
-        lmax, mmax = self._get_lmax_mmax(in_nlon)
+        lmax, mmax = self._get_lmax_mmax(in_nlon, lmax)
 
         # 1. Analyze
         alm = ducc0.sht.analysis_2d(
@@ -262,5 +335,9 @@ class SpectralRegridder:
             dims=["y", "x"],
             coords={"y": y, "x": x},
             name=data.name,
-            attrs={"projection": f"{hemisphere}_stereo", "resolution_km": resolution},
+            attrs={
+                "projection": f"{hemisphere}_stereo",
+                "resolution_km": resolution,
+                "lmax": lmax,
+            },
         )

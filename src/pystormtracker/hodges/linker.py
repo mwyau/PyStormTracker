@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.center import Center
+from ..models.constants import DEGTORAD
 from ..models.geo import geod_dist
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import Tracks
@@ -97,7 +98,6 @@ class HodgesLinker:
             track_matrix[i, 0] = i
 
         current_n_tracks = n_init
-        deg_to_rad = np.pi / 180.0
 
         for k in range(n_frames - 1):
             features_kp1 = np.arange(step_offsets[k + 1], step_offsets[k + 2])
@@ -137,7 +137,7 @@ class HodgesLinker:
                         features_lat[f_global],
                         features_lon[f_global],
                     )
-                    if dist < dmax_eff * deg_to_rad and dist < best_dist:
+                    if dist < dmax_eff * DEGTORAD and dist < best_dist:
                         best_dist, best_feat = dist, f_idx
 
                 if best_feat != -1:

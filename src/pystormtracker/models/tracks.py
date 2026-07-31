@@ -32,14 +32,30 @@ class Track:
             return False
         if len(self) != len(other):
             return False
-        for c1, c2 in zip(self, other, strict=False):
-            if (
-                c1.time != c2.time
-                or c1.lat != c2.lat
-                or c1.lon != c2.lon
-                or c1.vars != c2.vars
-            ):
+
+        # Compare underlying data slices
+        idx1 = self.indices
+        idx2 = other.indices
+
+        t1, t2 = self._tracks, other._tracks
+
+        if not np.array_equal(t1.times[idx1], t2.times[idx2]):
+            return False
+        if not np.array_equal(t1.lats[idx1], t2.lats[idx2], equal_nan=True):
+            return False
+        if not np.array_equal(t1.lons[idx1], t2.lons[idx2], equal_nan=True):
+            return False
+
+        # Compare variables
+        keys1 = set(t1.vars.keys())
+        keys2 = set(t2.vars.keys())
+        if keys1 != keys2:
+            return False
+
+        for k in keys1:
+            if not np.array_equal(t1.vars[k][idx1], t2.vars[k][idx2], equal_nan=True):
                 return False
+
         return True
 
     @property
@@ -148,6 +164,34 @@ class Tracks:
         # Keep track of tails and heads using array of track_ids
         self._head_ids: set[int] = set()
         self._tail_ids: set[int] = set()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Tracks):
+            return False
+        if len(self) != len(other):
+            return False
+        if self.track_type != other.track_type:
+            return False
+
+        # Bulk array comparison (requires both to be sorted identically)
+        if not np.array_equal(self.times, other.times):
+            return False
+        if not np.array_equal(self.lats, other.lats, equal_nan=True):
+            return False
+        if not np.array_equal(self.lons, other.lons, equal_nan=True):
+            return False
+
+        # Compare variables
+        keys1 = set(self.vars.keys())
+        keys2 = set(other.vars.keys())
+        if keys1 != keys2:
+            return False
+
+        for k in keys1:
+            if not np.array_equal(self.vars[k], other.vars[k], equal_nan=True):
+                return False
+
+        return True
 
     def add_track(self, centers: list[Center]) -> Track:
         """Helper to append a new track from a list of Centers."""
@@ -314,105 +358,6 @@ class Tracks:
         self.lons = self.lons[new_indices_arr]
         for k in list(self.vars.keys()):
             self.vars[k] = self.vars[k][new_indices_arr]
-
-    def compare(
-        self,
-        other: Tracks,
-        length_diff_tol: int = 0,
-        coord_tol: float = 1e-4,
-        intensity_tol: float = 1e-4,
-        count_tol: int = 0,
-        dist_tol: float | None = None,
-    ) -> None:
-        """Compares this Tracks object with another for equality."""
-        assert abs(len(self) - len(other)) <= count_tol, (
-            f"Track count mismatch: {len(self)} vs {len(other)}"
-        )
-
-        # For every track in self, find if a "close enough" track exists in other
-        matched_in_other = set()
-
-        # Optimization: Group other tracks by their first point's time
-        other_by_time: dict[np.datetime64, list[int]] = {}
-        u_ids_other = other.unique_track_ids
-        for i, tid in enumerate(u_ids_other):
-            t_start = other.times[np.where(other.track_ids == tid)[0][0]]
-            if t_start not in other_by_time:
-                other_by_time[t_start] = []
-            other_by_time[t_start].append(i)
-
-        for tr1 in self:
-            t_start = tr1[0].time
-            found_match = False
-
-            # Only search candidates starting at the same time (strict)
-            candidates = other_by_time.get(t_start, [])
-
-            for idx_other in candidates:
-                if idx_other in matched_in_other:
-                    continue
-
-                tr2 = other[idx_other]
-
-                # Check length
-                if abs(len(tr1) - len(tr2)) > length_diff_tol:
-                    continue
-
-                # Deep check of points
-                d1 = {c.time: c for c in tr1}
-                d2 = {c.time: c for c in tr2}
-                common_times = set(d1.keys()) & set(d2.keys())
-
-                if len(common_times) < min(len(tr1), len(tr2)) - length_diff_tol:
-                    continue
-
-                points_match = True
-                for t_val in common_times:
-                    c1, c2 = d1[t_val], d2[t_val]
-
-                    # Spatial check
-                    if dist_tol is not None:
-                        if c1.abs_dist(c2) > dist_tol:
-                            points_match = False
-                            break
-                    else:
-                        if abs(c1.lat - c2.lat) > coord_tol:
-                            points_match = False
-                            break
-                        lon_diff = abs(c1.lon - c2.lon) % 360
-                        if lon_diff > 180:
-                            lon_diff = 360 - lon_diff
-                        if lon_diff > coord_tol:
-                            points_match = False
-                            break
-
-                    # Intensity check
-                    for k in c1.vars:
-                        if k in c2.vars and (
-                            abs(c1.vars[k] - c2.vars[k]) > intensity_tol
-                        ):
-                            points_match = False
-                            break
-                    if not points_match:
-                        break
-
-                if points_match:
-                    matched_in_other.add(idx_other)
-                    found_match = True
-
-                    # Early exit for "near perfect" matches
-                    if abs(len(tr1) - len(tr2)) <= 1:
-                        break
-
-                    break
-
-            if not found_match:
-                pass
-
-        # Final check: Did we match enough?
-        assert len(matched_in_other) >= len(self) - count_tol, (
-            f"Only {len(matched_in_other)} out of {len(self)} tracks matched."
-        )
 
     def write(self, outfile: str | Path, format: str = "imilast") -> None:
         """

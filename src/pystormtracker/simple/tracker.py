@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -33,13 +34,36 @@ def _detect_and_link(
     size: int,
     threshold: float | None,
     mode: Literal["min", "max"],
+    subgrid_refine: bool = False,
 ) -> list[RawDetectionStep]:
     """Worker task: Detects centers and returns raw results for central linking."""
     return detector.detect(
         size=size,
         threshold=threshold,
         minmaxmode=mode,
+        subgrid_refine=subgrid_refine,
     )
+
+
+def _convert_stereo_steps(
+    raw_steps: list[RawDetectionStep],
+    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"],
+) -> list[RawDetectionStep]:
+    """Convert projected detection coordinates back to latitude and longitude."""
+    if map_proj not in ("nh_stereo", "sh_stereo"):
+        return raw_steps
+
+    from ..models.geo import stereo_to_latlon
+
+    hemisphere = 1 if map_proj == "nh_stereo" else -1
+    converted: list[RawDetectionStep] = []
+    for time, y, x, values in raw_steps:
+        lats = np.empty_like(y)
+        lons = np.empty_like(x)
+        for i in range(len(y)):
+            lats[i], lons[i] = stereo_to_latlon(x[i], y[i], hemisphere)
+        converted.append((time, lats, lons, values))
+    return converted
 
 
 class SimpleTracker:
@@ -56,13 +80,22 @@ class SimpleTracker:
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
+        filter_type: Literal["sht", "dct", "auto"] = "auto",
     ) -> xr.DataArray:
         """
-        Applies standard spectral preprocessing using ducc0.
+        Applies standard spectral preprocessing using SHT or DCT.
         Optionally regrids to a Polar Stereographic or HEALPix projection.
         """
-        from ..preprocessing.spectral import SpectralFilter
+        # Identify spatial dimensions for auto-detection
+        from ..io.data_loader import DataLoader
+        from ..preprocessing.spectral import DCTFilter, SHTFilter
         from ..preprocessing.taper import TaperFilter
+
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        _time_dim, _lat_dim, _lon_dim = loader.get_coords()
+
+        if filter_type == "auto":
+            filter_type = "sht" if loader.is_global_longitude() else "dct"
 
         # Ensure data is loaded into memory for spectral filtering
         if data.chunks:
@@ -70,7 +103,7 @@ class SimpleTracker:
 
         from typing import cast
 
-        # 1. Tapering
+        # 1. Tapering (Spatial domain boundary tapering)
         if taper_points > 0:
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
@@ -80,11 +113,6 @@ class SimpleTracker:
             from ..preprocessing.regrid import SpectralRegridder
 
             regridder = SpectralRegridder(lmax=lmax)
-
-            # We process frame by frame
-            from ..io.data_loader import DataLoader
-
-            loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
             is_lat_reversed = loader.is_lat_reversed()
 
             time_dim = next(
@@ -98,8 +126,9 @@ class SimpleTracker:
                     nside = int(np.sqrt(12 * (lmax + 1) ** 2 / 12))
                     nside = 2 ** int(np.round(np.log2(max(1, nside))))
                     if lmin > 0:
-                        spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
-                        frame = spectral_filter.filter(frame)
+                        # Global projection (healpix) always uses SHT
+                        f_obj = SHTFilter(lmin=lmin, lmax=lmax)
+                        frame = f_obj.filter(frame)
                     out_frame = regridder.to_healpix(
                         frame, nside=nside, lat_reverse=is_lat_reversed
                     )
@@ -112,6 +141,7 @@ class SimpleTracker:
                         frame,
                         hemisphere=hemi,
                         filter_lmin=lmin if lmin > 0 else None,
+                        lmax=lmax,
                         lat_reverse=is_lat_reversed,
                         resolution=resolution,
                         extent=extent
@@ -123,8 +153,9 @@ class SimpleTracker:
             data = xr.concat(out_frames, dim=data[time_dim])
             data.attrs["map_proj"] = map_proj
         else:
-            # Global grid filtering
-            spectral_filter = SpectralFilter(lmin=lmin, lmax=lmax)
+            # Global or regional grid filtering (no projection)
+            f_cls = SHTFilter if filter_type == "sht" else DCTFilter
+            spectral_filter = f_cls(lmin=lmin, lmax=lmax)
             data = spectral_filter.filter(data)
 
         return data
@@ -137,13 +168,14 @@ class SimpleTracker:
         mode: Literal["min", "max"],
         threshold: float | None = None,
         engine: str | None = None,
-        filter: bool = True,
+        filter: bool = False,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
+        subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -171,29 +203,20 @@ class SimpleTracker:
         detector = SimpleDetector.from_xarray(data_xr)
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
         raw_steps = _detect_and_link(
-            detector, size=size, threshold=threshold, mode=mode
+            detector,
+            size=size,
+            threshold=threshold,
+            mode=mode,
+            subgrid_refine=subgrid_refine,
         )
-
-        effective_map_proj = kwargs.get("map_proj", map_proj)
-        if effective_map_proj in ("nh_stereo", "sh_stereo"):
-            from ..models.geo import stereo_to_latlon
-
-            hemi = 1 if effective_map_proj == "nh_stereo" else -1
-            converted_raw_steps = []
-            for dt, lats, lons, values in raw_steps:
-                new_lats = np.zeros_like(lats)
-                new_lons = np.zeros_like(lons)
-                for i in range(len(lats)):
-                    # Note: lons[i] is x, lats[i] is y
-                    lat, lon = stereo_to_latlon(lons[i], lats[i], hemi)
-                    new_lats[i] = lat
-                    new_lons[i] = lon
-                converted_raw_steps.append((dt, new_lats, new_lons, values))
-            raw_steps = converted_raw_steps
+        raw_steps = _convert_stereo_steps(raw_steps, map_proj)
 
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0_detect:.4f}s")
 
+        # 3. Linking Phase: Combine points into trajectories.
+        # This implementation uses fast nearest-neighbor search based on a
+        # simple distance threshold, with no recursive optimization.
         t2 = timeit.default_timer()
         tracks = _link_centers(raw_steps, time_range=detector_peek.time_range)
         t3 = timeit.default_timer()
@@ -202,7 +225,7 @@ class SimpleTracker:
 
     def track(
         self,
-        infile: str,
+        infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
         start_time: str | np.datetime64 | None = None,
         end_time: str | np.datetime64 | None = None,
@@ -217,10 +240,11 @@ class SimpleTracker:
         engine: str | None = None,
         overlap: int = 3,
         min_points: int = 1,
-        filter: bool = True,
+        filter: bool = False,
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
+        subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks:
         import timeit
@@ -239,44 +263,47 @@ class SimpleTracker:
 
             time_range = TimeRange(start=st, end=et)
 
-        if backend == "mpi":
+        if isinstance(infile, (xr.DataArray, xr.Dataset)):
+            if backend != "serial":
+                msg = (
+                    "Dask and MPI backends for SimpleTracker require a file path, "
+                    "not an xarray object."
+                )
+                raise NotImplementedError(msg)
+
+            data_xr = infile
+            if isinstance(data_xr, xr.Dataset):
+                data_xr = data_xr[varname]
+
+            if filter or map_proj != "global":
+                data_xr = self.preprocess_standard_track(
+                    data_xr,
+                    lmin=lmin if filter else 0,
+                    lmax=lmax,
+                    taper_points=taper_points,
+                    map_proj=map_proj,
+                    resolution=resolution,
+                    extent=extent,
+                )
+
+            detector = SimpleDetector.from_xarray(data_xr)
+            size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+            raw_steps = _detect_and_link(
+                detector,
+                size=size,
+                threshold=threshold,
+                mode=mode,
+                subgrid_refine=subgrid_refine,
+            )
+            raw_steps = _convert_stereo_steps(raw_steps, map_proj)
+
+            tracks = _link_centers(raw_steps, time_range=time_range)
+
+        elif backend == "mpi":
             from .concurrent import run_simple_mpi
 
             tracks = run_simple_mpi(
-                infile,
-                varname,
-                time_range,
-                mode,
-                threshold=threshold,
-                engine=engine,
-                filter=filter,
-                lmin=lmin,
-                lmax=lmax,
-                taper_points=taper_points,
-                map_proj=map_proj,
-                **kwargs,
-            )
-        elif backend == "dask":
-            from .concurrent import run_simple_dask
-
-            tracks = run_simple_dask(
-                infile,
-                varname,
-                time_range,
-                mode,
-                n_workers,
-                max_chunk_size=max_chunk_size,
-                threshold=threshold,
-                engine=engine,
-                filter=filter,
-                lmin=lmin,
-                lmax=lmax,
-                taper_points=taper_points,
-                **kwargs,
-            )
-        else:
-            tracks = self._detect_serial(
-                infile,
+                str(infile),
                 varname,
                 time_range,
                 mode,
@@ -289,6 +316,47 @@ class SimpleTracker:
                 map_proj=map_proj,
                 resolution=resolution,
                 extent=extent,
+                subgrid_refine=subgrid_refine,
+                **kwargs,
+            )
+        elif backend == "dask":
+            from .concurrent import run_simple_dask
+
+            tracks = run_simple_dask(
+                str(infile),
+                varname,
+                time_range,
+                mode,
+                n_workers,
+                max_chunk_size=max_chunk_size,
+                threshold=threshold,
+                engine=engine,
+                filter=filter,
+                lmin=lmin,
+                lmax=lmax,
+                taper_points=taper_points,
+                map_proj=map_proj,
+                resolution=resolution,
+                extent=extent,
+                subgrid_refine=subgrid_refine,
+                **kwargs,
+            )
+        else:
+            tracks = self._detect_serial(
+                str(infile),
+                varname,
+                time_range,
+                mode,
+                threshold=threshold,
+                engine=engine,
+                filter=filter,
+                lmin=lmin,
+                lmax=lmax,
+                taper_points=taper_points,
+                map_proj=map_proj,
+                resolution=resolution,
+                extent=extent,
+                subgrid_refine=subgrid_refine,
                 **kwargs,
             )
 

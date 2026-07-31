@@ -3,8 +3,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from pystormtracker.hodges.tracker import HodgesTracker
+from pystormtracker.models.tracks import Tracks
 
 
 def test_hodges_tracker_init() -> None:
@@ -37,6 +39,108 @@ def test_hodges_tracker_override_constraints() -> None:
     assert tracker.zones is not None
     assert tracker.zones[0, 4] == 10.0
     assert np.array_equal(tracker.adapt_params, custom_params)
+
+
+@pytest.mark.parametrize("backend", ["dask", "mpi"])
+def test_hodges_tracker_rejects_unsupported_backend(backend: str) -> None:
+    tracker = HodgesTracker()
+    with pytest.raises(NotImplementedError, match="only the serial backend"):
+        tracker.track(
+            "unused.nc",
+            "msl",
+            backend=backend,  # type: ignore[arg-type]
+        )
+
+
+def test_hodges_tracker_rejects_nonpositive_chunks() -> None:
+    tracker = HodgesTracker()
+    with pytest.raises(ValueError, match="must be positive"):
+        tracker.track(
+            "unused.nc",
+            "msl",
+            max_chunk_size=0,
+        )
+
+
+@patch("pystormtracker.hodges.tracker.HodgesTracker._link_detections")
+@patch("pystormtracker.hodges.tracker.HodgesTracker._detect_single_chunk_from_data")
+def test_hodges_tracker_gathers_chunks_before_linking(
+    mock_detect: MagicMock, mock_link: MagicMock
+) -> None:
+    import xarray as xr
+
+    times = np.arange(5).astype("timedelta64[h]") + np.datetime64("2025-12-01")
+    data = xr.DataArray(
+        np.zeros((5, 2, 2)),
+        dims=("time", "lat", "lon"),
+        coords={"time": times, "lat": [-1.0, 1.0], "lon": [0.0, 1.0]},
+        name="msl",
+    )
+    detected_steps = [
+        (time, np.array([0.0]), np.array([0.0]), {"msl": np.array([1.0])})
+        for time in times
+    ]
+    mock_detect.side_effect = [
+        detected_steps[:2],
+        detected_steps[2:4],
+        detected_steps[4:],
+    ]
+    mock_link.return_value = Tracks()
+
+    HodgesTracker().track(
+        data,
+        "msl",
+        filter=False,
+        max_chunk_size=2,
+        overlap=99,
+    )
+
+    assert [call.args[0].sizes["time"] for call in mock_detect.call_args_list] == [
+        2,
+        2,
+        1,
+    ]
+    gathered = mock_link.call_args.args[0]
+    assert len(gathered) == len(detected_steps)
+    assert all(
+        actual is expected
+        for actual, expected in zip(gathered, detected_steps, strict=True)
+    )
+
+
+def test_hodges_chunked_detection_matches_unchunked() -> None:
+    import xarray as xr
+
+    times = np.arange(6).astype("timedelta64[h]") + np.datetime64("2025-12-01")
+    values = np.full((6, 9, 12), 10.0)
+    values[:, 4, 3] = -10.0
+    data = xr.DataArray(
+        values,
+        dims=("time", "lat", "lon"),
+        coords={
+            "time": times,
+            "lat": np.linspace(-80.0, 80.0, 9),
+            "lon": np.arange(0.0, 360.0, 30.0),
+        },
+        name="msl",
+    )
+    tracker = HodgesTracker(min_lifetime=2)
+    kwargs = {
+        "mode": "min",
+        "threshold": 0.0,
+        "filter": False,
+        "subgrid_refine": False,
+    }
+
+    unchunked = tracker.track(data, "msl", **kwargs)  # type: ignore[arg-type]
+    chunked = tracker.track(
+        data,
+        "msl",
+        max_chunk_size=2,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+    assert unchunked == chunked
 
 
 @patch("pystormtracker.hodges.detector.HodgesDetector.detect")

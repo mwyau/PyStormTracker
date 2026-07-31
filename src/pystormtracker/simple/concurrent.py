@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from mpi4py import MPI
 
+    from ..models.geo import MapExtent
+
 from ..hodges import constants
 from ..models import TimeRange, Tracks
 from ..models.tracker import RawDetectionStep
 from .detector import SimpleDetector
-from .tracker import _detect_and_link, _link_centers
+from .tracker import _convert_stereo_steps, _detect_and_link, _link_centers
 
 
 def run_simple_dask(
@@ -23,10 +25,14 @@ def run_simple_dask(
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = True,
+    filter: bool = False,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
+    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+    resolution: float = 100.0,
+    extent: MapExtent | None = None,
+    subgrid_refine: bool = False,
     **kwargs: float | int | str | None,
 ) -> Tracks:
     """Dask Orchestrator: Maps detection tasks using threads."""
@@ -40,14 +46,17 @@ def run_simple_dask(
     )
     data_xr = detector_peek.get_xarray()
 
-    if filter:
+    if filter or map_proj != "global":
         from .tracker import SimpleTracker
 
         data_xr = SimpleTracker().preprocess_standard_track(
             data_xr,
-            lmin=lmin,
+            lmin=lmin if filter else 0,
             lmax=lmax,
             taper_points=taper_points,
+            map_proj=map_proj,
+            resolution=resolution,
+            extent=extent,
         )
 
     detector_obj = SimpleDetector.from_xarray(data_xr)
@@ -76,16 +85,17 @@ def run_simple_dask(
 
     size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
     tasks = [
-        dask.delayed(_detect_and_link)(d, size, threshold, mode)  # type: ignore[attr-defined]
+        dask.delayed(_detect_and_link)(d, size, threshold, mode, subgrid_refine)
         for d in detectors
     ]
 
-    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)  # type: ignore[attr-defined]
+    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
 
     # Flatten chunks into a single sequence of steps
     all_raw_steps: list[RawDetectionStep] = [
         step for chunk in all_raw_chunks for step in chunk
     ]
+    all_raw_steps = _convert_stereo_steps(all_raw_steps, map_proj)
 
     t2 = timeit.default_timer()
     print(f"    [Dask] Task execution & gather time: {t2 - t1:.4f}s")
@@ -105,10 +115,14 @@ def run_simple_mpi(
     mode: Literal["min", "max"],
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = True,
+    filter: bool = False,
     lmin: int = constants.LMIN_DEFAULT,
     lmax: int = constants.LMAX_DEFAULT,
     taper_points: int = constants.TAPER_DEFAULT,
+    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+    resolution: float = 100.0,
+    extent: MapExtent | None = None,
+    subgrid_refine: bool = False,
     **kwargs: float | int | str | None,
 ) -> Tracks:
     """MPI Orchestrator: Splits frames across ranks, gathers raw detections."""
@@ -126,14 +140,17 @@ def run_simple_mpi(
         )
         data_xr = detector_peek.get_xarray()
 
-        if filter:
+        if filter or map_proj != "global":
             from .tracker import SimpleTracker
 
             data_xr = SimpleTracker().preprocess_standard_track(
                 data_xr,
-                lmin=lmin,
+                lmin=lmin if filter else 0,
                 lmax=lmax,
                 taper_points=taper_points,
+                map_proj=map_proj,
+                resolution=resolution,
+                extent=extent,
             )
 
         detector_obj = SimpleDetector.from_xarray(data_xr)
@@ -149,7 +166,11 @@ def run_simple_mpi(
     t1 = timeit.default_timer()
     ext_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
     raw_chunk = _detect_and_link(
-        detector, size=ext_size, threshold=threshold, mode=mode
+        detector,
+        size=ext_size,
+        threshold=threshold,
+        mode=mode,
+        subgrid_refine=subgrid_refine,
     )
 
     # Gather all raw chunks at root
@@ -162,6 +183,7 @@ def run_simple_mpi(
         all_raw_steps: list[RawDetectionStep] = [
             step for chunk in all_raw_chunks for step in chunk
         ]
+        all_raw_steps = _convert_stereo_steps(all_raw_steps, map_proj)
         t4 = timeit.default_timer()
         tracks = _link_centers(all_raw_steps, time_range=time_range)
         t5 = timeit.default_timer()

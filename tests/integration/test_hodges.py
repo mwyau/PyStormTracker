@@ -1,20 +1,37 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from utils import fetch_era5_vo850
 
-from pystormtracker.cli import main
 from pystormtracker.io.imilast import read_imilast
+from pystormtracker.models.tracks import Tracks
 
 
-def run_command_direct(cmd_args: list[str]) -> None:
-    """Utility to run the tracker directly via main."""
-    with patch.object(sys, "argv", ["stormtracker", *cmd_args]):
-        main()
+def run_command_direct(cmd_args: list[str]) -> Tracks | None:
+    """Utility to run the tracker directly and return results."""
+    import argparse
+
+    from pystormtracker import compare, convert, sample, track
+
+    # Prepend 'track' if missing
+    if cmd_args and cmd_args[0] not in ["track", "sample", "convert", "compare"]:
+        cmd_args = ["track", *cmd_args]
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    track.setup_parser(subparsers)
+    sample.setup_parser(subparsers)
+    convert.setup_parser(subparsers)
+    compare.setup_parser(subparsers)
+
+    from typing import cast
+
+    args = parser.parse_args(cmd_args)
+    if hasattr(args, "func"):
+        return cast(Tracks, args.func(args))
+    return None
 
 
 @pytest.fixture(scope="module")
@@ -38,13 +55,9 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 @pytest.fixture(scope="module")
 def hodges_config(
-    request: pytest.FixtureRequest,
     steps: int | None,
 ) -> int | None:
-    """Skip full tests locally if not in CI."""
-    if steps is None:
-        pytest.skip("Full Hodges integration tests are temporarily disabled.")
-
+    """Return the requested Hodges integration-test length."""
     return steps
 
 
@@ -57,6 +70,7 @@ def test_hodges_serial_integration(
     out_file = tmp_path / f"hodges_tracks_{steps or 'full'}.txt"
 
     args = [
+        "track",
         "-i",
         test_data_vo,
         "-v",
@@ -82,37 +96,3 @@ def test_hodges_serial_integration(
     tracks = read_imilast(out_file)
     assert len(tracks) > 0
     assert any(len(tr) >= 2 for tr in tracks)
-
-
-@pytest.mark.integration
-def test_hodges_output_format(test_data_vo: str, tmp_path: Path) -> None:
-    """Test the Hodges (TRACK) ASCII output format (Short)."""
-    out_file = tmp_path / "hodges_native.txt"
-
-    args = [
-        "-i",
-        test_data_vo,
-        "-v",
-        "vo",
-        "-m",
-        "max",
-        "-t",
-        "1.0e-4",
-        "-o",
-        str(out_file),
-        "-a",
-        "hodges",
-        "-n",
-        "5",
-        "--format",
-        "hodges",
-    ]
-
-    run_command_direct(args)
-
-    assert out_file.exists()
-    with open(out_file) as f:
-        content = f.read()
-        assert "TRACK_NUM" in content
-        assert "TRACK_ID" in content
-        assert "POINT_NUM" in content

@@ -59,3 +59,28 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     assert lats_out[0] == 3.0
     assert lons_out[0] == 3.0
     assert vars_dict["msl"][0] == 950.0
+
+
+def test_simple_detector_optional_subgrid_refinement() -> None:
+    y, x = np.meshgrid(np.arange(7.0), np.arange(7.0), indexing="ij")
+    field = (y - 3.25) ** 2 + (x - 3.2) ** 2
+    data = xr.DataArray(
+        field[np.newaxis, :, :],
+        dims=("time", "lat", "lon"),
+        coords={
+            "time": [np.datetime64("2000-01-01")],
+            "lat": np.arange(7.0),
+            "lon": np.arange(7.0),
+        },
+        name="msl",
+    )
+
+    detector = SimpleDetector.from_xarray(data)
+    raw = detector.detect(size=5, threshold=0.0, subgrid_refine=False)[0]
+    refined = detector.detect(size=5, threshold=0.0, subgrid_refine=True)[0]
+
+    assert raw[1][0] == 3.0
+    assert raw[2][0] == 3.0
+    assert refined[1][0] == pytest.approx(3.25)
+    assert refined[2][0] == pytest.approx(3.2)
+    assert refined[3]["msl"][0] < refined[3]["raw_val"][0]
