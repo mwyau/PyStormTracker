@@ -99,7 +99,7 @@ jobs:
         run: uv run --no-sync mypy .
 
   unit-tests-full:
-    name: Unit tests (Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', min-deps' || '' }})
+    name: Unit tests (Full)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 40
@@ -173,7 +173,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   unit-tests-pr:
-    name: Unit tests (Python 3.13)
+    name: Unit tests (PR)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 40
@@ -204,7 +204,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests-full:
-    name: Integration tests (${{ matrix.os }})
+    name: Integration tests (Full)
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
@@ -261,7 +261,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests-pr:
-    name: Integration tests (Ubuntu AMD64)
+    name: Integration tests (PR)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 70
@@ -407,7 +407,7 @@ jobs:
           severity: CRITICAL
 
   docker-staging:
-    name: Docker staging image (${{ matrix.arch }})
+    name: Docker staging images
     if: github.event_name != 'pull_request'
     needs:
       [code-quality, unit-tests-full, integration-tests-full, package-tests, docs]
