@@ -43,7 +43,7 @@ Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
 [project.optional-dependencies]
 eof = [
-    "xeofs[etc]>=2.0.0",
+    "xeofs[etc]>=3.0.3",
 ]
 grib = [
     "cfgrib>=0.9.15.1",
