@@ -257,4 +257,4 @@ If you use this software in your research, please cite the following:
 
 ## License
 
-This project is licensed under the BSD-3-Clause terms found in the [`LICENSE`](LICENSE) file.
+This project is licensed under the BSD-3-Clause terms found in the `LICENSE` file.
