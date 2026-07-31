@@ -3419,13 +3419,13 @@ requires-dist = [
     { name = "fsspec", extras = ["http"], marker = "extra == 'zarr'", specifier = ">=2024.9.0" },
     { name = "h5netcdf", extras = ["h5py"], specifier = ">=1.8.0" },
     { name = "mpi4py", marker = "extra == 'mpi'", specifier = ">=4.1.0" },
-    { name = "netcdf4", marker = "extra == 'netcdf4'", specifier = ">=1.6.5" },
+    { name = "netcdf4", marker = "extra == 'netcdf4'", specifier = ">=1.7.2" },
     { name = "numba", specifier = ">=0.62.0" },
     { name = "numpy", specifier = ">=2.3.0" },
     { name = "pystormtracker", extras = ["eof", "grib", "mpi", "netcdf4", "zarr"], marker = "extra == 'all'" },
     { name = "scipy", specifier = ">=1.11.2" },
     { name = "xarray", specifier = ">=2024.9.0" },
-    { name = "xeofs", extras = ["etc"], marker = "extra == 'eof'", specifier = ">=2.0.0" },
+    { name = "xeofs", extras = ["etc"], marker = "extra == 'eof'", specifier = ">=3.0.3" },
     { name = "zarr", extras = ["remote"], marker = "extra == 'zarr'", specifier = ">=3.0" },
 ]
 provides-extras = ["eof", "grib", "mpi", "netcdf4", "zarr", "all"]

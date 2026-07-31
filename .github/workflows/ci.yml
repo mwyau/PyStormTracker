@@ -107,7 +107,7 @@ jobs:
         run: uv sync --all-extras --resolution lowest-direct
 
       - name: Run Unit Tests
-        if: matrix.python-version != '3.14' && matrix.python-version != '3.14t'
+        if: matrix.python-version != '3.13' && matrix.python-version != '3.14t'
         run: |
           uv run --frozen python -VV
           uv run --frozen pytest -vv
@@ -122,13 +122,13 @@ jobs:
           uv run --frozen pytest -vv
 
       - name: Run Unit Tests with Coverage
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         run: |
           uv run --frozen python -VV
           uv run --frozen pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
@@ -144,22 +144,22 @@ jobs:
         include:
           - arch: amd64
             os: ubuntu-26.04
-            python-version: '3.14'
+            python-version: '3.13'
           - arch: arm64
             os: ubuntu-26.04-arm
-            python-version: '3.14'
+            python-version: '3.13'
           - arch: amd64
             os: ubuntu-24.04
-            python-version: '3.14'
+            python-version: '3.13'
           - arch: arm64
             os: ubuntu-24.04-arm
-            python-version: '3.14'
+            python-version: '3.13'
           - arch: amd64
             os: windows-2025
-            python-version: '3.14'
+            python-version: '3.13'
           - arch: arm64
             os: macos-26
-            python-version: '3.14'
+            python-version: '3.13'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -213,7 +213,7 @@ jobs:
         uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
-          python-version: '3.14'
+          python-version: '3.13'
 
       - name: Build documentation
         run: uv run --no-dev --group docs sphinx-build -b html docs docs/_build/html
