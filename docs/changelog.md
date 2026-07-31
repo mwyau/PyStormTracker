@@ -1,16 +1,52 @@
 # Changelog
 
+## v0.6.0.dev0
+
+### Tracking and preprocessing
+
+- Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure. The tracking command is implemented by `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is exported.
+- Added algorithm-dependent tri-state filtering and subgrid-refinement controls. Omitted values use the direct tracker defaults: disabled for Simple and enabled for Hodges and HEALPix.
+- Added shared local quadratic subgrid refinement for regular and projected grids and local quadratic refinement on the HEALPix neighbor graph.
+- Added one spherical `RectSphereBivariateSpline` fit per periodic global Hodges frame and a `bspline_val` diagnostic in raw detections at each quadratic center. The spline does not currently optimize the center coordinate, and the current linker does not propagate the diagnostic to final tracks.
+- Added polar stereographic and HEALPix preprocessing with explicit `lmax` propagation, configurable projected extent and resolution, and corrected band-pass handling.
+- Added DCT filtering for regional grids, full-Gaussian geometry handling, and reduced-Gaussian metadata, pseudo-analysis, filtering, and regridding paths.
+- Corrected periodic-global and nonperiodic regional or projected boundary handling.
+- Added serial Hodges detection chunking followed by one global linking pass. Hodges and HEALPix remain serial-only; Simple supports serial, Dask, and MPI execution.
+- Added storm-object area and intensity-weighted ellipse diagnostics to raw Hodges detections. The current Hodges linker retains only the primary tracked variable.
+
+### Metrics and analysis
+
+- Added gridded cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA).
+- Added constant, Fisher, Cressman, linear, and quadratic spherical distance weights.
+- Added 24-hour difference variance, Eddy Kinetic Energy, and high-wind percentile metrics.
+- Added CORMAX, CCA/PCA truncation cross-validation, anomaly correlation coefficient, and fraction-of-variance-explained calculations through the `metrics` optional dependency.
+- Added spatiotemporal track matching and external-variable sampling.
+
+### Formats and interfaces
+
+- Added the unified CLI subcommands and finite-value validation for numerical arguments.
+- Added JSON-based sampling and comparison workflows and expanded conversion to IMILAST, TRACK tdump, JSON, and HTML outputs.
+- Added the `eof` optional dependency group for `xeofs`.
+
+### Testing and CI
+
+- Added unit and integration tests for refinement, Gaussian and reduced-Gaussian preprocessing, projected filtering, metrics, sampling, comparison, conversion, and modular CLI commands.
+- Added `--run-slow` for slow integration and historical regression cases.
+- Corrected the Docker Trivy image reference and included slow integration cases in the designated Linux CI run.
+
+---
+
 ## v0.5.0 - 2026-04-08
 ### Features
-- **High-Precision Derivatives**: New `vodv` module for computing relative vorticity and divergence using spin-1 vector harmonics.
+- **High-Precision Derivatives**: New kinematic-derivative functions for computing relative vorticity and divergence using spin-1 vector harmonics.
 - **Planetary Constants**: Standardized Earth radius to 6,371,220 m across derivatives and tracking geometry.
-- **pst-convert & JSON Support**: New utility for format conversion and a GPU-optimized JSON format for track data.
-- **Interactive Track Explorer**: Web-based visualization with real-time filtering and animations.
-- **Hodges (TRACK) Parity**: Full implementation of the Hodges algorithm with TRACK parity.
+- **pst-convert & JSON Support**: New utility for format conversion and a JSON format for track data.
+- **Interactive Track Explorer**: Web-based visualization with filtering and time animation.
+- **Hodges (TRACK) Implementation**: Added object detection, adaptive constraints, and Modified Greedy Exchange linking based on TRACK. Direct end-to-end TRACK validation remains ongoing.
 - **Preprocessing & Performance**: Improved spherical harmonic filtering and backend auto-detection.
 - **Remote Zarr Support**: Added support for remote Zarr datasets via HTTP, S3, and GS protocols.
 - **Enhanced DataLoader**: Refactored `io.loader` to `io.data_loader` with automatic format detection for NetCDF, GRIB, and Zarr.
-- **Improved UX**: Added friendly error messages with installation instructions when optional dependencies (`cfgrib`, `zarr`) are missing.
+- **Dependency Errors**: Added error messages with installation instructions when optional dependencies (`cfgrib`, `zarr`) are missing.
 - **Expanded Sample Data**: Integrated ERA5 UV850 sample datasets and Zarr-formatted alternatives in `utils.data`.
 
 ### Testing
@@ -18,11 +54,11 @@
 - **Format Auto-detection Tests**: Added comprehensive tests for NetCDF, GRIB, and Zarr auto-detection in `DataLoader`.
 
 ### CI/CD & Testing
-- **Verification**: Enhanced documentation builds and expanded test coverage.
+- **Verification**: Added documentation builds and expanded test coverage.
 
 ### Maintenance
-- **Spectral Backend Consolidation**: Evaluated `pyshtools`, `SHTns`, `ducc0`, and `jax` for performance, accuracy, and portability. Selected **ducc0** as the default backend due to its superior multi-frame performance (6.3x faster than SHTns), self-contained architecture (no external C dependencies), and near bit-wise parity with NCL for kinematics. Integrated **JAX** as an experimental alternative backend for GPU-accelerated spherical harmonic transforms.
-- **Strict Typing**: Achieved 100% `mypy` compliance in core I/O modules and removed usage of `Any`.
+- **Spectral Backend Consolidation**: Evaluated `pyshtools`, SHTns, and `ducc0` for performance, accuracy, and portability. Selected `ducc0` as the production spherical harmonic transform backend. Historical SHTns comparisons and NCL kinematic validation are documented separately; JAX is not a current runtime backend.
+- **Strict Typing**: Enabled strict `mypy` checks in core I/O modules and removed `Any` from the covered declarations.
 - **Dependency Refinement**: Introduced a dedicated `zarr` optional dependency group and updated the `all` extra.
 
 ---
@@ -31,14 +67,14 @@
 ### Performance
 - Transitioned Dask backend to threaded scheduling for improved efficiency.
 - Decoupled chunk processing to reduce memory overhead.
-- Optimized default worker count to match CPU core availability (max 4).
+- Limited the default worker count to the available CPU count, with a maximum of four.
 
 ### Features
 - Added `--chunk-size` (or `-c`) CLI argument to control processing granularity.
-- Refined Docker publishing logic with improved tag prioritization.
+- Updated Docker publishing tag selection.
 
 ### Maintenance
-- Enhanced CI/CD concurrency rules to reduce redundant build noise.
+- Updated CI concurrency rules to cancel redundant builds.
 
 ---
 
@@ -51,17 +87,17 @@
 ---
 
 ## v0.4.0 - 2026-03-14
-### Architecture (Modernization)
-- **Vectorized Data Model**: Massive refactor from Python-object trajectories to a high-performance, array-backed structure.
-- **JIT-Optimized Kernels**: Replaced core mathematical loops with Numba-compiled kernels, achieving C-level performance.
-- **Dask Integration**: Implemented end-to-end multi-processing with tree reduction for large-scale datasets.
+### Architecture
+- **Vectorized Data Model**: Refactored from Python-object trajectories to an array-backed structure.
+- **JIT-Optimized Kernels**: Replaced core mathematical loops with Numba-compiled kernels for compiled execution.
+- **Dask Integration**: Implemented Dask multiprocessing with tree reduction in this release. Later releases replaced tree reduction with Gather-then-Link.
 
 ### Features
 - **GRIB Support**: Introduced support for GRIB files via the `cfgrib` engine.
 - **Multi-Variable Tracking**: Support for tracking multiple variables per center using a flexible dictionary structure.
 
 ### Performance
-- **Vectorized Linker**: Re-engineered the `SimpleLinker` using NumPy broadcasting for near-instant distance calculations.
+- **Vectorized Linker**: Re-engineered the `SimpleLinker` using NumPy broadcasting for vectorized distance calculations.
 - **Memory Efficiency**: Implemented `slots=True` for dataclasses and flat-array extraction for centers.
 
 ---
@@ -81,7 +117,7 @@
 ### CI/CD
 - Added support for **ARM64** Docker images.
 - Migrated project management to `uv` for deterministic builds and faster dependency resolution.
-- Optimized Docker layer caching for significantly faster image deployments.
+- Optimized Docker layer caching for faster image builds.
 
 ### Maintenance
 - Updated project homepage and refined repository metadata.
@@ -133,9 +169,9 @@
 - **Dask Backend**: Introduced task-parallel execution with automatic worker detection.
 - **CSV Output**: Transitioned from pickle to user-friendly CSV as the default output format.
 
-### Architecture (Modernization)
-- **Python 3 Migration**: Complete refactor from Python 2.7 to Python 3.10+, including type hints and modern syntax.
-- **NetCDF4 Migration**: Switched from the legacy `Nio` library to `netCDF4` for robust data handling.
+### Architecture
+- **Python 3 Migration**: Migration from Python 2.7 to Python 3.10+, including type hints and modern syntax.
+- **NetCDF4 Migration**: Switched from the legacy `Nio` library to `netCDF4` for NetCDF data handling.
 
 ### Refactoring
 - Extracted core logic into `simple/` and `models/` modules for better maintainability.
