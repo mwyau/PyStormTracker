@@ -57,7 +57,7 @@ Full documentation, including API references and advanced usage examples, is ava
 - **Spherical Harmonic Transform (SHT) engine**:
   - `ducc0` provides scalar and spin-weighted spherical harmonic transforms, reduced-grid synthesis, and HEALPix geometry.
 - **Free-threaded Python**:
-  - Python 3.14 free-threaded support is experimental. `grib` and `zarr` modules are not supported by Python `3.14t` runtime.
+  - Python 3.14 free-threaded support is experimental. CI excludes `eof`, `grib`, and `zarr`: `xeofs` requires a `statsmodels` source build on 3.14t, while `eccodeslib` has no compatible free-threaded distribution for GRIB support.
 
 ### From PyPI
 You can install the latest stable version of PyStormTracker directly from PyPI:

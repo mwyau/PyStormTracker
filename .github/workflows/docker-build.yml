@@ -12,6 +12,11 @@ on:
         required: false
         default: ''
         type: string
+      uv_version:
+        description: uv image version for Docker builds
+        required: false
+        default: latest
+        type: string
     secrets:
       DOCKER_HUB_ACCESS_TOKEN:
         required: false
@@ -29,6 +34,11 @@ on:
         description: Git ref to build
         required: false
         default: ''
+        type: string
+      uv_version:
+        description: uv image version for Docker builds
+        required: false
+        default: latest
         type: string
 
 concurrency:
@@ -143,6 +153,8 @@ jobs:
           push: ${{ needs.select-platforms.outputs.push_images == 'true' }}
           platforms: linux/${{ matrix.arch }}
           tags: ${{ steps.image.outputs.tag }}
+          build-args: |
+            UV_VERSION=${{ inputs.uv_version }}
           provenance: false
           sbom: false
           cache-from: type=gha,scope=docker-build-linux-${{ matrix.arch }}
@@ -171,6 +183,9 @@ jobs:
 
       - name: Test container import
         run: docker run --rm --entrypoint python "${{ steps.test-image.outputs.reference }}" -c 'import pystormtracker; print("container import success")'
+
+      - name: Self-check container GRIB support
+        run: docker run --rm --entrypoint python "${{ steps.test-image.outputs.reference }}" -m cfgrib selfcheck
 
       - name: Scan critical vulnerabilities
         if: matrix.arch == 'amd64'

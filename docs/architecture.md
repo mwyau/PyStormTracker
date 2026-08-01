@@ -107,7 +107,7 @@ The test suite has several levels:
 - **Integration tests:** Data loading, complete tracker paths, optional dependencies, parallel backends, and output formats.
 - **Slow integration tests:** Larger scientific comparisons and more expensive end-to-end cases.
 - **Package smoke tests:** Wheel and source-distribution builds installed with standard `pip` in clean environments.
-- **Container smoke tests:** CLI startup, package import, and vulnerability scanning of the built image.
+- **Container smoke tests:** CLI startup, package import, `cfgrib` self-check, and vulnerability scanning of the built image.
 
 `uv` manages development and CI environments. Package smoke tests use `pip` because they test the installed distribution as users receive it.
 
@@ -133,7 +133,7 @@ Ordinary feature-branch pushes do not run CI independently. This prevents a bran
 Pull requests execute a representative suite:
 
 - code-quality and type checks;
-- Python 3.13 unit tests with coverage, Python 3.11 minimum-direct-dependency
+- Python 3.14 unit tests with coverage, Python 3.11 minimum-direct-dependency
   unit tests, and Ubuntu AMD64 integration tests without the slow marker;
 - wheel installation, documentation, and dependency review;
 - a local AMD64 Docker build, smoke test, and vulnerability scan after the
@@ -152,7 +152,7 @@ Pull-request Docker jobs do not receive registry credentials or push images.
 CI-originated native test images are built only after the full non-Docker suite
 succeeds.
 
-### 6.3 Tested Docker Staging Images
+### 6.3 Tested Docker Images
 
 The reusable `Docker Build` workflow runs local AMD64 validation for CI pull
 requests after their non-Docker suite succeeds. For `main` and version-tag CI
@@ -161,7 +161,7 @@ runs, it instead builds native test images on:
 - `ubuntu-26.04` for `linux/amd64`;
 - `ubuntu-26.04-arm` for `linux/arm64`.
 
-Each platform image is pushed to the private test repository
+Each platform image is pushed to the private repository
 `docker.io/mwyau/pystormtracker` under a `sha-<seven-character-commit>-<architecture>`
 tag. CI pulls and tests the exact pushed digest. After both platform jobs succeed,
 CI creates one private multi-platform test manifest tagged

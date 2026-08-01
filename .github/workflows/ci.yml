@@ -18,7 +18,7 @@ permissions:
 
 env:
   UV_VERSION: '0.12.1'
-  PYTHON_VERSION: '3.13'
+  PYTHON_VERSION: '3.14'
 
 jobs:
   select-test-matrix:
@@ -38,7 +38,7 @@ jobs:
             UNIT_MATRIX='{
               "include": [
                 {"python-version": "3.11", "mode": "min-deps"},
-                {"python-version": "3.13", "mode": "coverage"}
+                {"python-version": "3.14", "mode": "coverage"}
               ]
             }'
             INTEGRATION_MATRIX='{
@@ -52,8 +52,8 @@ jobs:
                 {"python-version": "3.11", "mode": "normal"},
                 {"python-version": "3.11", "mode": "min-deps"},
                 {"python-version": "3.12", "mode": "normal"},
-                {"python-version": "3.13", "mode": "coverage"},
-                {"python-version": "3.14", "mode": "normal"},
+                {"python-version": "3.13", "mode": "normal"},
+                {"python-version": "3.14", "mode": "coverage"},
                 {"python-version": "3.14t", "mode": "free-threaded"}
               ]
             }'
@@ -138,9 +138,15 @@ jobs:
         if: matrix.mode == 'min-deps'
         run: uv sync --all-extras --resolution lowest-direct
 
-      - name: Install free-threaded dependencies
+      - name: Install free-threaded dependencies (without EOF, GRIB, or Zarr)
         if: matrix.mode == 'free-threaded'
-        run: uv sync --frozen --extra eof --extra mpi --extra netcdf4
+        run: uv sync --frozen --extra mpi --extra netcdf4
+
+      - name: Smoke-check GRIB and Zarr dependencies
+        if: matrix.mode != 'free-threaded'
+        run: |
+          uv run --no-sync python -m cfgrib selfcheck
+          uv run --no-sync python -c 'import zarr; print("zarr import success")'
 
       - name: Run unit tests
         if: matrix.mode == 'normal' || matrix.mode == 'min-deps'
@@ -295,6 +301,7 @@ jobs:
     with:
       push_images: ${{ github.event_name != 'pull_request' }}
       ref: ${{ github.sha }}
+      uv_version: ${{ env.UV_VERSION }}
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}
 
