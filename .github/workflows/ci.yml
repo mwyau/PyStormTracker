@@ -268,7 +268,7 @@ jobs:
           if-no-files-found: error
 
   docs:
-    name: Documentation build
+    name: Build documentation
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -300,7 +300,7 @@ jobs:
           fail-on-severity: high
 
   docker-pr:
-    name: Docker build and tests (PR)
+    name: Build and test Docker image
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 50
@@ -342,7 +342,7 @@ jobs:
           severity: CRITICAL
 
   docker-staging:
-    name: Docker staging images
+    name: BuildDocker staging images
     if: github.event_name != 'pull_request'
     needs:
       [code-quality, unit-tests, integration-tests, package-tests, docs]
@@ -406,7 +406,7 @@ jobs:
           severity: CRITICAL
 
   docker-staging-manifest:
-    name: Docker staging manifest validation
+    name: ValidateDocker staging manifest
     if: github.event_name != 'pull_request'
     needs: docker-staging
     runs-on: ubuntu-26.04
