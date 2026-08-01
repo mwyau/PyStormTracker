@@ -57,7 +57,7 @@ Add a scheduled CI job using `uv sync --resolution lowest-direct` and the releva
 
 ### 2.4 Tiered testing — ✅ Implemented
 
-Unit tests run by default. Integration tests require `--run-integration`; slow regression cases additionally require `--run-slow`. `--run-all` disables these collection filters.
+Unit tests run by default. Integration tests require `--run-integration`; slow regression and full-duration backend-parity cases additionally require `--run-slow`. `--run-all` disables these collection filters.
 
 ## 3. Architecture
 

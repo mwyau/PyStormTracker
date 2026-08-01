@@ -113,7 +113,11 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
             raw_params = [p for p in raw_params if p[2] is None]
 
         params = [
-            pytest.param((varname, mode, steps), id=test_id)
+            pytest.param(
+                (varname, mode, steps),
+                id=test_id,
+                marks=pytest.mark.slow if steps is None else (),
+            )
             for varname, mode, steps, test_id in raw_params
         ]
 
@@ -130,7 +134,7 @@ def config(
     varname, mode, steps = config_params
     data_path = test_data_msl if varname == "msl" else test_data_vo
 
-    # Full tests only run in CI or when --run-all is explicitly passed
+    # Full tests only run in CI or when --run-all is explicitly passed.
     is_ci = os.environ.get("GITHUB_ACTIONS")
     run_all = request.config.getoption("--run-all")
 
