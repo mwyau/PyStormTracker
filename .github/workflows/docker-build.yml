@@ -42,7 +42,7 @@ on:
         type: string
 
 concurrency:
-  group: docker-build-${{ github.event.pull_request.number || github.ref }}
+  group: docker-build-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
