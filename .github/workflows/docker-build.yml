@@ -1,0 +1,227 @@
+name: Docker Build
+
+on:
+  workflow_call:
+    inputs:
+      push_images:
+        description: Push native images and create a multi-platform test manifest
+        required: true
+        type: boolean
+      ref:
+        description: Git ref to build
+        required: false
+        default: ''
+        type: string
+      uv_version:
+        description: uv image version for Docker builds
+        required: false
+        default: latest
+        type: string
+    secrets:
+      DOCKER_HUB_ACCESS_TOKEN:
+        required: false
+    outputs:
+      source_sha:
+        description: Full commit SHA represented by the test image
+        value: ${{ jobs.docker-manifest.outputs.source_sha }}
+      source_tag:
+        description: Tested private image tag
+        value: ${{ jobs.docker-manifest.outputs.source_tag }}
+
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build
+        required: false
+        default: ''
+        type: string
+      uv_version:
+        description: uv image version for Docker builds
+        required: false
+        default: latest
+        type: string
+
+concurrency:
+  group: docker-build-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+env:
+  TEST_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+
+jobs:
+  select-platforms:
+    name: Select Docker platforms
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      push_images: ${{ steps.select.outputs.push_images }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tag: ${{ steps.source.outputs.source_tag }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Resolve source identity
+        id: source
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "source_tag=sha-${SOURCE_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Select local or test-image platforms
+        id: select
+        env:
+          PUSH_IMAGES: ${{ github.event_name == 'workflow_dispatch' || inputs.push_images }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PUSH_IMAGES" == "true" ]]; then
+            MATRIX='{
+              "include": [
+                {"arch": "amd64", "os": "ubuntu-26.04"},
+                {"arch": "arm64", "os": "ubuntu-26.04-arm"}
+              ]
+            }'
+          else
+            MATRIX='{
+              "include": [
+                {"arch": "amd64", "os": "ubuntu-26.04"}
+              ]
+            }'
+          fi
+
+          {
+            echo "matrix<<EOF"
+            echo "$MATRIX"
+            echo "EOF"
+            echo "push_images=$PUSH_IMAGES"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and test Docker image (${{ matrix.arch }})
+    needs: select-platforms
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-platforms.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.select-platforms.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Set image tag
+        id: image
+        env:
+          ARCH: ${{ matrix.arch }}
+          PUSH_IMAGES: ${{ needs.select-platforms.outputs.push_images }}
+          SOURCE_TAG: ${{ needs.select-platforms.outputs.source_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PUSH_IMAGES" == "true" ]]; then
+            IMAGE="$TEST_IMAGE:${SOURCE_TAG}-${ARCH}"
+          else
+            IMAGE="local/pystormtracker:${SOURCE_TAG}-${ARCH}"
+          fi
+
+          echo "tag=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Docker Hub test repository
+        if: needs.select-platforms.outputs.push_images == 'true'
+        uses: docker/login-action@v4.6.0
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Build image
+        id: build
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          load: ${{ needs.select-platforms.outputs.push_images != 'true' }}
+          push: ${{ needs.select-platforms.outputs.push_images == 'true' }}
+          platforms: linux/${{ matrix.arch }}
+          tags: ${{ steps.image.outputs.tag }}
+          build-args: |
+            UV_VERSION=${{ inputs.uv_version }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=docker-build-linux-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-build-linux-${{ matrix.arch }}
+
+      - name: Select exact test image
+        id: test-image
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          PUSH_IMAGES: ${{ needs.select-platforms.outputs.push_images }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PUSH_IMAGES" == "true" ]]; then
+            IMAGE_REF="${TEST_IMAGE}@${BUILD_DIGEST}"
+            docker pull "$IMAGE_REF"
+          else
+            IMAGE_REF="$IMAGE_TAG"
+          fi
+
+          echo "reference=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Test container CLI
+        run: docker run --rm "${{ steps.test-image.outputs.reference }}" --help
+
+      - name: Test container import
+        run: docker run --rm --entrypoint python "${{ steps.test-image.outputs.reference }}" -c 'import pystormtracker; print("container import success")'
+
+      - name: Self-check container GRIB support
+        run: docker run --rm --entrypoint python "${{ steps.test-image.outputs.reference }}" -m cfgrib selfcheck
+
+      - name: Scan critical vulnerabilities
+        if: matrix.arch == 'amd64'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.test-image.outputs.reference }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+
+  docker-manifest:
+    name: Validate Docker manifest
+    if: needs.select-platforms.outputs.push_images == 'true'
+    needs: [select-platforms, build]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    outputs:
+      source_sha: ${{ needs.select-platforms.outputs.source_sha }}
+      source_tag: ${{ needs.select-platforms.outputs.source_tag }}
+    steps:
+      - uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Log in to Docker Hub test repository
+        uses: docker/login-action@v4.6.0
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Create tested multi-platform image
+        env:
+          SOURCE_TAG: ${{ needs.select-platforms.outputs.source_tag }}
+        run: docker buildx imagetools create --tag "$TEST_IMAGE:$SOURCE_TAG" "$TEST_IMAGE:$SOURCE_TAG-amd64" "$TEST_IMAGE:$SOURCE_TAG-arm64"
+
+      - name: Inspect tested multi-platform image
+        env:
+          SOURCE_TAG: ${{ needs.select-platforms.outputs.source_tag }}
+        run: docker buildx imagetools inspect "$TEST_IMAGE:$SOURCE_TAG"

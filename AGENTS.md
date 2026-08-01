@@ -6,7 +6,7 @@ These instructions apply to automated changes in this repository.
 
 - Read `docs/architecture.md` before changing data models, tracker interfaces, preprocessing, parallel execution, testing, packaging, or CI/CD.
 - Read `docs/hodges.md` before changing Hodges detection, linking, optimization, constraints, or sub-grid refinement.
-- Read the relevant [CLI](docs/cli.md) and [roadmap](docs/roadmap.md) documents before changing documented behavior.
+- Read the relevant `docs/roadmap.md` documents before changing documented behavior.
 
 ## Scientific and behavioral requirements
 

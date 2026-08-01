@@ -163,7 +163,7 @@ def test_fetch_era5_zarr_local(mock_get_cached_data: MagicMock) -> None:
 
     path = fetch_era5_msl(resolution="2.5x2.5", format="zarr", local=True)
 
-    assert path == "/cache/archive.untar/era5_msl.zarr"
+    assert Path(path) == Path("/cache/archive.untar/era5_msl.zarr")
     call_args = cache.fetch.call_args
     assert call_args.args == (archive_filename,)
     assert call_args.kwargs["processor"].__class__.__name__ == "Untar"

@@ -107,7 +107,7 @@ The test suite has several levels:
 - **Integration tests:** Data loading, complete tracker paths, optional dependencies, parallel backends, and output formats.
 - **Slow integration tests:** Larger scientific comparisons and more expensive end-to-end cases.
 - **Package smoke tests:** Wheel and source-distribution builds installed with standard `pip` in clean environments.
-- **Container smoke tests:** CLI startup, package import, and vulnerability scanning of the built image.
+- **Container smoke tests:** CLI startup, package import, `cfgrib` self-check, and vulnerability scanning of the built image.
 
 `uv` manages development and CI environments. Package smoke tests use `pip` because they test the installed distribution as users receive it.
 
@@ -133,48 +133,67 @@ Ordinary feature-branch pushes do not run CI independently. This prevents a bran
 Pull requests execute a representative suite:
 
 - code-quality and type checks;
-- Python 3.13 unit tests with coverage and Ubuntu AMD64 integration tests without
-  the slow marker;
+- Python 3.14 tests on Ubuntu and macOS, Python 3.13
+  tests on Windows, Python 3.11 minimum-direct-dependency unit tests, and
+  Ubuntu AMD64 integration tests without the slow marker;
 - wheel installation, documentation, and dependency review;
-- a local AMD64 Docker build, smoke test, and vulnerability scan.
+- a local AMD64 Docker build, smoke test, and vulnerability scan after the
+  non-Docker suite succeeds.
 
 Pushes to `main`, version tags, and manual CI runs execute the full suite:
 
 - supported Python versions, including minimum-direct-dependency and free-threaded tests;
-- Ubuntu AMD64 and ARM64, Ubuntu 24.04 and 26.04 compatibility, Windows AMD64, and macOS ARM64 integration tests;
+- Ubuntu AMD64 and ARM64, Ubuntu 24.04 and 26.04 compatibility, Windows AMD64, and macOS ARM64 integration tests. Windows 2025 uses Python 3.13 because `eccodes` is not available with Python 3.14;
 - slow integration tests;
 - wheel and source-distribution installation tests;
-- native AMD64 and ARM64 staging-image builds.
+- native AMD64 and ARM64 test-image builds, except that manual CI runs omit
+  Docker work.
 
-Pull-request Docker jobs do not receive registry credentials or push images. Native
-staging images are built only after the full non-Docker suite succeeds.
+Pull-request Docker jobs do not receive registry credentials or push images.
+CI-originated native test images are built only after the full non-Docker suite
+succeeds.
 
-### 6.3 Tested Docker Staging Images
+### 6.3 Tested Docker Images
 
-After the non-Docker full suite succeeds, CI builds native platform images on:
+The reusable `Docker Build` workflow runs local AMD64 validation for CI pull
+requests after their non-Docker suite succeeds. For `main` and version-tag CI
+runs, it instead builds native test images on:
 
 - `ubuntu-26.04` for `linux/amd64`;
 - `ubuntu-26.04-arm` for `linux/arm64`.
 
-Each platform image is pushed to the private staging repository `docker.io/mwyau/pystormtracker` under a tag containing the CI run ID, run attempt, and architecture. CI pulls and tests the exact pushed digest. After both platform jobs succeed, CI creates one private multi-platform staging manifest tagged `ci-<run-id>-<run-attempt>`.
+Each platform image is pushed to the private repository
+`docker.io/mwyau/pystormtracker` under a `sha-<seven-character-commit>-<architecture>`
+tag. CI pulls and tests the exact pushed digest. After both platform jobs succeed,
+CI creates one private multi-platform test manifest tagged
+`sha-<seven-character-commit>`.
 
 Pull-request Docker builds are local and do not receive registry credentials.
+The `Docker Build` workflow also supports manual dispatch for a selected ref; it
+builds, tests, and pushes the same private multi-platform test manifest. Manual
+CI dispatch runs the non-Docker full suite only.
 
 ### 6.4 Docker Publishing
 
-After the staging manifest is created, CI calls the reusable `Docker Publish` workflow to promote it without rebuilding. The CI run ID and run attempt identify the exact staging image. Publication applies the following tags:
+After the test manifest is created, CI calls the reusable `Docker Publish`
+workflow to promote it without rebuilding. The source commit's seven-character SHA
+identifies the test image. Publication applies the following tags:
 
 | Source | `mwyau/pystormtracker` | `xddd/pystormtracker` |
 | --- | --- | --- |
-| `main` | seven-character commit SHA | `edge` |
-| stable tag `v0.6.0` | seven-character commit SHA | `0.6.0`, `0.6`, `latest` |
-| manual private promotion | seven-character commit SHA | none |
+| `main` | seven-character SHA, `sha-<seven-character-SHA>` | `edge`, `sha-<seven-character-SHA>` |
+| stable tag `v0.6.0` | seven-character SHA, `sha-<seven-character-SHA>` | `0.6.0`, `0.6`, `latest`, `sha-<seven-character-SHA>` |
+| manual private promotion | seven-character SHA, `sha-<seven-character-SHA>` | none |
 
 The completed Docker Hub manifests are copied to the corresponding GHCR repositories without rebuilding. Public `edge` and release manifests are attested on Docker Hub only; GHCR copies are not separately attested.
 
-Manual dispatch can promote an existing tested staging tag through the `private`, `edge`, or `release` channel.
+Manual dispatch can promote an existing tested image tag through the `private`, `edge`, or `release` channel.
 
-The publisher contains no recovery build path. If a private staging image has been deleted, the corresponding CI run must be rerun to rebuild and retest it before publication. This keeps image construction and testing in CI and keeps the publishing workflow limited to validation, tagging, copying, and attestation.
+The publisher contains no recovery build path. If a private test image has been
+deleted, manually dispatch `Docker Build` for the corresponding ref to rebuild and
+retest it before publication. This keeps image construction and testing in the
+Docker build workflow and keeps the publishing workflow limited to validation,
+tagging, copying, and attestation.
 
 Release tags are validated with an explicit stable-version expression equivalent to `vX.Y.Z`. The broad workflow trigger is not treated as version validation.
 

@@ -18,7 +18,7 @@ permissions:
 
 env:
   UV_VERSION: '0.12.1'
-  PYTHON_VERSION: '3.13'
+  PYTHON_VERSION: '3.14'
 
 jobs:
   select-test-matrix:
@@ -37,32 +37,37 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             UNIT_MATRIX='{
               "include": [
-                {"python-version": "3.13", "mode": "coverage"}
+                {"os": "ubuntu-26.04", "python-version": "3.11", "mode": "min-deps"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage"},
+                {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
+                {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
               ]
             }'
           else
             UNIT_MATRIX='{
               "include": [
-                {"python-version": "3.11", "mode": "normal"},
-                {"python-version": "3.11", "mode": "min-deps"},
-                {"python-version": "3.12", "mode": "normal"},
-                {"python-version": "3.13", "mode": "coverage"},
-                {"python-version": "3.14", "mode": "normal"},
-                {"python-version": "3.14t", "mode": "free-threaded"}
+                {"os": "ubuntu-26.04", "python-version": "3.11", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.11", "mode": "min-deps"},
+                {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.13", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage"},
+                {"os": "ubuntu-26.04", "python-version": "3.14t", "mode": "free-threaded"},
+                {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
+                {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "slow": true},
-                {"os": "ubuntu-26.04-arm", "slow": false},
-                {"os": "ubuntu-24.04", "slow": false},
-                {"os": "windows-2025", "slow": false},
-                {"os": "macos-26", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": true},
+                {"os": "ubuntu-26.04-arm", "python-version": "3.14", "slow": false},
+                {"os": "ubuntu-24.04", "python-version": "3.14", "slow": false},
+                {"os": "windows-2025", "python-version": "3.13", "slow": false},
+                {"os": "macos-26", "python-version": "3.14", "slow": false}
               ]
             }'
           fi
@@ -111,9 +116,9 @@ jobs:
         run: uv run --no-sync mypy .
 
   unit-tests:
-    name: Unit tests (Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', minimum dependencies' || '' }})
+    name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', minimum dependencies' || '' }})
     needs: select-test-matrix
-    runs-on: ubuntu-26.04
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -129,6 +134,12 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
+      - name: Install MPI on Windows
+        if: runner.os == 'Windows'
+        run: |
+          winget install -e --id Microsoft.msmpi --accept-source-agreements --accept-package-agreements
+          'C:\Program Files\Microsoft MPI\Bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install dependencies
         if: matrix.mode == 'normal' || matrix.mode == 'coverage'
         run: uv sync --frozen --all-extras
@@ -137,9 +148,15 @@ jobs:
         if: matrix.mode == 'min-deps'
         run: uv sync --all-extras --resolution lowest-direct
 
-      - name: Install free-threaded dependencies
+      - name: Install free-threaded dependencies (without EOF, GRIB, or Zarr)
         if: matrix.mode == 'free-threaded'
-        run: uv sync --frozen --extra eof --extra mpi --extra netcdf4
+        run: uv sync --frozen --extra mpi --extra netcdf4
+
+      - name: Smoke-check GRIB and Zarr dependencies
+        if: matrix.mode != 'free-threaded'
+        run: |
+          uv run --no-sync python -m cfgrib selfcheck
+          uv run --no-sync python -c 'import zarr; print("zarr import success")'
 
       - name: Run unit tests
         if: matrix.mode == 'normal' || matrix.mode == 'min-deps'
@@ -172,7 +189,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: Integration tests (${{ matrix.os }})
+    name: Integration tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
     needs: select-test-matrix
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
@@ -188,7 +205,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Install MPI on Windows
         if: runner.os == 'Windows'
@@ -285,149 +302,18 @@ jobs:
       - name: Build documentation
         run: uv run --no-dev --group docs sphinx-build -b html docs docs/_build/html
 
-  dependency-review:
-    name: Dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/dependency-review-action@v5.0.0
-        with:
-          fail-on-severity: high
-
-  docker-pr:
-    name: Build and test Docker image
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 50
-    env:
-      IMAGE: local/pystormtracker:${{ github.sha }}-amd64
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: docker/setup-buildx-action@v4.2.0
-
-      - name: Build and load image
-        uses: docker/build-push-action@v7.3.0
-        with:
-          context: .
-          load: true
-          platforms: linux/amd64
-          tags: ${{ env.IMAGE }}
-          provenance: false
-          sbom: false
-          cache-from: type=gha,scope=docker-build-linux-amd64
-          cache-to: type=gha,mode=max,scope=docker-build-linux-amd64
-
-      - name: Test container CLI
-        run: docker run --rm "$IMAGE" --help
-
-      - name: Test container import
-        run: docker run --rm --entrypoint python "$IMAGE" -c 'import pystormtracker; print("container import success")'
-
-      - name: Scan critical vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE }}
-          format: table
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL
-
-  docker-staging:
-    name: Build Docker staging images
-    if: github.event_name != 'pull_request'
+  docker-build:
+    name: Build and test Docker images
+    if: github.event_name != 'workflow_dispatch'
     needs:
       [code-quality, unit-tests, integration-tests, package-tests, docs]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 70
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            os: ubuntu-26.04
-          - arch: arm64
-            os: ubuntu-26.04-arm
-    env:
-      STAGING_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-      STAGING_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: docker/setup-buildx-action@v4.2.0
-
-      - name: Log in to Docker Hub staging repository
-        uses: docker/login-action@v4.6.0
-        with:
-          username: ${{ vars.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Build and push native image
-        id: build
-        uses: docker/build-push-action@v7.3.0
-        with:
-          context: .
-          push: true
-          platforms: linux/${{ matrix.arch }}
-          tags: ${{ env.STAGING_IMAGE }}:${{ env.STAGING_TAG }}
-          provenance: false
-          sbom: false
-          cache-from: type=gha,scope=docker-build-linux-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-build-linux-${{ matrix.arch }}
-
-      - name: Pull exact pushed image
-        run: docker pull "${STAGING_IMAGE}@${{ steps.build.outputs.digest }}"
-
-      - name: Test container CLI
-        run: docker run --rm "${STAGING_IMAGE}@${{ steps.build.outputs.digest }}" --help
-
-      - name: Test container import
-        run: docker run --rm --entrypoint python "${STAGING_IMAGE}@${{ steps.build.outputs.digest }}" -c 'import pystormtracker; print("container import success")'
-
-      - name: Scan critical vulnerabilities
-        if: matrix.arch == 'amd64'
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.STAGING_IMAGE }}@${{ steps.build.outputs.digest }}
-          format: table
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL
-
-  docker-staging-manifest:
-    name: Validate Docker staging manifest
-    if: github.event_name != 'pull_request'
-    needs: docker-staging
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    env:
-      STAGING_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-      STAGING_PREFIX: ci-${{ github.run_id }}-${{ github.run_attempt }}
-    steps:
-      - uses: docker/setup-buildx-action@v4.2.0
-
-      - name: Log in to Docker Hub staging repository
-        uses: docker/login-action@v4.6.0
-        with:
-          username: ${{ vars.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Create tested multi-platform staging image
-        run: docker buildx imagetools create --tag "$STAGING_IMAGE:$STAGING_PREFIX" "$STAGING_IMAGE:$STAGING_PREFIX-amd64" "$STAGING_IMAGE:$STAGING_PREFIX-arm64"
-
-      - name: Inspect tested multi-platform staging image
-        run: docker buildx imagetools inspect "$STAGING_IMAGE:$STAGING_PREFIX"
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      push_images: ${{ github.event_name != 'pull_request' }}
+      ref: ${{ github.sha }}
+      uv_version: '0.12.1'
+    secrets:
+      DOCKER_HUB_ACCESS_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}
 
   release_tag:
     name: Validate release tag
@@ -479,7 +365,7 @@ jobs:
   publish-docker-edge:
     name: Publish Docker edge image
     if: github.ref == 'refs/heads/main'
-    needs: docker-staging-manifest
+    needs: docker-build
     permissions:
       contents: read
       packages: write
@@ -487,8 +373,8 @@ jobs:
       attestations: write
     uses: ./.github/workflows/docker-publish.yml
     with:
-      source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
-      source_sha: ${{ github.sha }}
+      source_tag: ${{ needs.docker-build.outputs.source_tag }}
+      source_sha: ${{ needs.docker-build.outputs.source_sha }}
       target: edge
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
@@ -497,7 +383,7 @@ jobs:
   publish-docker-release:
     name: Publish Docker release image
     if: github.ref_type == 'tag' && needs.release_tag.outputs.docker_target == 'release'
-    needs: [docker-staging-manifest, release_tag]
+    needs: [docker-build, release_tag]
     permissions:
       contents: read
       packages: write
@@ -505,8 +391,8 @@ jobs:
       attestations: write
     uses: ./.github/workflows/docker-publish.yml
     with:
-      source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
-      source_sha: ${{ github.sha }}
+      source_tag: ${{ needs.docker-build.outputs.source_tag }}
+      source_sha: ${{ needs.docker-build.outputs.source_sha }}
       target: release
       version: ${{ needs.release_tag.outputs.release_tag }}
     secrets:

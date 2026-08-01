@@ -31,7 +31,7 @@ def test_generate_html_standalone(dummy_tracks: Tracks, tmp_path: Path) -> None:
     generate_html(dummy_tracks, outfile, split=False)
 
     assert outfile.exists()
-    content = outfile.read_text()
+    content = outfile.read_text(encoding="utf-8")
     assert "window.TRACKS_DATA =" in content
     # The JSON format uses column-oriented SoA: "lat":[50.0]
     assert '"lat":[50.0]' in content
@@ -45,8 +45,8 @@ def test_generate_html_split(dummy_tracks: Tracks, tmp_path: Path) -> None:
     assert outfile.exists()
     assert js_file.exists()
 
-    html_content = outfile.read_text()
-    js_content = js_file.read_text()
+    html_content = outfile.read_text(encoding="utf-8")
+    js_content = js_file.read_text(encoding="utf-8")
 
     assert 'src="explorer.tracks.js"' in html_content
     assert "window.TRACKS_DATA =" in js_content
