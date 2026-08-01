@@ -134,12 +134,15 @@ def config(
     varname, mode, steps = config_params
     data_path = test_data_msl if varname == "msl" else test_data_vo
 
-    # Full tests only run in CI or when --run-all is explicitly passed.
+    # Full tests run in CI or when --run-slow/--run-all is explicitly passed.
     is_ci = os.environ.get("GITHUB_ACTIONS")
     run_all = request.config.getoption("--run-all")
+    run_slow = request.config.getoption("--run-slow")
 
-    if steps is None and not (is_ci or run_all):
-        pytest.skip("Full integration tests only run in CI or with --run-all")
+    if steps is None and not (is_ci or run_all or run_slow):
+        pytest.skip(
+            "Full integration tests only run in CI or with --run-slow/--run-all"
+        )
 
     return data_path, varname, mode, steps
 

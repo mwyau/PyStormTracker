@@ -8,6 +8,7 @@ import utils
 from utils import (
     DATA_RELEASE_VERSION,
     RAW_CONTENT_URL,
+    SHA256SUMS_HASH,
     fetch_era5_msl,
     fetch_era5_uv850,
     fetch_era5_vo850,
@@ -96,7 +97,7 @@ def test_get_cached_data_loads_release_manifest(
 
     retrieve_kwargs = mock_retrieve.call_args.kwargs
     assert retrieve_kwargs["url"] == utils.SHA256SUMS_URL
-    assert retrieve_kwargs["known_hash"] is None
+    assert retrieve_kwargs["known_hash"] == SHA256SUMS_HASH
     assert retrieve_kwargs["fname"] == utils.SHA256SUMS_FILENAME
     assert retrieve_kwargs["path"]
     assert mock_create.call_args.kwargs["registry"] == {
@@ -140,7 +141,11 @@ def test_fetch_era5_msl_n320_grib(mock_get_cached_data: MagicMock) -> None:
     cache.fetch.assert_called_once_with(filename)
 
 
-def test_fetch_era5_zarr_remote() -> None:
+@patch("utils.get_cached_data")
+def test_fetch_era5_zarr_remote(mock_get_cached_data: MagicMock) -> None:
+    archive_filename = "era5_msl_2025-2026_djf_2.5x2.5.zarr.tar.gz"
+    _configure_asset(mock_get_cached_data.return_value, archive_filename)
+
     url = fetch_era5_msl(resolution="2.5x2.5", format="zarr")
 
     assert url == f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr"
@@ -177,10 +182,25 @@ def test_fetch_era5_vo850_valid(mock_get_cached_data: MagicMock) -> None:
     cache.fetch.assert_called_once_with(filename)
 
 
-def test_fetch_era5_uv850_zarr_remote() -> None:
-    url = fetch_era5_uv850(resolution="2.5x2.5", format="zarr")
+@pytest.mark.parametrize("resolution", ["invalid", "n320"])
+@patch("utils.get_cached_data")
+def test_fetch_era5_zarr_remote_requires_release_asset(
+    mock_get_cached_data: MagicMock, resolution: str
+) -> None:
+    mock_get_cached_data.return_value.registry = {}
 
-    assert url == f"{RAW_CONTENT_URL}era5_uv850_2025-2026_djf_2.5x2.5.zarr"
+    with pytest.raises(ValueError, match="not available in release"):
+        fetch_era5_msl(resolution=resolution, format="zarr")
+
+
+@patch("utils.get_cached_data")
+def test_fetch_era5_uv850_zarr_remote_requires_release_asset(
+    mock_get_cached_data: MagicMock,
+) -> None:
+    mock_get_cached_data.return_value.registry = {}
+
+    with pytest.raises(ValueError, match="not available in release"):
+        fetch_era5_uv850(resolution="2.5x2.5", format="zarr")
 
 
 @patch("utils.get_cached_data")

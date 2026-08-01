@@ -10,6 +10,9 @@ RELEASE_URL = f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{
 RAW_CONTENT_URL = f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_RELEASE_VERSION}/"
 SHA256SUMS_URL = f"{RELEASE_URL}SHA256SUMS"
 SHA256SUMS_FILENAME = f"{DATA_RELEASE_VERSION}-SHA256SUMS"
+SHA256SUMS_HASH = (
+    "sha256:4f221867b111ec5411c58859da825b13111f9aab8a492a50172cad45fddb3ad9"
+)
 
 
 def get_base_dir() -> Path:
@@ -62,7 +65,7 @@ def get_cached_data() -> pooch.Pooch:
         manifest_path = Path(
             pooch.retrieve(
                 url=SHA256SUMS_URL,
-                known_hash=None,
+                known_hash=SHA256SUMS_HASH,
                 fname=SHA256SUMS_FILENAME,
                 path=pooch.os_cache("pystormtracker"),
             )
@@ -137,9 +140,9 @@ def _fetch_era5(
 
     if format == "zarr":
         filename = _release_filename(variable, resolution, season, format)
+        _validate_release_asset(filename)
         if not local:
             return RAW_CONTENT_URL + filename.removesuffix(".tar.gz")
-        _validate_release_asset(filename)
         return _fetch_local_zarr(filename)
 
     filename = _release_filename(variable, resolution, season, format)
