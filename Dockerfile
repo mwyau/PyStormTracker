@@ -20,6 +20,8 @@ COPY --from=uv /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
+    CXX=g++ \
+    LDSHARED="g++ -shared" \
     uv sync --frozen --no-dev --no-install-workspace --extra grib --extra netcdf4 --no-editable
 
 COPY src/ ./src/
