@@ -57,7 +57,7 @@ Add a scheduled CI job using `uv sync --resolution lowest-direct` and the releva
 
 ### 2.4 Tiered testing — ✅ Implemented
 
-Unit tests run by default. Integration tests require `--run-integration`; slow regression cases additionally require `--run-slow`. `--run-all` disables these collection filters.
+Unit tests run by default. Integration tests require `--run-integration`; slow regression and full-duration backend-parity cases additionally require `--run-slow`. `--run-all` disables these collection filters.
 
 ## 3. Architecture
 
@@ -239,9 +239,9 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Description:** Process one-dimensional reduced Gaussian fields, such as ERA5 N320 data, using the number of longitude points on each latitude ring.
 
-**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. An optional integration path is present for real N320 data.
+**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Integration tests download versioned N320 mean sea level pressure and relative-vorticity GRIB fixtures, then cover loading, filtering, regridding, and tracking.
 
-**Verification:** Complete and record an end-to-end run with a versioned real N320 dataset, including loading, filtering, regridding, detection, and tracking.
+**Verification:** Repository integration tests exercise an end-to-end run on the versioned N320 mean sea level pressure fixture, including loading, filtering, regridding, detection, and tracking.
 
 ### 5.17 Four-dimensional feature tracking (STACKER)
 
