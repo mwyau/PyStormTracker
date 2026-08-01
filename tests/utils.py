@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
+from typing import cast
 
 import pooch  # type: ignore[import-untyped]
 
-DATA_RELEASE_VERSION = "v0.1.3-data"
+DATA_RELEASE_VERSION = "v0.1.4-data"
 RELEASE_URL = f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"
 RAW_CONTENT_URL = f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_RELEASE_VERSION}/"
+SHA256SUMS_URL = f"{RELEASE_URL}SHA256SUMS"
+SHA256SUMS_FILENAME = f"{DATA_RELEASE_VERSION}-SHA256SUMS"
 
 
 def get_base_dir() -> Path:
@@ -15,124 +17,200 @@ def get_base_dir() -> Path:
     return Path(__file__).parent.parent.absolute()
 
 
-# Define a central repository of data files
-CACHED_DATA = pooch.create(
-    path=pooch.os_cache("pystormtracker"),
-    base_url=RELEASE_URL,
-    registry={
-        "era5_msl_2025-2026_djf_0.25x0.25.nc": (
-            "sha256:a1847093356472303585eb9acdbfb8c993795a2e643e80d5f7cc803d0919216d"
-        ),
-        "era5_msl_2025-2026_djf_2.5x2.5.nc": (
-            "sha256:19477e18e4239b9f8ea5a7b7a56c2f3790fbc661bbff1a949e59ebda1a61fc40"
-        ),
-        "era5_msl_2025-2026_djf_2.5x2.5.grib": (
-            "sha256:74213e8fb335e4ad17d2c07ae4719427bad788e9ac0e00637fd5523a82362e38"
-        ),
-        "era5_vo850_2025-2026_djf_0.25x0.25.nc": (
-            "sha256:907f1d94bebc87a83207d36cd395ce2051829d3a2669ab64befc1243ddb9058d"
-        ),
-        "era5_vo850_2025-2026_djf_2.5x2.5.nc": (
-            "sha256:46ce78cd3b065d3777c2d628cdc2311d68a9fcb4d3a3b9948db7c7376ae7a6aa"
-        ),
-        "era5_vo850_2025-2026_djf_2.5x2.5.grib": (
-            "sha256:9b92f82bb252fbafa90b507df75faa61721062cd70915b8f42da8d803a5a86d7"
-        ),
-        "era5_uv850_2025-2026_djf_0.25x0.25.nc": (
-            "sha256:0e35d002edc8bdbdbe9bc5f965db76dcf983d97b613ba4e217d0a4f5d84c3e51"
-        ),
-        "era5_uv850_2025-2026_djf_2.5x2.5.nc": (
-            "sha256:43cbc346a52c5230ac34eb22c7a640800fbffad40da4058686c8042a76bc5965"
-        ),
-    },
-)
+CACHED_DATA: pooch.Pooch | None = None
+
+
+def parse_sha256sums(path: Path) -> dict[str, str]:
+    """Parse a release checksum manifest into a Pooch registry."""
+    registry: dict[str, str] = {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for line_number, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2:
+            raise ValueError(
+                f"Invalid SHA256SUMS entry on line {line_number}: {raw_line!r}"
+            )
+
+        checksum, filename = parts
+        is_sha256 = len(checksum) == 64 and all(
+            char in "0123456789abcdef" for char in checksum.lower()
+        )
+        if not is_sha256:
+            raise ValueError(
+                f"Invalid SHA-256 checksum on line {line_number}: {checksum!r}"
+            )
+        if Path(filename).name != filename:
+            raise ValueError(
+                f"Invalid release filename on line {line_number}: {filename!r}"
+            )
+        registry[filename] = f"sha256:{checksum.lower()}"
+
+    if not registry:
+        raise ValueError("SHA256SUMS does not contain any data assets")
+    return registry
+
+
+def get_cached_data() -> pooch.Pooch:
+    """Return the cache backed by the current release checksum manifest."""
+    global CACHED_DATA
+
+    if CACHED_DATA is None:
+        manifest_path = Path(
+            pooch.retrieve(
+                url=SHA256SUMS_URL,
+                known_hash=None,
+                fname=SHA256SUMS_FILENAME,
+                path=pooch.os_cache("pystormtracker"),
+            )
+        )
+        CACHED_DATA = pooch.create(
+            path=pooch.os_cache("pystormtracker"),
+            base_url=RELEASE_URL,
+            registry=parse_sha256sums(manifest_path),
+        )
+    return CACHED_DATA
+
+
+def list_release_files() -> tuple[str, ...]:
+    """Return the data asset filenames published by the current release."""
+    return tuple(sorted(get_cached_data().registry))
+
+
+def fetch_release_file(filename: str) -> str:
+    """Fetch a checksum-verified data asset from the current release."""
+    return str(get_cached_data().fetch(filename))
+
+
+def _release_filename(
+    variable: str,
+    resolution: str,
+    season: str,
+    format: str,
+) -> str:
+    suffix = ".zarr.tar.gz" if format == "zarr" else f".{format}"
+    return f"era5_{variable}_2025-2026_{season}_{resolution}{suffix}"
+
+
+def _validate_release_asset(filename: str) -> None:
+    if filename not in get_cached_data().registry:
+        raise ValueError(
+            f"Data asset '{filename}' is not available in release "
+            f"{DATA_RELEASE_VERSION}"
+        )
+
+
+def _fetch_local_zarr(filename: str) -> str:
+    extracted_files = cast(
+        list[str],
+        get_cached_data().fetch(filename, processor=pooch.Untar()),
+    )
+    stores = {
+        parent
+        for extracted_file in extracted_files
+        for parent in Path(extracted_file).parents
+        if parent.name.endswith(".zarr")
+    }
+    if len(stores) != 1:
+        raise ValueError(
+            f"Expected one Zarr store in archive '{filename}', found {len(stores)}"
+        )
+    return str(next(iter(stores)))
+
+
+def _fetch_era5(
+    variable: str,
+    resolution: str,
+    season: str,
+    format: str,
+    local: bool,
+) -> str:
+    if season != "djf":
+        raise ValueError(f"Season '{season}' not available. Options: 'djf'")
+    if format not in ("nc", "grib", "zarr"):
+        raise ValueError("Format must be 'nc', 'grib', or 'zarr'")
+    if local and format != "zarr":
+        raise ValueError("local=True is only supported when format='zarr'")
+
+    if format == "zarr":
+        filename = _release_filename(variable, resolution, season, format)
+        if not local:
+            return RAW_CONTENT_URL + filename.removesuffix(".tar.gz")
+        _validate_release_asset(filename)
+        return _fetch_local_zarr(filename)
+
+    filename = _release_filename(variable, resolution, season, format)
+    _validate_release_asset(filename)
+    return fetch_release_file(filename)
 
 
 def fetch_era5_msl(
-    resolution: str = "2.5x2.5", season: str = "djf", format: str = "nc"
+    resolution: str = "2.5x2.5",
+    season: str = "djf",
+    format: str = "nc",
+    local: bool = False,
 ) -> str:
     """
     Fetches the ERA5 mean sea level pressure sample dataset.
     Downloads the data on the first call and returns the path to the cached local file.
 
     Args:
-        resolution (str): Spatial resolution of the dataset.
-            Options: "2.5x2.5" or "0.25x0.25".
+        resolution (str): Spatial resolution published by the data release.
         season (str): Season of the dataset. Currently only "djf" is available.
         format (str): File format. Options: "nc" (default), "grib", or "zarr".
+        local (bool): Extract a local Zarr store when ``format="zarr"``.
 
     Returns:
-        str: Absolute path to the downloaded local file or URL for Zarr.
+        str: Absolute path to the downloaded local file, local Zarr store, or URL.
     """
-    if resolution not in ["2.5x2.5", "0.25x0.25"]:
-        raise ValueError("Resolution must be either '2.5x2.5' or '0.25x0.25'")
-    if season not in ["djf"]:
-        raise ValueError(f"Season '{season}' not available. Options: 'djf'")
-    if format not in ["nc", "grib", "zarr"]:
-        raise ValueError("Format must be 'nc', 'grib', or 'zarr'")
-
-    fname = f"era5_msl_2025-2026_{season}_{resolution}.{format}"
-    if format == "zarr":
-        return RAW_CONTENT_URL + fname
-    return str(CACHED_DATA.fetch(fname))
+    return _fetch_era5("msl", resolution, season, format, local)
 
 
 def fetch_era5_vo850(
-    resolution: str = "2.5x2.5", season: str = "djf", format: str = "nc"
+    resolution: str = "2.5x2.5",
+    season: str = "djf",
+    format: str = "nc",
+    local: bool = False,
 ) -> str:
     """
     Fetches the ERA5 850hPa relative vorticity sample dataset.
     Downloads the data on the first call and returns the path to the cached local file.
 
     Args:
-        resolution (str): Spatial resolution of the dataset.
-            Options: "2.5x2.5" or "0.25x0.25".
+        resolution (str): Spatial resolution published by the data release.
         season (str): Season of the dataset. Currently only "djf" is available.
         format (str): File format. Options: "nc" (default), "grib", or "zarr".
+        local (bool): Extract a local Zarr store when ``format="zarr"``.
 
     Returns:
-        str: Absolute path to the downloaded local file or URL for Zarr.
+        str: Absolute path to the downloaded local file, local Zarr store, or URL.
     """
-    if resolution not in ["2.5x2.5", "0.25x0.25"]:
-        raise ValueError("Resolution must be either '2.5x2.5' or '0.25x0.25'")
-    if season not in ["djf"]:
-        raise ValueError(f"Season '{season}' not available. Options: 'djf'")
-    if format not in ["nc", "grib", "zarr"]:
-        raise ValueError("Format must be 'nc', 'grib', or 'zarr'")
-
-    fname = f"era5_vo850_2025-2026_{season}_{resolution}.{format}"
-    if format == "zarr":
-        return RAW_CONTENT_URL + fname
-    return str(CACHED_DATA.fetch(fname))
+    return _fetch_era5("vo850", resolution, season, format, local)
 
 
 def fetch_era5_uv850(
-    resolution: str = "2.5x2.5", season: str = "djf", format: str = "nc"
+    resolution: str = "2.5x2.5",
+    season: str = "djf",
+    format: str = "nc",
+    local: bool = False,
 ) -> str:
     """
     Fetches the ERA5 850hPa u- and v-component of wind sample dataset.
     Downloads the data on the first call and returns the path to the cached local file.
 
     Args:
-        resolution (str): Spatial resolution of the dataset.
-            Options: "2.5x2.5" or "0.25x0.25".
+        resolution (str): Spatial resolution published by the data release.
         season (str): Season of the dataset. Currently only "djf" is available.
-        format (str): File format. Options: "nc" (default) or "zarr".
+        format (str): File format. Options: "nc", "grib", or "zarr".
+        local (bool): Extract a local Zarr store when ``format="zarr"``.
 
     Returns:
-        str: Absolute path to the downloaded local file or URL for Zarr.
+        str: Absolute path to the downloaded local file, local Zarr store, or URL.
     """
-    if resolution not in ["2.5x2.5", "0.25x0.25"]:
-        raise ValueError("Resolution must be either '2.5x2.5' or '0.25x0.25'")
-    if season not in ["djf"]:
-        raise ValueError(f"Season '{season}' not available. Options: 'djf'")
-    if format not in ["nc", "zarr"]:  # UV data has no GRIB for now
-        raise ValueError("Format must be 'nc' or 'zarr'")
-
-    fname = f"era5_uv850_2025-2026_{season}_{resolution}.{format}"
-    if format == "zarr":
-        return RAW_CONTENT_URL + fname
-    return str(CACHED_DATA.fetch(fname))
+    return _fetch_era5("uv850", resolution, season, format, local)
 
 
 # --- Local Integration Test Data Helpers ---
@@ -173,11 +251,3 @@ def get_legacy_track_path(var: str = "msl") -> Path:
     if var == "vo":
         return TRACKS_TEST_DIR / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
     raise ValueError(f"Unknown legacy variable: {var}")
-
-
-def get_reduced_gaussian_path() -> Path | None:
-    """Return the optional real N320 fixture configured by the environment."""
-    configured = os.environ.get("PYSTORMTRACKER_N320_DATA")
-    if not configured:
-        return None
-    return Path(configured).expanduser().resolve()

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from utils import get_reduced_gaussian_path
+from utils import fetch_era5_msl, fetch_era5_vo850
 
 from pystormtracker.hodges.tracker import HodgesTracker
 from pystormtracker.io.data_loader import DataLoader
@@ -13,14 +13,18 @@ from pystormtracker.preprocessing.regrid import SpectralRegridder
 from pystormtracker.preprocessing.spectral import apply_sht_filter
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def n320_msl_path() -> str:
-    path = get_reduced_gaussian_path()
-    if path is None:
-        pytest.skip("Set PYSTORMTRACKER_N320_DATA to run real N320 tests")
-    if not path.exists():
-        pytest.skip(f"Configured N320 test data {path} not found")
-    return str(path)
+    """Download N320 mean sea level pressure data once per module."""
+    pytest.importorskip("cfgrib")
+    return fetch_era5_msl(resolution="n320", format="grib")
+
+
+@pytest.fixture(scope="module")
+def n320_vo_path() -> str:
+    """Download N320 relative vorticity data once per module."""
+    pytest.importorskip("cfgrib")
+    return fetch_era5_vo850(resolution="n320", format="grib")
 
 
 @pytest.mark.integration
@@ -30,6 +34,19 @@ def test_reduced_gaussian_loader(n320_msl_path: str) -> None:
 
     assert loader.is_reduced_gaussian("msl")
     pl = loader.get_reduced_grid_pl("msl")
+    assert pl is not None
+    assert len(pl) == 640
+    assert np.sum(pl) == 542080
+
+
+@pytest.mark.integration
+def test_reduced_gaussian_vo_loader(n320_vo_path: str) -> None:
+    """Verify the N320 relative-vorticity fixture exposes reduced-grid metadata."""
+    loader = DataLoader(n320_vo_path)
+    loader.ensure_open()
+
+    assert loader.is_reduced_gaussian("vo")
+    pl = loader.get_reduced_grid_pl("vo")
     assert pl is not None
     assert len(pl) == 640
     assert np.sum(pl) == 542080

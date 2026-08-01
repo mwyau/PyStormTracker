@@ -342,7 +342,7 @@ jobs:
           severity: CRITICAL
 
   docker-staging:
-    name: BuildDocker staging images
+    name: Build Docker staging images
     if: github.event_name != 'pull_request'
     needs:
       [code-quality, unit-tests, integration-tests, package-tests, docs]
@@ -406,7 +406,7 @@ jobs:
           severity: CRITICAL
 
   docker-staging-manifest:
-    name: ValidateDocker staging manifest
+    name: Validate Docker staging manifest
     if: github.event_name != 'pull_request'
     needs: docker-staging
     runs-on: ubuntu-26.04
