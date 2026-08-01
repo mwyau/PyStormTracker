@@ -43,7 +43,7 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
               ]
             }'
           else
@@ -59,11 +59,11 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "slow": true},
-                {"os": "ubuntu-26.04-arm", "slow": false},
-                {"os": "ubuntu-24.04", "slow": false},
-                {"os": "windows-2025", "slow": false},
-                {"os": "macos-26", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": true},
+                {"os": "ubuntu-26.04-arm", "python-version": "3.14", "slow": false},
+                {"os": "ubuntu-24.04", "python-version": "3.14", "slow": false},
+                {"os": "windows-2025", "python-version": "3.13", "slow": false},
+                {"os": "macos-26", "python-version": "3.14", "slow": false}
               ]
             }'
           fi
@@ -179,7 +179,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
-    name: Integration tests (${{ matrix.os }})
+    name: Integration tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
     needs: select-test-matrix
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
@@ -195,7 +195,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Install MPI on Windows
         if: runner.os == 'Windows'

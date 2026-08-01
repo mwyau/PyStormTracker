@@ -142,7 +142,7 @@ Pull requests execute a representative suite:
 Pushes to `main`, version tags, and manual CI runs execute the full suite:
 
 - supported Python versions, including minimum-direct-dependency and free-threaded tests;
-- Ubuntu AMD64 and ARM64, Ubuntu 24.04 and 26.04 compatibility, Windows AMD64, and macOS ARM64 integration tests;
+- Ubuntu AMD64 and ARM64, Ubuntu 24.04 and 26.04 compatibility, Windows AMD64, and macOS ARM64 integration tests. Windows 2025 uses Python 3.13 because `eccodes` is not available with Python 3.14;
 - slow integration tests;
 - wheel and source-distribution installation tests;
 - native AMD64 and ARM64 test-image builds, except that manual CI runs omit
