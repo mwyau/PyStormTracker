@@ -4,11 +4,11 @@ on:
   workflow_call:
     inputs:
       source_tag:
-        description: Tested private staging tag
+        description: Tested private image tag
         required: true
         type: string
       source_sha:
-        description: Full commit SHA represented by the staging image
+        description: Full commit SHA represented by the test image
         required: true
         type: string
       target:
@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: Tested private staging tag, for example sha-1a2b3c4
+        description: Tested private image tag, for example sha-1a2b3c4
         required: true
         type: string
       source_sha:
