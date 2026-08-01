@@ -133,7 +133,7 @@ Ordinary feature-branch pushes do not run CI independently. This prevents a bran
 Pull requests execute a representative suite:
 
 - code-quality and type checks;
-- Python 3.14 unit tests with coverage on Ubuntu and macOS, Python 3.13 unit
+- Python 3.14 tests on Ubuntu and macOS, Python 3.13
   tests on Windows, Python 3.11 minimum-direct-dependency unit tests, and
   Ubuntu AMD64 integration tests without the slow marker;
 - wheel installation, documentation, and dependency review;
