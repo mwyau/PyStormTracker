@@ -29,6 +29,7 @@ jobs:
     if: inputs.repository == 'pypi'
     runs-on: ubuntu-26.04
     permissions:
+      contents: read
       id-token: write
       attestations: write
     environment:
@@ -56,6 +57,7 @@ jobs:
     if: inputs.repository == 'testpypi'
     runs-on: ubuntu-26.04
     permissions:
+      contents: read
       id-token: write
       attestations: write
     environment:
