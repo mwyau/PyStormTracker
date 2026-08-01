@@ -1,122 +1,223 @@
 # PyStormTracker Architecture
 
-This document describes the data model, tracker interfaces, preprocessing, and execution paths in PyStormTracker.
+This document describes the data model, tracker interfaces, preprocessing, execution paths, testing, and release workflows in PyStormTracker.
 
 ## 1. Architecture Principles
 
 The architecture has four main features:
-1.  **Unified API (Tracker Protocol):** A structural interface that allows the CLI and Python API to support multiple tracking algorithms (e.g., `SimpleTracker`, `HodgesTracker`) interchangeably.
-2.  **Centralized Threshold Management:** Standard detection thresholds (for example, `1e-5` for vorticity and `0.0` for MSL) are defined in `models/constants.py` and shared by tracker paths.
-3.  **Vectorization and Numba JIT:** Numerical operations use NumPy broadcasting and cached, GIL-free Numba kernels where suitable, avoiding Python loops in the detection and linking kernels.
-4.  **Gather-then-Link:** Simple Dask and MPI execution distribute detection, gather raw detections in time order, and run one linking pass.
 
----
+1. **Unified API (`Tracker` protocol):** A structural interface allows the CLI and Python API to use `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` through common orchestration code.
+2. **Centralized constants:** Standard constants such as radius of earth, and detection thresholds, are defined in `models/constants.py` and shared by trackers.
+3. **Vectorization and Numba JIT:** Numerical operations use NumPy broadcasting and cached, GIL-free Numba kernels where suitable. Detection and linking kernels avoid Python loops where practical.
+4. **Gather-then-Link:** Simple Dask and MPI execution distribute detection, gather raw detections in time order, and run one linking pass.
 
 ## 2. Core Components
 
 ### 2.1 Array-Backed Data Models (`Tracks`, `Track`, `Center`)
+
 The data models use contiguous array-backed storage:
-*   **`Tracks`**: The central container holding one-dimensional NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and a dictionary of additional meteorological variables.
-*   **`Track`**: A lightweight view into the `Tracks` arrays for one cyclone track.
-*   **`Center`**: A dataclass used for cyclone center detection.
 
-This layout avoids storing one persistent Python object per center, reduces object-allocation overhead, and supports NumPy broadcasting, selection, and serialization between parallel workers.
+- **`Tracks`:** The central container holding one-dimensional NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and additional meteorological variables.
+- **`Track`:** A lightweight view into the `Tracks` arrays for one cyclone track.
+- **`Center`:** A dataclass used during cyclone-center detection.
 
-### 2.2 Shared DataLoader
-Data loading is encapsulated in a dedicated `DataLoader` class (`io/data_loader.py`). This component handles:
-*   **Format handling**: Opens NetCDF through `h5netcdf` or `netCDF4`, GRIB through `cfgrib`, and Zarr through `zarr` engines.
-*   **Remote data**: Supports Zarr stores over HTTP, S3, and GS through `fsspec` when the optional Zarr dependencies are installed.
-*   **Variable and coordinate mapping**: Resolves common field aliases such as `msl`/`slp` and latitude/longitude/time coordinate aliases.
-*   **Grid metadata**: Detects regular latitude-longitude, full Gaussian, reduced Gaussian, projected `x/y`, and HEALPix coordinates and retains metadata required by spherical harmonic transforms and map projections.
+This layout avoids one persistent Python object per center, reduces allocation overhead, and supports NumPy selection, broadcasting, and serialization between workers.
 
-### 2.3 Heuristic Tracking Implementation (SimpleTracker)
-Trajectory construction in the Simple tracker uses NumPy broadcasting to construct great-circle distance matrices from clamped unit-vector dot products. Candidate centers are sorted lexicographically before deterministic greedy nearest-neighbor matching between consecutive time steps.
+### 2.2 Shared `DataLoader`
 
-### 2.4 Optimization-Based Tracking Implementation (HodgesTracker)
-The `HodgesTracker` implements methods based on TRACK (Hodges 1994, 1995, 1999):
-*   **Object-Based Detection**: Features are identified using `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.
-*   **Modified Greedy Exchange (MGE)**: An iterative algorithm that swaps points between tracks to minimize a total cost function.
-*   **Spherical Cost Function**: Penalizes changes in the tangent direction and displacement magnitude of consecutive track segments.
-*   **Adaptive Constraints**: Adjusts maximum displacement ($d_{max}$) and smoothness limits ($\psi_{max}$) from regional zones and track displacement.
-*   **Sub-grid Refinement**: Fits a local quadratic surface around each eligible extremum. On periodic global grids, a spherical spline value is also evaluated at that center.
+Data loading is encapsulated in `DataLoader` (`io/data_loader.py`). It handles:
+
+- **Formats:** NetCDF through `h5netcdf` or `netCDF4`, GRIB through `cfgrib`, and Zarr through `zarr`.
+- **Remote data:** Zarr stores over HTTP, S3, and Google Cloud Storage through `fsspec` when the optional Zarr dependencies are installed.
+- **Variable and coordinate mapping:** Common field aliases such as `msl` and `slp`, and latitude, longitude, and time coordinate aliases.
+- **Grid metadata:** Regular latitude-longitude, full Gaussian, reduced Gaussian, projected `x/y`, and HEALPix coordinates, including metadata required by spherical harmonic transforms and map projections.
+
+### 2.3 Heuristic Tracking (`SimpleTracker`)
+
+The Simple tracker constructs great-circle distance matrices from clamped unit-vector dot products using NumPy broadcasting. Candidate centers are sorted lexicographically before deterministic greedy nearest-neighbor matching between consecutive time steps.
+
+### 2.4 Optimization-Based Tracking (`HodgesTracker`)
+
+`HodgesTracker` implements methods based on TRACK (Hodges 1994, 1995, 1999):
+
+- **Object-based detection:** Thresholding, connected-component labeling, object filtering, and local-extrema detection.
+- **Modified Greedy Exchange (MGE):** Iterative exchange of points between tracks to reduce the total cost function.
+- **Spherical cost function:** Penalties for changes in tangent direction and displacement magnitude between consecutive track segments.
+- **Adaptive constraints:** Regional and displacement-dependent maximum-displacement and smoothness limits.
+- **Sub-grid refinement:** Local quadratic fitting around eligible extrema. A spherical spline value may also be evaluated on periodic global grids.
+
+The detailed algorithmic requirements and TRACK comparison scope are documented in [Hodges Tracking](hodges.md).
 
 ### 2.5 Parallel Pipeline (Gather-then-Link)
 
 Simple parallel execution uses the following sequence:
-1.  **Parallel Detection**: Assigned time chunks are distributed across Dask or MPI workers. Each worker runs Numba kernels to find centers and returns raw coordinate arrays.
-2.  **Centralized Linking**: The main process gathers the raw detections from all workers and performs a single sequential link. 
 
-Detection contains the frame-local Numba kernels and can be partitioned without making link decisions at chunk boundaries. Centralized linking therefore avoids track merging across independently linked chunks. Repository integrations compare complete serial, Dask, and MPI Simple outputs using versioned test data. Hodges supports serial chunked detection followed by one linking pass. Hodges and HEALPix do not currently provide Dask or MPI tracking.
+1. Assigned time chunks are distributed across Dask or MPI workers.
+2. Each worker runs frame-local detection kernels and returns raw coordinate arrays.
+3. The main process gathers detections in global time order.
+4. One sequential linking pass constructs the tracks.
 
----
+Detection can be partitioned without making link decisions at chunk boundaries. Centralized linking avoids merging independently linked chunks. Repository integration tests compare complete serial, Dask, and MPI Simple outputs using versioned test data.
 
-## 3. Command Line Interface Architecture
+Hodges supports serial chunked detection followed by one linking pass. Hodges and HEALPix do not currently provide Dask or MPI tracking.
+
+## 3. Command-Line Interface Architecture
 
 PyStormTracker uses `argparse` subcommands.
 
 ### 3.1 Modular Router Pattern
-The `cli.py` module acts as a thin entry point. It utilizes `argparse` subparsers to delegate argument definition and execution to specialized modules:
-*   **`track.py`**: Core tracking pipeline.
-*   **`sample.py`**: Post-processing for variable enrichment (e.g., sampling precipitation along tracks).
-*   **`compare.py`**: Intercomparison utilities for matching tracks between datasets.
-*   **`convert.py`**: IO conversion and visualization generation.
+
+`cli.py` is a thin entry point. It delegates argument definition and execution to focused modules:
+
+- **`track.py`:** Detection and trajectory construction.
+- **`sample.py`:** Sampling secondary variables, such as precipitation, along tracks.
+- **`compare.py`:** Intercomparison and matching of track datasets.
+- **`convert.py`:** Output conversion and supported visualization generation.
 
 ### 3.2 Decoupled Analysis Commands
-Tracking, secondary-variable sampling, track comparison, and format conversion are separate commands. A primary track file can be reused when sampling additional meteorological fields or comparing datasets, without rerunning detection and trajectory linking on the original three-dimensional field.
 
----
+Tracking, secondary-variable sampling, track comparison, and format conversion are separate commands. A track file can be reused for sampling or comparison without rerunning detection and trajectory linking on the original field.
 
 ## 4. The `Tracker` Protocol
 
-The `Tracker` Protocol (defined in `src/pystormtracker/models/tracker.py`) provides a standardized interface for all tracking algorithms:
+The `Tracker` protocol is defined in `src/pystormtracker/models/tracker.py` and provides a common interface for tracking algorithms:
 
 ```python
 import pystormtracker as pst
 
-# Instantiate any compliant tracker
 tracker = pst.SimpleTracker()
 
-# Standardized .track() method
 tracks = tracker.track(
-    infile="era5_msl.nc", varname="msl", start_time="2025-01-01", backend="dask"
+    infile="era5_msl.nc",
+    varname="msl",
+    start_time="2025-01-01",
+    backend="dask",
 )
 
-# Standardized export
 tracks.write("output.txt", format="imilast")
 ```
 
----
+Tracker implementations retain algorithm-specific defaults while accepting shared orchestration arguments. The high-level API and CLI pass algorithm-specific options through `**kwargs` where required.
 
-## 5. Planned Architecture Work
+## 5. Testing and Validation
+
+The test suite has several levels:
+
+- **Unit tests:** Models, numerical kernels, geometry, parsing, and isolated behavior.
+- **Integration tests:** Data loading, complete tracker paths, optional dependencies, parallel backends, and output formats.
+- **Slow integration tests:** Larger scientific comparisons and more expensive end-to-end cases.
+- **Package smoke tests:** Wheel and source-distribution builds installed with standard `pip` in clean environments.
+- **Container smoke tests:** CLI startup, package import, and vulnerability scanning of the built image.
+
+`uv` manages development and CI environments. Package smoke tests use `pip` because they test the installed distribution as users receive it.
+
+The minimum-direct-dependency test resolves with `uv sync --resolution lowest-direct` and runs with `uv run --no-sync` so the environment is not replaced by the normal lockfile resolution.
+
+Parallel results must be deterministic for the tested scope. Serial, Dask, and MPI Simple outputs are compared as complete track results rather than only by counts or summary statistics.
+
+## 6. Continuous Integration and Publishing
+
+### 6.1 CI Triggers and Duplicate Runs
+
+The `CI` workflow runs for:
+
+- pull requests, including each new commit pushed to an open pull request;
+- pushes to `main`;
+- version tags matching the broad `v*` trigger;
+- manual workflow dispatch.
+
+Ordinary feature-branch pushes do not run CI independently. This prevents a branch push and its pull request from running the same CI suite twice. Concurrency cancellation stops superseded pull-request and `main` runs. Tag runs are not cancelled.
+
+### 6.2 Pull-Request and Full Test Suites
+
+Pull requests execute a representative suite:
+
+- code-quality and type checks;
+- Python 3.13 unit tests with coverage and Ubuntu AMD64 integration tests without
+  the slow marker;
+- wheel installation, documentation, and dependency review;
+- a local AMD64 Docker build, smoke test, and vulnerability scan.
+
+Pushes to `main`, version tags, and manual CI runs execute the full suite:
+
+- supported Python versions, including minimum-direct-dependency and free-threaded tests;
+- Ubuntu AMD64 and ARM64, Ubuntu 24.04 and 26.04 compatibility, Windows AMD64, and macOS ARM64 integration tests;
+- slow integration tests;
+- wheel and source-distribution installation tests;
+- native AMD64 and ARM64 staging-image builds.
+
+Pull-request Docker jobs do not receive registry credentials or push images. Native
+staging images are built only after the full non-Docker suite succeeds.
+
+### 6.3 Tested Docker Staging Images
+
+After the non-Docker full suite succeeds, CI builds native platform images on:
+
+- `ubuntu-26.04` for `linux/amd64`;
+- `ubuntu-26.04-arm` for `linux/arm64`.
+
+Each platform image is pushed to the private staging repository `docker.io/mwyau/pystormtracker` under a tag containing the CI run ID, run attempt, and architecture. CI pulls and tests the exact pushed digest. After both platform jobs succeed, CI creates one private multi-platform staging manifest tagged `ci-<run-id>-<run-attempt>`.
+
+Pull-request Docker builds are local and do not receive registry credentials.
+
+### 6.4 Docker Publishing
+
+After the staging manifest is created, CI calls the reusable `Docker Publish` workflow to promote it without rebuilding. The CI run ID and run attempt identify the exact staging image. Publication applies the following tags:
+
+| Source | `mwyau/pystormtracker` | `xddd/pystormtracker` |
+| --- | --- | --- |
+| `main` | seven-character commit SHA | `edge` |
+| stable tag `v0.6.0` | seven-character commit SHA | `0.6.0`, `0.6`, `latest` |
+| manual private promotion | seven-character commit SHA | none |
+
+The completed Docker Hub manifests are copied to the corresponding GHCR repositories without rebuilding. Public `edge` and release manifests are attested on Docker Hub only; GHCR copies are not separately attested.
+
+Manual dispatch can promote an existing tested staging tag through the `private`, `edge`, or `release` channel.
+
+The publisher contains no recovery build path. If a private staging image has been deleted, the corresponding CI run must be rerun to rebuild and retest it before publication. This keeps image construction and testing in CI and keeps the publishing workflow limited to validation, tagging, copying, and attestation.
+
+Release tags are validated with an explicit stable-version expression equivalent to `vX.Y.Z`. The broad workflow trigger is not treated as version validation.
+
+### 6.5 Python Publishing and Dependency Updates
+
+CI validates that a version tag points to a commit reachable from `main` and that
+the package version matches the tag without its leading `v`. It then calls the
+reusable Python publishing workflow with the distributions built and package-tested
+in the same CI run. The reusable workflow has no manual-dispatch trigger.
+
+Stable tags matching `vX.Y.Z` publish to PyPI after the protected `pypi`
+environment approves the job. Development tags matching `vX.Y.Z.devN` publish to
+TestPyPI after the protected `testpypi` environment approves the job. Development
+tags do not publish Docker images. Docker `edge` follows the newest successful
+`main` CI run, and Docker `latest` changes only during a successful stable-tag
+release. Docker republishing does not republish the Python package.
+
+Dependabot checks `uv`, GitHub Actions, and Docker dependencies daily. Minor and patch Python updates and GitHub Actions updates may be grouped to reduce pull-request volume. Major Python updates and Docker image updates remain separate for diagnosis.
+
+## 7. Planned Architecture Work
 
 Current planned work includes:
 
-*   **Xarray generalized ufuncs:** Spectral filtering and kinematic derivatives use `xr.apply_ufunc(..., dask="parallelized")`; detection still uses explicit time partitioning.
-*   **Lazy evaluation and thread topology:** Reduce eager frame loading and define ducc0 and Numba thread counts when Dask threads or MPI processes distribute work.
-*   **Spatial indexing:** Evaluate `scipy.spatial.cKDTree` or another spherical candidate index to reduce the $O(N \times M)$ candidate-search cost in dense Simple linking workloads.
-*   **Additional backends:** Hodges and HEALPix parallel tracking require Gather-then-Link implementations and serial-parallel equality tests.
+- **Xarray generalized ufuncs:** Spectral filtering and kinematic derivatives use `xr.apply_ufunc(..., dask="parallelized")`; detection still uses explicit time partitioning.
+- **Lazy evaluation and thread topology:** Reduce eager frame loading and define `ducc0` and Numba thread counts when Dask threads or MPI processes distribute work.
+- **Spatial indexing:** Evaluate `scipy.spatial.cKDTree` or another spherical candidate index to reduce the $O(N \times M)$ candidate-search cost in dense Simple linking workloads.
+- **Additional backends:** Hodges and HEALPix parallel tracking require Gather-then-Link implementations and serial-parallel equality tests.
 
-For more details on specific planned implementations, see the [Roadmap](roadmap.md).
+For planned features, see the [Roadmap](roadmap.md).
 
----
+## 8. Performance Benchmarks
 
-## 6. Performance Benchmarks
-
-The benchmark page records Simple tracker timings for versions `v0.3.3` and `v0.4.0` on one workstation.
+The benchmark page records Simple tracker timings for versions `v0.3.3` and `v0.4.0`.
 
 Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](benchmark.md).
 
----
-
 ## Appendix: Evolution from Legacy Architecture
 
-The current architecture differs from the earlier nested-object design as follows.
-
 | Feature | Legacy Architecture (v0.0.2) | Current Architecture (v0.4.0+) |
-| :--- | :--- | :--- |
-| **Data Storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
-| **Parallelism** | Threaded tree reduction. | Simple: threaded Dask or MPI detection, then centralized linking. |
-| **Linking Strategy** | Tree reduction across chunks. | Parallel detection and centralized linking with serial-equality tests. |
-| **Linker** | $O(N^2)$ nested Python loops. | Vectorized NumPy great-circle distance matrix and deterministic greedy matching. |
+| --- | --- | --- |
+| **Data storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
+| **Parallelism** | Threaded tree reduction. | Parallel detection followed by centralized linking. |
+| **Linking strategy** | Tree reduction across chunks. | Ordered detection gathering and one linking pass with serial-equality tests. |
+| **Linker** | $O(N^2)$ nested Python loops. | Vectorized great-circle distance matrices and deterministic greedy matching. |
 | **Algorithms** | Simple only. | Simple, Hodges-based, and HEALPix trackers. |
 | **I/O** | Many small lazy-loaded chunks. | Xarray reads coordinated through `DataLoader`. |

@@ -1,158 +1,173 @@
 name: Docker Publish
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches:
-      - main
-      - 'v*.*'
-      - 'release/**'
+  workflow_call:
+    inputs:
+      source_tag:
+        description: Tested private staging tag
+        required: true
+        type: string
+      source_sha:
+        description: Full commit SHA represented by the staging image
+        required: true
+        type: string
+      target:
+        description: "Promotion target: private, edge, or release"
+        required: true
+        type: string
+      version:
+        description: Stable release tag such as v0.6.0
+        required: false
+        default: ''
+        type: string
+    secrets:
+      DOCKER_HUB_ACCESS_TOKEN:
+        required: true
+      GHCR_PAT:
+        required: true
+
   workflow_dispatch:
+    inputs:
+      source_tag:
+        description: Tested private staging tag, for example ci-123456789-1
+        required: true
+        type: string
+      source_sha:
+        description: Full 40-character commit SHA
+        required: true
+        type: string
+      target:
+        description: Promotion target
+        required: true
+        default: private
+        type: choice
+        options: [private, edge, release]
+      version:
+        description: Stable release tag, required for release publication
+        required: false
+        type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: docker-publish-${{ inputs.source_tag }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  PRIVATE_DOCKER_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  PUBLIC_DOCKER_IMAGE: docker.io/${{ vars.DOCKER_ORG_NAME }}/${{ vars.DOCKER_IMAGE_NAME }}
+  PRIVATE_GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+  PUBLIC_GHCR_IMAGE: ghcr.io/${{ vars.DOCKER_ORG_NAME }}/${{ vars.DOCKER_IMAGE_NAME }}
 
 jobs:
-  build-and-push-platform:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            os: ubuntu-24.04
-          - arch: arm64
-            os: ubuntu-24.04-arm
-    runs-on: ${{ matrix.os }}
-    if: |
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' && 
-       github.event.workflow_run.event != 'pull_request' &&
-       github.event.workflow_run.head_repository.full_name == github.repository) ||
-      github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-      packages: write
-    env:
-      DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-      GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ vars.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GHCR_PAT }}
-
-      - name: Build and push Docker image with SHA tag
-        id: push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          provenance: false
-          sbom: false
-          platforms: linux/${{ matrix.arch }}
-          tags: |
-            ${{ env.DOCKER_HUB_IMAGE }}:${{ github.event.workflow_run.head_sha || github.sha }}-${{ matrix.arch }}
-            ${{ env.GHCR_IMAGE }}:${{ github.event.workflow_run.head_sha || github.sha }}-${{ matrix.arch }}
-          cache-from: type=gha,scope=docker-build-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-build-${{ matrix.arch }}
-
-  create-manifest:
-    needs: build-and-push-platform
+  publish:
+    name: Promote tested image
+    if: inputs.target == 'private' || inputs.target == 'edge' || inputs.target == 'release'
     runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    env:
-      DOCKER_HUB_IMAGE: docker.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
-      GHCR_IMAGE: ghcr.io/${{ (startsWith(github.event.workflow_run.head_branch || github.ref_name, 'v*.*')) && vars.DOCKER_ORG_NAME || github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
+    timeout-minutes: 20
     steps:
+      - uses: docker/setup-buildx-action@v4.2.0
+
       - name: Log in to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.6.0
         with:
           username: ${{ vars.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
+      - name: Resolve seven-character SHA
+        id: sha
+        uses: docker/metadata-action@v6.2.0
         with:
-          images: |
-            ${{ env.DOCKER_HUB_IMAGE }}
-            ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short,prefix=
+          images: ${{ env.PRIVATE_DOCKER_IMAGE }}
+          tags: type=match,value=${{ inputs.source_sha }},pattern=^([0-9a-f]{7})[0-9a-f]{33}$,group=1
 
-      - name: Create and push manifest
-        id: manifest
-        run: |
-          tags_with_commas="${{ steps.meta.outputs.csv_tags }}"
-          tags_with_spaces=$(echo "$tags_with_commas" | tr ',' ' ')
-          manifest_digest=""
-
-          for tag in $tags_with_spaces; do
-            base_image=$(echo "$tag" | cut -d: -f1)
-            echo "Creating manifest for $tag"
-            docker buildx imagetools create -t "$tag" \
-              "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-amd64" \
-              "${base_image}:${{ github.event.workflow_run.head_sha || github.sha }}-arm64"
-            if [[ "$tag" == *":latest" ]]; then
-              manifest_digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
-            fi
-          done
-          echo "digest=$manifest_digest" >> $GITHUB_OUTPUT
-
-      - name: Attest Provenance (Docker Hub)
-        if: steps.manifest.outputs.digest != ''
-        uses: actions/attest@v4
+      - name: Resolve release version
+        id: release
+        if: inputs.target == 'release'
+        uses: docker/metadata-action@v6.2.0
         with:
-          subject-name: ${{ env.DOCKER_HUB_IMAGE }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
+          images: ${{ env.PUBLIC_DOCKER_IMAGE }}
+          tags: type=match,value=${{ inputs.version }},pattern=^v([0-9]+\.[0-9]+\.[0-9]+)$,group=1
+
+      - name: Resolve release series
+        id: series
+        if: inputs.target == 'release'
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.PUBLIC_DOCKER_IMAGE }}
+          tags: type=match,value=${{ inputs.version }},pattern=^v([0-9]+\.[0-9]+)\.[0-9]+$,group=1
+
+      - name: Publish owner SHA tag to Docker Hub
+        run: docker buildx imagetools create --tag "${PRIVATE_DOCKER_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish owner SHA tag to GHCR
+        run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish edge to Docker Hub
+        if: inputs.target == 'edge'
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:edge" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish edge to GHCR
+        if: inputs.target == 'edge'
+        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:edge" "${PUBLIC_DOCKER_IMAGE}:edge"
+
+      - name: Publish release version to Docker Hub
+        if: inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish release series to Docker Hub
+        if: inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.series.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish latest to Docker Hub
+        if: inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:latest" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish release version to GHCR
+        if: inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:${{ steps.release.outputs.version }}" "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}"
+
+      - name: Publish release series to GHCR
+        if: inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:${{ steps.series.outputs.version }}" "${PUBLIC_DOCKER_IMAGE}:${{ steps.series.outputs.version }}"
+
+      - name: Publish latest to GHCR
+        if: inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:latest" "${PUBLIC_DOCKER_IMAGE}:latest"
+
+      - name: Read edge digest
+        id: edge-digest
+        if: inputs.target == 'edge'
+        run: echo "digest=$(docker buildx imagetools inspect "${PUBLIC_DOCKER_IMAGE}:edge" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+      - name: Attest edge on Docker Hub
+        if: inputs.target == 'edge'
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ env.PUBLIC_DOCKER_IMAGE }}
+          subject-digest: ${{ steps.edge-digest.outputs.digest }}
           push-to-registry: true
-          
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          path: ./
-          artifact-name: sbom.cyclonedx.json
-          output-file: sbom.cyclonedx.json
-          format: cyclonedx-json
 
-      - name: Attest SBOM (Docker Hub)
-        if: steps.manifest.outputs.digest != ''
-        uses: actions/attest@v4
+      - name: Read release digest
+        id: release-digest
+        if: inputs.target == 'release'
+        run: echo "digest=$(docker buildx imagetools inspect "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+      - name: Attest release on Docker Hub
+        if: inputs.target == 'release'
+        uses: actions/attest@v4.2.1
         with:
-          subject-name: ${{ env.DOCKER_HUB_IMAGE }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
-          sbom-path: 'sbom.cyclonedx.json'
+          subject-name: ${{ env.PUBLIC_DOCKER_IMAGE }}
+          subject-digest: ${{ steps.release-digest.outputs.digest }}
           push-to-registry: true

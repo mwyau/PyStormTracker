@@ -1,24 +1,34 @@
 # PyStormTracker Repository Instructions
 
-Foundational mandates and engineering standards for `PyStormTracker`. These take precedence over general defaults.
+These instructions apply to automated changes in this repository.
 
-## 1. Core Mandates
+## References
 
-- **Hodges Parity**: MUST maintain algorithmic parity with TRACK (Hodges 1994, 1995, 1999) as detailed in `docs/hodges.md`. Core kernels MUST use Numba.
-- **Vectorized Architecture**: MUST use the array-backed data model and JIT-optimized kernels described in `docs/architecture.md`.
-- **Validation**: Parallel results MUST be bit-wise identical to serial execution. Use Gather-then-Link orchestration.
-- **Geometry**: All distance calculations MUST use the great-circle dot product formula with precision clamping.
-- **Backends**: Simple supports serial, Dask, and MPI tracking. Hodges and HEALPix are serial-only until Gather-then-Link parallel implementations exist.
+- Read `docs/architecture.md` before changing data models, tracker interfaces, preprocessing, parallel execution, testing, packaging, or CI/CD.
+- Read `docs/hodges.md` before changing Hodges detection, linking, optimization, constraints, or sub-grid refinement.
+- Read the relevant [CLI](docs/cli.md) and [roadmap](docs/roadmap.md) documents before changing documented behavior.
 
-## 2. Engineering Standards
+## Scientific and behavioral requirements
 
-- **Flexible APIs**: All `track()` implementations MUST accept `**kwargs` for cross-algorithm compatibility.
-- **I/O**: MUST use coordinate-aware Xarray NetCDF/GRIB handling via `DataLoader`. Centralize remote test data in `tests/utils.py`; integrations using checked-in or versioned PyStormTracker-Data fixtures count as verified for their tested scope.
-- **Typing**: MUST NOT use `Any` typing. Provide explicit type annotations for all declarations.
-- **Documentation**: State behavior, defaults, support limits, and evidence. Distinguish implemented, repository-tested, externally validated, and planned work. Preserve domain-specific scientific and algorithmic terms; define acronyms on first use and simplify prose without replacing precise terminology with generic wording. Do not use promotional wording or claim parity/performance without a named comparison.
-- **No Auto-Commit**: NEVER stage or commit changes unless specifically and explicitly requested by the user.
-- **Tooling**: MUST use `uv` for package management, environment handling, and running tools (e.g., `uv run ruff`, `uv run pytest`).
-- **Documentation Persistence**: Preserve existing technical documentation and design rationale unless explicitly obsoleted.
-- **Defaults**: CLI/orchestrator filtering and subgrid refinement are tri-state. Omitted means off for Simple and on for Hodges/HEALPix; direct tracker defaults must remain algorithm-specific.
-- **VO Tests**: Production vorticity defaults to `1e-5`. The legacy Simple VO regression and bounded Hodges integration use `1e-4` only to match historical data and control runtime.
-- **SHTns**: Keep SHTns out of production dependencies. It may be used by a standalone, reproducible comparison benchmark against ducc0.
+- Preserve algorithm-specific behavior, defaults, thresholds, output formats, and supported backends unless the requested change requires otherwise.
+- Maintain documented TRACK/Hodges parity. Do not replace the original method with an approximation. Alternative methods must be explicit options.
+- Parallel implementations must reproduce deterministic serial results for the tested scope.
+- Do not claim parity, accuracy, performance, or external validation without identifying the comparison and evidence.
+
+## Engineering requirements
+
+- Use `uv` for dependency management, environment synchronization, builds, and development commands.
+- Keep numerical kernels vectorized or Numba-compiled where required by the architecture.
+- Do not introduce persistent object-per-center or object-per-point storage in performance-critical paths.
+- Provide explicit type annotations. Do not introduce `Any`.
+- Keep tracker implementations compatible with the shared protocol, including `**kwargs` where required for cross-algorithm calls.
+- Use `DataLoader` and coordinate-aware Xarray paths for supported meteorological inputs.
+- Add or update focused tests for behavioral changes. Preserve historical fixtures and tolerances unless the change corrects them explicitly.
+
+## Documentation and change control
+
+- Use direct technical and scientific prose. Preserve established terminology and define acronyms when first used.
+- Avoid promotional language, buzzwords, unsupported adjectives, and claims broader than the available evidence.
+- Distinguish implemented behavior, repository-tested behavior, external validation, and planned work.
+- Keep changes limited to the requested task. Preserve design rationale unless it is obsolete and the replacement is documented.
+- Do not stage, commit, push, publish, or create releases unless explicitly requested.
