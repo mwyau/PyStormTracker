@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: Tested private staging tag, for example ci-123456789-1
+        description: Tested private staging tag, for example sha-1a2b3c4
         required: true
         type: string
       source_sha:
@@ -114,6 +114,12 @@ jobs:
       - name: Publish owner SHA tag to GHCR
         run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
 
+      - name: Publish owner prefixed SHA tag to Docker Hub
+        run: docker buildx imagetools create --tag "${PRIVATE_DOCKER_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish owner prefixed SHA tag to GHCR
+        run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
       - name: Publish edge to Docker Hub
         if: inputs.target == 'edge'
         run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:edge" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
@@ -121,6 +127,14 @@ jobs:
       - name: Publish edge to GHCR
         if: inputs.target == 'edge'
         run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:edge" "${PUBLIC_DOCKER_IMAGE}:edge"
+
+      - name: Publish public prefixed SHA tag to Docker Hub
+        if: inputs.target == 'edge' || inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+
+      - name: Publish public prefixed SHA tag to GHCR
+        if: inputs.target == 'edge' || inputs.target == 'release'
+        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PUBLIC_DOCKER_IMAGE}:sha-${{ steps.sha.outputs.version }}"
 
       - name: Publish release version to Docker Hub
         if: inputs.target == 'release'
