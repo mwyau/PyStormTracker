@@ -18,53 +18,63 @@ permissions:
 
 env:
   UV_VERSION: '0.12.1'
+  PYTHON_VERSION: '3.13'
 
 jobs:
-  release_context:
-    name: Validate release context
-    if: github.ref_type == 'tag'
+  select-test-matrix:
+    name: Select test matrix
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
-      python_repository: ${{ steps.release.outputs.python_repository }}
-      version: ${{ steps.release.outputs.version }}
-      release_tag: ${{ steps.release.outputs.release_tag }}
-      docker_target: ${{ steps.release.outputs.docker_target }}
+      unit_matrix: ${{ steps.select.outputs.unit_matrix }}
+      integration_matrix: ${{ steps.select.outputs.integration_matrix }}
     steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Verify tag is reachable from main
-        run: |
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-
-      - name: Validate release tag and package version
-        id: release
-        env:
-          TAG: ${{ github.ref_name }}
+      - name: Select representative or full matrix
+        id: select
         run: |
           set -euo pipefail
 
-          VERSION="${TAG#v}"
-          PACKAGE_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
-          test "$PACKAGE_VERSION" = "$VERSION"
-
-          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "python_repository=pypi" >> "$GITHUB_OUTPUT"
-            echo "docker_target=release" >> "$GITHUB_OUTPUT"
-          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
-            echo "python_repository=testpypi" >> "$GITHUB_OUTPUT"
-            echo "docker_target=" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            UNIT_MATRIX='{
+              "include": [
+                {"python-version": "3.13", "mode": "coverage"}
+              ]
+            }'
+            INTEGRATION_MATRIX='{
+              "include": [
+                {"os": "ubuntu-26.04", "slow": false}
+              ]
+            }'
           else
-            echo "Unsupported version tag: $TAG" >&2
-            exit 1
+            UNIT_MATRIX='{
+              "include": [
+                {"python-version": "3.11", "mode": "normal"},
+                {"python-version": "3.11", "mode": "min-deps"},
+                {"python-version": "3.12", "mode": "normal"},
+                {"python-version": "3.13", "mode": "coverage"},
+                {"python-version": "3.14", "mode": "normal"},
+                {"python-version": "3.14t", "mode": "free-threaded"}
+              ]
+            }'
+            INTEGRATION_MATRIX='{
+              "include": [
+                {"os": "ubuntu-26.04", "slow": true},
+                {"os": "ubuntu-26.04-arm", "slow": false},
+                {"os": "ubuntu-24.04", "slow": false},
+                {"os": "windows-2025", "slow": false},
+                {"os": "macos-26", "slow": false}
+              ]
+            }'
           fi
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "unit_matrix<<EOF"
+            echo "$UNIT_MATRIX"
+            echo "EOF"
+            echo "integration_matrix<<EOF"
+            echo "$INTEGRATION_MATRIX"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   code-quality:
     name: Code quality checks
@@ -92,7 +102,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: '3.13'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install type-checking environment
         run: uv sync --frozen --all-extras
@@ -100,27 +110,14 @@ jobs:
       - name: Mypy
         run: uv run --no-sync mypy .
 
-  unit-tests-full:
-    name: Unit tests (Full)
-    if: github.event_name != 'pull_request'
+  unit-tests:
+    name: Unit tests (Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', minimum dependencies' || '' }})
+    needs: select-test-matrix
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - python-version: '3.11'
-            mode: normal
-          - python-version: '3.11'
-            mode: min-deps
-          - python-version: '3.12'
-            mode: normal
-          - python-version: '3.13'
-            mode: coverage
-          - python-version: '3.14'
-            mode: normal
-          - python-version: '3.14t'
-            mode: free-threaded
+      matrix: ${{ fromJSON(needs.select-test-matrix.outputs.unit_matrix) }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -174,56 +171,14 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  unit-tests-pr:
-    name: Unit tests (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          python-version: '3.13'
-
-      - name: Install dependencies
-        run: uv sync --frozen --all-extras
-
-      - name: Run unit tests with coverage
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v7.0.0
-        with:
-          files: ./coverage.xml
-          disable_search: true
-          flags: unit
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  integration-tests-full:
-    name: Integration tests (Full)
-    if: github.event_name != 'pull_request'
+  integration-tests:
+    name: Integration tests (${{ matrix.os }})
+    needs: select-test-matrix
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-26.04
-            slow: true
-          - os: ubuntu-26.04-arm
-            slow: false
-          - os: ubuntu-24.04
-            slow: false
-          - os: windows-2025
-            slow: false
-          - os: macos-26
-            slow: false
+      matrix: ${{ fromJSON(needs.select-test-matrix.outputs.integration_matrix) }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -233,7 +188,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: '3.13'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install MPI on Windows
         if: runner.os == 'Windows'
@@ -262,30 +217,8 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  integration-tests-pr:
-    name: Integration tests (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 70
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          python-version: '3.13'
-
-      - name: Install dependencies
-        run: uv sync --frozen --all-extras
-
-      - name: Run integration tests
-        run: uv run --no-sync pytest -vv tests/integration/ --run-integration
-
   package-tests:
-    name: Package tests (build and installation)
+    name: Package tests
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
@@ -297,7 +230,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: '3.13'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Build wheel and source distribution
         run: uv build --wheel --sdist
@@ -347,7 +280,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: '3.13'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Build documentation
         run: uv run --no-dev --group docs sphinx-build -b html docs docs/_build/html
@@ -412,7 +345,7 @@ jobs:
     name: Docker staging images
     if: github.event_name != 'pull_request'
     needs:
-      [code-quality, unit-tests-full, integration-tests-full, package-tests, docs]
+      [code-quality, unit-tests, integration-tests, package-tests, docs]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
     strategy:
@@ -496,6 +429,53 @@ jobs:
       - name: Inspect tested multi-platform staging image
         run: docker buildx imagetools inspect "$STAGING_IMAGE:$STAGING_PREFIX"
 
+  release_tag:
+    name: Validate release tag
+    if: github.ref_type == 'tag'
+    needs: [code-quality, unit-tests, integration-tests, package-tests, docs]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      python_repository: ${{ steps.release.outputs.python_repository }}
+      version: ${{ steps.release.outputs.version }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      docker_target: ${{ steps.release.outputs.docker_target }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag is reachable from main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Validate release tag and package version
+        id: release
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${TAG#v}"
+          PACKAGE_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+          test "$PACKAGE_VERSION" = "$VERSION"
+
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "python_repository=pypi" >> "$GITHUB_OUTPUT"
+            echo "docker_target=release" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+            echo "python_repository=testpypi" >> "$GITHUB_OUTPUT"
+            echo "docker_target=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unsupported version tag: $TAG" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+
   publish-docker-edge:
     name: Publish Docker edge image
     if: github.ref == 'refs/heads/main'
@@ -516,8 +496,8 @@ jobs:
 
   publish-docker-release:
     name: Publish Docker release image
-    if: github.ref_type == 'tag' && needs.release_context.outputs.docker_target == 'release'
-    needs: [docker-staging-manifest, release_context]
+    if: github.ref_type == 'tag' && needs.release_tag.outputs.docker_target == 'release'
+    needs: [docker-staging-manifest, release_tag]
     permissions:
       contents: read
       packages: write
@@ -528,7 +508,7 @@ jobs:
       source_tag: ci-${{ github.run_id }}-${{ github.run_attempt }}
       source_sha: ${{ github.sha }}
       target: release
-      version: ${{ needs.release_context.outputs.release_tag }}
+      version: ${{ needs.release_tag.outputs.release_tag }}
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       GHCR_PAT: ${{ secrets.GHCR_PAT }}
@@ -537,7 +517,7 @@ jobs:
     name: Publish Python package
     if: github.ref_type == 'tag'
     needs:
-      [release_context, code-quality, unit-tests-full, integration-tests-full, package-tests, docs]
+      [release_tag, code-quality, unit-tests, integration-tests, package-tests, docs]
     permissions:
       contents: read
       id-token: write
@@ -545,5 +525,5 @@ jobs:
     uses: ./.github/workflows/python-publish.yml
     with:
       artifact_name: release-dists
-      repository: ${{ needs.release_context.outputs.python_repository }}
-      version: ${{ needs.release_context.outputs.version }}
+      repository: ${{ needs.release_tag.outputs.python_repository }}
+      version: ${{ needs.release_tag.outputs.version }}
