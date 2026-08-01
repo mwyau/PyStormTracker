@@ -301,7 +301,7 @@ jobs:
     with:
       push_images: ${{ github.event_name != 'pull_request' }}
       ref: ${{ github.sha }}
-      uv_version: ${{ env.UV_VERSION }}
+      uv_version: '0.12.1'
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}
 
