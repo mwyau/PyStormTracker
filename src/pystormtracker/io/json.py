@@ -191,7 +191,7 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
 def read_json(infile: str | Path) -> Tracks:
     """
     Reads a 'json' format file back into a Tracks object.
-    Note: If MSL was scaled to hPa during write, it remains hPa here.
+    MSL intensity values stored in hPa are normalized to Pa.
     """
     with open(infile) as f:
         data = json.load(f)
@@ -226,6 +226,13 @@ def read_json(infile: str | Path) -> Tracks:
     var_key = (
         "msl" if track_type == "msl" else ("vo" if track_type == "vo" else "intensity")
     )
+
+    if (
+        track_type == "msl"
+        and len(strength) > 0
+        and np.nanmax(np.abs(strength)) < 2000.0
+    ):
+        strength = strength * 100.0
 
     vars_dict = {var_key: strength} if len(strength) > 0 else {}
 

@@ -226,6 +226,12 @@ def _collect_tracks(tracks: Tracks, var: str | None) -> tuple[_TrackData, ...]:
             if var is not None
             else None
         )
+        if (
+            intensity is not None
+            and track_type == "msl"
+            and np.nanmax(np.abs(intensity)) < 2000.0
+        ):
+            intensity = intensity * 100.0
         extracted.append(
             _TrackData(
                 track_id=int(track_id),

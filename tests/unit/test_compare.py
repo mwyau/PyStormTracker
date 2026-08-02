@@ -198,8 +198,42 @@ def test_compare_tracks_msl_peak_intensity_uses_minimum(
         config=TrackComparisonConfig(var="msl"),
     )
     match = result.matches[0]
-    assert match.reference.peak_intensity == 990.0
-    assert match.candidate.peak_intensity == 992.0
+    assert match.reference.peak_intensity == 99000.0
+    assert match.candidate.peak_intensity == 99200.0
+
+
+def test_compare_tracks_normalizes_msl_units_mixed_formats(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()  # e.g., JSON in hPa
+    candidate = Tracks()  # e.g., IMILAST/Pa
+    add_track(
+        reference,
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 2.0],
+        times,
+        [1010.0, 990.0, 1005.0],
+        var_name="msl",
+    )
+    add_track(
+        candidate,
+        [0.0, 0.0, 0.0],
+        [0.1, 1.1, 2.1],
+        times,
+        [101200.0, 99200.0, 100700.0],
+        var_name="msl",
+    )
+
+    result = compare_tracks(
+        reference,
+        candidate,
+        config=TrackComparisonConfig(var="msl"),
+    )
+    match = result.matches[0]
+    assert match.reference.peak_intensity == 99000.0
+    assert match.candidate.peak_intensity == 99200.0
+    assert match.intensity_difference is not None
+    assert match.intensity_difference.bias == pytest.approx(200.0)
 
 
 def test_compare_tracks_explicit_intensity_mode(
