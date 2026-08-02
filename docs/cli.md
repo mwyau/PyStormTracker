@@ -33,7 +33,7 @@ stormtracker track -i input.nc -v vo -o tracks.json -m max -a hodges -f json
 | :--- | :--- |
 | `-a`, `--algorithm` | `simple` or `hodges`; default `simple`. |
 | `-f`, `--format` | `imilast`, `hodges` (TRACK tdump), or `json`; default `imilast`. |
-| `-m`, `--mode` | `min` or `max`; default `min`. |
+| `-m`, `--mode` | `auto`, `min`, or `max`; default `auto` (infers `min` for MSL/pressure fields, `max` for vorticity and other standard fields). |
 | `--map-proj` | `global`, `nh_stereo`, `sh_stereo`, or `healpix`. Selecting `healpix` uses `HealpixTracker` regardless of `--algorithm`. |
 | `--resolution` | Polar stereographic grid spacing in kilometres; default `100`. |
 | `--extent` | Polar stereographic bounds as `xmin,xmax,ymin,ymax` in kilometres. |
