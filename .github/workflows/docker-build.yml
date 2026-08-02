@@ -184,7 +184,7 @@ jobs:
       - name: Test container import
         run: docker run --rm --entrypoint python "${{ steps.test-image.outputs.reference }}" -c 'import pystormtracker; print("container import success")'
 
-      - name: Self-check container GRIB support
+      - name: Test container GRIB support
         run: docker run --rm --entrypoint python "${{ steps.test-image.outputs.reference }}" -m cfgrib selfcheck
 
       - name: Scan critical vulnerabilities
