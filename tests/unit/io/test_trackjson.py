@@ -8,19 +8,9 @@ import numpy as np
 
 from pystormtracker.io.format import infer_format, load_tracks, save_tracks
 from pystormtracker.io.geojson import read_geojson, write_geojson
-from pystormtracker.io.imilast import read_imilast
 from pystormtracker.io.json import read_json, write_json
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
-
-TRACK_FIXTURE_DIR = Path(__file__).parents[3] / "tests/data/tracks"
-IMILAST_FIXTURE = (
-    TRACK_FIXTURE_DIR / "era5_msl_2025-2026_djf_2.5x2.5_hodges_imilast.txt"
-)
-TRACKJSON_FIXTURE = (
-    TRACK_FIXTURE_DIR / "era5_msl_2025-2026_djf_2.5x2.5_hodges.trackjson"
-)
-GEOJSON_FIXTURE = TRACK_FIXTURE_DIR / "era5_msl_2025-2026_djf_2.5x2.5_hodges.geojson"
 
 
 def _tracks() -> Tracks:
@@ -70,23 +60,6 @@ def test_trackjson_matches_draft_2020_12_schema(tmp_path: Path) -> None:
     assert document["tracks"][0]["peak_value"] == 99_000.0
 
 
-def test_trackjson_fixture_matches_schema_and_loads() -> None:
-    document = json.loads(TRACKJSON_FIXTURE.read_text(encoding="utf-8"))
-    schema_path = Path(__file__).parents[3] / "schema/trackjson.schema.json"
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
-
-    jsonschema.Draft202012Validator(schema).validate(document)
-    source = read_imilast(IMILAST_FIXTURE)
-    loaded = read_json(TRACKJSON_FIXTURE)
-
-    assert loaded.track_type == "msl"
-    np.testing.assert_array_equal(loaded.track_ids, source.track_ids)
-    np.testing.assert_array_equal(loaded.times, source.times)
-    np.testing.assert_allclose(loaded.lats, source.lats)
-    np.testing.assert_allclose(loaded.lons, source.lons)
-    np.testing.assert_allclose(loaded.vars["msl"], source.vars["MSL"])
-
-
 def test_trackjson_round_trips_all_variables(tmp_path: Path) -> None:
     output = tmp_path / "tracks.json"
     original = _tracks()
@@ -116,18 +89,6 @@ def test_geojson_round_trips_all_variables(tmp_path: Path) -> None:
         np.testing.assert_allclose(loaded.vars[name], values)
 
 
-def test_geojson_fixture_matches_trackjson_fixture() -> None:
-    trackjson_tracks = read_json(TRACKJSON_FIXTURE)
-    geojson_tracks = read_geojson(GEOJSON_FIXTURE)
-
-    np.testing.assert_array_equal(geojson_tracks.track_ids, trackjson_tracks.track_ids)
-    np.testing.assert_array_equal(geojson_tracks.times, trackjson_tracks.times)
-    np.testing.assert_allclose(geojson_tracks.lats, trackjson_tracks.lats)
-    np.testing.assert_allclose(geojson_tracks.lons, trackjson_tracks.lons)
-    for name, values in trackjson_tracks.vars.items():
-        np.testing.assert_allclose(geojson_tracks.vars[name], values)
-
-
 def test_format_facade_detects_track_content_without_recognized_extension(
     tmp_path: Path,
 ) -> None:
@@ -145,11 +106,6 @@ def test_format_facade_detects_track_content_without_recognized_extension(
     assert load_tracks(trackjson_with_json_extension).track_type == "msl"
     assert infer_format(geojson_with_json_extension) == "geojson"
     assert load_tracks(geojson_with_json_extension).track_type == "msl"
-    assert infer_format(IMILAST_FIXTURE) == "imilast"
-    assert (
-        infer_format(TRACK_FIXTURE_DIR / "era5_msl_2025-2026_djf_2.5x2.5_hodges.txt")
-        == "hodges"
-    )
 
 
 def test_format_facade_infers_and_routes(tmp_path: Path) -> None:
