@@ -97,12 +97,14 @@ jobs:
           version-file: uv.lock
 
       - name: Ruff format
+        if: ${{ !cancelled() }}
         uses: astral-sh/ruff-action@v4.1.0
         with:
           args: format --check
           version-file: uv.lock
 
       - name: Set up uv
+        if: ${{ !cancelled() }}
         uses: astral-sh/setup-uv@v9.0.0
         with:
           version: ${{ env.UV_VERSION }}
@@ -110,9 +112,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install type-checking environment
+        if: ${{ !cancelled() }}
         run: uv sync --frozen --all-extras
 
       - name: Mypy
+        if: ${{ !cancelled() }}
         run: uv run --no-sync mypy .
 
   unit-tests:
