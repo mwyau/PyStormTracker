@@ -14,7 +14,7 @@ def generate_mock_tracks(
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Generate synthetic trajectory dataset in both TrackJSON and GeoJSON formats."""
     np.random.seed(42)
-    tracks_list = []
+    tracks_list: list[dict[str, object]] = []
 
     lats_flat: list[float | None] = []
     lons_flat: list[float | None] = []
@@ -22,7 +22,7 @@ def generate_mock_tracks(
     msl_flat: list[float | None] = []
     vo_flat: list[float | None] = []
 
-    tracks_meta = []
+    tracks_meta: list[dict[str, object]] = []
     current_idx = 0
     start_time_base = 1577836800000
 
@@ -111,7 +111,7 @@ def generate_mock_tracks(
             }
         )
 
-    trackjson_data = {
+    trackjson_data: dict[str, object] = {
         "format": "TrackJSON/1.0",
         "metadata": {
             "primary_var": "msl",
@@ -138,9 +138,23 @@ def generate_mock_tracks(
         "tracks": tracks_meta,
     }
 
-    geojson_features = []
+    geojson_features: list[dict[str, object]] = []
     for tr in tracks_list:
-        coords = [[lon, lat] for lon, lat in zip(tr["lons"], tr["lats"])]
+        lons = tr["lons"]
+        lats = tr["lats"]
+        times = tr["times"]
+        msl = tr["msl"]
+        if (
+            not isinstance(lons, list)
+            or not isinstance(lats, list)
+            or not isinstance(times, list)
+            or not isinstance(msl, list)
+        ):
+            msg = "Synthetic track values must be lists"
+            raise TypeError(msg)
+        numeric_times = [float(value) for value in times]
+        numeric_msl = [float(value) for value in msl]
+        coords = [[lon, lat] for lon, lat in zip(lons, lats, strict=True)]
         geojson_features.append(
             {
                 "type": "Feature",
@@ -153,13 +167,14 @@ def generate_mock_tracks(
                     "track_id": tr["id"],
                     "times": tr["times"],
                     "variables": {"msl": tr["msl"], "vo": tr["vo"]},
-                    "peak_value": min(tr["msl"]),
-                    "duration_hours": (tr["times"][-1] - tr["times"][0]) / 3600000.0,
+                    "peak_value": min(numeric_msl),
+                    "duration_hours": (numeric_times[-1] - numeric_times[0])
+                    / 3600000.0,
                 },
             }
         )
 
-    geojson_data = {
+    geojson_data: dict[str, object] = {
         "type": "FeatureCollection",
         "pystormtracker": {"primary_var": "msl", "mode": "min"},
         "features": geojson_features,
@@ -220,28 +235,41 @@ def run_scale_benchmark(n_tracks: int, points_per_track: int = 30) -> None:
     arr_lons_gj = np.array(flat_lons_gj, dtype=np.float32)
     geojson_webgl_time = (time.perf_counter() - t0) * 1000.0
 
+    if flat_lats_tj.size != flat_lons_tj.size or arr_lats_gj.size != arr_lons_gj.size:
+        msg = "Latitude and longitude arrays must have matching lengths"
+        raise ValueError(msg)
+
+    print(f"\n--- Scale: {n_tracks:,} tracks ({total_points:,} trajectory points) ---")
+    print("Raw JSON Size:")
+    print(f"  TrackJSON v1.0 SoA: {tjson_bytes / (1024 * 1024):.2f} MB")
     print(
-        f"\n--- Scale: {n_tracks:,} tracks ({total_points:,} trajectory points) ---"
+        "  GeoJSON LineString: "
+        f"{geojson_bytes / (1024 * 1024):.2f} MB "
+        f"({geojson_bytes / tjson_bytes:.2f}x size)"
     )
-    print(f"Raw JSON Size:")
-    print(f"  TrackJSON v1.0 SoA: {tjson_bytes / (1024*1024):.2f} MB")
+    print("Gzip Compressed Size:")
+    print(f"  TrackJSON v1.0 SoA: {tjson_gzip / (1024 * 1024):.2f} MB")
     print(
-        f"  GeoJSON LineString: {geojson_bytes / (1024*1024):.2f} MB  ({geojson_bytes / tjson_bytes:.2f}x size)"
+        "  GeoJSON LineString: "
+        f"{geojson_gzip / (1024 * 1024):.2f} MB "
+        f"({geojson_gzip / tjson_gzip:.2f}x size)"
     )
-    print(f"Gzip Compressed Size:")
-    print(f"  TrackJSON v1.0 SoA: {tjson_gzip / (1024*1024):.2f} MB")
-    print(
-        f"  GeoJSON LineString: {geojson_gzip / (1024*1024):.2f} MB  ({geojson_gzip / tjson_gzip:.2f}x size)"
-    )
-    print(f"JSON Parse Time:")
+    print("JSON Serialization Time:")
+    print(f"  TrackJSON v1.0 SoA: {tjson_dumps_time:.1f} ms")
+    print(f"  GeoJSON LineString: {geojson_dumps_time:.1f} ms")
+    print("JSON Parse Time:")
     print(f"  TrackJSON v1.0 SoA: {tjson_loads_time:.1f} ms")
     print(
-        f"  GeoJSON LineString: {geojson_loads_time:.1f} ms  ({geojson_loads_time / tjson_loads_time:.2f}x parse time)"
+        "  GeoJSON LineString: "
+        f"{geojson_loads_time:.1f} ms "
+        f"({geojson_loads_time / tjson_loads_time:.2f}x parse time)"
     )
-    print(f"WebGL Float32Array Build Time:")
+    print("WebGL Float32Array Build Time:")
     print(f"  TrackJSON v1.0 SoA: {tjson_webgl_time:.1f} ms")
     print(
-        f"  GeoJSON LineString: {geojson_webgl_time:.1f} ms  ({geojson_webgl_time / tjson_webgl_time:.2f}x build time)"
+        "  GeoJSON LineString: "
+        f"{geojson_webgl_time:.1f} ms "
+        f"({geojson_webgl_time / tjson_webgl_time:.2f}x build time)"
     )
 
 

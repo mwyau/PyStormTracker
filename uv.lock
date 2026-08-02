@@ -3377,6 +3377,7 @@ dev = [
     { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "sphinx", version = "9.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "sphinx-rtd-theme" },
+    { name = "types-jsonschema" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -3435,6 +3436,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15.10" },
     { name = "sphinx", specifier = ">=9.0.4" },
     { name = "sphinx-rtd-theme", specifier = ">=3.1.0" },
+    { name = "types-jsonschema", specifier = ">=4.26.0.20260518" },
 ]
 docs = [
     { name = "myst-parser", specifier = ">=5.0.0" },
@@ -4499,6 +4501,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/61/a1/d7e7d9f461575d8bb77e3c3bd78a6cdfdd2bb4a06bfbbb8a0e1f51ab7bc2/traitlets-5.16.0.tar.gz", hash = "sha256:7de0a3fabaf5971ff15c8905545f9febfa850309fb8e86e1b42bdb5b46b293ed", size = 165946, upload-time = "2026-07-31T12:23:49.785Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/01/bd/f8607e908605262e4926cbfd2560094bc5d04ef7f8aff1340e7fff503016/traitlets-5.16.0-py3-none-any.whl", hash = "sha256:94a9967ba45e89e837cf9934029c8d019bea9149cfffa115ed8c1900f679beba", size = 86093, upload-time = "2026-07-31T12:23:47.533Z" },
+]
+
+[[package]]
+name = "types-jsonschema"
+version = "4.26.0.20260518"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/46/73b6a5d61a61015c4248030a8cb07e5bdddb4041430fae9e585a68692578/types_jsonschema-4.26.0.20260518.tar.gz", hash = "sha256:e1dd53dc97a64f5eccdd6fa9839666e09bb500a8ebba2db6fdaf1789faea81a6", size = 16638, upload-time = "2026-05-18T06:06:44.106Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/d5/134f8a147dcecda10db7f60cfc6af0578a25a5c53c87b3907a64385e0184/types_jsonschema-4.26.0.20260518-py3-none-any.whl", hash = "sha256:30b30a518c7fe335df85c919fcbcc631b69c03d4a4b5b632fa916bea03065307", size = 16072, upload-time = "2026-05-18T06:06:43.264Z" },
 ]
 
 [[package]]
