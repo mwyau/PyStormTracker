@@ -359,25 +359,15 @@ class Tracks:
         for k in list(self.vars.keys()):
             self.vars[k] = self.vars[k][new_indices_arr]
 
-    def write(self, outfile: str | Path, format: str = "imilast") -> None:
+    def write(self, outfile: str | Path, format: str = "json") -> None:
         """
         Exports tracks to a file in the specified format.
 
         Args:
             outfile (str | Path): Output file path.
-            format (str): Output format. Supports "imilast", "hodges", "tracks-json".
+            format (str): Output format. Supports TrackJSON ("json"), GeoJSON,
+                IMILAST, and Hodges output.
         """
-        if format.lower() == "imilast":
-            from ..io.imilast import write_imilast
+        from ..io.format import save_tracks
 
-            write_imilast(self, outfile)
-        elif format.lower() == "hodges":
-            from ..io.hodges import write_hodges
-
-            write_hodges(self, str(outfile))
-        elif format.lower() == "json":
-            from ..io.json import write_json
-
-            write_json(self, outfile)
-        else:
-            raise ValueError(f"Unsupported output format: {format}")
+        save_tracks(self, outfile, format=format)

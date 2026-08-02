@@ -3366,6 +3366,7 @@ zarr = [
 [package.dev-dependencies]
 dev = [
     { name = "cdsapi" },
+    { name = "jsonschema" },
     { name = "mypy" },
     { name = "myst-parser" },
     { name = "openmpi", marker = "sys_platform != 'win32'" },
@@ -3385,6 +3386,7 @@ docs = [
 ]
 test = [
     { name = "cdsapi" },
+    { name = "jsonschema" },
     { name = "openmpi", marker = "sys_platform != 'win32'" },
     { name = "pooch" },
     { name = "pytest" },
@@ -3423,6 +3425,7 @@ provides-extras = ["eof", "grib", "mpi", "netcdf4", "zarr", "all"]
 [package.metadata.requires-dev]
 dev = [
     { name = "cdsapi", specifier = ">=0.7.7" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "myst-parser", specifier = ">=5.0.0" },
     { name = "openmpi", marker = "sys_platform != 'win32'", specifier = ">=5.0.10" },
@@ -3440,6 +3443,7 @@ docs = [
 ]
 test = [
     { name = "cdsapi", specifier = ">=0.7.7" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "openmpi", marker = "sys_platform != 'win32'", specifier = ">=5.0.10" },
     { name = "pooch", specifier = ">=1.9.0" },
     { name = "pytest", specifier = ">=9.0.2" },

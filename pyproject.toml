@@ -88,6 +88,7 @@ docs = [
 ]
 test = [
     "cdsapi>=0.7.7",
+    "jsonschema>=4.23.0",
     "openmpi>=5.0.10 ; sys_platform != 'win32'",
     "pooch>=1.9.0",
     "pytest>=9.0.2",

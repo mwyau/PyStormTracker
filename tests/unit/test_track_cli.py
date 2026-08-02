@@ -8,6 +8,7 @@ import pytest
 from utils import fetch_era5_msl
 
 from pystormtracker.cli import main
+from pystormtracker.io.json import read_json
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.track import run_tracker
 
@@ -18,7 +19,7 @@ def msl_data() -> str:
 
 
 def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
-    output_file = tmp_path / "test_tracks.txt"
+    output_file = tmp_path / "test_tracks.json"
     run_tracker(
         infile=msl_data,
         varname="msl",
@@ -29,10 +30,11 @@ def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
 
     assert output_file.exists()
     assert output_file.stat().st_size > 0
+    assert read_json(output_file).track_type == "msl"
 
 
 def test_main_track(msl_data: str, tmp_path: Path) -> None:
-    output_file = tmp_path / "main_output.txt"
+    output_file = tmp_path / "main_output.json"
     test_args = [
         "stormtracker",
         "track",
@@ -52,6 +54,7 @@ def test_main_track(msl_data: str, tmp_path: Path) -> None:
 
     assert output_file.exists()
     assert output_file.stat().st_size > 0
+    assert read_json(output_file).track_type == "msl"
 
 
 def test_main_help() -> None:

@@ -4,63 +4,49 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import pytest
 
-from pystormtracker.convert import generate_html, main
+from pystormtracker.convert import main
+from pystormtracker.io.format import load_tracks
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
 
 
-@pytest.fixture
-def dummy_tracks() -> Tracks:
-    tracks = Tracks()
-    centers = [
-        Center(
-            time=np.datetime64("2020-01-01T00:00"),
-            lat=50.0,
-            lon=0.0,
-            vars={"msl": 1000.0},
-        )
-    ]
-    tracks.add_track(centers)
+def _tracks() -> Tracks:
+    tracks = Tracks(track_type="msl")
+    tracks.add_track(
+        [
+            Center(
+                time=np.datetime64("2020-01-01T00:00"),
+                lat=50.0,
+                lon=0.0,
+                vars={"msl": 100_000.0},
+            ),
+            Center(
+                time=np.datetime64("2020-01-01T06:00"),
+                lat=51.0,
+                lon=1.0,
+                vars={"msl": 99_000.0},
+            ),
+        ]
+    )
     return tracks
 
 
-def test_generate_html_standalone(dummy_tracks: Tracks, tmp_path: Path) -> None:
-    outfile = tmp_path / "explorer.html"
-    generate_html(dummy_tracks, outfile, split=False)
+def test_convert_infers_trackjson_and_geojson_formats(tmp_path: Path) -> None:
+    source = tmp_path / "tracks.json"
+    target = tmp_path / "tracks.geojson"
+    _tracks().write(source)
 
-    assert outfile.exists()
-    content = outfile.read_text(encoding="utf-8")
-    assert "window.TRACKS_DATA =" in content
-    # The JSON format uses column-oriented SoA: "lat":[50.0]
-    assert '"lat":[50.0]' in content
-
-
-def test_generate_html_split(dummy_tracks: Tracks, tmp_path: Path) -> None:
-    outfile = tmp_path / "explorer.html"
-    generate_html(dummy_tracks, outfile, split=True)
-
-    js_file = tmp_path / "explorer.tracks.js"
-    assert outfile.exists()
-    assert js_file.exists()
-
-    html_content = outfile.read_text(encoding="utf-8")
-    js_content = js_file.read_text(encoding="utf-8")
-
-    assert 'src="explorer.tracks.js"' in html_content
-    assert "window.TRACKS_DATA =" in js_content
-    assert '"lat":[50.0]' in js_content
-
-
-def test_split_requires_html_output() -> None:
-    args = argparse.Namespace(
-        input="unused.json",
-        output="unused.json",
-        in_format="json",
-        out_format="json",
-        type=None,
-        split=True,
+    main(
+        argparse.Namespace(
+            input=str(source),
+            output=str(target),
+            in_format=None,
+            out_format=None,
+            var=None,
+        )
     )
-    with pytest.raises(ValueError, match="only valid with --out-format html"):
-        main(args)
+
+    converted = load_tracks(target)
+    assert converted.track_type == "msl"
+    np.testing.assert_allclose(converted.vars["msl"], [100_000.0, 99_000.0])

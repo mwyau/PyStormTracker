@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models.tracks import Tracks
 
 
-def write_hodges(tracks: Tracks, outfile: str) -> None:
+def write_hodges(tracks: Tracks, outfile: str | Path) -> None:
     """
     Writes tracks in the Hodges (TRACK) ASCII format.
 

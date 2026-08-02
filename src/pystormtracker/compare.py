@@ -5,10 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
-from .io.imilast import read_imilast
-from .io.json import read_json, write_json
+from .io.format import load_tracks, save_tracks
 from .metrics.compare import TrackComparison, TrackComparisonConfig, compare_tracks
 from .models.tracks import Tracks
 from .utils.cli import fraction, positive_float
@@ -31,14 +29,18 @@ def setup_parser(
         "--ref",
         dest="reference",
         required=True,
-        help="Reference track file (JSON or IMILAST).",
+        help=(
+            "Reference track file (TrackJSON by default; format inferred by extension)."
+        ),
     )
     parser.add_argument(
         "-c",
         "--cand",
         dest="candidate",
         required=True,
-        help="Candidate track file (JSON or IMILAST).",
+        help=(
+            "Candidate track file (TrackJSON by default; format inferred by extension)."
+        ),
     )
     parser.add_argument(
         "-s",
@@ -86,13 +88,8 @@ def setup_parser(
 
 
 def _load_tracks(path: str) -> Tracks:
-    """Load a JSON or IMILAST trajectory file."""
-    suffix = Path(path).suffix.lower()
-    if suffix == ".json":
-        return read_json(path)
-    if suffix in (".txt", ".dat"):
-        return read_imilast(path)
-    raise ValueError(f"Unsupported track file extension: '{suffix or '<none>'}'")
+    """Load a trajectory file using centralized format inference."""
+    return load_tracks(path)
 
 
 def _matched_candidate_tracks(tracks: Tracks, candidate_ids: set[int]) -> Tracks:
@@ -150,7 +147,8 @@ def main(args: argparse.Namespace) -> None:
     if args.matched_candidate_output:
         log(f"Writing matched candidate tracks to {args.matched_candidate_output}...")
         candidate_ids = {match.candidate_id for match in result.matches}
-        write_json(
+        save_tracks(
             _matched_candidate_tracks(candidate, candidate_ids),
             args.matched_candidate_output,
+            format="json",
         )

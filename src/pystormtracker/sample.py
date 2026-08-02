@@ -6,7 +6,7 @@ from typing import Literal
 import numpy as np
 import xarray as xr
 
-from .io.json import read_json, write_json
+from .io.format import load_tracks, save_tracks
 from .models.geo import geod_dist_km
 from .models.tracks import Tracks
 from .utils.cli import nonnegative_float
@@ -175,7 +175,9 @@ def setup_parser(
         description="Sample variables from a NetCDF dataset along storm tracks.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("-i", "--input", required=True, help="Input track file (JSON).")
+    parser.add_argument(
+        "-i", "--input", required=True, help="Input track file (TrackJSON by default)."
+    )
     parser.add_argument(
         "-d", "--data", required=True, help="Input NetCDF data file to sample from."
     )
@@ -188,7 +190,7 @@ def setup_parser(
         "--output",
         dest="output",
         required=True,
-        help="Output track file (JSON).",
+        help="Output track file (TrackJSON by default).",
     )
     parser.add_argument(
         "-m",
@@ -231,7 +233,7 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f"sampling method '{args.method}' requires a positive radius")
 
     print(f"Reading tracks from {args.input}...")
-    tracks = read_json(args.input)
+    tracks = load_tracks(args.input)
 
     print(f"Opening dataset {args.data}...")
     ds = xr.open_dataset(args.data, engine=args.engine)
@@ -249,6 +251,6 @@ def main(args: argparse.Namespace) -> None:
         output_varname=args.name,
     )
 
-    print(f"Writing updated tracks to {args.output}...")
-    write_json(tracks, args.output)
+    print(f"Writing updated tracks to {args.output} as TrackJSON...")
+    save_tracks(tracks, args.output, format="json")
     print("Done!")

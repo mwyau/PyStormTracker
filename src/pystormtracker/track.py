@@ -113,7 +113,7 @@ def run_tracker(
     threshold: float | None = None,
     engine: str | None = None,
     algorithm: Algorithm = "simple",
-    output_format: str = "imilast",
+    output_format: str = "json",
     # Hodges-specific
     min_points: int = constants.MIN_POINTS_DEFAULT,
     w1: float | None = None,
@@ -329,9 +329,9 @@ def setup_parser(
     general.add_argument(
         "-f",
         "--format",
-        choices=["imilast", "hodges", "json"],
-        default="imilast",
-        help="Output format. Default is 'imilast'.",
+        choices=["json", "geojson", "imilast", "hodges"],
+        default="json",
+        help="Output format. Default is TrackJSON ('json').",
     )
     general.add_argument(
         "-m",

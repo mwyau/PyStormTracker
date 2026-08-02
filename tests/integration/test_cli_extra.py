@@ -8,6 +8,7 @@ import pytest
 from utils import fetch_era5_msl
 
 from pystormtracker import compare, convert, sample, track
+from pystormtracker.io.geojson import read_geojson
 from pystormtracker.io.json import read_json
 from pystormtracker.models.tracks import Tracks
 
@@ -32,7 +33,7 @@ def sample_tracks_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Generate a small track file for integration testing."""
     msl_data = fetch_era5_msl(resolution="2.5x2.5")
     out_dir = tmp_path_factory.mktemp("cli_extra")
-    out_file = out_dir / "tracks.json"
+    out_file = out_dir / "tracks.trackjson"
 
     args = [
         "track",
@@ -113,8 +114,8 @@ def test_cli_compare(sample_tracks_file: Path, tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_cli_convert(sample_tracks_file: Path, tmp_path: Path) -> None:
-    """Test 'stormtracker convert' command."""
-    out_file = tmp_path / "explorer.html"
+    """Test TrackJSON-to-GeoJSON conversion through the CLI."""
+    out_file = tmp_path / "tracks.geojson"
 
     args = [
         "convert",
@@ -122,12 +123,8 @@ def test_cli_convert(sample_tracks_file: Path, tmp_path: Path) -> None:
         str(sample_tracks_file),
         "-o",
         str(out_file),
-        "-f",
-        "json",
-        "-F",
-        "html",
     ]
     run_command_direct(args)
 
     assert out_file.exists()
-    assert "window.TRACKS_DATA" in out_file.read_text(encoding="utf-8")
+    assert len(read_geojson(out_file)) > 0

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/mwyau/PyStormTracker/main/schema/trackjson.schema.json",
+  "title": "TrackJSON v1.0",
+  "description": "PyStormTracker TrackJSON v1.0 trajectory interchange format.",
+  "type": "object",
+  "required": ["format", "metadata", "points", "tracks"],
+  "properties": {
+    "format": {
+      "const": "TrackJSON/1.0"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["primary_var"],
+      "properties": {
+        "primary_var": {
+          "type": "string",
+          "description": "Variable used to track features."
+        },
+        "mode": {
+          "enum": ["min", "max"],
+          "description": "Extremum direction for the primary variable."
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "bounds": {
+          "type": "object",
+          "required": [
+            "min_time",
+            "max_time",
+            "min_lat",
+            "max_lat",
+            "min_lon",
+            "max_lon"
+          ],
+          "properties": {
+            "min_time": { "type": ["number", "null"] },
+            "max_time": { "type": ["number", "null"] },
+            "min_lat": { "type": ["number", "null"] },
+            "max_lat": { "type": ["number", "null"] },
+            "min_lon": { "type": ["number", "null"] },
+            "max_lon": { "type": ["number", "null"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "points": {
+      "type": "object",
+      "required": ["lat", "lon", "time", "variables"],
+      "properties": {
+        "lat": {
+          "type": "array",
+          "items": { "type": ["number", "null"] },
+          "description": "Latitude in degrees; null separates tracks."
+        },
+        "lon": {
+          "type": "array",
+          "items": { "type": ["number", "null"] },
+          "description": "Longitude in degrees; null separates tracks."
+        },
+        "time": {
+          "type": "array",
+          "items": { "type": ["number", "null"] },
+          "description": "Unix milliseconds; null separates tracks."
+        },
+        "variables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": ["number", "null"] }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["track_id", "start", "end"],
+        "properties": {
+          "track_id": { "type": "integer" },
+          "start": { "type": "integer", "minimum": 0 },
+          "end": { "type": "integer", "minimum": 0 },
+          "start_lat": { "type": ["number", "null"] },
+          "start_lon": { "type": ["number", "null"] },
+          "start_time": { "type": ["number", "null"] },
+          "end_lat": { "type": ["number", "null"] },
+          "end_lon": { "type": ["number", "null"] },
+          "end_time": { "type": ["number", "null"] },
+          "peak_lat": { "type": ["number", "null"] },
+          "peak_lon": { "type": ["number", "null"] },
+          "peak_time": { "type": ["number", "null"] },
+          "peak_value": { "type": ["number", "null"] },
+          "duration_hours": { "type": ["number", "null"] }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}
