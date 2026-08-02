@@ -28,6 +28,7 @@ jobs:
     outputs:
       unit_matrix: ${{ steps.select.outputs.unit_matrix }}
       integration_matrix: ${{ steps.select.outputs.integration_matrix }}
+      uv_version: ${{ env.UV_VERSION }}
     steps:
       - name: Select representative or full matrix
         id: select
@@ -310,12 +311,12 @@ jobs:
     name: Build and test Docker images
     if: github.event_name != 'workflow_dispatch'
     needs:
-      [code-quality, unit-tests, integration-tests, package-tests, docs]
+      [select-test-matrix, code-quality, unit-tests, integration-tests, package-tests, docs]
     uses: ./.github/workflows/docker-build.yml
     with:
       push_images: ${{ github.event_name != 'pull_request' }}
       ref: ${{ github.sha }}
-      uv_version: '0.12.1'
+      uv_version: ${{ needs.select-test-matrix.outputs.uv_version }}
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}
 
@@ -378,7 +379,6 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       source_tag: ${{ needs.docker-build.outputs.source_tag }}
-      source_sha: ${{ needs.docker-build.outputs.source_sha }}
       target: edge
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
@@ -396,7 +396,6 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       source_tag: ${{ needs.docker-build.outputs.source_tag }}
-      source_sha: ${{ needs.docker-build.outputs.source_sha }}
       target: release
       version: ${{ needs.release_tag.outputs.release_tag }}
     secrets:
