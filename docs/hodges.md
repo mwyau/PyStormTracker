@@ -64,6 +64,27 @@ The $0.5$ factor applied to the directional weight $w_1$ normalizes the term (ra
 **Reasoning**: 
 Original TRACK (`track_fail.c`) includes a mechanism to split trajectories if an exchange causes a point to exceed the maximum displacement ($d_{max}$). This implementation checks displacement after each swap and breaks links that exceed the configured constraint.
 
+### 2.4 Trajectory Intercomparison
+
+**Implementation:** `pystormtracker.metrics.compare.compare_tracks` compares a
+reference and candidate track set using temporal overlap and whole-overlap mean
+geodesic separation. Each reference track selects its closest eligible
+candidate independently.
+
+**Reference implementation:** `utils/ENSEMBLE/toverlap.c` determines the common time
+interval; `utils/ENSEMBLE/trdist.c` calculates mean or minimum geodesic
+separation; and `utils/ENSEMBLE/compare_ensemble2.c` applies the overlap ratio
+$2n_{overlap}/(n_1+n_2)$ and reports separation and intensity-difference
+distributions. The defaults used here are a $2^\circ$ mean-separation threshold
+and 0.6 overlap fraction.
+
+**Selection behavior:** The reference utility evaluates each reference track
+independently, so one candidate can be selected for multiple reference tracks.
+PyStormTracker follows that behavior: it finds the contiguous overlap interval,
+requires its two sections to contain the same number of points, and selects the
+first closest eligible candidate in source-file order. It therefore expects
+time-ordered tracks on a common cadence.
+
 ---
 
 ## 3. Adaptive Constraints

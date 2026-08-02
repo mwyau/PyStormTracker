@@ -124,7 +124,7 @@ This page lists the principal Python modules and public classes used by PyStormT
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.compare
-   :members: match_tracks
+   :members: compare_tracks, TrackComparisonConfig, TrackComparison, TrackMatch
 ```
 
 ### Spherical weighting kernels

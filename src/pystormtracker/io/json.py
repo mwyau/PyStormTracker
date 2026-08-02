@@ -1,10 +1,28 @@
 import json
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
 from ..models.tracks import Tracks
+
+
+def infer_intensity_mode(
+    track_type: str = "unknown",
+    var_name: str | None = None,
+    mode: str | None = None,
+) -> Literal["min", "max"]:
+    """Infer whether intensity mode is 'min' (MSL pressure) or 'max' (default)."""
+    if mode == "min":
+        return "min"
+    if mode == "max":
+        return "max"
+    if var_name is not None and var_name.lower() in ("msl", "slp", "pnm", "pres"):
+        return "min"
+    if track_type.lower() == "msl":
+        return "min"
+    return "max"
 
 
 def infer_track_type(tracks: Tracks) -> str:
@@ -117,10 +135,8 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
         t_lons = tracks.lons[orig_s:orig_e]
         t_vals = raw_strength[orig_s:orig_e]
 
-        if track_type == "msl":
-            t_strength = float(np.min(t_vals))
-        else:
-            t_strength = float(np.max(t_vals))
+        mode = infer_intensity_mode(track_type=track_type, var_name=var_key)
+        t_strength = float(np.min(t_vals)) if mode == "min" else float(np.max(t_vals))
 
         min_strength = min(min_strength, float(np.min(t_vals)))
         max_strength = max(max_strength, float(np.max(t_vals)))
@@ -175,7 +191,7 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
 def read_json(infile: str | Path) -> Tracks:
     """
     Reads a 'json' format file back into a Tracks object.
-    Note: If MSL was scaled to hPa during write, it remains hPa here.
+    MSL intensity values stored in hPa are normalized to Pa.
     """
     with open(infile) as f:
         data = json.load(f)
@@ -210,6 +226,13 @@ def read_json(infile: str | Path) -> Tracks:
     var_key = (
         "msl" if track_type == "msl" else ("vo" if track_type == "vo" else "intensity")
     )
+
+    if (
+        track_type == "msl"
+        and len(strength) > 0
+        and np.nanmax(np.abs(strength)) < 2000.0
+    ):
+        strength = strength * 100.0
 
     vars_dict = {var_key: strength} if len(strength) > 0 else {}
 

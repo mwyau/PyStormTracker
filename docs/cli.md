@@ -33,7 +33,7 @@ stormtracker track -i input.nc -v vo -o tracks.json -m max -a hodges -f json
 | :--- | :--- |
 | `-a`, `--algorithm` | `simple` or `hodges`; default `simple`. |
 | `-f`, `--format` | `imilast`, `hodges` (TRACK tdump), or `json`; default `imilast`. |
-| `-m`, `--mode` | `min` or `max`; default `min`. |
+| `-m`, `--mode` | `auto`, `min`, or `max`; default `auto` (infers `min` for MSL/pressure fields, `max` for vorticity and other standard fields). |
 | `--map-proj` | `global`, `nh_stereo`, `sh_stereo`, or `healpix`. Selecting `healpix` uses `HealpixTracker` regardless of `--algorithm`. |
 | `--resolution` | Polar stereographic grid spacing in kilometres; default `100`. |
 | `--extent` | Polar stereographic bounds as `xmin,xmax,ymin,ymax` in kilometres. |
@@ -105,27 +105,32 @@ For radius methods, candidate grid cells are selected by a latitude-longitude bo
 
 ## `stormtracker compare`
 
-Matches comparison tracks to reference tracks using temporal overlap and mean great-circle separation. Input files are selected by extension: `.json` for JSON and `.txt` or `.dat` for IMILAST.
+Compares candidate tracks with reference tracks using temporal overlap and
+whole-overlap mean great-circle separation. Each reference track selects its
+closest eligible candidate independently, so a candidate may be selected for
+multiple references. Input files are selected by extension: `.json` for JSON
+and `.txt` or `.dat` for IMILAST.
 
 ```bash
-stormtracker compare \
-  --ref era5.json \
-  --comp model.json \
-  --max-dist 200 \
-  --min-overlap 0.1 \
-  --json
+stormtracker compare -r era5.json -c model.json -s 2 -l 0.6 -v vo -o comparison.json -j
 ```
 
 | Option | Description |
 | :--- | :--- |
-| `--ref` | Reference track file. |
-| `--comp` | Comparison track file. |
-| `--max-dist` | Maximum mean geodetic separation in kilometres; default `440`. |
-| `--min-overlap` | Minimum overlap ratio, defined as `2 * overlap / (n_ref + n_comp)`; default `0.1`. |
-| `--json` | Print a JSON mapping from comparison track identifier to reference track identifier. |
-| `-o`, `--output` | Write the matched subset of comparison tracks as JSON. |
+| `-r`, `--ref` | Reference track file. |
+| `-c`, `--cand` | Candidate track file. |
+| `-s`, `--max-sep` | Maximum mean geodetic separation in degrees; default `2`. |
+| `-l`, `--min-overlap` | Minimum overlap ratio, defined as `2 * overlap / (n_ref + n_candidate)`; default `0.6`. |
+| `-v`, `--var` | Optional common variable for intensity-difference statistics. |
+| `-m`, `--mode` | Extremum mode (`auto`, `min`, `max`); default `auto`. |
+| `-o`, `--out` | Write the complete comparison report as JSON. |
+| `-M`, `--matched-out` | Write candidates selected by at least one reference as JSON. |
+| `-j`, `--json` | Print the full report JSON to standard output. |
 
-Each comparison track is assigned to the admissible reference track with the smallest mean separation over concurrent time steps. This does not enforce one-to-one matching between the two track sets.
+The report includes assigned and unassigned IDs, overlap, mean/percentile
+separation, lifecycle and path metrics, and optional intensity bias, MAE, RMSE,
+and correlation. The Hodges documentation records the source comparison method
+and its common-cadence requirement.
 
 ## `stormtracker convert`
 
@@ -145,8 +150,8 @@ stormtracker convert -i tracks.json -o explorer.html -f json -F html --split
 | Option | Description |
 | :--- | :--- |
 | `-i`, `--input` | Input path. |
-| `-o`, `--output` | Output path. |
+| `-o`, `--out` | Output path. |
 | `-f`, `--in-format` | `imilast` or `json`. |
 | `-F`, `--out-format` | `imilast`, `hodges`, `json`, or `html`. |
-| `--type` | Override inferred track type with `msl` or `vo`. |
+| `-v`, `--var` | Override inferred track variable / type (e.g., `msl` or `vo`). |
 | `--split` | For HTML output, place track data in a separate `.tracks.js` file. |

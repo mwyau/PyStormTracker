@@ -9,6 +9,7 @@ from utils import fetch_era5_msl, fetch_era5_vo850
 
 from pystormtracker.hodges.tracker import HodgesTracker
 from pystormtracker.io.data_loader import DataLoader
+from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.preprocessing.regrid import SpectralRegridder
 from pystormtracker.preprocessing.spectral import apply_sht_filter
 
@@ -25,6 +26,12 @@ def n320_vo_path() -> str:
     """Download N320 relative vorticity data once per module."""
     pytest.importorskip("cfgrib")
     return fetch_era5_vo850(resolution="n320", format="grib")
+
+
+@pytest.fixture(scope="module")
+def regular_vo_path() -> str:
+    """Download 0.25-degree relative-vorticity data once per module."""
+    return fetch_era5_vo850(resolution="0.25x0.25")
 
 
 @pytest.mark.integration
@@ -131,3 +138,134 @@ def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) 
 
     assert len(tracks) > 0
     assert any(len(t) >= 3 for t in tracks)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param(60, id="short"),
+        pytest.param(None, id="full", marks=pytest.mark.slow),
+    ],
+)
+def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
+    n320_vo_path: str, regular_vo_path: str, steps: int | None
+) -> None:
+    """Compare Hodges trajectories on paired ERA5 vorticity fields."""
+    pytest.importorskip("cfgrib")
+    n320 = xr.open_dataset(n320_vo_path, engine="cfgrib").vo
+    regular = xr.open_dataset(regular_vo_path).vo.squeeze(drop=True)
+    n320_time_dim = DataLoader(n320).get_coords()[0]
+    regular_time_dim = DataLoader(regular).get_coords()[0]
+    common_times = np.intersect1d(
+        n320[n320_time_dim].values, regular[regular_time_dim].values
+    )
+    assert common_times.size > 0
+    selected_times = common_times[:steps] if steps is not None else common_times
+    assert selected_times.size == (steps if steps is not None else common_times.size)
+
+    n320_common = n320.sel({n320_time_dim: selected_times})
+    regular_common = regular.sel({regular_time_dim: selected_times})
+    n320_filtered = apply_sht_filter(
+        n320_common,
+        lmin=5,
+        lmax=42,
+        out_geometry="CC",
+        out_ntheta=181,
+        out_nphi=360,
+    )
+    regular_filtered = apply_sht_filter(
+        regular_common,
+        lmin=5,
+        lmax=42,
+        out_geometry="CC",
+        out_ntheta=181,
+        out_nphi=360,
+    )
+    np.testing.assert_array_equal(
+        n320_filtered[n320_time_dim].values,
+        regular_filtered[regular_time_dim].values,
+    )
+
+    tracker = HodgesTracker(min_lifetime=3)
+    n320_tracks = tracker.track(
+        n320_filtered,
+        varname="vo_spectral_filtered",
+        mode="max",
+        threshold=1.0e-4,
+        filter=False,
+    )
+    regular_tracks = tracker.track(
+        regular_filtered,
+        varname="vo_spectral_filtered",
+        mode="max",
+        threshold=1.0e-4,
+        filter=False,
+    )
+    assert len(n320_tracks) > 0
+    assert len(regular_tracks) > 0
+
+    comparison = compare_tracks(
+        regular_tracks,
+        n320_tracks,
+        config=TrackComparisonConfig(var="vo_spectral_filtered"),
+    )
+    mean_separations_km = np.asarray(
+        [match.mean_separation_km for match in comparison.matches], dtype=np.float64
+    )
+    mean_eligible_candidates = float(
+        np.mean([match.eligible_candidate_count for match in comparison.matches])
+    )
+    duration_differences_hours = np.asarray(
+        [
+            match.candidate.duration_hours - match.reference.duration_hours
+            for match in comparison.matches
+        ],
+        dtype=np.float64,
+    )
+    peak_intensity_differences = np.asarray(
+        [
+            match.candidate.peak_intensity - match.reference.peak_intensity
+            for match in comparison.matches
+            if match.candidate.peak_intensity is not None
+            and match.reference.peak_intensity is not None
+        ],
+        dtype=np.float64,
+    )
+    print(
+        "Hodges 0.25-degree reference vs N320 candidate: "
+        f"{comparison.match_count}/{len(regular_tracks)} reference "
+        f"({comparison.reference_coverage:.3f}), "
+        f"{len(n320_tracks) - len(comparison.unmatched_candidate_ids)}/"
+        f"{len(n320_tracks)} candidate selected "
+        f"({comparison.candidate_coverage:.3f}), "
+        f"mean eligible candidates={mean_eligible_candidates:.3f}; "
+        f"mean separation={np.mean(mean_separations_km):.3f} km, "
+        f"p95={np.percentile(mean_separations_km, 95):.3f} km; "
+        f"median duration difference={np.median(duration_differences_hours):.3f} h, "
+        "median peak-vorticity difference="
+        f"{np.median(peak_intensity_differences):.3e} s^-1"
+    )
+    assert comparison.reference_coverage >= 0.9
+    for match in comparison.matches:
+        assert match.overlap_fraction >= comparison.config.min_overlap_fraction
+        assert match.mean_separation_deg <= comparison.config.max_mean_separation_deg
+        assert np.isfinite(
+            [
+                match.reference.duration_hours,
+                match.reference.path_length_km,
+                match.reference.mean_speed_kmh,
+                match.candidate.duration_hours,
+                match.candidate.path_length_km,
+                match.candidate.mean_speed_kmh,
+                match.mean_separation_km,
+            ]
+        ).all()
+        assert match.intensity_difference is not None
+        assert np.isfinite(
+            [
+                match.intensity_difference.bias,
+                match.intensity_difference.mae,
+                match.intensity_difference.rmse,
+            ]
+        ).all()

@@ -92,7 +92,9 @@ def setup_parser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("-i", "--input", required=True, help="Input file path")
-    parser.add_argument("-o", "--output", required=True, help="Output file path")
+    parser.add_argument(
+        "-o", "--out", "--output", dest="output", required=True, help="Output file path"
+    )
     parser.add_argument(
         "-f",
         "--in-format",
@@ -108,7 +110,7 @@ def setup_parser(
         help="Output file format",
     )
     parser.add_argument(
-        "--type", choices=["msl", "vo"], help="Override track type (msl or vo)"
+        "-v", "--var", help="Override track variable / type (e.g., msl or vo)"
     )
     parser.add_argument(
         "--split",
@@ -136,9 +138,9 @@ def main(args: argparse.Namespace) -> None:
     elif args.in_format == "json":
         tracks = read_json(args.input)
 
-    # Track Type Detection / Override
-    if args.type:
-        tracks.track_type = args.type
+    # Track Variable / Type Detection / Override
+    if args.var:
+        tracks.track_type = args.var.lower()
     else:
         # Detect if unknown
         tracks.track_type = infer_track_type(tracks)

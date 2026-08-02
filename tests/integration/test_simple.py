@@ -14,7 +14,7 @@ from utils import (
 )
 
 from pystormtracker.io.imilast import read_imilast
-from pystormtracker.metrics.compare import match_tracks
+from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.models.tracks import Tracks
 
 N_WORKERS = 2
@@ -73,7 +73,7 @@ def print_head(filename: Path | str, n: int = 15) -> None:
     print("-------------------------------------------------------\n")
 
 
-def compare_tracks(
+def compare_track_files(
     file1: Path | str,
     file2: Path | str,
 ) -> None:
@@ -213,7 +213,7 @@ def test_dask_vs_serial(
         args.extend(["-n", str(steps)])
 
     run_command_direct(args)
-    compare_tracks(serial_path, out_file)
+    compare_track_files(serial_path, out_file)
 
 
 @pytest.mark.integration
@@ -258,7 +258,7 @@ def test_mpi_vs_serial(
         args.extend(["-n", str(steps)])
 
     run_command_direct(args, use_mpi=True)
-    compare_tracks(serial_path, mpi_out)
+    compare_track_files(serial_path, mpi_out)
 
 
 @pytest.mark.integration
@@ -299,7 +299,7 @@ def test_grib_vs_netcdf(
         args.extend(["-n", str(steps)])
 
     run_command_direct(args)
-    compare_tracks(serial_path, out_file)
+    compare_track_files(serial_path, out_file)
 
 
 @pytest.mark.integration
@@ -342,12 +342,14 @@ def test_legacy_regression(
     assert tracks_comp is not None
     tracks_ref = read_imilast(ref_file)
 
-    matches = match_tracks(
+    comparison = compare_tracks(
         tracks_ref,
         tracks_comp,
-        max_dist_km=max_dist,
-        min_overlap_fraction=min_overlap,
+        config=TrackComparisonConfig(
+            max_mean_separation_deg=max_dist / 111.195,
+            min_overlap_fraction=min_overlap,
+        ),
     )
 
-    match_rate = len(matches) / len(tracks_ref)
+    match_rate = comparison.reference_coverage
     assert match_rate >= min_match_rate

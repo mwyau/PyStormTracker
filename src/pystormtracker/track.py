@@ -308,7 +308,14 @@ def setup_parser(
     required.add_argument(
         "-v", "--var", required=True, help="Variable to track (e.g., 'vo', 'msl')."
     )
-    required.add_argument("-o", "--output", required=True, help="Output track file.")
+    required.add_argument(
+        "-o",
+        "--out",
+        "--output",
+        dest="output",
+        required=True,
+        help="Output track file.",
+    )
 
     # 2. General Tracking Options
     general = parser.add_argument_group("General Tracking Options")
@@ -329,9 +336,12 @@ def setup_parser(
     general.add_argument(
         "-m",
         "--mode",
-        choices=["min", "max"],
-        default="min",
-        help="Detection mode: 'min' for cyclones in SLP, 'max' for vorticity.",
+        choices=["auto", "min", "max"],
+        default="auto",
+        help=(
+            "Detection mode: 'auto' (inferred from variable), "
+            "'min' for SLP, 'max' for vorticity."
+        ),
     )
     general.add_argument(
         "--map-proj",
@@ -600,13 +610,17 @@ def run_track_command(args: Namespace) -> Tracks:
         except json.JSONDecodeError as exc:
             raise ValueError(f"invalid adaptive-parameters JSON: {exc.msg}") from exc
 
+    from .io.json import infer_intensity_mode
+
+    effective_mode = infer_intensity_mode(var_name=args.var, mode=args.mode)
+
     return run_tracker(
         infile=args.input,
         varname=args.var,
         outfile=args.output,
         start_time=start_time,
         end_time=end_time,
-        mode=args.mode,
+        mode=effective_mode,
         map_proj=args.map_proj,
         resolution=args.resolution,
         extent=args.extent,

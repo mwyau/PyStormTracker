@@ -80,21 +80,33 @@ def test_cli_sample(sample_tracks_file: Path, tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_cli_compare(sample_tracks_file: Path, tmp_path: Path) -> None:
-    """Test 'stormtracker compare' command."""
+    """Test 'stormtracker compare' command with short flags."""
     out_file = tmp_path / "matched.json"
+    report_file = tmp_path / "report.json"
 
     args = [
         "compare",
-        "--ref",
+        "-r",
         str(sample_tracks_file),
-        "--comp",
+        "-c",
         str(sample_tracks_file),
+        "-s",
+        "2.0",
+        "-l",
+        "0.6",
+        "-v",
+        "msl",
+        "-m",
+        "auto",
         "-o",
+        str(report_file),
+        "-M",
         str(out_file),
     ]
     run_command_direct(args)
 
     assert out_file.exists()
+    assert report_file.exists()
     tracks = read_json(out_file)
     assert len(tracks) > 0
 
