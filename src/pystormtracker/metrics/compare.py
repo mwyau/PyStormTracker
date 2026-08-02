@@ -204,9 +204,7 @@ def _great_circle_distances_km(
     )
 
 
-def _collect_tracks(
-    tracks: Tracks, var: str | None
-) -> tuple[_TrackData, ...]:
+def _collect_tracks(tracks: Tracks, var: str | None) -> tuple[_TrackData, ...]:
     """Extract time-ordered track arrays in their source-file order."""
     if var is not None and var not in tracks.vars:
         raise ValueError(f"intensity variable '{var}' is not present")
@@ -465,4 +463,3 @@ def compare_tracks(
             if index not in matched_candidate_indices
         ),
     )
-

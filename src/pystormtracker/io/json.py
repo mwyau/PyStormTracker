@@ -55,7 +55,6 @@ def infer_track_type(tracks: Tracks) -> str:
     return "unknown"
 
 
-
 def write_json(tracks: Tracks, outfile: str | Path) -> None:
     """
     Writes a Tracks object to the 'json' Hybrid Index format.

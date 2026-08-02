@@ -275,9 +275,7 @@ def test_compare_tracks_rejects_missing_intensity_variable(
     add_track(candidate, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
 
     with pytest.raises(ValueError, match="intensity variable 'vo'"):
-        compare_tracks(
-            reference, candidate, config=TrackComparisonConfig(var="vo")
-        )
+        compare_tracks(reference, candidate, config=TrackComparisonConfig(var="vo"))
 
 
 @pytest.mark.parametrize(
