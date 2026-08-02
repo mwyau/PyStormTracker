@@ -76,6 +76,31 @@ def test_trackjson_round_trips_all_variables(tmp_path: Path) -> None:
         np.testing.assert_allclose(loaded.vars[name], values)
 
 
+def test_empty_trackjson_preserves_primary_variable_and_variables(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "empty.trackjson"
+    original = Tracks(
+        track_ids=np.empty(0, dtype=np.int64),
+        times=np.empty(0, dtype="datetime64[s]"),
+        lats=np.empty(0, dtype=np.float64),
+        lons=np.empty(0, dtype=np.float64),
+        vars_dict={
+            "msl": np.empty(0, dtype=np.float64),
+            "vo": np.empty(0, dtype=np.float64),
+        },
+        track_type="msl",
+    )
+    write_json(original, output)
+
+    loaded = read_json(output)
+
+    assert len(loaded) == 0
+    assert loaded.track_type == "msl"
+    assert set(loaded.vars) == {"msl", "vo"}
+    assert all(values.size == 0 for values in loaded.vars.values())
+
+
 def test_geojson_round_trips_all_variables(tmp_path: Path) -> None:
     output = tmp_path / "tracks.geojson"
     original = _tracks()
@@ -84,6 +109,8 @@ def test_geojson_round_trips_all_variables(tmp_path: Path) -> None:
     loaded = read_geojson(output)
 
     assert loaded.track_type == "msl"
+    document = json.loads(output.read_text(encoding="utf-8"))
+    assert document["features"][1]["geometry"]["type"] == "Point"
     np.testing.assert_array_equal(loaded.track_ids, original.track_ids)
     for name, values in original.vars.items():
         np.testing.assert_allclose(loaded.vars[name], values)
@@ -117,3 +144,23 @@ def test_format_facade_infers_and_routes(tmp_path: Path) -> None:
     assert infer_format("tracks.dat") == "imilast"
     assert infer_format("tracks.tdump") == "hodges"
     assert load_tracks(output).track_type == "msl"
+
+
+def test_save_tracks_uses_extension_when_overwriting_existing_file(
+    tmp_path: Path,
+) -> None:
+    geojson_output = tmp_path / "tracks.geojson"
+    json_output = tmp_path / "tracks.json"
+    save_tracks(_tracks(), geojson_output, format="json")
+    save_tracks(_tracks(), json_output, format="geojson")
+
+    save_tracks(_tracks(), geojson_output)
+    save_tracks(_tracks(), json_output)
+
+    assert (
+        json.loads(geojson_output.read_text(encoding="utf-8"))["type"]
+        == "FeatureCollection"
+    )
+    assert (
+        json.loads(json_output.read_text(encoding="utf-8"))["format"] == "TrackJSON/1.0"
+    )

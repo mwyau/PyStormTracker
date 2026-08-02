@@ -106,9 +106,10 @@ def _resolve_format(
     """Resolve an explicit format or a recognized filename extension."""
     if format is not None and format.lower() != "auto":
         return format.lower()
-    detected = _detect_format(path)
-    if detected is not None:
-        return detected
+    if not for_output:
+        detected = _detect_format(path)
+        if detected is not None:
+            return detected
     inferred = _format_from_extension(path)
     if inferred is not None:
         return inferred

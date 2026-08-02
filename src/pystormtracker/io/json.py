@@ -211,8 +211,6 @@ def read_json(infile: str | Path) -> Tracks:
         raise ValueError(
             "TrackJSON requires object 'points' and array 'tracks' fields."
         )
-    if not raw_tracks:
-        return Tracks()
 
     lat_values = raw_points.get("lat")
     if not isinstance(lat_values, list):
@@ -239,6 +237,16 @@ def read_json(infile: str | Path) -> Tracks:
         if not isinstance(name, str):
             raise ValueError("TrackJSON variable names must be strings.")
         variable_arrays[name] = _numeric_array(values, f"variables.{name}", length)
+
+    if not raw_tracks:
+        return Tracks(
+            track_ids=np.empty(0, dtype=np.int64),
+            times=np.empty(0, dtype="datetime64[s]"),
+            lats=np.empty(0, dtype=np.float64),
+            lons=np.empty(0, dtype=np.float64),
+            vars_dict=variable_arrays,
+            track_type=primary_var,
+        )
 
     output_ids: list[int] = []
     output_lats: list[float] = []

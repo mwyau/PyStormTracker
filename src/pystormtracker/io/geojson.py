@@ -17,11 +17,11 @@ def _nullable_values(values: NDArray[np.float64]) -> list[float | None]:
 
 
 def write_geojson(tracks: Tracks, outfile: str | Path) -> None:
-    """Write one GeoJSON LineString feature per track.
+    """Write one GeoJSON feature per track.
 
     Timestamps and trajectory variables are stored as aligned arrays in feature
-    properties.  They are GeoJSON foreign members and preserve information not
-    represented by a LineString geometry alone.
+    properties. They are GeoJSON foreign members and preserve information not
+    represented by a LineString or Point geometry alone.
     """
     features: list[dict[str, object]] = []
     for track in tracks:
@@ -40,19 +40,20 @@ def write_geojson(tracks: Tracks, outfile: str | Path) -> None:
                 for name, values in tracks.vars.items()
             },
         }
+        coordinates = [
+            [float(lon), float(lat)]
+            for lon, lat in zip(tracks.lons[indices], tracks.lats[indices], strict=True)
+        ]
+        geometry: dict[str, object]
+        if len(coordinates) == 1:
+            geometry = {"type": "Point", "coordinates": coordinates[0]}
+        else:
+            geometry = {"type": "LineString", "coordinates": coordinates}
         features.append(
             {
                 "type": "Feature",
                 "id": int(track.track_id),
-                "geometry": {
-                    "type": "LineString",
-                    "coordinates": [
-                        [float(lon), float(lat)]
-                        for lon, lat in zip(
-                            tracks.lons[indices], tracks.lats[indices], strict=True
-                        )
-                    ],
-                },
+                "geometry": geometry,
                 "properties": properties,
             }
         )
@@ -81,11 +82,26 @@ def _milliseconds(value: object) -> int:
 
 def _feature_coordinates(feature: dict[str, object]) -> list[tuple[float, float]]:
     geometry = feature.get("geometry")
-    if not isinstance(geometry, dict) or geometry.get("type") != "LineString":
-        raise ValueError("GeoJSON track features must have LineString geometries.")
-    coordinates = geometry.get("coordinates")
+    if not isinstance(geometry, dict):
+        raise ValueError(
+            "GeoJSON track features must have Point or LineString geometries."
+        )
+    geometry_type = geometry.get("type")
+    coordinates_value = geometry.get("coordinates")
+    if geometry_type == "Point":
+        if not isinstance(coordinates_value, list):
+            raise ValueError("GeoJSON Point coordinates must be an array.")
+        coordinates = [coordinates_value]
+    elif geometry_type == "LineString":
+        if not isinstance(coordinates_value, list):
+            raise ValueError("GeoJSON LineString coordinates must be an array.")
+        coordinates = coordinates_value
+    else:
+        raise ValueError(
+            "GeoJSON track features must have Point or LineString geometries."
+        )
     if not isinstance(coordinates, list) or not coordinates:
-        raise ValueError("GeoJSON LineString coordinates must be a nonempty array.")
+        raise ValueError("GeoJSON track coordinates must be a nonempty array.")
     parsed_coordinates: list[tuple[float, float]] = []
     for position in coordinates:
         if (
@@ -104,7 +120,7 @@ def _feature_coordinates(feature: dict[str, object]) -> list[tuple[float, float]
 
 
 def read_geojson(infile: str | Path) -> Tracks:
-    """Read a GeoJSON FeatureCollection containing LineString track features."""
+    """Read a GeoJSON FeatureCollection with Point or LineString tracks."""
     with open(infile, encoding="utf-8") as source:
         document: object = json.load(source)
     if not isinstance(document, dict) or document.get("type") != "FeatureCollection":

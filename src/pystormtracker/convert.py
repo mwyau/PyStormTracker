@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 import argparse
+from typing import Protocol
 
 from .io.format import infer_format, load_tracks, save_tracks
 from .io.json import infer_track_type
+
+
+class ConvertArguments(Protocol):
+    """Arguments required by the convert command implementation."""
+
+    input: str
+    output: str
+    in_format: str | None
+    out_format: str | None
+    var: str | None
 
 
 def setup_parser(
@@ -43,7 +54,7 @@ def setup_parser(
     parser.set_defaults(func=main)
 
 
-def main(args: argparse.Namespace) -> None:
+def main(args: ConvertArguments) -> None:
     """Main entry point for the convert command."""
     in_fmt = args.in_format or infer_format(args.input)
     out_fmt = args.out_format or infer_format(args.output)
@@ -51,13 +62,13 @@ def main(args: argparse.Namespace) -> None:
     print(f"Reading {args.input} (format: {in_fmt})...")
     tracks = load_tracks(args.input, format=args.in_format)
 
-    # Track Variable / Type Override
-    if args.var:
-        tracks.track_type = args.var.lower()
+    requested_var = args.var.lower() if args.var is not None else None
+    if requested_var is not None:
+        tracks.track_type = requested_var
     else:
         tracks.track_type = infer_track_type(tracks)
 
-    # Normalize a known primary variable name after importing text formats.
+    # Normalize the selected primary variable name after importing text formats.
     if tracks.track_type != "unknown":
         matching_names = [
             name for name in tracks.vars if name.lower() == tracks.track_type
@@ -66,6 +77,10 @@ def main(args: argparse.Namespace) -> None:
             tracks.vars[tracks.track_type] = tracks.vars.pop(matching_names[0])
         elif "Intensity1" in tracks.vars:
             tracks.vars[tracks.track_type] = tracks.vars.pop("Intensity1")
+        elif requested_var is not None and len(tracks.vars) == 1:
+            source_name = next(iter(tracks.vars))
+            if source_name != requested_var:
+                tracks.vars[requested_var] = tracks.vars.pop(source_name)
 
     print(f"Loaded {len(tracks)} tracks. Detected type: {tracks.track_type}")
     print(f"Writing to {args.output} (format: {out_fmt})...")
