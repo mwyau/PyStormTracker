@@ -105,27 +105,38 @@ For radius methods, candidate grid cells are selected by a latitude-longitude bo
 
 ## `stormtracker compare`
 
-Matches comparison tracks to reference tracks using temporal overlap and mean great-circle separation. Input files are selected by extension: `.json` for JSON and `.txt` or `.dat` for IMILAST.
+Compares candidate tracks with reference tracks using temporal overlap and
+whole-overlap mean great-circle separation. Each reference track selects its
+closest eligible candidate independently, so a candidate may be selected for
+multiple references. Input files are selected by extension: `.json` for JSON
+and `.txt` or `.dat` for IMILAST.
 
 ```bash
 stormtracker compare \
-  --ref era5.json \
-  --comp model.json \
-  --max-dist 200 \
-  --min-overlap 0.1 \
+  --reference era5.json \
+  --candidate model.json \
+  --max-mean-separation 2 \
+  --min-overlap 0.6 \
+  --intensity-var vo \
+  --report comparison.json \
   --json
 ```
 
 | Option | Description |
 | :--- | :--- |
-| `--ref` | Reference track file. |
-| `--comp` | Comparison track file. |
-| `--max-dist` | Maximum mean geodetic separation in kilometres; default `440`. |
-| `--min-overlap` | Minimum overlap ratio, defined as `2 * overlap / (n_ref + n_comp)`; default `0.1`. |
-| `--json` | Print a JSON mapping from comparison track identifier to reference track identifier. |
-| `-o`, `--output` | Write the matched subset of comparison tracks as JSON. |
+| `--reference` | Reference track file. |
+| `--candidate` | Candidate track file. |
+| `--max-mean-separation` | Maximum mean geodetic separation in degrees; default `2`. |
+| `--min-overlap` | Minimum overlap ratio, defined as `2 * overlap / (n_ref + n_candidate)`; default `0.6`. |
+| `--intensity-var` | Optional common variable for intensity-difference statistics. |
+| `--report` | Write the complete comparison report as JSON. |
+| `--matched-candidate-output` | Write candidates selected by at least one reference as JSON. |
+| `--json` | Print the full report JSON to standard output. |
 
-Each comparison track is assigned to the admissible reference track with the smallest mean separation over concurrent time steps. This does not enforce one-to-one matching between the two track sets.
+The report includes assigned and unassigned IDs, overlap, mean/percentile
+separation, lifecycle and path metrics, and optional intensity bias, MAE, RMSE,
+and correlation. The Hodges documentation records the source comparison method
+and its common-cadence requirement.
 
 ## `stormtracker convert`
 

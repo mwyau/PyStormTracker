@@ -8,153 +8,219 @@ import numpy as np
 import pytest
 
 from pystormtracker.compare import _load_tracks, main
-from pystormtracker.metrics.compare import match_tracks
+from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.models.center import Center
 from pystormtracker.models.tracks import Tracks
 
 
-def create_dummy_track(
-    tracks: Tracks, lats: list[float], lons: list[float], times: list[np.datetime64]
+def add_track(
+    tracks: Tracks,
+    lats: list[float],
+    lons: list[float],
+    times: list[np.datetime64],
+    intensities: list[float] | None = None,
 ) -> None:
-    centers = []
-    for lat, lon, time in zip(lats, lons, times, strict=False):
-        centers.append(Center(time=time, lat=lat, lon=lon, vars={}))
+    """Append a small trajectory with an optional vorticity variable."""
+    centers = [
+        Center(
+            time=time,
+            lat=lat,
+            lon=lon,
+            vars={} if intensities is None else {"vo": intensity},
+        )
+        for lat, lon, time, intensity in zip(
+            lats,
+            lons,
+            times,
+            intensities if intensities is not None else [0.0] * len(times),
+            strict=True,
+        )
+    ]
     tracks.add_track(centers)
 
 
 @pytest.fixture
-def tracks_ref() -> Tracks:
-    tracks = Tracks()
-    # Track 1: Northern Hemisphere move
-    create_dummy_track(
-        tracks,
-        [50.0, 51.0, 52.0],
+def times() -> list[np.datetime64]:
+    return [
+        np.datetime64("2020-01-01T00:00"),
+        np.datetime64("2020-01-01T06:00"),
+        np.datetime64("2020-01-01T12:00"),
+    ]
+
+
+def test_compare_tracks_selects_closest_candidate_per_reference(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [50.0, 51.0, 52.0], [0.0, 1.0, 2.0], times)
+    add_track(reference, [10.0, 10.0, 10.0], [100.0, 101.0, 102.0], times)
+    add_track(candidate, [50.2, 51.2, 52.2], [0.2, 1.2, 2.2], times)
+    add_track(candidate, [10.2, 10.2, 10.2], [100.2, 101.2, 102.2], times)
+
+    result = compare_tracks(reference, candidate)
+
+    assert result.match_count == 2
+    assert [(match.reference_id, match.candidate_id) for match in result.matches] == [
+        (1, 1),
+        (2, 2),
+    ]
+    assert result.reference_coverage == 1.0
+    assert result.candidate_coverage == 1.0
+
+
+def test_compare_tracks_allows_candidate_reuse(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    add_track(reference, [0.1, 0.1, 0.1], [0.0, 1.0, 2.0], times)
+    add_track(candidate, [0.05, 0.05, 0.05], [0.0, 1.0, 2.0], times)
+
+    result = compare_tracks(reference, candidate)
+
+    assert result.match_count == 2
+    assert [match.candidate_id for match in result.matches] == [1, 1]
+    assert result.candidate_coverage == 1.0
+
+
+def test_compare_tracks_requires_equal_overlap_section_lengths() -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    reference_times = [
+        np.datetime64("2020-01-01T00:00"),
+        np.datetime64("2020-01-01T06:00"),
+        np.datetime64("2020-01-01T12:00"),
+    ]
+    candidate_times = [
+        np.datetime64("2020-01-01T00:00"),
+        np.datetime64("2020-01-01T12:00"),
+    ]
+    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], reference_times)
+    add_track(candidate, [0.0, 0.0], [0.0, 2.0], candidate_times)
+
+    with pytest.raises(ValueError, match="equal point counts"):
+        compare_tracks(reference, candidate)
+
+
+def test_compare_tracks_breaks_distance_ties_by_candidate_file_order(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    add_track(candidate, [0.1, 0.1, 0.1], [0.0, 1.0, 2.0], times)
+    add_track(candidate, [-0.1, -0.1, -0.1], [0.0, 1.0, 2.0], times)
+
+    result = compare_tracks(reference, candidate)
+
+    assert result.matches[0].candidate_id == 1
+    assert result.matches[0].eligible_candidate_count == 2
+
+
+def test_compare_tracks_reports_lifecycle_path_and_intensity_metrics(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(
+        reference,
+        [0.0, 0.0, 0.0],
         [0.0, 1.0, 2.0],
-        [
-            np.datetime64("2020-01-01T00:00"),
-            np.datetime64("2020-01-01T06:00"),
-            np.datetime64("2020-01-01T12:00"),
-        ],
+        times,
+        [1.0e-4, 2.0e-4, 3.0e-4],
     )
-    # Track 2: Tropics
-    create_dummy_track(
-        tracks,
-        [10.0, 10.0, 10.0],
-        [100.0, 101.0, 102.0],
-        [
-            np.datetime64("2020-01-01T00:00"),
-            np.datetime64("2020-01-01T06:00"),
-            np.datetime64("2020-01-01T12:00"),
-        ],
-    )
-    return tracks
-
-
-def test_match_perfect(tracks_ref: Tracks) -> None:
-    # Perfect match
-    matches = match_tracks(tracks_ref, tracks_ref)
-    assert len(matches) == 2
-    assert matches[1] == 1
-    assert matches[2] == 2
-
-
-def test_match_slight_drift(tracks_ref: Tracks) -> None:
-    tracks_comp = Tracks()
-    # Comparison track 1: drifted by 0.5 degrees (~55km)
-    create_dummy_track(
-        tracks_comp,
-        [50.5, 51.5, 52.5],
-        [0.5, 1.5, 2.5],
-        [
-            np.datetime64("2020-01-01T00:00"),
-            np.datetime64("2020-01-01T06:00"),
-            np.datetime64("2020-01-01T12:00"),
-        ],
+    add_track(
+        candidate,
+        [0.0, 0.0, 0.0],
+        [0.1, 1.1, 2.1],
+        times,
+        [1.1e-4, 2.1e-4, 3.1e-4],
     )
 
-    matches = match_tracks(tracks_ref, tracks_comp, max_dist_km=100.0)
-    assert matches[1] == 1
+    result = compare_tracks(
+        reference,
+        candidate,
+        config=TrackComparisonConfig(intensity_var="vo"),
+    )
+    match = result.matches[0]
+
+    assert match.reference.duration_hours == 12.0
+    assert match.reference.path_length_km == pytest.approx(222.39, rel=1e-3)
+    assert match.reference.mean_speed_kmh == pytest.approx(18.53, rel=1e-3)
+    assert match.intensity_difference is not None
+    assert match.intensity_difference.bias == pytest.approx(1.0e-5)
+    assert match.intensity_difference.mae == pytest.approx(1.0e-5)
+    assert match.intensity_difference.rmse == pytest.approx(1.0e-5)
+    assert match.intensity_difference.correlation == pytest.approx(1.0)
+    assert match.mean_separation_km == pytest.approx(11.12, rel=1e-2)
 
 
-def test_match_no_overlap_time(tracks_ref: Tracks) -> None:
-    tracks_comp = Tracks()
-    # Same coords, different day
-    create_dummy_track(
-        tracks_comp,
-        [50.0, 51.0, 52.0],
+def test_compare_tracks_handles_dateline(times: list[np.datetime64]) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [30.0, 30.0, 30.0], [179.8, 179.9, 180.0], times)
+    add_track(candidate, [30.0, 30.0, 30.0], [-179.8, -179.9, -180.0], times)
+
+    result = compare_tracks(reference, candidate)
+
+    assert result.match_count == 1
+    assert result.matches[0].mean_separation_deg < 1.0
+
+
+def test_compare_tracks_rejects_duplicate_times(times: list[np.datetime64]) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    add_track(
+        candidate,
+        [0.0, 0.0, 0.0],
         [0.0, 1.0, 2.0],
-        [
-            np.datetime64("2020-02-01T00:00"),
-            np.datetime64("2020-02-01T06:00"),
-            np.datetime64("2020-02-01T12:00"),
-        ],
+        [times[0], times[0], times[2]],
     )
 
-    matches = match_tracks(tracks_ref, tracks_comp)
-    assert len(matches) == 0
+    with pytest.raises(ValueError, match="duplicate timestamps"):
+        compare_tracks(reference, candidate)
 
 
-def test_match_insufficient_overlap_fraction(tracks_ref: Tracks) -> None:
-    tracks_comp = Tracks()
-    # Track is much longer, but only 1 point overlaps
-    create_dummy_track(
-        tracks_comp,
-        [50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 56.0, 57.0],
-        [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
-        [
-            np.datetime64("2020-01-01T00:00"),
-            np.datetime64("2020-01-01T06:00"),
-            np.datetime64("2020-01-01T12:00"),
-            np.datetime64("2020-01-01T18:00"),
-            np.datetime64("2020-01-02T00:00"),
-            np.datetime64("2020-01-02T06:00"),
-            np.datetime64("2020-01-02T12:00"),
-            np.datetime64("2020-01-02T18:00"),
-        ],
-    )
+def test_compare_tracks_rejects_missing_intensity_variable(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    add_track(candidate, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
 
-    # Overlap is 3 points. Total lengths: 3 and 8.
-    # Ratio = (2 * 3) / (3 + 8) = 6/11 = 0.54
-
-    matches = match_tracks(tracks_ref, tracks_comp, min_overlap_fraction=0.6)
-    assert len(matches) == 0
-
-    matches = match_tracks(tracks_ref, tracks_comp, min_overlap_fraction=0.5)
-    assert matches[1] == 1
-
-
-def test_match_too_far(tracks_ref: Tracks) -> None:
-    tracks_comp = Tracks()
-    # Shares time, but 1000km away
-    create_dummy_track(
-        tracks_comp,
-        [60.0, 61.0, 62.0],
-        [0.0, 1.0, 2.0],
-        [
-            np.datetime64("2020-01-01T00:00"),
-            np.datetime64("2020-01-01T06:00"),
-            np.datetime64("2020-01-01T12:00"),
-        ],
-    )
-
-    matches = match_tracks(tracks_ref, tracks_comp, max_dist_km=200.0)
-    assert len(matches) == 0
+    with pytest.raises(ValueError, match="intensity variable 'vo'"):
+        compare_tracks(
+            reference, candidate, config=TrackComparisonConfig(intensity_var="vo")
+        )
 
 
 @pytest.mark.parametrize(
-    ("max_dist_km", "min_overlap_fraction"),
-    [(0.0, 0.1), (-1.0, 0.1), (100.0, -0.1), (100.0, 1.1)],
+    ("max_mean_separation_deg", "min_overlap_fraction"),
+    [(0.0, 0.6), (-1.0, 0.6), (2.0, -0.1), (2.0, 1.1)],
 )
-def test_match_rejects_invalid_parameters(
-    tracks_ref: Tracks, max_dist_km: float, min_overlap_fraction: float
+def test_config_rejects_invalid_parameters(
+    max_mean_separation_deg: float, min_overlap_fraction: float
 ) -> None:
     with pytest.raises(ValueError, match="must be"):
-        match_tracks(
-            tracks_ref,
-            tracks_ref,
-            max_dist_km=max_dist_km,
+        TrackComparisonConfig(
+            max_mean_separation_deg=max_mean_separation_deg,
             min_overlap_fraction=min_overlap_fraction,
         )
+
+
+def test_comparison_to_dict_is_json_serializable(times: list[np.datetime64]) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    add_track(candidate, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+
+    payload = compare_tracks(reference, candidate).to_dict()
+
+    assert json.loads(json.dumps(payload))["match_count"] == 1
 
 
 def test_load_tracks_rejects_unknown_extension() -> None:
@@ -163,19 +229,23 @@ def test_load_tracks_rejects_unknown_extension() -> None:
 
 
 def test_compare_json_stdout_is_machine_readable(
-    tracks_ref: Tracks, capsys: pytest.CaptureFixture[str]
+    times: list[np.datetime64], capsys: pytest.CaptureFixture[str]
 ) -> None:
+    tracks = Tracks()
+    add_track(tracks, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
     args = argparse.Namespace(
-        ref="reference.json",
-        comp="comparison.json",
-        output=None,
-        max_dist=440.0,
-        min_overlap=0.1,
+        reference="reference.json",
+        candidate="candidate.json",
+        max_mean_separation=2.0,
+        min_overlap=0.6,
+        intensity_var=None,
+        report=None,
+        matched_candidate_output=None,
         json=True,
     )
-    with patch("pystormtracker.compare._load_tracks", return_value=tracks_ref):
+    with patch("pystormtracker.compare._load_tracks", return_value=tracks):
         main(args)
 
     captured = capsys.readouterr()
-    assert json.loads(captured.out) == {"1": 1, "2": 2}
+    assert json.loads(captured.out)["match_count"] == 1
     assert "Loading reference" in captured.err

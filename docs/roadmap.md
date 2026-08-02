@@ -205,11 +205,19 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Description:** Combine track files, match trajectories between datasets or ensemble members, and perform track-to-track intercomparison.
 
-**TRACK references:** TRACK `utils/` and ensemble matching scripts, including `GFS_SCRIPTS/eps_match.csh`; the current matching calculation follows `trdist_eps.c`.
+**TRACK references:** TRACK `utils/ENSEMBLE/toverlap.c`, `trdist.c`, and
+`compare_ensemble2.c`, plus ensemble matching scripts including
+`GFS_SCRIPTS/eps_match.csh`.
 
-**Progress:** `match_tracks` and `stormtracker compare` match comparison tracks to reference tracks using temporal overlap and mean geodetic separation. The current mapping is not constrained to be one-to-one. A general track-file combination operation has not been implemented.
+**Progress:** `compare_tracks` and `stormtracker compare` apply whole-overlap
+mean geodetic separation and overlap-fraction eligibility to exact concurrent
+track sections. Each reference independently selects its closest eligible
+candidate, matching the source utility's directed selection. A general
+track-file combination operation has not been implemented.
 
-**Verification:** Track-matching unit and CLI integration tests cover the implemented behavior.
+**Verification:** Unit and CLI tests cover eligibility, selection, and reported
+lifecycle and intensity statistics. A paired N320/0.25-degree Hodges integration
+comparison covers the reduced-Gaussian vorticity workflow.
 
 ### 5.13 Storm lifecycle compositing
 
@@ -241,7 +249,11 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Integration tests download versioned N320 mean sea level pressure and relative-vorticity GRIB fixtures, then cover loading, filtering, regridding, and tracking.
 
-**Verification:** Repository integration tests exercise an end-to-end run on the versioned N320 mean sea level pressure fixture, including loading, filtering, regridding, detection, and tracking.
+**Verification:** Repository integration tests exercise end-to-end loading,
+filtering, regridding, detection, and Hodges tracking on versioned N320
+fixtures. The vorticity coverage compares N320 trajectories with the paired
+0.25-degree input after common-grid preprocessing; it is not a TRACK-parity or
+external-validation claim.
 
 ### 5.17 Four-dimensional feature tracking (STACKER)
 
