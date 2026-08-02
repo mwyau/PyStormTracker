@@ -94,7 +94,7 @@ tracks = tracker.track(
     backend="dask",
 )
 
-tracks.write("output.txt", format="imilast")
+tracks.write("output.json")
 ```
 
 Tracker implementations retain algorithm-specific defaults while accepting shared orchestration arguments. The high-level API and CLI pass algorithm-specific options through `**kwargs` where required.

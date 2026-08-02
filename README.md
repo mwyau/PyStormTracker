@@ -11,8 +11,6 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18764813-blue.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-<p align="center"> <img src="docs/_static/explorer.png" width="600px"> <br> <strong> <a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html"> Storm Track Explorer </a> </strong> <br> <em>Interactive visualization of cyclone trajectories.</em></p>
-
 **PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba implementation of the Simple Tracker described by **Yau and Chang (2020)** and TRACK algorithms described by **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
 
 ## Features
@@ -115,14 +113,14 @@ Once installed, the `stormtracker` command provides separate subcommands for tra
 #### 1. Track Features
 Run the core storm tracking algorithm (e.g., tracking cyclones in MSLP):
 ```bash
-stormtracker track -i data.nc -v msl -o tracks.json -m min -a hodges -f json
+stormtracker track -i data.nc -v msl -o tracks.trackjson -m min -a hodges
 ```
 
 #### 2. Sample Variables
 Extract external variables (e.g., precipitation) along existing tracks:
 ```bash
 # Calculate mean precipitation within a 500km radius of storm centers
-stormtracker sample -i tracks.json -d precip.nc -v pr -o tracks_enriched.json --method mean --radius 500
+stormtracker sample -i tracks.trackjson -d precip.nc -v pr -o tracks_enriched.trackjson --method mean --radius 500
 ```
 
 #### 3. Match and Intercompare
@@ -132,11 +130,12 @@ Compare tracks from different datasets or ensemble members:
 stormtracker compare --ref era5.json --comp gfs.json --max-dist 200 --json
 ```
 
-#### 4. Convert & Visualize
-Convert between formats or generate interactive HTML explorers:
+#### 4. Convert Track Files
+TrackJSON is the default native format. Convert it to GeoJSON for GIS software or
+to the established IMILAST and Hodges text formats when required:
 ```bash
-# Generate a standalone interactive map
-stormtracker convert -i tracks.json -o explorer.html -f json -F html
+# TrackJSON to GeoJSON
+stormtracker convert -i tracks.trackjson -o tracks.geojson
 ```
 
 #### CLI Argument Reference
@@ -149,7 +148,7 @@ Use `stormtracker <command> --help` for detailed argument lists. Key options for
 | `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | Path to the output track file. |
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
-| `--format` | `-f` | Output format: `imilast`, `hodges`, or `json`. |
+| `--format` | `-f` | Output format: `json` (TrackJSON, default), `geojson`, `imilast`, or `hodges`. |
 | `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple. |
 | `--workers` | `-w` | Number of parallel workers. |
@@ -178,7 +177,7 @@ for track in tracks:
 
 ### Export results
 ```python
-tracks.write("output.txt", format="imilast")
+tracks.write("output.json")
 ```
 
 ## Sample Data

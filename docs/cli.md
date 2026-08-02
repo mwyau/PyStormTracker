@@ -16,7 +16,7 @@ Use `stormtracker <command> --help` for the complete parser-generated option lis
 Runs feature detection and trajectory linking.
 
 ```bash
-stormtracker track -i input.nc -v vo -o tracks.json -m max -a hodges -f json
+stormtracker track -i input.nc -v vo -o tracks.trackjson -m max -a hodges
 ```
 
 ### Required arguments
@@ -32,7 +32,7 @@ stormtracker track -i input.nc -v vo -o tracks.json -m max -a hodges -f json
 | Option | Description |
 | :--- | :--- |
 | `-a`, `--algorithm` | `simple` or `hodges`; default `simple`. |
-| `-f`, `--format` | `imilast`, `hodges` (TRACK tdump), or `json`; default `imilast`. |
+| `-f`, `--format` | `json` (TrackJSON, default), `geojson`, `imilast`, or `hodges` (TRACK tdump). |
 | `-m`, `--mode` | `auto`, `min`, or `max`; default `auto` (infers `min` for MSL/pressure fields, `max` for vorticity and other standard fields). |
 | `--map-proj` | `global`, `nh_stereo`, `sh_stereo`, or `healpix`. Selecting `healpix` uses `HealpixTracker` regardless of `--algorithm`. |
 | `--resolution` | Polar stereographic grid spacing in kilometres; default `100`. |
@@ -78,11 +78,11 @@ Simple supports serial, threaded Dask detection, and MPI detection. Dask and MPI
 
 ## `stormtracker sample`
 
-Samples a variable from an Xarray-readable dataset at existing track coordinates. The command reads and writes JSON track files.
+Samples a variable from an Xarray-readable dataset at existing track coordinates. It reads supported track formats by extension and writes TrackJSON by default.
 
 ```bash
 stormtracker sample \
-  -i tracks.json \
+  -i tracks.trackjson \
   -d precipitation.nc \
   -v pr \
   -o tracks_with_pr.json \
@@ -92,10 +92,10 @@ stormtracker sample \
 
 | Option | Description |
 | :--- | :--- |
-| `-i`, `--input` | Input JSON track file. |
+| `-i`, `--input` | Input track file; the format is inferred from its extension. |
 | `-d`, `--data` | Dataset containing the sampled variable. |
 | `-v`, `--var` | Variable name in the dataset. |
-| `-o`, `--output` | Output JSON track file. |
+| `-o`, `--output` | Output TrackJSON file. |
 | `-m`, `--method` | `nearest`, `bilinear`, `mean`, `max`, or `min`; default `nearest`. |
 | `-r`, `--radius` | Radius in kilometres for `mean`, `max`, and `min`. These methods require a positive radius in the CLI. |
 | `--name` | Output variable name stored in the track data. |
@@ -109,7 +109,7 @@ Compares candidate tracks with reference tracks using temporal overlap and
 whole-overlap mean great-circle separation. Each reference track selects its
 closest eligible candidate independently, so a candidate may be selected for
 multiple references. Input files are selected by extension: `.json` for JSON
-and `.txt` or `.dat` for IMILAST.
+and `.txt` or `.dat` for IMILAST; `.geojson` selects GeoJSON.
 
 ```bash
 stormtracker compare -r era5.json -c model.json -s 2 -l 0.6 -v vo -o comparison.json -j
@@ -134,24 +134,24 @@ and its common-cadence requirement.
 
 ## `stormtracker convert`
 
-Converts track files and generates the HTML track explorer.
+Converts track files. Formats are inferred from extensions when their options
+are omitted; `.trackjson` is the canonical TrackJSON suffix. A `.json` input
+is identified from its content as either TrackJSON or GeoJSON. `.geojson` is
+GeoJSON, `.txt`/`.dat` are IMILAST, and `.tdump`/`.track`/`.hodges` select
+Hodges output.
 
 ```bash
-# IMILAST to JSON
-stormtracker convert -i tracks.txt -o tracks.json -f imilast -F json
+# IMILAST to TrackJSON
+stormtracker convert -i tracks.txt -o tracks.trackjson
 
-# Standalone HTML explorer
-stormtracker convert -i tracks.json -o explorer.html -f json -F html
-
-# HTML plus a separate JavaScript data file
-stormtracker convert -i tracks.json -o explorer.html -f json -F html --split
+# TrackJSON to GeoJSON
+stormtracker convert -i tracks.trackjson -o tracks.geojson
 ```
 
 | Option | Description |
 | :--- | :--- |
 | `-i`, `--input` | Input path. |
 | `-o`, `--out` | Output path. |
-| `-f`, `--in-format` | `imilast` or `json`. |
-| `-F`, `--out-format` | `imilast`, `hodges`, `json`, or `html`. |
+| `-f`, `--in-format` | `json`, `geojson`, or `imilast`; inferred when omitted. |
+| `-F`, `--out-format` | `json`, `geojson`, `imilast`, or `hodges`; inferred when omitted. |
 | `-v`, `--var` | Override inferred track variable / type (e.g., `msl` or `vo`). |
-| `--split` | For HTML output, place track data in a separate `.tracks.js` file. |

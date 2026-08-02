@@ -14,17 +14,11 @@ API Reference <api>
 :caption: Technical Reference
 
 Architecture <architecture>
+TrackJSON Format <trackjson>
 Hodges (TRACK) Implementation <hodges>
 Spectral Accuracy <spectral_accuracy>
 HEALPix Support <healpix>
 Benchmark <benchmark>
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Visualization
-
-Interactive Map <interactive>
 ```
 
 ```{toctree}

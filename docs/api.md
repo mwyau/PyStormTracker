@@ -74,6 +74,27 @@ This page lists the principal Python modules and public classes used by PyStormT
    :members: DataLoader
 ```
 
+## Trajectory formats
+
+TrackJSON v1.0 is the native default. It stores separator-delimited,
+structure-of-arrays point coordinates and variables, with an explicit primary
+variable and extremum mode. GeoJSON is available for GIS interchange, while
+IMILAST and Hodges text output remain available for established workflows.
+
+```{eval-rst}
+.. automodule:: pystormtracker.io.format
+   :members: infer_format, load_tracks, save_tracks
+
+.. automodule:: pystormtracker.io.json
+   :members: read_json, write_json
+
+.. automodule:: pystormtracker.io.geojson
+   :members: read_geojson, write_geojson
+```
+
+See [TrackJSON v1.0](trackjson.md) for the field-level format guide and
+[the formal JSON Schema](https://raw.githubusercontent.com/mwyau/PyStormTracker/main/schema/trackjson.schema.json).
+
 ## Preprocessing
 
 ### Kinematics (vorticity and divergence)
