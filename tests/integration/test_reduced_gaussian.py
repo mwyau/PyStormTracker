@@ -208,7 +208,7 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
     comparison = compare_tracks(
         regular_tracks,
         n320_tracks,
-        config=TrackComparisonConfig(intensity_var="vo_spectral_filtered"),
+        config=TrackComparisonConfig(var="vo_spectral_filtered"),
     )
     mean_separations_km = np.asarray(
         [match.mean_separation_km for match in comparison.matches], dtype=np.float64

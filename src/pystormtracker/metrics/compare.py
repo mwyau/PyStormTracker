@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from ..io.json import infer_intensity_mode, infer_track_type
 from ..models.constants import R_EARTH_KM
 from ..models.tracks import Tracks
 
@@ -23,15 +24,18 @@ class TrackComparisonConfig:
 
     max_mean_separation_deg: float = 2.0
     min_overlap_fraction: float = 0.6
-    intensity_var: str | None = None
+    var: str | None = None
+    mode: str | None = None
 
     def __post_init__(self) -> None:
         if self.max_mean_separation_deg <= 0.0:
             raise ValueError("max_mean_separation_deg must be greater than zero")
         if not 0.0 <= self.min_overlap_fraction <= 1.0:
             raise ValueError("min_overlap_fraction must be between zero and one")
-        if self.intensity_var == "":
-            raise ValueError("intensity_var must be a non-empty name or None")
+        if self.var == "":
+            raise ValueError("var must be a non-empty name or None")
+        if self.mode is not None and self.mode not in ("auto", "min", "max"):
+            raise ValueError("mode must be 'auto', 'min', 'max', or None")
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +153,8 @@ class TrackComparison:
             "config": {
                 "max_mean_separation_deg": self.config.max_mean_separation_deg,
                 "min_overlap_fraction": self.config.min_overlap_fraction,
-                "intensity_var": self.config.intensity_var,
+                "var": self.config.var,
+                "mode": self.config.mode,
             },
             "reference_count": self.reference_count,
             "candidate_count": self.candidate_count,
@@ -169,6 +174,7 @@ class _TrackData:
     lats: NDArray[np.float64]
     lons: NDArray[np.float64]
     intensity: NDArray[np.float64] | None
+    track_type: str = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,11 +205,15 @@ def _great_circle_distances_km(
 
 
 def _collect_tracks(
-    tracks: Tracks, intensity_var: str | None
+    tracks: Tracks, var: str | None
 ) -> tuple[_TrackData, ...]:
     """Extract time-ordered track arrays in their source-file order."""
-    if intensity_var is not None and intensity_var not in tracks.vars:
-        raise ValueError(f"intensity variable '{intensity_var}' is not present")
+    if var is not None and var not in tracks.vars:
+        raise ValueError(f"intensity variable '{var}' is not present")
+
+    track_type = tracks.track_type
+    if track_type == "unknown":
+        track_type = infer_track_type(tracks)
 
     extracted: list[_TrackData] = []
     for track_id in tracks.unique_track_ids:
@@ -214,8 +224,8 @@ def _collect_tracks(
         if np.any(times[1:] < times[:-1]):
             raise ValueError(f"track {track_id} timestamps must be ordered")
         intensity = (
-            np.asarray(tracks.vars[intensity_var][indices], dtype=np.float64)
-            if intensity_var is not None
+            np.asarray(tracks.vars[var][indices], dtype=np.float64)
+            if var is not None
             else None
         )
         extracted.append(
@@ -225,6 +235,7 @@ def _collect_tracks(
                 lats=np.asarray(tracks.lats[indices], dtype=np.float64),
                 lons=np.asarray(tracks.lons[indices], dtype=np.float64),
                 intensity=intensity,
+                track_type=track_type,
             )
         )
     return tuple(extracted)
@@ -268,7 +279,10 @@ def _candidate_pair(
         candidate.lons[candidate_indices],
     )
     mean_separation_deg = float(np.mean(separations_km) / R_EARTH_KM * 180.0 / np.pi)
-    if mean_separation_deg > config.max_mean_separation_deg:
+    if (
+        not np.isfinite(mean_separation_deg)
+        or mean_separation_deg > config.max_mean_separation_deg
+    ):
         return None
 
     return _CandidatePair(
@@ -281,7 +295,9 @@ def _candidate_pair(
     )
 
 
-def _track_properties(track: _TrackData) -> TrackProperties:
+def _track_properties(
+    track: _TrackData, intensity_mode: str = "max"
+) -> TrackProperties:
     """Calculate lifecycle, path, and optional intensity properties."""
     duration_hours = float((track.times[-1] - track.times[0]) / np.timedelta64(1, "h"))
     if track.times.size > 1:
@@ -307,9 +323,14 @@ def _track_properties(track: _TrackData) -> TrackProperties:
         mean_intensity = (
             float(np.mean(finite_intensity)) if finite_intensity.size else None
         )
-        peak_intensity = (
-            float(np.max(finite_intensity)) if finite_intensity.size else None
-        )
+        if finite_intensity.size:
+            peak_intensity = float(
+                np.min(finite_intensity)
+                if intensity_mode == "min"
+                else np.max(finite_intensity)
+            )
+        else:
+            peak_intensity = None
 
     return TrackProperties(
         point_count=int(track.times.size),
@@ -365,8 +386,8 @@ def compare_tracks(
     This reproduces the assumptions of the reference comparison program.
     """
     effective_config = config if config is not None else TrackComparisonConfig()
-    reference_tracks = _collect_tracks(reference, effective_config.intensity_var)
-    candidate_tracks = _collect_tracks(candidate, effective_config.intensity_var)
+    reference_tracks = _collect_tracks(reference, effective_config.var)
+    candidate_tracks = _collect_tracks(candidate, effective_config.var)
     matches: list[TrackMatch] = []
     matched_candidate_indices: set[int] = set()
     matched_reference_indices: set[int] = set()
@@ -393,6 +414,16 @@ def compare_tracks(
         )
         candidate_track = candidate_tracks[pair.candidate_index]
         separations = pair.separation_km
+        ref_mode = infer_intensity_mode(
+            track_type=reference_track.track_type,
+            var_name=effective_config.var,
+            mode=effective_config.mode,
+        )
+        cand_mode = infer_intensity_mode(
+            track_type=candidate_track.track_type,
+            var_name=effective_config.var,
+            mode=effective_config.mode,
+        )
         matches.append(
             TrackMatch(
                 reference_id=reference_track.track_id,
@@ -408,8 +439,8 @@ def compare_tracks(
                 median_separation_km=float(np.median(separations)),
                 p95_separation_km=float(np.percentile(separations, 95)),
                 maximum_separation_km=float(np.max(separations)),
-                reference=_track_properties(reference_track),
-                candidate=_track_properties(candidate_track),
+                reference=_track_properties(reference_track, ref_mode),
+                candidate=_track_properties(candidate_track, cand_mode),
                 intensity_difference=_intensity_difference(
                     reference_track, candidate_track, pair
                 ),
@@ -434,3 +465,4 @@ def compare_tracks(
             if index not in matched_candidate_indices
         ),
     )
+

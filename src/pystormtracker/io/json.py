@@ -1,10 +1,28 @@
 import json
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
 from ..models.tracks import Tracks
+
+
+def infer_intensity_mode(
+    track_type: str = "unknown",
+    var_name: str | None = None,
+    mode: str | None = None,
+) -> Literal["min", "max"]:
+    """Infer whether intensity mode is 'min' (MSL pressure) or 'max' (default)."""
+    if mode == "min":
+        return "min"
+    if mode == "max":
+        return "max"
+    if var_name is not None and var_name.lower() in ("msl", "slp", "pnm", "pres"):
+        return "min"
+    if track_type.lower() == "msl":
+        return "min"
+    return "max"
 
 
 def infer_track_type(tracks: Tracks) -> str:
@@ -35,6 +53,7 @@ def infer_track_type(tracks: Tracks) -> str:
             return "vo"
 
     return "unknown"
+
 
 
 def write_json(tracks: Tracks, outfile: str | Path) -> None:
@@ -117,10 +136,8 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
         t_lons = tracks.lons[orig_s:orig_e]
         t_vals = raw_strength[orig_s:orig_e]
 
-        if track_type == "msl":
-            t_strength = float(np.min(t_vals))
-        else:
-            t_strength = float(np.max(t_vals))
+        mode = infer_intensity_mode(track_type=track_type, var_name=var_key)
+        t_strength = float(np.min(t_vals)) if mode == "min" else float(np.max(t_vals))
 
         min_strength = min(min_strength, float(np.min(t_vals)))
         max_strength = max(max_strength, float(np.max(t_vals)))

@@ -112,26 +112,20 @@ multiple references. Input files are selected by extension: `.json` for JSON
 and `.txt` or `.dat` for IMILAST.
 
 ```bash
-stormtracker compare \
-  --reference era5.json \
-  --candidate model.json \
-  --max-mean-separation 2 \
-  --min-overlap 0.6 \
-  --intensity-var vo \
-  --report comparison.json \
-  --json
+stormtracker compare -r era5.json -c model.json -s 2 -l 0.6 -v vo -o comparison.json -j
 ```
 
 | Option | Description |
 | :--- | :--- |
-| `--reference` | Reference track file. |
-| `--candidate` | Candidate track file. |
-| `--max-mean-separation` | Maximum mean geodetic separation in degrees; default `2`. |
-| `--min-overlap` | Minimum overlap ratio, defined as `2 * overlap / (n_ref + n_candidate)`; default `0.6`. |
-| `--intensity-var` | Optional common variable for intensity-difference statistics. |
-| `--report` | Write the complete comparison report as JSON. |
-| `--matched-candidate-output` | Write candidates selected by at least one reference as JSON. |
-| `--json` | Print the full report JSON to standard output. |
+| `-r`, `--ref` | Reference track file. |
+| `-c`, `--cand` | Candidate track file. |
+| `-s`, `--max-sep` | Maximum mean geodetic separation in degrees; default `2`. |
+| `-l`, `--min-overlap` | Minimum overlap ratio, defined as `2 * overlap / (n_ref + n_candidate)`; default `0.6`. |
+| `-v`, `--var` | Optional common variable for intensity-difference statistics. |
+| `-m`, `--mode` | Extremum mode (`auto`, `min`, `max`); default `auto`. |
+| `-o`, `--out` | Write the complete comparison report as JSON. |
+| `-M`, `--matched-out` | Write candidates selected by at least one reference as JSON. |
+| `-j`, `--json` | Print the full report JSON to standard output. |
 
 The report includes assigned and unassigned IDs, overlap, mean/percentile
 separation, lifecycle and path metrics, and optional intensity bias, MAE, RMSE,
@@ -156,8 +150,8 @@ stormtracker convert -i tracks.json -o explorer.html -f json -F html --split
 | Option | Description |
 | :--- | :--- |
 | `-i`, `--input` | Input path. |
-| `-o`, `--output` | Output path. |
+| `-o`, `--out` | Output path. |
 | `-f`, `--in-format` | `imilast` or `json`. |
 | `-F`, `--out-format` | `imilast`, `hodges`, `json`, or `html`. |
-| `--type` | Override inferred track type with `msl` or `vo`. |
+| `-v`, `--var` | Override inferred track variable / type (e.g., `msl` or `vo`). |
 | `--split` | For HTML output, place track data in a separate `.tracks.js` file. |

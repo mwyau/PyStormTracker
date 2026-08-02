@@ -19,14 +19,15 @@ def add_track(
     lons: list[float],
     times: list[np.datetime64],
     intensities: list[float] | None = None,
+    var_name: str = "vo",
 ) -> None:
-    """Append a small trajectory with an optional vorticity variable."""
+    """Append a small trajectory with an optional variable."""
     centers = [
         Center(
             time=time,
             lat=lat,
             lon=lon,
-            vars={} if intensities is None else {"vo": intensity},
+            vars={} if intensities is None else {var_name: intensity},
         )
         for lat, lon, time, intensity in zip(
             lats,
@@ -142,7 +143,7 @@ def test_compare_tracks_reports_lifecycle_path_and_intensity_metrics(
     result = compare_tracks(
         reference,
         candidate,
-        config=TrackComparisonConfig(intensity_var="vo"),
+        config=TrackComparisonConfig(var="vo"),
     )
     match = result.matches[0]
 
@@ -155,6 +156,87 @@ def test_compare_tracks_reports_lifecycle_path_and_intensity_metrics(
     assert match.intensity_difference.rmse == pytest.approx(1.0e-5)
     assert match.intensity_difference.correlation == pytest.approx(1.0)
     assert match.mean_separation_km == pytest.approx(11.12, rel=1e-2)
+
+
+def test_compare_tracks_rejects_non_finite_separations(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(reference, [50.0, np.nan, 52.0], [0.0, 1.0, 2.0], times)
+    add_track(candidate, [50.2, 51.2, 52.2], [0.2, 1.2, 2.2], times)
+
+    result = compare_tracks(reference, candidate)
+    assert result.match_count == 0
+
+
+def test_compare_tracks_msl_peak_intensity_uses_minimum(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(
+        reference,
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 2.0],
+        times,
+        [1010.0, 990.0, 1005.0],
+        var_name="msl",
+    )
+    add_track(
+        candidate,
+        [0.0, 0.0, 0.0],
+        [0.1, 1.1, 2.1],
+        times,
+        [1012.0, 992.0, 1007.0],
+        var_name="msl",
+    )
+
+    result = compare_tracks(
+        reference,
+        candidate,
+        config=TrackComparisonConfig(var="msl"),
+    )
+    match = result.matches[0]
+    assert match.reference.peak_intensity == 990.0
+    assert match.candidate.peak_intensity == 992.0
+
+
+def test_compare_tracks_explicit_intensity_mode(
+    times: list[np.datetime64],
+) -> None:
+    reference = Tracks()
+    candidate = Tracks()
+    add_track(
+        reference,
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 2.0],
+        times,
+        [10.0, 50.0, 20.0],
+        var_name="custom",
+    )
+    add_track(
+        candidate,
+        [0.0, 0.0, 0.0],
+        [0.1, 1.1, 2.1],
+        times,
+        [12.0, 52.0, 22.0],
+        var_name="custom",
+    )
+
+    result_min = compare_tracks(
+        reference,
+        candidate,
+        config=TrackComparisonConfig(var="custom", mode="min"),
+    )
+    assert result_min.matches[0].reference.peak_intensity == 10.0
+
+    result_max = compare_tracks(
+        reference,
+        candidate,
+        config=TrackComparisonConfig(var="custom", mode="max"),
+    )
+    assert result_max.matches[0].reference.peak_intensity == 50.0
 
 
 def test_compare_tracks_handles_dateline(times: list[np.datetime64]) -> None:
@@ -194,7 +276,7 @@ def test_compare_tracks_rejects_missing_intensity_variable(
 
     with pytest.raises(ValueError, match="intensity variable 'vo'"):
         compare_tracks(
-            reference, candidate, config=TrackComparisonConfig(intensity_var="vo")
+            reference, candidate, config=TrackComparisonConfig(var="vo")
         )
 
 
@@ -238,7 +320,8 @@ def test_compare_json_stdout_is_machine_readable(
         candidate="candidate.json",
         max_mean_separation=2.0,
         min_overlap=0.6,
-        intensity_var=None,
+        var=None,
+        mode="auto",
         report=None,
         matched_candidate_output=None,
         json=True,

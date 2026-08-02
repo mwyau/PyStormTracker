@@ -131,7 +131,7 @@ exclude = [".venv", "notebooks", "benchmark", "docs", "worktrees"]
 mypy_path = "src:tests"
 
 [[tool.mypy.overrides]]
-module = ["ducc0", "dask.*", "numba.*", "scipy.*", "xeofs.*", "zarr.*"]
+module = ["ducc0", "dask.*", "mpi4py.*", "numba.*", "scipy.*", "xeofs.*", "zarr.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 

@@ -183,7 +183,12 @@ def setup_parser(
         "-v", "--var", required=True, help="Variable name in the NetCDF file."
     )
     parser.add_argument(
-        "-o", "--output", required=True, help="Output track file (JSON)."
+        "-o",
+        "--out",
+        "--output",
+        dest="output",
+        required=True,
+        help="Output track file (JSON).",
     )
     parser.add_argument(
         "-m",
@@ -206,7 +211,11 @@ def setup_parser(
         help="Name to store in the tracks. Defaults to the variable name.",
     )
     parser.add_argument(
-        "-e", "--engine", default=None, help="Xarray engine for reading data."
+        "-e",
+        "--engine",
+        choices=["h5netcdf", "netcdf4", "cfgrib"],
+        default=None,
+        help="Xarray engine for reading data.",
     )
     parser.set_defaults(func=main)
 

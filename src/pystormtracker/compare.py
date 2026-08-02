@@ -27,34 +27,60 @@ def setup_parser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--reference", required=True, help="Reference track file (JSON or IMILAST)."
+        "-r",
+        "--ref",
+        dest="reference",
+        required=True,
+        help="Reference track file (JSON or IMILAST).",
     )
     parser.add_argument(
-        "--candidate", required=True, help="Candidate track file (JSON or IMILAST)."
+        "-c",
+        "--cand",
+        dest="candidate",
+        required=True,
+        help="Candidate track file (JSON or IMILAST).",
     )
     parser.add_argument(
-        "--max-mean-separation",
+        "-s",
+        "--max-sep",
+        dest="max_mean_separation",
         type=positive_float,
         default=2.0,
         help="Maximum mean great-circle separation in degrees.",
     )
     parser.add_argument(
+        "-l",
         "--min-overlap",
         type=fraction,
         default=0.6,
         help="Minimum overlap fraction: 2 * overlap / (n_ref + n_candidate).",
     )
     parser.add_argument(
-        "--intensity-var",
+        "-v",
+        "--var",
         help="Common trajectory variable used for vorticity/intensity statistics.",
     )
-    parser.add_argument("--report", help="Write the full comparison report as JSON.")
     parser.add_argument(
-        "--matched-candidate-output",
+        "-m",
+        "--mode",
+        choices=["auto", "min", "max"],
+        default="auto",
+        help="Extremum mode for peak intensity calculation ('auto', 'min', 'max').",
+    )
+    parser.add_argument(
+        "-o", "--out", dest="report", help="Write the full comparison report as JSON."
+    )
+    parser.add_argument(
+        "-M",
+        "--matched-out",
+        dest="matched_candidate_output",
         help="Write candidate tracks selected by at least one reference as JSON.",
     )
     parser.add_argument(
-        "--json", action="store_true", help="Print the full comparison report as JSON."
+        "-j",
+        "--json",
+        action="store_true",
+        help="Print the full comparison report as JSON.",
     )
     parser.set_defaults(func=main)
 
@@ -105,7 +131,8 @@ def main(args: argparse.Namespace) -> None:
     config = TrackComparisonConfig(
         max_mean_separation_deg=args.max_mean_separation,
         min_overlap_fraction=args.min_overlap,
-        intensity_var=args.intensity_var,
+        var=args.var,
+        mode=args.mode,
     )
     result = compare_tracks(reference, candidate, config=config)
     result_json = result.to_dict()
