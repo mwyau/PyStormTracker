@@ -108,6 +108,7 @@ class TrackComparison:
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation of the comparison."""
+
         def properties_to_dict(properties: TrackProperties) -> dict[str, object]:
             return {
                 "point_count": properties.point_count,
@@ -190,9 +191,7 @@ def _great_circle_distances_km(
     phi1 = np.deg2rad(lat1)
     phi2 = np.deg2rad(lat2)
     delta_lon = np.deg2rad(lon1 - lon2)
-    dot = np.sin(phi1) * np.sin(phi2) + np.cos(phi1) * np.cos(phi2) * np.cos(
-        delta_lon
-    )
+    dot = np.sin(phi1) * np.sin(phi2) + np.cos(phi1) * np.cos(phi2) * np.cos(delta_lon)
     return np.asarray(
         np.arccos(np.clip(dot, -1.0, 1.0)) * R_EARTH_KM,
         dtype=np.float64,
@@ -256,8 +255,8 @@ def _candidate_pair(
             "resample inputs to a common cadence before comparison"
         )
 
-    overlap_fraction = 2.0 * reference_indices.size / (
-        reference.times.size + candidate.times.size
+    overlap_fraction = (
+        2.0 * reference_indices.size / (reference.times.size + candidate.times.size)
     )
     if overlap_fraction < config.min_overlap_fraction:
         return None
@@ -268,9 +267,7 @@ def _candidate_pair(
         candidate.lats[candidate_indices],
         candidate.lons[candidate_indices],
     )
-    mean_separation_deg = float(
-        np.mean(separations_km) / R_EARTH_KM * 180.0 / np.pi
-    )
+    mean_separation_deg = float(np.mean(separations_km) / R_EARTH_KM * 180.0 / np.pi)
     if mean_separation_deg > config.max_mean_separation_deg:
         return None
 
@@ -286,9 +283,7 @@ def _candidate_pair(
 
 def _track_properties(track: _TrackData) -> TrackProperties:
     """Calculate lifecycle, path, and optional intensity properties."""
-    duration_hours = float(
-        (track.times[-1] - track.times[0]) / np.timedelta64(1, "h")
-    )
+    duration_hours = float((track.times[-1] - track.times[0]) / np.timedelta64(1, "h"))
     if track.times.size > 1:
         path_length_km = float(
             np.sum(

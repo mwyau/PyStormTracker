@@ -93,6 +93,7 @@ def _print_summary(result: TrackComparison) -> None:
 
 def main(args: argparse.Namespace) -> None:
     """Run the trajectory comparison command."""
+
     def log(message: str) -> None:
         print(message, file=sys.stderr if args.json else sys.stdout)
 

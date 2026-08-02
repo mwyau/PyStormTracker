@@ -249,10 +249,7 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
     assert comparison.reference_coverage >= 0.9
     for match in comparison.matches:
         assert match.overlap_fraction >= comparison.config.min_overlap_fraction
-        assert (
-            match.mean_separation_deg
-            <= comparison.config.max_mean_separation_deg
-        )
+        assert match.mean_separation_deg <= comparison.config.max_mean_separation_deg
         assert np.isfinite(
             [
                 match.reference.duration_hours,
