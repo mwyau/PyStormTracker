@@ -7,7 +7,8 @@ FROM python:3.14-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=0
+    UV_PYTHON_DOWNLOADS=0 \
+    CXX=g++
 
 WORKDIR /app
 
@@ -19,20 +20,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=uv /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock ./
+
 RUN --mount=type=cache,target=/root/.cache/uv \
-    CXX=g++ \
-    LDSHARED="g++ -shared" \
-    uv sync --frozen --no-dev --no-install-workspace --extra grib --extra netcdf4 --no-editable
+    uv sync --frozen --no-dev --no-install-workspace \
+        --extra grib --extra netcdf4 --no-editable
 
 COPY src/ ./src/
 COPY README.md ./
+
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra grib --extra netcdf4 --no-editable
+    uv sync --frozen --no-dev \
+        --extra grib --extra netcdf4 --no-editable
 
 # --- Runtime Stage ---
 FROM python:3.14-slim
 
 WORKDIR /app
+
 RUN mkdir /data && chmod 777 /data
 
 COPY --from=builder /app/.venv /app/.venv
