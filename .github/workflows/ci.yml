@@ -28,6 +28,7 @@ jobs:
     outputs:
       unit_matrix: ${{ steps.select.outputs.unit_matrix }}
       integration_matrix: ${{ steps.select.outputs.integration_matrix }}
+      uv_version: ${{ env.UV_VERSION }}
     steps:
       - name: Select representative or full matrix
         id: select
@@ -97,12 +98,14 @@ jobs:
           version-file: uv.lock
 
       - name: Ruff format
+        if: ${{ !cancelled() }}
         uses: astral-sh/ruff-action@v4.1.0
         with:
           args: format --check
           version-file: uv.lock
 
       - name: Set up uv
+        if: ${{ !cancelled() }}
         uses: astral-sh/setup-uv@v9.0.0
         with:
           version: ${{ env.UV_VERSION }}
@@ -110,9 +113,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install type-checking environment
+        if: ${{ !cancelled() }}
         run: uv sync --frozen --all-extras
 
       - name: Mypy
+        if: ${{ !cancelled() }}
         run: uv run --no-sync mypy .
 
   unit-tests:
@@ -306,12 +311,12 @@ jobs:
     name: Build and test Docker images
     if: github.event_name != 'workflow_dispatch'
     needs:
-      [code-quality, unit-tests, integration-tests, package-tests, docs]
+      [select-test-matrix, code-quality, unit-tests, integration-tests, package-tests, docs]
     uses: ./.github/workflows/docker-build.yml
     with:
       push_images: ${{ github.event_name != 'pull_request' }}
       ref: ${{ github.sha }}
-      uv_version: '0.12.1'
+      uv_version: ${{ needs.select-test-matrix.outputs.uv_version }}
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}
 
@@ -374,7 +379,6 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       source_tag: ${{ needs.docker-build.outputs.source_tag }}
-      source_sha: ${{ needs.docker-build.outputs.source_sha }}
       target: edge
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
@@ -392,7 +396,6 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       source_tag: ${{ needs.docker-build.outputs.source_tag }}
-      source_sha: ${{ needs.docker-build.outputs.source_sha }}
       target: release
       version: ${{ needs.release_tag.outputs.release_tag }}
     secrets:

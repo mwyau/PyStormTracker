@@ -7,10 +7,6 @@ on:
         description: Tested private image tag
         required: true
         type: string
-      source_sha:
-        description: Full commit SHA represented by the test image
-        required: true
-        type: string
       target:
         description: "Promotion target: private, edge, or release"
         required: true
@@ -29,11 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: Tested private image tag, for example sha-1a2b3c4
-        required: true
-        type: string
-      source_sha:
-        description: Full 40-character commit SHA
+        description: Tested private image tag, for example 1a2b3c4
         required: true
         type: string
       target:
@@ -58,6 +50,7 @@ permissions:
   attestations: write
 
 env:
+  SOURCE_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}:${{ inputs.source_tag }}
   PRIVATE_DOCKER_IMAGE: docker.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
   PUBLIC_DOCKER_IMAGE: docker.io/${{ vars.DOCKER_ORG_NAME }}/${{ vars.DOCKER_IMAGE_NAME }}
   PRIVATE_GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ vars.DOCKER_IMAGE_NAME }}
@@ -85,13 +78,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
 
-      - name: Resolve seven-character SHA
-        id: sha
-        uses: docker/metadata-action@v6.2.0
-        with:
-          images: ${{ env.PRIVATE_DOCKER_IMAGE }}
-          tags: type=match,value=${{ inputs.source_sha }},pattern=^([0-9a-f]{7})[0-9a-f]{33}$,group=1
-
       - name: Resolve release version
         id: release
         if: inputs.target == 'release'
@@ -108,21 +94,15 @@ jobs:
           images: ${{ env.PUBLIC_DOCKER_IMAGE }}
           tags: type=match,value=${{ inputs.version }},pattern=^v([0-9]+\.[0-9]+)\.[0-9]+$,group=1
 
-      - name: Publish owner SHA tag to Docker Hub
-        run: docker buildx imagetools create --tag "${PRIVATE_DOCKER_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
-
-      - name: Publish owner SHA tag to GHCR
-        run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
-
       - name: Publish owner prefixed SHA tag to Docker Hub
-        run: docker buildx imagetools create --tag "${PRIVATE_DOCKER_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}" "$SOURCE_IMAGE"
 
       - name: Publish owner prefixed SHA tag to GHCR
-        run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PRIVATE_GHCR_IMAGE}:${{ inputs.source_tag }}" "$SOURCE_IMAGE"
 
       - name: Publish edge to Docker Hub
         if: inputs.target == 'edge'
-        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:edge" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:edge" "$SOURCE_IMAGE"
 
       - name: Publish edge to GHCR
         if: inputs.target == 'edge'
@@ -130,23 +110,23 @@ jobs:
 
       - name: Publish public prefixed SHA tag to Docker Hub
         if: inputs.target == 'edge' || inputs.target == 'release'
-        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ inputs.source_tag }}" "$SOURCE_IMAGE"
 
       - name: Publish public prefixed SHA tag to GHCR
         if: inputs.target == 'edge' || inputs.target == 'release'
-        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:sha-${{ steps.sha.outputs.version }}" "${PUBLIC_DOCKER_IMAGE}:sha-${{ steps.sha.outputs.version }}"
+        run: docker buildx imagetools create --tag "${PUBLIC_GHCR_IMAGE}:${{ inputs.source_tag }}" "$SOURCE_IMAGE"
 
       - name: Publish release version to Docker Hub
         if: inputs.target == 'release'
-        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.release.outputs.version }}" "$SOURCE_IMAGE"
 
       - name: Publish release series to Docker Hub
         if: inputs.target == 'release'
-        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.series.outputs.version }}" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:${{ steps.series.outputs.version }}" "$SOURCE_IMAGE"
 
       - name: Publish latest to Docker Hub
         if: inputs.target == 'release'
-        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:latest" "${PRIVATE_DOCKER_IMAGE}:${{ inputs.source_tag }}"
+        run: docker buildx imagetools create --tag "${PUBLIC_DOCKER_IMAGE}:latest" "$SOURCE_IMAGE"
 
       - name: Publish release version to GHCR
         if: inputs.target == 'release'

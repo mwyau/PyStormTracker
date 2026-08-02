@@ -21,11 +21,8 @@ on:
       DOCKER_HUB_ACCESS_TOKEN:
         required: false
     outputs:
-      source_sha:
-        description: Full commit SHA represented by the test image
-        value: ${{ jobs.docker-manifest.outputs.source_sha }}
       source_tag:
-        description: Tested private image tag
+        description: Tested private image tag, for example 1a2b3c4
         value: ${{ jobs.docker-manifest.outputs.source_tag }}
 
   workflow_dispatch:
@@ -73,9 +70,9 @@ jobs:
           set -euo pipefail
           SOURCE_SHA="$(git rev-parse HEAD)"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "source_tag=sha-${SOURCE_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "source_tag=${SOURCE_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
-      - name: Select local or test-image platforms
+      - name: Select build platforms
         id: select
         env:
           PUSH_IMAGES: ${{ github.event_name == 'workflow_dispatch' || inputs.push_images }}
@@ -124,18 +121,8 @@ jobs:
         id: image
         env:
           ARCH: ${{ matrix.arch }}
-          PUSH_IMAGES: ${{ needs.select-platforms.outputs.push_images }}
           SOURCE_TAG: ${{ needs.select-platforms.outputs.source_tag }}
-        run: |
-          set -euo pipefail
-
-          if [[ "$PUSH_IMAGES" == "true" ]]; then
-            IMAGE="$TEST_IMAGE:${SOURCE_TAG}-${ARCH}"
-          else
-            IMAGE="local/pystormtracker:${SOURCE_TAG}-${ARCH}"
-          fi
-
-          echo "tag=$IMAGE" >> "$GITHUB_OUTPUT"
+        run: echo "tag=$TEST_IMAGE:${SOURCE_TAG}-${ARCH}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Docker Hub test repository
         if: needs.select-platforms.outputs.push_images == 'true'
@@ -205,7 +192,6 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     outputs:
-      source_sha: ${{ needs.select-platforms.outputs.source_sha }}
       source_tag: ${{ needs.select-platforms.outputs.source_tag }}
     steps:
       - uses: docker/setup-buildx-action@v4.2.0

@@ -163,10 +163,10 @@ runs, it instead builds native test images on:
 - `ubuntu-26.04-arm` for `linux/arm64`.
 
 Each platform image is pushed to the private repository
-`docker.io/mwyau/pystormtracker` under a `sha-<seven-character-commit>-<architecture>`
+`docker.io/mwyau/pystormtracker` under a `<seven-character-commit>-<architecture>`
 tag. CI pulls and tests the exact pushed digest. After both platform jobs succeed,
 CI creates one private multi-platform test manifest tagged
-`sha-<seven-character-commit>`.
+`<seven-character-commit>`.
 
 Pull-request Docker builds are local and do not receive registry credentials.
 The `Docker Build` workflow also supports manual dispatch for a selected ref; it
@@ -181,9 +181,9 @@ identifies the test image. Publication applies the following tags:
 
 | Source | `mwyau/pystormtracker` | `xddd/pystormtracker` |
 | --- | --- | --- |
-| `main` | seven-character SHA, `sha-<seven-character-SHA>` | `edge`, `sha-<seven-character-SHA>` |
-| stable tag `v0.6.0` | seven-character SHA, `sha-<seven-character-SHA>` | `0.6.0`, `0.6`, `latest`, `sha-<seven-character-SHA>` |
-| manual private promotion | seven-character SHA, `sha-<seven-character-SHA>` | none |
+| `main` | seven-character SHA, `<seven-character-SHA>` | `edge`, `<seven-character-SHA>` |
+| stable tag `v0.6.0` | seven-character SHA, `<seven-character-SHA>` | `0.6.0`, `0.6`, `latest`, `<seven-character-SHA>` |
+| manual private promotion | seven-character SHA, `<seven-character-SHA>` | none |
 
 The completed Docker Hub manifests are copied to the corresponding GHCR repositories without rebuilding. Public `edge` and release manifests are attested on Docker Hub only; GHCR copies are not separately attested.
 
