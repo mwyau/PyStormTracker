@@ -85,11 +85,11 @@ def test_cli_compare(sample_tracks_file: Path, tmp_path: Path) -> None:
 
     args = [
         "compare",
-        "--ref",
+        "--reference",
         str(sample_tracks_file),
-        "--comp",
+        "--candidate",
         str(sample_tracks_file),
-        "-o",
+        "--matched-candidate-output",
         str(out_file),
     ]
     run_command_direct(args)
