@@ -219,8 +219,8 @@ def fetch_era5_uv850(
 # --- Local Integration Test Data Helpers ---
 
 BASE_DIR = get_base_dir()
-ERA5_TEST_DIR = BASE_DIR / "tests" / "data" / "era5"
-TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "tracks"
+ERA5_TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "era5"
+TRAKCS_TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "tracks"
 
 
 def get_era5_msl_path(res: str = "2.5x2.5", suffix: str = "") -> Path:
@@ -234,23 +234,28 @@ def get_era5_msl_path(res: str = "2.5x2.5", suffix: str = "") -> Path:
     name = f"era5_msl_2025120100_{res}"
     if suffix:
         name += f"_{suffix}"
-    return ERA5_TEST_DIR / f"{name}.nc"
+    return ERA5_TEST_DATA_DIR / f"{name}.nc"
 
 
 def get_era5_uv_path(res: str = "2.5x2.5") -> Path:
     """Returns the path to the ERA5 UV test data."""
-    return ERA5_TEST_DIR / f"era5_uv850_2025120100_{res}.nc"
+    return ERA5_TEST_DATA_DIR / f"era5_uv850_2025120100_{res}.nc"
 
 
 def get_era5_vodv_path(res: str = "2.5x2.5", suffix: str = "ncl") -> Path:
     """Returns the path to the ERA5 VODV test data."""
-    return ERA5_TEST_DIR / f"era5_vodv850_2025120100_{res}_{suffix}.nc"
+    return ERA5_TEST_DATA_DIR / f"era5_vodv850_2025120100_{res}_{suffix}.nc"
 
 
 def get_legacy_track_path(var: str = "msl") -> Path:
     """Returns the path to legacy regression track files."""
     if var == "msl":
-        return TEST_DATA_DIR / "era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
+        return (
+            TRAKCS_TEST_DATA_DIR / "era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
+        )
     if var == "vo":
-        return TEST_DATA_DIR / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
+        return (
+            TRAKCS_TEST_DATA_DIR
+            / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
+        )
     raise ValueError(f"Unknown legacy variable: {var}")
