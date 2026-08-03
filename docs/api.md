@@ -79,7 +79,7 @@ This page lists the principal Python modules and public classes used by PyStormT
 TrackJSON v1.0 is the native default. It stores separator-delimited,
 structure-of-arrays point coordinates and variables, with an explicit primary
 variable and extremum mode. GeoJSON is available for GIS interchange, while
-IMILAST and Hodges text output remain available for established workflows.
+IMILAST and Hodges text output remain available for comparison with legacy programs.
 
 ```{eval-rst}
 .. automodule:: pystormtracker.io.format

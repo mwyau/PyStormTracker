@@ -126,7 +126,7 @@ def generate_mock_tracks(
                 "max_lon": float(max_lon),
             },
         },
-        "points": {
+        "data": {
             "lat": lats_flat,
             "lon": lons_flat,
             "time": times_flat,
