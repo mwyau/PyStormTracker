@@ -371,4 +371,5 @@ class SimpleTracker:
             print(f"Tracking time: {t_end - t0:.4f}s")
 
         tracks.track_type = varname
+        tracks.mode = mode
         return tracks

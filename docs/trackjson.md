@@ -20,7 +20,7 @@ and uses JSON Schema Draft 2020-12.
   `msl` or `vo`.
 - `metadata.mode` is `min` for minima or `max` for maxima.
 - `metadata.units` maps variable names to physical-unit strings when known.
-- `points` holds flat `lat`, `lon`, `time`, and `variables` arrays. A `null`
+- `data` holds flat `lat`, `lon`, `time`, and `variables` arrays. A `null`
   value separates tracks.
 - `tracks` records the point-array range for each trajectory and optional
   summary fields.
@@ -62,7 +62,7 @@ applications may add fields such as `basin`, `category`, or `model`.
       "max_lon": 180.0
     }
   },
-  "points": {
+  "data": {
     "lat": [10.0, 11.0, null, 20.0, 21.0],
     "lon": [50.0, 52.0, null, 60.0, 62.0],
     "time": [1577836800000, 1577858400000, null, 1577836800000, 1577858400000],

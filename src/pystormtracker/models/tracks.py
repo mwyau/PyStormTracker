@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -138,8 +139,10 @@ class Tracks:
         lons: NDArray[np.float64] | None = None,
         vars_dict: dict[str, NDArray[np.float64]] | None = None,
         track_type: str = "unknown",
+        mode: Literal["min", "max"] | None = None,
     ) -> None:
         self.track_type = track_type
+        self.mode = mode
         if track_ids is not None:
             self.track_ids = np.asarray(track_ids, dtype=np.int64)
             self.times = np.asarray(times, dtype="datetime64[s]")
@@ -171,6 +174,8 @@ class Tracks:
         if len(self) != len(other):
             return False
         if self.track_type != other.track_type:
+            return False
+        if self.mode != other.mode:
             return False
 
         # Bulk array comparison (requires both to be sorted identically)

@@ -94,7 +94,7 @@ def _load_tracks(path: str) -> Tracks:
 
 def _matched_candidate_tracks(tracks: Tracks, candidate_ids: set[int]) -> Tracks:
     """Return candidate tracks selected by at least one reference track."""
-    matched = Tracks(track_type=tracks.track_type)
+    matched = Tracks(track_type=tracks.track_type, mode=tracks.mode)
     for track in tracks:
         if track.track_id in candidate_ids:
             matched.append(track)

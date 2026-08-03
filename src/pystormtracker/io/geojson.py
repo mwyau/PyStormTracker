@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -11,9 +12,43 @@ from numpy.typing import NDArray
 from ..models.tracks import Tracks
 from .json import infer_intensity_mode
 
+Coordinate = tuple[float, float]
+
 
 def _nullable_values(values: NDArray[np.float64]) -> list[float | None]:
     return [None if not np.isfinite(value) else float(value) for value in values]
+
+
+def _split_antimeridian(coordinates: list[Coordinate]) -> list[list[Coordinate]]:
+    """Split a trajectory wherever consecutive longitudes cross ±180 degrees."""
+    segments: list[list[Coordinate]] = [[coordinates[0]]]
+    for coordinate in coordinates[1:]:
+        previous_lon = segments[-1][-1][0]
+        if abs(coordinate[0] - previous_lon) > 180.0:
+            segments.append([coordinate])
+        else:
+            segments[-1].append(coordinate)
+    return segments
+
+
+def _geometry_for_coordinates(coordinates: list[Coordinate]) -> dict[str, object]:
+    """Return valid GeoJSON geometry without drawing across the antimeridian."""
+    if len(coordinates) == 1:
+        return {"type": "Point", "coordinates": coordinates[0]}
+
+    segments = _split_antimeridian(coordinates)
+    if len(segments) == 1:
+        return {"type": "LineString", "coordinates": segments[0]}
+    if all(len(segment) >= 2 for segment in segments):
+        return {"type": "MultiLineString", "coordinates": segments}
+
+    geometries: list[dict[str, object]] = []
+    for segment in segments:
+        if len(segment) == 1:
+            geometries.append({"type": "Point", "coordinates": segment[0]})
+        else:
+            geometries.append({"type": "LineString", "coordinates": segment})
+    return {"type": "GeometryCollection", "geometries": geometries}
 
 
 def write_geojson(tracks: Tracks, outfile: str | Path) -> None:
@@ -40,15 +75,11 @@ def write_geojson(tracks: Tracks, outfile: str | Path) -> None:
                 for name, values in tracks.vars.items()
             },
         }
-        coordinates = [
-            [float(lon), float(lat)]
+        coordinates: list[Coordinate] = [
+            (float(lon), float(lat))
             for lon, lat in zip(tracks.lons[indices], tracks.lats[indices], strict=True)
         ]
-        geometry: dict[str, object]
-        if len(coordinates) == 1:
-            geometry = {"type": "Point", "coordinates": coordinates[0]}
-        else:
-            geometry = {"type": "LineString", "coordinates": coordinates}
+        geometry = _geometry_for_coordinates(coordinates)
         features.append(
             {
                 "type": "Feature",
@@ -62,7 +93,11 @@ def write_geojson(tracks: Tracks, outfile: str | Path) -> None:
         "type": "FeatureCollection",
         "pystormtracker": {
             "primary_var": tracks.track_type,
-            "mode": infer_intensity_mode(tracks.track_type),
+            "mode": (
+                tracks.mode
+                if tracks.mode in ("min", "max")
+                else infer_intensity_mode(tracks.track_type)
+            ),
         },
         "features": features,
     }
@@ -80,47 +115,71 @@ def _milliseconds(value: object) -> int:
     return int(value)
 
 
-def _feature_coordinates(feature: dict[str, object]) -> list[tuple[float, float]]:
-    geometry = feature.get("geometry")
-    if not isinstance(geometry, dict):
+def _parse_position(position: object) -> Coordinate:
+    if (
+        not isinstance(position, list)
+        or len(position) < 2
+        or isinstance(position[0], bool)
+        or isinstance(position[1], bool)
+        or not isinstance(position[0], (int, float))
+        or not isinstance(position[1], (int, float))
+    ):
         raise ValueError(
-            "GeoJSON track features must have Point or LineString geometries."
+            "GeoJSON coordinates must contain numeric longitude-latitude pairs."
         )
+    return float(position[0]), float(position[1])
+
+
+def _geometry_coordinates(geometry: object) -> list[Coordinate]:
+    if not isinstance(geometry, dict):
+        raise ValueError("GeoJSON track features must have supported geometries.")
     geometry_type = geometry.get("type")
     coordinates_value = geometry.get("coordinates")
     if geometry_type == "Point":
         if not isinstance(coordinates_value, list):
             raise ValueError("GeoJSON Point coordinates must be an array.")
-        coordinates = [coordinates_value]
+        return [_parse_position(coordinates_value)]
     elif geometry_type == "LineString":
-        if not isinstance(coordinates_value, list):
+        if not isinstance(coordinates_value, list) or len(coordinates_value) < 2:
             raise ValueError("GeoJSON LineString coordinates must be an array.")
-        coordinates = coordinates_value
+        return [_parse_position(position) for position in coordinates_value]
+    elif geometry_type == "MultiLineString":
+        if not isinstance(coordinates_value, list) or not coordinates_value:
+            raise ValueError("GeoJSON MultiLineString coordinates must be an array.")
+        coordinates: list[Coordinate] = []
+        for segment in coordinates_value:
+            if not isinstance(segment, list) or len(segment) < 2:
+                raise ValueError(
+                    "GeoJSON MultiLineString segments must have at least two positions."
+                )
+            coordinates.extend(_parse_position(position) for position in segment)
+        return coordinates
+    elif geometry_type == "GeometryCollection":
+        geometries = geometry.get("geometries")
+        if not isinstance(geometries, list) or not geometries:
+            raise ValueError("GeoJSON GeometryCollection must contain geometries.")
+        coordinates = []
+        for child in geometries:
+            coordinates.extend(_geometry_coordinates(child))
+        if not coordinates:
+            raise ValueError("GeoJSON track coordinates must be a nonempty array.")
+        return coordinates
     else:
         raise ValueError(
-            "GeoJSON track features must have Point or LineString geometries."
+            "GeoJSON track features must have Point, LineString, "
+            "MultiLineString, or GeometryCollection geometries."
         )
-    if not isinstance(coordinates, list) or not coordinates:
+
+
+def _feature_coordinates(feature: dict[str, object]) -> list[Coordinate]:
+    coordinates = _geometry_coordinates(feature.get("geometry"))
+    if not coordinates:
         raise ValueError("GeoJSON track coordinates must be a nonempty array.")
-    parsed_coordinates: list[tuple[float, float]] = []
-    for position in coordinates:
-        if (
-            not isinstance(position, list)
-            or len(position) < 2
-            or isinstance(position[0], bool)
-            or isinstance(position[1], bool)
-            or not isinstance(position[0], (int, float))
-            or not isinstance(position[1], (int, float))
-        ):
-            raise ValueError(
-                "GeoJSON coordinates must contain numeric longitude-latitude pairs."
-            )
-        parsed_coordinates.append((float(position[0]), float(position[1])))
-    return parsed_coordinates
+    return coordinates
 
 
 def read_geojson(infile: str | Path) -> Tracks:
-    """Read a GeoJSON FeatureCollection with Point or LineString tracks."""
+    """Read a FeatureCollection containing Point or split line geometries."""
     with open(infile, encoding="utf-8") as source:
         document: object = json.load(source)
     if not isinstance(document, dict) or document.get("type") != "FeatureCollection":
@@ -133,6 +192,10 @@ def read_geojson(infile: str | Path) -> Tracks:
     metadata = root_metadata if isinstance(root_metadata, dict) else {}
     primary_value = metadata.get("primary_var", "unknown")
     primary_var = primary_value if isinstance(primary_value, str) else "unknown"
+    mode_value = metadata.get("mode")
+    if mode_value is not None and mode_value not in ("min", "max"):
+        raise ValueError("GeoJSON pystormtracker.mode must be 'min' or 'max'.")
+    mode = cast(Literal["min", "max"] | None, mode_value)
 
     parsed: list[
         tuple[int, list[tuple[float, float]], dict[str, object], dict[str, object]]
@@ -195,4 +258,5 @@ def read_geojson(infile: str | Path) -> Tracks:
             for name, values in output_variables.items()
         },
         track_type=primary_var,
+        mode=mode,
     )

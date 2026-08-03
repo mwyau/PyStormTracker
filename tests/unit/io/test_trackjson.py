@@ -56,6 +56,7 @@ def test_trackjson_matches_draft_2020_12_schema(tmp_path: Path) -> None:
     assert schema["$id"].endswith("/schema/trackjson.schema.json")
     assert document["format"] == "TrackJSON/1.0"
     assert document["metadata"]["primary_var"] == "msl"
+    assert "data" in document
     assert document["metadata"]["units"] == {"msl": "Pa", "vo": "s^-1"}
     assert document["tracks"][0]["peak_value"] == 99_000.0
 
@@ -74,6 +75,20 @@ def test_trackjson_round_trips_all_variables(tmp_path: Path) -> None:
     np.testing.assert_allclose(loaded.lons, original.lons)
     for name, values in original.vars.items():
         np.testing.assert_allclose(loaded.vars[name], values)
+
+
+def test_trackjson_preserves_explicit_tracking_mode(tmp_path: Path) -> None:
+    output = tmp_path / "tracks.trackjson"
+    original = _tracks()
+    original.mode = "max"
+
+    write_json(original, output)
+    document = json.loads(output.read_text(encoding="utf-8"))
+    loaded = read_json(output)
+
+    assert document["metadata"]["mode"] == "max"
+    assert document["tracks"][0]["peak_value"] == 101_000.0
+    assert loaded.mode == "max"
 
 
 def test_empty_trackjson_preserves_primary_variable_and_variables(
@@ -114,6 +129,88 @@ def test_geojson_round_trips_all_variables(tmp_path: Path) -> None:
     np.testing.assert_array_equal(loaded.track_ids, original.track_ids)
     for name, values in original.vars.items():
         np.testing.assert_allclose(loaded.vars[name], values)
+
+
+def test_geojson_splits_antimeridian_crossing_tracks(tmp_path: Path) -> None:
+    output = tmp_path / "crossing.geojson"
+    original = Tracks(track_type="msl")
+    original.add_track(
+        [
+            Center(
+                time=np.datetime64("2020-01-01T00:00"),
+                lat=10.0,
+                lon=170.0,
+                vars={"msl": 101_000.0},
+            ),
+            Center(
+                time=np.datetime64("2020-01-01T06:00"),
+                lat=11.0,
+                lon=179.0,
+                vars={"msl": 100_000.0},
+            ),
+            Center(
+                time=np.datetime64("2020-01-01T12:00"),
+                lat=12.0,
+                lon=-179.0,
+                vars={"msl": 99_000.0},
+            ),
+            Center(
+                time=np.datetime64("2020-01-01T18:00"),
+                lat=13.0,
+                lon=-170.0,
+                vars={"msl": 98_000.0},
+            ),
+        ]
+    )
+
+    write_geojson(original, output)
+    document = json.loads(output.read_text(encoding="utf-8"))
+    geometry = document["features"][0]["geometry"]
+    loaded = read_geojson(output)
+
+    assert geometry["type"] == "MultiLineString"
+    assert all(len(segment) >= 2 for segment in geometry["coordinates"])
+    assert all(
+        abs(segment[index][0] - segment[index - 1][0]) <= 180.0
+        for segment in geometry["coordinates"]
+        for index in range(1, len(segment))
+    )
+    np.testing.assert_array_equal(loaded.lons, original.lons)
+    np.testing.assert_array_equal(loaded.lats, original.lats)
+
+
+def test_geojson_uses_geometry_collection_for_two_point_crossing(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "two-point-crossing.geojson"
+    original = Tracks(track_type="msl")
+    original.add_track(
+        [
+            Center(
+                time=np.datetime64("2020-01-01T00:00"),
+                lat=10.0,
+                lon=179.0,
+                vars={"msl": 101_000.0},
+            ),
+            Center(
+                time=np.datetime64("2020-01-01T06:00"),
+                lat=11.0,
+                lon=-179.0,
+                vars={"msl": 100_000.0},
+            ),
+        ]
+    )
+
+    write_geojson(original, output)
+    document = json.loads(output.read_text(encoding="utf-8"))
+    loaded = read_geojson(output)
+
+    assert document["features"][0]["geometry"]["type"] == "GeometryCollection"
+    assert [
+        geometry["type"]
+        for geometry in document["features"][0]["geometry"]["geometries"]
+    ] == ["Point", "Point"]
+    np.testing.assert_array_equal(loaded.lons, original.lons)
 
 
 def test_format_facade_detects_track_content_without_recognized_extension(

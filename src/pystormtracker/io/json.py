@@ -69,9 +69,13 @@ def _primary_variable(tracks: Tracks) -> str:
 
 
 def write_json(tracks: Tracks, outfile: str | Path) -> None:
-    """Write ``tracks`` as TrackJSON v1.0 with separator-delimited SoA points."""
+    """Write ``tracks`` as TrackJSON v1.0 with separator-delimited SoA data."""
     primary_var = _primary_variable(tracks)
-    mode = infer_intensity_mode(tracks.track_type, primary_var)
+    mode = (
+        tracks.mode
+        if tracks.mode in ("min", "max")
+        else infer_intensity_mode(tracks.track_type, primary_var)
+    )
     units = {
         name: unit
         for name in tracks.vars
@@ -161,7 +165,7 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
     variables = {
         name: _as_nullable_float(values) for name, values in variable_arrays.items()
     }
-    points: dict[str, object] = {
+    data: dict[str, object] = {
         "lat": _as_nullable_float(lat_array),
         "lon": _as_nullable_float(lon_array),
         "time": _as_nullable_int(time_array),
@@ -175,23 +179,25 @@ def write_json(tracks: Tracks, outfile: str | Path) -> None:
             "units": units,
             "bounds": bounds,
         },
-        "points": points,
+        "data": data,
         "tracks": track_metadata,
     }
     with open(outfile, "w", encoding="utf-8") as output:
         json.dump(document, output, separators=(",", ":"), allow_nan=False)
 
 
-def _numeric_array(values: object, name: str, length: int) -> NDArray[np.float64]:
+def _numeric_array(
+    values: object, name: str, length: int, section: str
+) -> NDArray[np.float64]:
     if not isinstance(values, list):
-        raise ValueError(f"TrackJSON points.{name} must be an array.")
+        raise ValueError(f"TrackJSON {section}.{name} must be an array.")
     if len(values) != length:
-        raise ValueError(f"TrackJSON points.{name} must have {length} values.")
+        raise ValueError(f"TrackJSON {section}.{name} must have {length} values.")
     try:
         return np.asarray(values, dtype=np.float64)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            f"TrackJSON points.{name} must contain numbers or null."
+            f"TrackJSON {section}.{name} must contain numbers or null."
         ) from exc
 
 
@@ -205,20 +211,19 @@ def read_json(infile: str | Path) -> Tracks:
     format_name = raw_document.get("format")
     if format_name != "TrackJSON/1.0":
         raise ValueError(f"Unsupported JSON track format: {format_name!r}.")
-    raw_points = raw_document.get("points")
+    raw_data = raw_document.get("data")
     raw_tracks = raw_document.get("tracks")
-    if not isinstance(raw_points, dict) or not isinstance(raw_tracks, list):
-        raise ValueError(
-            "TrackJSON requires object 'points' and array 'tracks' fields."
-        )
+    if not isinstance(raw_data, dict) or not isinstance(raw_tracks, list):
+        raise ValueError("TrackJSON requires object 'data' and array 'tracks' fields.")
+    data_name = "data"
 
-    lat_values = raw_points.get("lat")
+    lat_values = raw_data.get("lat")
     if not isinstance(lat_values, list):
-        raise ValueError("TrackJSON points.lat must be an array.")
+        raise ValueError(f"TrackJSON {data_name}.lat must be an array.")
     length = len(lat_values)
-    latitudes = _numeric_array(lat_values, "lat", length)
-    longitudes = _numeric_array(raw_points.get("lon"), "lon", length)
-    timestamps = _numeric_array(raw_points.get("time"), "time", length)
+    latitudes = _numeric_array(lat_values, "lat", length, data_name)
+    longitudes = _numeric_array(raw_data.get("lon"), "lon", length, data_name)
+    timestamps = _numeric_array(raw_data.get("time"), "time", length, data_name)
 
     metadata = raw_document.get("metadata")
     if not isinstance(metadata, dict):
@@ -227,16 +232,22 @@ def read_json(infile: str | Path) -> Tracks:
     if not isinstance(primary_var_value, str):
         raise ValueError("TrackJSON metadata.primary_var must be a string.")
     primary_var = primary_var_value
-    raw_variables = raw_points.get("variables")
+    mode_value = metadata.get("mode")
+    if mode_value is not None and mode_value not in ("min", "max"):
+        raise ValueError("TrackJSON metadata.mode must be 'min' or 'max'.")
+    mode = cast(Literal["min", "max"] | None, mode_value)
+    raw_variables = raw_data.get("variables")
     if not isinstance(raw_variables, dict):
-        raise ValueError("TrackJSON points.variables must be an object.")
+        raise ValueError(f"TrackJSON {data_name}.variables must be an object.")
     variables_source = raw_variables
 
     variable_arrays: dict[str, NDArray[np.float64]] = {}
     for name, values in variables_source.items():
         if not isinstance(name, str):
             raise ValueError("TrackJSON variable names must be strings.")
-        variable_arrays[name] = _numeric_array(values, f"variables.{name}", length)
+        variable_arrays[name] = _numeric_array(
+            values, f"variables.{name}", length, data_name
+        )
 
     if not raw_tracks:
         return Tracks(
@@ -246,6 +257,7 @@ def read_json(infile: str | Path) -> Tracks:
             lons=np.empty(0, dtype=np.float64),
             vars_dict=variable_arrays,
             track_type=primary_var,
+            mode=mode,
         )
 
     output_ids: list[int] = []
@@ -298,4 +310,5 @@ def read_json(infile: str | Path) -> Tracks:
             for name, values in output_variables.items()
         },
         track_type=primary_var,
+        mode=mode,
     )

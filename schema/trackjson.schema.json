@@ -4,7 +4,7 @@
   "title": "TrackJSON v1.0",
   "description": "PyStormTracker TrackJSON v1.0 trajectory interchange format.",
   "type": "object",
-  "required": ["format", "metadata", "points", "tracks"],
+  "required": ["format", "metadata", "data", "tracks"],
   "properties": {
     "format": {
       "const": "TrackJSON/1.0"
@@ -48,7 +48,7 @@
       },
       "additionalProperties": true
     },
-    "points": {
+    "data": {
       "type": "object",
       "required": ["lat", "lon", "time", "variables"],
       "properties": {

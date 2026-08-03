@@ -290,6 +290,7 @@ class HodgesTracker(Tracker):
         t_total_end = timeit.default_timer()
         print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
         tracks.track_type = varname
+        tracks.mode = mode
         return tracks
 
     def _track_single_chunk_from_data(

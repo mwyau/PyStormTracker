@@ -26,6 +26,16 @@ def test_tracker_defaults_disable_filter_and_refinement() -> None:
     assert detect.call_args.kwargs["subgrid_refine"] is False
 
 
+def test_tracker_preserves_tracking_mode() -> None:
+    tracker = SimpleTracker()
+    with patch.object(tracker, "_detect_serial", return_value=Tracks()) as detect:
+        tracks = tracker.track("dummy.nc", "zg", mode="min")
+
+    assert detect.call_args.args[3] == "min"
+    assert tracks.track_type == "zg"
+    assert tracks.mode == "min"
+
+
 def test_tracker_mpi_backend() -> None:
     tracker = SimpleTracker()
 
