@@ -7,17 +7,19 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
+from ..time import TimeInput, TimePoint
 from .tracks import Tracks
+from .units import ModeOption
 
 if TYPE_CHECKING:
     from .geo import MapExtent
 
 # Type alias for a single time step's raw detection arrays
 RawDetectionStep: TypeAlias = tuple[
-    np.datetime64,
+    TimePoint,
     NDArray[np.float64],
     NDArray[np.float64],
-    dict[str, NDArray[np.float64]],
+    NDArray[np.float64],
 ]
 
 
@@ -32,9 +34,9 @@ class Tracker(Protocol):
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
-        mode: Literal["min", "max"] = "min",
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
+        mode: ModeOption | None = "auto",
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,

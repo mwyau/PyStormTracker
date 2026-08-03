@@ -3,17 +3,16 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-import numpy as np
-
 from ..models.constants import DEGTORAD, R_EARTH_KM
 from ..models.geo import geod_dist_km
+from ..time import TimePoint
 
 
 @dataclass(slots=True)
 class Center:
     """Represents a detected storm center at a specific time and location."""
 
-    time: np.datetime64
+    time: TimePoint
     lat: float
     lon: float
     vars: dict[str, float]

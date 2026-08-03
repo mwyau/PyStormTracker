@@ -6,7 +6,8 @@ from numpy.typing import NDArray
 
 from ..models.geo import geod_dist_km
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import TrackHandle, TracksBuilder
+from ..models.tracks import TracksBuilder
+from ..time import encode_time_values
 
 
 @nb.njit(cache=True, nogil=True)
@@ -30,28 +31,25 @@ class SimpleLinker:
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
         self._tail_ids: set[int] = set()
-        self._head_ids: set[int] = set()
-        self._handles: dict[int, TrackHandle] = {}
-        self._last_time: np.datetime64 | None = None
-        self._step: np.timedelta64 | None = None
+        self._last_time: int | None = None
+        self._step: int | None = None
 
     def _new_track(
         self,
         builder: TracksBuilder,
-        time: np.datetime64,
+        time: int,
         lat: float,
         lon: float,
         variables: dict[str, float],
     ) -> int:
-        handle = builder.new_track()
-        handle.append(time, lat, lon, variables)
-        self._handles[handle.track_id] = handle
-        self._head_ids.add(handle.track_id)
-        return handle.track_id
+        track_id = builder.new_track()
+        builder.append(track_id, time, lat, lon, variables)
+        return track_id
 
     def append(self, builder: TracksBuilder, step_data: RawDetectionStep) -> None:
         """Link one time step into the builder without mutating finalized tracks."""
-        time_val, new_lats, new_lons, vars_dict = step_data
+        raw_time, new_lats, new_lons, values = step_data
+        time_val = int(encode_time_values([raw_time])[0])
         num_centers = len(new_lats)
         if num_centers == 0:
             self._tail_ids.clear()
@@ -60,7 +58,7 @@ class SimpleLinker:
         sort_idx = np.lexsort((new_lons, new_lats))
         new_lats = new_lats[sort_idx]
         new_lons = new_lons[sort_idx]
-        vars_dict = {name: values[sort_idx] for name, values in vars_dict.items()}
+        values = values[sort_idx]
 
         if (
             self._last_time is not None
@@ -70,32 +68,31 @@ class SimpleLinker:
             self._tail_ids.clear()
 
         if not self._tail_ids:
+            new_tail_ids: set[int] = set()
             for point_index in range(num_centers):
-                self._new_track(
+                track_id = self._new_track(
                     builder,
                     time_val,
                     float(new_lats[point_index]),
                     float(new_lons[point_index]),
-                    {
-                        name: float(values[point_index])
-                        for name, values in vars_dict.items()
-                    },
+                    {builder.metadata.primary_var: float(values[point_index])},
                 )
-            self._tail_ids = set(self._handles).difference(
-                set(self._handles).difference(self._head_ids)
-            )
+                new_tail_ids.add(track_id)
+            self._tail_ids = new_tail_ids
             self._record_time(time_val)
             return
 
         tail_ids = sorted(
             self._tail_ids,
-            key=lambda track_id: self._last_point(track_id),
+            key=lambda track_id: self._last_point(builder, track_id),
         )
         tail_lats = np.asarray(
-            [self._last_point(track_id)[0] for track_id in tail_ids], dtype=np.float64
+            [self._last_point(builder, track_id)[0] for track_id in tail_ids],
+            dtype=np.float64,
         )
         tail_lons = np.asarray(
-            [self._last_point(track_id)[1] for track_id in tail_ids], dtype=np.float64
+            [self._last_point(builder, track_id)[1] for track_id in tail_ids],
+            dtype=np.float64,
         )
         distances = great_circle_distance_matrix(
             tail_lats, tail_lons, new_lats, new_lons
@@ -117,11 +114,9 @@ class SimpleLinker:
             if not has_match:
                 break
 
-        new_tail_ids: set[int] = set()
+        next_tail_ids: set[int] = set()
         for center_index in range(num_centers):
-            variables = {
-                name: float(values[center_index]) for name, values in vars_dict.items()
-            }
+            variables = {builder.metadata.primary_var: float(values[center_index])}
             tail_index = int(matched_indices[center_index])
             if tail_index == -1:
                 track_id = self._new_track(
@@ -133,20 +128,21 @@ class SimpleLinker:
                 )
             else:
                 track_id = tail_ids[tail_index]
-                self._handles[track_id].append(
+                builder.append(
+                    track_id,
                     time_val,
                     float(new_lats[center_index]),
                     float(new_lons[center_index]),
                     variables,
                 )
-            new_tail_ids.add(track_id)
-        self._tail_ids = new_tail_ids
+            next_tail_ids.add(track_id)
+        self._tail_ids = next_tail_ids
         self._record_time(time_val)
 
-    def _last_point(self, track_id: int) -> tuple[float, float]:
-        return self._handles[track_id].last_point
+    def _last_point(self, builder: TracksBuilder, track_id: int) -> tuple[float, float]:
+        return builder.last_point(track_id)
 
-    def _record_time(self, time_val: np.datetime64) -> None:
+    def _record_time(self, time_val: int) -> None:
         if self._last_time is not None and self._step is None:
             self._step = time_val - self._last_time
         self._last_time = time_val
