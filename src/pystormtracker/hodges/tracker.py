@@ -111,7 +111,7 @@ class HodgesTracker(Tracker):
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
-        varname: str,
+        variable_name: str,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
         mode: ModeOption | None = "auto",
@@ -140,7 +140,7 @@ class HodgesTracker(Tracker):
 
         Args:
             infile: Path to the input data file.
-            varname: Variable name to track.
+            variable_name: Variable name to track.
             start_time, end_time: Time range for tracking.
             mode: Search for 'min' or 'max' extrema.
             backend: Processing backend (serial, mpi, dask).
@@ -156,7 +156,7 @@ class HodgesTracker(Tracker):
         """
         import timeit
 
-        resolved_mode = resolve_mode(varname, mode)
+        resolved_mode = resolve_mode(variable_name, mode)
 
         if backend != "serial":
             raise NotImplementedError(
@@ -171,14 +171,14 @@ class HodgesTracker(Tracker):
         t0 = timeit.default_timer()
         data_xr = normalize_tracking_data(
             infile,
-            varname,
+            variable_name,
             start_time=start_time,
             end_time=end_time,
             engine=engine,
         )
         data_xr, threshold, stored_unit = normalize_variable_units(
             data_xr,
-            variable_name=varname,
+            variable_name=variable_name,
             threshold=threshold,
         )
 
@@ -201,7 +201,7 @@ class HodgesTracker(Tracker):
         if max_chunk_size is None:
             tracks = self._track_single_chunk_from_data(
                 data_xr,
-                primary_var=varname,
+                primary_var=variable_name,
                 mode=resolved_mode,
                 bounds=bounds,
                 threshold=threshold,
@@ -225,7 +225,7 @@ class HodgesTracker(Tracker):
                 detections.extend(
                     self._detect_single_chunk_from_data(
                         chunk_data,
-                        primary_var=varname,
+                        primary_var=variable_name,
                         mode=resolved_mode,
                         threshold=threshold,
                         min_points=min_points,
@@ -235,7 +235,7 @@ class HodgesTracker(Tracker):
                 )
             tracks = self._link_detections(
                 detections,
-                primary_var=varname,
+                primary_var=variable_name,
                 mode=resolved_mode,
                 bounds=bounds,
                 unit=stored_unit,
@@ -293,7 +293,7 @@ class HodgesTracker(Tracker):
 
         # 1. Detection
         t_detect_start = timeit.default_timer()
-        detector = HodgesDetector.from_xarray(data, varname=primary_var)
+        detector = HodgesDetector.from_xarray(data, variable_name=primary_var)
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 

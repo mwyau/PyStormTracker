@@ -130,7 +130,7 @@ def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) 
     # 2. Track on the regridded data
     tracks = tracker.track(
         infile=data_filtered,
-        varname="msl",
+        variable_name="msl",
         mode="min",
         threshold=101000.0,  # Pa
     )
@@ -189,13 +189,13 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
     tracker = HodgesTracker(min_lifetime=3)
     n320_tracks = tracker.track(
         n320_filtered,
-        varname="vo",
+        variable_name="vo",
         mode="max",
         threshold=1.0e-4,
     )
     regular_tracks = tracker.track(
         regular_filtered,
-        varname="vo",
+        variable_name="vo",
         mode="max",
         threshold=1.0e-4,
     )

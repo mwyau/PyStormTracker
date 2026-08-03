@@ -150,7 +150,7 @@ def compute_track_metrics(
         "constant", "fisher", "cressman", "linear", "quadratic"
     ] = "constant",
     kappa: float = 20.0,
-    varname: str | None = None,
+    variable_name: str | None = None,
     is_min: bool = False,
     monthly: bool = True,
 ) -> xr.Dataset:
@@ -170,7 +170,7 @@ def compute_track_metrics(
         radius_km: Radius of influence in km. Default 500km (Yau & Chang).
         kernel: Kernel type: 'constant', 'fisher', 'cressman', 'linear', 'quadratic'.
         kappa: Smoothing parameter for Fisher kernel (default 20.0).
-        varname: Variable in tracks.variables to use as amplitude.
+        variable_name: Variable in tracks.variables to use as amplitude.
         is_min: If True, tracks are defined by minima (e.g., SLP).
         monthly: If True (default), metrics are aggregated into monthly values.
 
@@ -189,14 +189,14 @@ def compute_track_metrics(
 
     wtype = kernel_map[kernel]
 
-    if varname is None:
+    if variable_name is None:
         if len(tracks.variables) > 0:
-            varname = next(iter(tracks.variables.keys()))
+            variable_name = next(iter(tracks.variables.keys()))
         else:
             raise ValueError("Tracks object does not contain any variables.")
 
-    if varname not in tracks.variables:
-        raise ValueError(f"Variable '{varname}' not found in tracks.")
+    if variable_name not in tracks.variables:
+        raise ValueError(f"Variable '{variable_name}' not found in tracks.")
 
     if monthly:
         unique_times = tracks.times
@@ -221,7 +221,7 @@ def compute_track_metrics(
                 tracks.offsets,
                 tracks.lats,
                 tracks.lons,
-                tracks.variables[varname],
+                tracks.variables[variable_name],
                 float(radius_km),
                 int(wtype),
                 float(kappa),
@@ -260,7 +260,7 @@ def compute_track_metrics(
             tracks.offsets,
             tracks.lats,
             tracks.lons,
-            tracks.variables[varname],
+            tracks.variables[variable_name],
             float(radius_km),
             int(wtype),
             float(kappa),
@@ -287,7 +287,7 @@ def compute_track_metrics(
             "description": "Storm track metrics (Weighted Spherical Estimator)",
             "radius_km": radius_km,
             "kernel": kernel,
-            "amplitude_variable": varname,
+            "amplitude_variable": variable_name,
         }
     )
     if kernel == "fisher":

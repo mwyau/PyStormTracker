@@ -26,7 +26,7 @@ def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
     output_file = tmp_path / "test_tracks.txt"
     run_tracker(
         infile=msl_data,
-        varname="msl",
+        variable_name="msl",
         outfile=str(output_file),
         mode="min",
         backend="serial",
@@ -233,7 +233,7 @@ def test_run_tracker_resolves_subgrid_default_by_algorithm(
     with patch(tracker_target, return_value=_empty_tracks()) as mocked_track:
         run_tracker(
             infile="unused.nc",
-            varname="msl",
+            variable_name="msl",
             outfile=str(tmp_path / "tracks.json"),
             algorithm=algorithm,  # type: ignore[arg-type]
             output_format="trackjson",
@@ -249,7 +249,7 @@ def test_run_tracker_forwards_no_filter_defaults(tmp_path: Path) -> None:
     ) as mocked_track:
         run_tracker(
             infile="unused.nc",
-            varname="msl",
+            variable_name="msl",
             outfile=str(tmp_path / "tracks.json"),
             output_format="trackjson",
         )

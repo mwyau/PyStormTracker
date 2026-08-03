@@ -31,7 +31,7 @@ class HodgesDetector:
     def __init__(
         self,
         pathname: str | Path | None,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -43,33 +43,33 @@ class HodgesDetector:
             and not (isinstance(pathname, str) and "://" in pathname)
             else pathname
         )
-        self.requested_varname = varname
+        self.requested_variable_name = variable_name
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
 
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self.varname = varname
+        self.variable_name = variable_name
 
     def _ensure_open(self) -> None:
         if self._data is None:
             ds = self._loader.ensure_open()
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
-                self.requested_varname, [self.requested_varname]
+                self.requested_variable_name, [self.requested_variable_name]
             )
             for name in possible_names:
                 if name in ds.data_vars:
                     actual_var = name
                     break
             if actual_var is None:
-                if self.requested_varname in ds.data_vars:
-                    actual_var = self.requested_varname
+                if self.requested_variable_name in ds.data_vars:
+                    actual_var = self.requested_variable_name
                 else:
-                    raise KeyError(f"Variable '{self.requested_varname}' not found.")
-            self.varname = actual_var
-            self._data = ds[self.varname]
+                    raise KeyError(f"Variable '{self.requested_variable_name}' not found.")
+            self.variable_name = actual_var
+            self._data = ds[self.variable_name]
 
     @property
     def lat(self) -> NDArray[np.float64]:
@@ -151,17 +151,17 @@ class HodgesDetector:
 
     @classmethod
     def from_xarray(
-        cls, data: xr.DataArray, varname: str | None = None
+        cls, data: xr.DataArray, variable_name: str | None = None
     ) -> HodgesDetector:
         """Creates a detector from an existing xarray DataArray.
 
-        ``varname`` is the selected source variable name. It can differ from
+        ``variable_name`` is the selected source variable name. It can differ from
         the DataArray name after preprocessing; detector values remain generic
         and the selected source name is restored only in the packed metadata.
         """
         obj = cls.__new__(cls)
-        obj.requested_varname = varname or (str(data.name) if data.name else "var")
-        obj.varname = obj.requested_varname
+        obj.requested_variable_name = variable_name or (str(data.name) if data.name else "var")
+        obj.variable_name = obj.requested_variable_name
         obj._data = data
         obj._loader = DataLoader(data)
         obj.pathname = None
@@ -189,7 +189,7 @@ class HodgesDetector:
             subgrid_refine: Whether to refine centers with a local quadratic fit.
         """
         if threshold is None:
-            if self.requested_varname == "vo":
+            if self.requested_variable_name == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
                 threshold = model_constants.DEFAULT_MSL_THRESHOLD

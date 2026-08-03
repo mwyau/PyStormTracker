@@ -85,7 +85,7 @@ def is_mpi_env() -> bool:
 
 def run_tracker(
     infile: str,
-    varname: str,
+    variable_name: str,
     outfile: str,
     start_time: TimeInput | None = None,
     end_time: TimeInput | None = None,
@@ -120,7 +120,7 @@ def run_tracker(
 ) -> Tracks:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
-    resolved_mode = resolve_mode(varname, mode)
+    resolved_mode = resolve_mode(variable_name, mode)
 
     # 1. Backend Auto-detection
     detected_backend: Backend = "serial"
@@ -236,7 +236,7 @@ def run_tracker(
     )
     tracks = tracker.track(
         infile=infile,
-        varname=varname,
+        variable_name=variable_name,
         start_time=start_time,
         end_time=end_time,
         mode=resolved_mode,
@@ -538,11 +538,11 @@ def run_track_command(args: Namespace) -> Tracks:
         detector_preview: SimpleDetector | HodgesDetector
         if args.algorithm == "simple":
             detector_preview = SimpleDetector(
-                pathname=args.input, varname=args.var, engine=args.engine
+                pathname=args.input, variable_name=args.var, engine=args.engine
             )
         else:
             detector_preview = HodgesDetector(
-                pathname=args.input, varname=args.var, engine=args.engine
+                pathname=args.input, variable_name=args.var, engine=args.engine
             )
 
         times = detector_preview.get_time()
@@ -587,7 +587,7 @@ def run_track_command(args: Namespace) -> Tracks:
 
     return run_tracker(
         infile=args.input,
-        varname=args.var,
+        variable_name=args.var,
         outfile=args.output,
         start_time=start_time,
         end_time=end_time,

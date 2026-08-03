@@ -20,7 +20,7 @@ def test_healpix_detector_init() -> None:
     )
 
     detector = HealpixDetector.from_xarray(da)
-    assert detector.varname == "msl"
+    assert detector.variable_name == "msl"
     assert detector._hp_base is not None
     assert detector._hp_base.nside() == nside
     assert detector._neighbor_table is not None

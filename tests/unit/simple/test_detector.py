@@ -27,7 +27,7 @@ def test_simple_detector_init(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = SimpleDetector(pathname="test.nc", varname="msl")
+    detector = SimpleDetector(pathname="test.nc", variable_name="msl")
     detector._ensure_open()
 
     mock_open.assert_called_once_with(
@@ -51,7 +51,7 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = SimpleDetector(pathname="test2.nc", varname="msl")
+    detector = SimpleDetector(pathname="test2.nc", variable_name="msl")
     raw_results = detector.detect(size=5, threshold=0.0)
 
     assert len(raw_results) == 1

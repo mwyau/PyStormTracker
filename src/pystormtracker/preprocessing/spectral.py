@@ -531,9 +531,9 @@ def apply_sht_filter(
     """
     from ..io.data_loader import DataLoader
 
-    varname = str(data.name) if data.name is not None else ""
+    variable_name = str(data.name) if data.name is not None else ""
     loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-    is_reduced = loader.is_reduced_gaussian(varname)
+    is_reduced = loader.is_reduced_gaussian(variable_name)
 
     # Identify spatial dimensions
     lat_dim: str | None = None
@@ -580,7 +580,7 @@ def apply_sht_filter(
 
     if is_reduced:
         spatial_dim = "values" if "values" in data.dims else str(data.dims[-1])
-        grid_meta = loader.get_grid_metadata(varname)
+        grid_meta = loader.get_grid_metadata(variable_name)
         # We know grid_meta keys match FilterKwargs keys for 1D maps
         kwargs.update(grid_meta)  # type: ignore[typeddict-item]
     else:

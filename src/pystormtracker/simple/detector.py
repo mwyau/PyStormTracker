@@ -34,7 +34,7 @@ class SimpleDetector:
     def __init__(
         self,
         pathname: str | Path | None,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -46,14 +46,14 @@ class SimpleDetector:
             and not (isinstance(pathname, str) and "://" in pathname)
             else pathname
         )
-        self.requested_varname = varname
+        self.requested_variable_name = variable_name
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
 
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self.varname = varname  # Updated after open
+        self.variable_name = variable_name  # Updated after open
 
     def _ensure_open(self) -> None:
         """Ensures the xarray dataset is open and basic variables are mapped."""
@@ -63,7 +63,7 @@ class SimpleDetector:
             # Identify the actual variable name using mapping aliases
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
-                self.requested_varname, [self.requested_varname]
+                self.requested_variable_name, [self.requested_variable_name]
             )
             for name in possible_names:
                 if name in ds.data_vars:
@@ -71,16 +71,16 @@ class SimpleDetector:
                     break
 
             if actual_var is None:
-                if self.requested_varname in ds.data_vars:
-                    actual_var = self.requested_varname
+                if self.requested_variable_name in ds.data_vars:
+                    actual_var = self.requested_variable_name
                 else:
                     raise KeyError(
-                        f"Variable '{self.requested_varname}' not found. "
+                        f"Variable '{self.requested_variable_name}' not found. "
                         f"Available: {list(ds.data_vars.keys())}"
                     )
 
-            self.varname = actual_var
-            self._data = ds[self.varname]
+            self.variable_name = actual_var
+            self._data = ds[self.variable_name]
 
     @property
     def lat(self) -> NDArray[np.float64]:
@@ -196,12 +196,12 @@ class SimpleDetector:
 
     @classmethod
     def from_xarray(
-        cls, data: xr.DataArray, varname: str | None = None
+        cls, data: xr.DataArray, variable_name: str | None = None
     ) -> SimpleDetector:
         """Creates a detector from an existing xarray DataArray."""
         obj = cls.__new__(cls)
-        obj.requested_varname = varname or (str(data.name) if data.name else "var")
-        obj.varname = obj.requested_varname
+        obj.requested_variable_name = variable_name or (str(data.name) if data.name else "var")
+        obj.variable_name = obj.requested_variable_name
         obj._data = data
         obj._loader = DataLoader(data)
         obj.pathname = None
@@ -256,7 +256,7 @@ class SimpleDetector:
                 detectors.append(
                     SimpleDetector(
                         self.pathname,
-                        self.requested_varname,
+                        self.requested_variable_name,
                         time_range=TimeRange(
                             start=time_values[s_idx], end=time_values[e_idx - 1]
                         ),
@@ -279,7 +279,7 @@ class SimpleDetector:
 
         # Set variable specific thresholds if not provided
         if threshold is None:
-            if self.requested_varname == "vo":
+            if self.requested_variable_name == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
                 threshold = model_constants.DEFAULT_MSL_THRESHOLD

@@ -103,7 +103,7 @@ class HealpixTracker(Tracker):
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
-        varname: str,
+        variable_name: str,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
         mode: ModeOption | None = "auto",
@@ -126,20 +126,20 @@ class HealpixTracker(Tracker):
     ) -> Tracks:
 
         t0 = timeit.default_timer()
-        resolved_mode = resolve_mode(varname, mode)
+        resolved_mode = resolve_mode(variable_name, mode)
 
         if backend == "serial":
             # Normalize every supported public input to one selected DataArray.
             data_xr = normalize_tracking_data(
                 infile,
-                varname,
+                variable_name,
                 start_time=start_time,
                 end_time=end_time,
                 engine=engine,
             )
             data_xr, threshold, stored_unit = normalize_variable_units(
                 data_xr,
-                variable_name=varname,
+                variable_name=variable_name,
                 threshold=threshold,
             )
 
@@ -154,7 +154,7 @@ class HealpixTracker(Tracker):
                 nside=nside,
             )
 
-            detector = HealpixDetector.from_xarray(data_xr, varname=varname)
+            detector = HealpixDetector.from_xarray(data_xr, variable_name=variable_name)
             raw_steps = _detect_and_gather(
                 detector,
                 threshold=threshold,
@@ -176,7 +176,7 @@ class HealpixTracker(Tracker):
             )
             tracks = linker.link(
                 raw_steps,
-                primary_var=varname,
+                primary_var=variable_name,
                 mode=resolved_mode,
                 bounds=bounds,
                 unit=stored_unit,

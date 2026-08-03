@@ -26,7 +26,7 @@ def test_hodges_detector_init(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = HodgesDetector(pathname="test.nc", varname="msl")
+    detector = HodgesDetector(pathname="test.nc", variable_name="msl")
     detector._ensure_open()
 
     mock_open.assert_called_once_with(
@@ -55,7 +55,7 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = HodgesDetector(pathname="test2.nc", varname="msl")
+    detector = HodgesDetector(pathname="test2.nc", variable_name="msl")
     # We want max because we built a peak
     raw_results = detector.detect(size=5, threshold=0.0, minmaxmode="max")
 
@@ -92,7 +92,7 @@ def test_hodges_detector_from_xarray_keeps_generic_detection_values() -> None:
         name="msl_spectral_filtered",
     )
 
-    detector = HodgesDetector.from_xarray(data, varname="msl")
+    detector = HodgesDetector.from_xarray(data, variable_name="msl")
     result = detector.detect(
         size=3,
         threshold=0.0,

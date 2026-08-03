@@ -59,9 +59,9 @@ def _validate_taper_points(taper_points: int) -> None:
 def _source_supported_lmax(data: xr.DataArray) -> int:
     """Return the finite harmonic bandwidth supported by the source grid."""
     loader = DataLoader(data)
-    varname = str(data.name) if data.name is not None else None
-    if loader.is_reduced_gaussian(varname):
-        metadata = loader.get_grid_metadata(varname)
+    variable_name = str(data.name) if data.name is not None else None
+    if loader.is_reduced_gaussian(variable_name):
+        metadata = loader.get_grid_metadata(variable_name)
         nlat = len(metadata["theta"])
         nlon = int(np.max(metadata["nphi"]))
     else:

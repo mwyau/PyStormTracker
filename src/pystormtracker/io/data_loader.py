@@ -248,15 +248,15 @@ class DataLoader:
         typical_gap = float(np.median(gaps))
         return typical_gap > 0.0 and float(np.max(gaps)) <= 1.5 * typical_gap
 
-    def is_reduced_gaussian(self, varname: str | None = None) -> bool:
+    def is_reduced_gaussian(self, variable_name: str | None = None) -> bool:
         """Detects if the dataset represents a reduced Gaussian grid."""
         ds = self.ensure_open()
-        # If varname not provided, check the first data variable
-        if varname is None:
-            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+        # If variable_name not provided, check the first data variable
+        if variable_name is None:
+            variable_name = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
 
-        if varname and varname in ds:
-            da = ds[varname]
+        if variable_name and variable_name in ds:
+            da = ds[variable_name]
             # cfgrib tags reduced Gaussian grids with this attribute
             if da.attrs.get("GRIB_gridType") == "reduced_gg":
                 return True
@@ -266,14 +266,14 @@ class DataLoader:
                 return True
         return False
 
-    def get_reduced_grid_pl(self, varname: str | None = None) -> np.ndarray | None:
+    def get_reduced_grid_pl(self, variable_name: str | None = None) -> np.ndarray | None:
         """Returns the 'pl' array (points per latitude) for a reduced grid."""
         ds = self.ensure_open()
-        if varname is None:
-            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+        if variable_name is None:
+            variable_name = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
 
-        if varname and varname in ds:
-            da = ds[varname]
+        if variable_name and variable_name in ds:
+            da = ds[variable_name]
             pl = da.attrs.get("GRIB_pl")
             if pl is not None:
                 return np.array(pl, dtype=np.int32)
@@ -289,16 +289,16 @@ class DataLoader:
         # Default to equidistant
         return np.linspace(0, np.pi, ntheta)
 
-    def get_grid_metadata(self, varname: str | None = None) -> dict[str, np.ndarray]:
+    def get_grid_metadata(self, variable_name: str | None = None) -> dict[str, np.ndarray]:
         """
         Returns grid metadata (theta, nphi, phi0, ringstart) for SHT.
         Works for reduced Gaussian and HEALPix grids.
         """
         ds = self.ensure_open()
-        if varname is None:
-            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+        if variable_name is None:
+            variable_name = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
 
-        da = ds[varname] if varname else next(iter(ds.data_vars.values()))
+        da = ds[variable_name] if variable_name else next(iter(ds.data_vars.values()))
 
         # 1. Check for HEALPix
         if da.attrs.get("grid_type") == "healpix" or "cell" in da.dims:
@@ -308,8 +308,8 @@ class DataLoader:
             return cast(dict[str, np.ndarray], hp_base.sht_info())
 
         # 2. Check for Reduced Gaussian
-        if self.is_reduced_gaussian(varname):
-            pl = self.get_reduced_grid_pl(varname)
+        if self.is_reduced_gaussian(variable_name):
+            pl = self.get_reduced_grid_pl(variable_name)
             if pl is not None:
                 # Gaussian latitudes for N rings
                 ntheta = len(pl)
@@ -348,7 +348,7 @@ class DataLoader:
 
 def normalize_tracking_data(
     source: str | Path | xr.DataArray | xr.Dataset,
-    varname: str,
+    variable_name: str,
     *,
     start_time: TimeInput | None = None,
     end_time: TimeInput | None = None,
@@ -357,7 +357,7 @@ def normalize_tracking_data(
     """Normalize one public tracking input to one selected DataArray."""
     loader = DataLoader(source, engine=engine)
     dataset = loader.ensure_open()
-    candidates = DataLoader.VAR_MAPPING.get(varname, [varname])
+    candidates = DataLoader.VAR_MAPPING.get(variable_name, [variable_name])
     actual_name = next((name for name in candidates if name in dataset.data_vars), None)
     if (
         actual_name is None
@@ -367,7 +367,7 @@ def normalize_tracking_data(
         actual_name = cast(str, next(iter(dataset.data_vars)))
     if actual_name is None:
         raise KeyError(
-            f"Variable {varname!r} not found. Available: {list(dataset.data_vars)}"
+            f"Variable {variable_name!r} not found. Available: {list(dataset.data_vars)}"
         )
     selected = select_time_range(
         dataset[actual_name],

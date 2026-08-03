@@ -87,10 +87,10 @@ def _bilinear_sample(
 def sample_tracks(
     tracks: Tracks,
     ds: xr.Dataset,
-    varname: str,
+    variable_name: str,
     method: SamplingMethod = "nearest",
     radius_km: float = 0.0,
-    output_varname: str | None = None,
+    output_variable_name: str | None = None,
 ) -> Tracks:
     """
     Samples a variable from a NetCDF dataset along storm tracks.
@@ -98,11 +98,11 @@ def sample_tracks(
     Args:
         tracks: The Tracks object to update.
         ds: The xarray Dataset containing the variable to sample.
-        varname: The name of the variable in the dataset.
+        variable_name: The name of the variable in the dataset.
         method: The sampling method ('nearest', 'bilinear', 'mean', 'max', 'min').
         radius_km: The radius in km for spatial operations (mean, max, min).
-        output_varname: The name to store in the track's 'vars' dictionary.
-                        Defaults to varname.
+        output_variable_name: The name to store in the track's 'vars' dictionary.
+                        Defaults to variable_name.
 
     Returns:
         The updated Tracks object.
@@ -115,11 +115,11 @@ def sample_tracks(
 
     loader = DataLoader(ds)
     source_ds = loader.ensure_open()
-    if varname not in source_ds:
-        raise ValueError(f"Variable '{varname}' not found in dataset.")
+    if variable_name not in source_ds:
+        raise ValueError(f"Variable '{variable_name}' not found in dataset.")
 
-    da = source_ds[varname]
-    out_name = output_varname or varname
+    da = source_ds[variable_name]
+    out_name = output_variable_name or variable_name
     da, _unused_threshold, sampled_unit = normalize_variable_units(
         da,
         variable_name=out_name,
@@ -330,10 +330,10 @@ def main(args: argparse.Namespace) -> None:
     tracks = sample_tracks(
         tracks=tracks,
         ds=ds,
-        varname=args.var,
+        variable_name=args.var,
         method=args.method,
         radius_km=args.radius,
-        output_varname=args.name,
+        output_variable_name=args.name,
     )
 
     print(f"Writing updated tracks to {args.output}...")

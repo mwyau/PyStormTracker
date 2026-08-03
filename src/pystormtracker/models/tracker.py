@@ -33,7 +33,7 @@ class Tracker(Protocol):
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
-        varname: str,
+        variable_name: str,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
         mode: ModeOption | None = "auto",

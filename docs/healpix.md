@@ -64,7 +64,7 @@ da_hp = regridder.to_healpix(frame, nside=64)
 tracker = HealpixTracker()
 tracks = tracker.track(
     infile=field.isel({field.dims[0]: slice(0, 8)}),
-    varname="msl",
+    variable_name="msl",
     mode="min",
     threshold=1000.0,
     lmin=5,

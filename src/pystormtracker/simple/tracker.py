@@ -129,7 +129,7 @@ class SimpleTracker:
     def _detect_serial(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None,
         mode: Mode,
         threshold: float | None = None,
@@ -149,14 +149,14 @@ class SimpleTracker:
         t0 = timeit.default_timer()
         data_xr = normalize_tracking_data(
             infile,
-            varname,
+            variable_name,
             start_time=time_range.start if time_range else None,
             end_time=time_range.end if time_range else None,
             engine=engine,
         )
         data_xr, threshold, variable_unit = normalize_variable_units(
             data_xr,
-            variable_name=varname,
+            variable_name=variable_name,
             threshold=threshold,
         )
         bounds = spatial_bounds_from_xarray(data_xr)
@@ -175,7 +175,7 @@ class SimpleTracker:
         print(f"    [Serial] Preprocessing time: {t_pre - t0:.4f}s")
 
         t0_detect = timeit.default_timer()
-        detector = SimpleDetector.from_xarray(data_xr, varname=varname)
+        detector = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
         raw_steps = _detect_and_link(
             detector,
@@ -195,7 +195,7 @@ class SimpleTracker:
         t2 = timeit.default_timer()
         tracks = _link_centers(
             raw_steps,
-            primary_var=varname,
+            primary_var=variable_name,
             mode=mode,
             bounds=bounds,
             unit=variable_unit,
@@ -208,7 +208,7 @@ class SimpleTracker:
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
-        varname: str,
+        variable_name: str,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
         mode: ModeOption | None = "auto",
@@ -232,7 +232,7 @@ class SimpleTracker:
         import timeit
 
         t0 = timeit.default_timer()
-        resolved_mode = resolve_mode(varname, mode)
+        resolved_mode = resolve_mode(variable_name, mode)
 
         time_range = None
         if start_time is not None or end_time is not None:
@@ -254,7 +254,7 @@ class SimpleTracker:
 
             tracks = run_simple_mpi(
                 str(infile),
-                varname,
+                variable_name,
                 time_range,
                 resolved_mode,
                 threshold=threshold,
@@ -274,7 +274,7 @@ class SimpleTracker:
 
             tracks = run_simple_dask(
                 str(infile),
-                varname,
+                variable_name,
                 time_range,
                 resolved_mode,
                 n_workers,
@@ -294,7 +294,7 @@ class SimpleTracker:
         else:
             tracks = self._detect_serial(
                 infile,
-                varname,
+                variable_name,
                 time_range,
                 resolved_mode,
                 threshold=threshold,

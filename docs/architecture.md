@@ -131,7 +131,7 @@ tracker = pst.SimpleTracker()
 
 tracks = tracker.track(
     infile="era5_msl.nc",
-    varname="msl",
+    variable_name="msl",
     start_time="2025-01-01",
     backend="dask",
 )

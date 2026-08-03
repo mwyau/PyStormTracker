@@ -20,7 +20,7 @@ from .tracker import _convert_stereo_steps, _detect_and_link, _link_centers
 
 def run_simple_dask(
     infile: str,
-    varname: str,
+    variable_name: str,
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     n_workers: int | None,
@@ -44,12 +44,12 @@ def run_simple_dask(
         n_workers = min(os.cpu_count() or 1, 4)
 
     detector_peek = SimpleDetector(
-        pathname=infile, varname=varname, time_range=time_range, engine=engine
+        pathname=infile, variable_name=variable_name, time_range=time_range, engine=engine
     )
     data_xr = detector_peek.get_xarray()
     data_xr, threshold, variable_unit = normalize_variable_units(
         data_xr,
-        variable_name=varname,
+        variable_name=variable_name,
         threshold=threshold,
     )
     bounds = spatial_bounds_from_xarray(data_xr)
@@ -67,7 +67,7 @@ def run_simple_dask(
         extent=extent,
     )
 
-    detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
+    detector_obj = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
 
     # Decouple task chunks from worker count to prevent OOM on high-res data.
     times = detector_obj.get_time()
@@ -112,7 +112,7 @@ def run_simple_dask(
     t3 = timeit.default_timer()
     tracks = _link_centers(
         all_raw_steps,
-        primary_var=varname,
+        primary_var=variable_name,
         mode=mode,
         bounds=bounds,
         unit=variable_unit,
@@ -125,7 +125,7 @@ def run_simple_dask(
 
 def run_simple_mpi(
     infile: str,
-    varname: str,
+    variable_name: str,
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     threshold: float | None = None,
@@ -154,12 +154,12 @@ def run_simple_mpi(
     processing: tuple[ProcessingStep, ...] = ()
     if rank == root:
         detector_peek = SimpleDetector(
-            pathname=infile, varname=varname, time_range=time_range, engine=engine
+            pathname=infile, variable_name=variable_name, time_range=time_range, engine=engine
         )
         data_xr = detector_peek.get_xarray()
         data_xr, threshold, variable_unit = normalize_variable_units(
             data_xr,
-            variable_name=varname,
+            variable_name=variable_name,
             threshold=threshold,
         )
         bounds = spatial_bounds_from_xarray(data_xr)
@@ -177,7 +177,7 @@ def run_simple_mpi(
             extent=extent,
         )
 
-        detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
+        detector_obj = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
     else:
         detectors = None
@@ -189,9 +189,9 @@ def run_simple_mpi(
     if variable_unit is None:
         raise RuntimeError("MPI variable-unit normalization failed")
     metadata = TracksMetadata(
-        primary_var=varname,
+        primary_var=variable_name,
         mode=mode,
-        units={varname: variable_unit},
+        units={variable_name: variable_unit},
         bounds=bounds,
         processing=processing,
     )
@@ -225,7 +225,7 @@ def run_simple_mpi(
         t4 = timeit.default_timer()
         tracks = _link_centers(
             all_raw_steps,
-            primary_var=varname,
+            primary_var=variable_name,
             mode=mode,
             bounds=bounds,
             unit=variable_unit,

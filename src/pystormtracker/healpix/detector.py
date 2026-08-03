@@ -34,21 +34,21 @@ class HealpixDetector:
     def __init__(
         self,
         pathname: str | Path,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
         engine: str | None = None,
     ) -> None:
         self.pathname = Path(pathname)
-        self.requested_varname = varname
+        self.requested_variable_name = variable_name
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
 
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self.varname = varname
+        self.variable_name = variable_name
         self._hp_base: ducc0.healpix.Healpix_Base | None = None
         self._neighbor_table: NDArray[np.int64] | None = None
         self._lat_lon_map: tuple[NDArray[np.float64], NDArray[np.float64]] | None = None
@@ -59,7 +59,7 @@ class HealpixDetector:
 
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
-                self.requested_varname, [self.requested_varname]
+                self.requested_variable_name, [self.requested_variable_name]
             )
             for name in possible_names:
                 if name in ds.data_vars:
@@ -67,10 +67,10 @@ class HealpixDetector:
                     break
 
             if actual_var is None:
-                actual_var = self.requested_varname
+                actual_var = self.requested_variable_name
 
-            self.varname = actual_var
-            self._data = ds[self.varname]
+            self.variable_name = actual_var
+            self._data = ds[self.variable_name]
 
         if self._hp_base is None:
             # Enforce 1D spatial dimension (time, cell)
@@ -175,7 +175,7 @@ class HealpixDetector:
 
         # Set variable specific thresholds if not provided
         if threshold is None:
-            if self.requested_varname == "vo":
+            if self.requested_variable_name == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
                 threshold = model_constants.DEFAULT_MSL_THRESHOLD
@@ -245,7 +245,7 @@ class HealpixDetector:
     def from_xarray(
         cls,
         data: xr.DataArray,
-        varname: str | None = None,
+        variable_name: str | None = None,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -255,7 +255,7 @@ class HealpixDetector:
         dummy_path = Path(f"/tmp/dummy_{uuid.uuid4().hex}.nc")
         detector = cls(
             pathname=dummy_path,
-            varname=varname or (str(data.name) if data.name is not None else "var"),
+            variable_name=variable_name or (str(data.name) if data.name is not None else "var"),
             time_range=time_range,
             global_start_idx=global_start_idx,
             global_total_steps=global_total_steps,
@@ -308,7 +308,7 @@ class HealpixDetector:
             # Create a shallow copy with the new time range and global index tracking
             detector = HealpixDetector(
                 pathname=self.pathname,
-                varname=self.requested_varname,
+                variable_name=self.requested_variable_name,
                 time_range=chunk_time_range,
                 global_start_idx=self.global_start_idx + start_idx,
                 global_total_steps=self.global_total_steps or len(times),

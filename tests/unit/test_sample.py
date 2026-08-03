@@ -102,7 +102,7 @@ def test_sample_invalid_var(dummy_tracks: Tracks, dummy_dataset: xr.Dataset) -> 
 
 def test_sample_output_name(dummy_tracks: Tracks, dummy_dataset: xr.Dataset) -> None:
     tracks = sample_tracks(
-        dummy_tracks, dummy_dataset, "test_var", output_varname="new_name"
+        dummy_tracks, dummy_dataset, "test_var", output_variable_name="new_name"
     )
     assert "new_name" in tracks[0][0].vars
     assert tracks[0][0].vars["new_name"] == -8.0
