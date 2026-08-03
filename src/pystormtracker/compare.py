@@ -8,7 +8,8 @@ import sys
 
 import numpy as np
 
-from .io.imilast import read_imilast, write_imilast
+from .io.format import load_tracks
+from .io.trackjson import write_trackjson
 from .metrics.compare import TrackComparison, TrackComparisonConfig, compare_tracks
 from .models.tracks import Tracks
 from .utils.cli import fraction, positive_float
@@ -86,10 +87,8 @@ def setup_parser(
 
 
 def _load_tracks(path: str) -> Tracks:
-    """Load an IMILAST trajectory file on the packed-model branch."""
-    if path.lower().endswith((".txt", ".dat")):
-        return read_imilast(path)
-    raise ValueError("the packed-model branch comparison CLI accepts IMILAST text")
+    """Load a supported trajectory file."""
+    return load_tracks(path)
 
 
 def _matched_candidate_tracks(tracks: Tracks, candidate_ids: set[int]) -> Tracks:
@@ -151,7 +150,7 @@ def main(args: argparse.Namespace) -> None:
     if args.matched_candidate_output:
         log(f"Writing matched candidate tracks to {args.matched_candidate_output}...")
         candidate_ids = {match.candidate_id for match in result.matches}
-        write_imilast(
+        write_trackjson(
             _matched_candidate_tracks(candidate, candidate_ids),
             args.matched_candidate_output,
         )

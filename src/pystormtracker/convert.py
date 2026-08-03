@@ -1,27 +1,76 @@
+"""Track-format conversion and temporary HTML placeholder output."""
+
 from __future__ import annotations
 
 import argparse
+import warnings
+from dataclasses import replace
 from pathlib import Path
 
-from .io.hodges import read_hodges
-from .io.imilast import read_imilast
-from .models.tracks import Tracks, TracksMetadata
-from .models.units import canonical_unit_for
+from .io.format import SUPPORTED_FORMATS, load_tracks
+from .models.tracks import Tracks
+from .models.units import canonical_unit_for, resolve_mode
 
 
-def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> None:
-    raise ValueError("interactive JSON conversion is unavailable on this branch")
+def generate_html(outfile: str | Path) -> None:
+    """Write the temporary static explorer placeholder."""
+    warnings.warn(
+        "HTML explorer output is temporarily a static placeholder; "
+        "track data was not embedded.",
+        stacklevel=2,
+    )
+    template_path = Path(__file__).parent / "templates" / "explorer.html"
+    if not template_path.exists():
+        raise FileNotFoundError(f"HTML template not found at {template_path}")
+    Path(outfile).write_text(
+        template_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+
+def _rename_primary_variable(
+    tracks: Tracks,
+    target: str,
+    requested_unit: str | None,
+) -> Tracks:
+    variables = dict(tracks.variables)
+    units = dict(tracks.units)
+    if target in variables:
+        source_name = target
+    elif "Intensity1" in variables:
+        source_name = "Intensity1"
+    elif len(variables) == 1:
+        source_name = next(iter(variables))
+    else:
+        raise ValueError(
+            f"cannot select variable {target!r}; source has multiple variables and "
+            "the requested target is absent"
+        )
+    if source_name != target:
+        variables[target] = variables.pop(source_name)
+        source_unit = units.pop(source_name, None)
+    else:
+        source_unit = units.get(source_name)
+    unit = requested_unit or canonical_unit_for(target) or source_unit
+    if unit is None or (
+        unit == "1" and canonical_unit_for(target) is None and requested_unit is None
+    ):
+        raise ValueError(
+            f"unit for renamed variable {target!r} cannot be established; "
+            "provide --unit"
+        )
+    units[target] = unit
+    metadata = replace(tracks.metadata, primary_var=target, units=units)
+    return tracks.with_variables(variables, metadata=metadata)
 
 
 def setup_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    """Sets up the argument parser for the convert command."""
+    """Set up the trajectory conversion command."""
     parser = subparsers.add_parser(
         "convert",
         description=(
-            "Convert PyStormTracker data between formats and generate "
-            "text trajectory formats."
+            "Convert supported trajectory formats or write an HTML placeholder."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -32,76 +81,57 @@ def setup_parser(
     parser.add_argument(
         "-f",
         "--in-format",
-        choices=["imilast", "hodges"],
-        required=True,
-        help="Input file format",
+        choices=["auto", *SUPPORTED_FORMATS],
+        default="auto",
+        help="Input format; inferred from the extension by default.",
     )
     parser.add_argument(
         "-F",
         "--out-format",
-        choices=["imilast", "hodges"],
-        required=True,
-        help="Output file format",
+        choices=["auto", *SUPPORTED_FORMATS, "html"],
+        default="auto",
+        help="Output format; inferred from the extension by default.",
+    )
+    parser.add_argument("-v", "--var", help="Override the primary variable name")
+    parser.add_argument(
+        "--unit", help="Unit for a renamed or otherwise ambiguous variable"
     )
     parser.add_argument(
-        "-v", "--var", help="Override track variable / type (e.g., msl or vo)"
-    )
-    parser.add_argument(
-        "--split",
-        action="store_true",
-        help="Retained for compatibility; HTML output is unavailable on this branch.",
+        "--mode",
+        choices=["auto", "min", "max"],
+        default="auto",
+        help="Extremum mode for the final primary variable.",
     )
     parser.set_defaults(func=main)
 
 
 def main(args: argparse.Namespace) -> None:
-    """
-    Main entry point for the convert command.
-
-    Supports conversion between the IMILAST and Hodges text formats.
-    """
-    if args.split:
-        raise ValueError("--split requires the JSON format branch")
-
-    print(f"Reading {args.input} (format: {args.in_format})...")
-
-    if args.in_format == "imilast":
-        tracks = read_imilast(args.input)
-    else:
-        tracks = read_hodges(args.input)
-
+    """Convert a trajectory file using extension or explicitly selected formats."""
+    in_format = None if args.in_format == "auto" else args.in_format
+    out_format = None if args.out_format == "auto" else args.out_format
+    tracks = load_tracks(
+        args.input,
+        format=in_format,
+        primary_var=args.var,
+        mode=args.mode,
+    )
     if args.var:
-        variable_name = args.var.lower()
-        variables = dict(tracks.variables)
-        if variable_name not in variables and "Intensity1" in variables:
-            variables[variable_name] = variables.pop("Intensity1")
-        units = dict(tracks.units)
-        if variable_name in variables:
-            units[variable_name] = canonical_unit_for(variable_name) or units.get(
-                "Intensity1", "1"
-            )
-        tracks = Tracks(
-            ids=tracks.ids,
-            offsets=tracks.offsets,
-            times=tracks.times,
-            lats=tracks.lats,
-            lons=tracks.lons,
-            variables=variables,
-            metadata=TracksMetadata(variable_name, tracks.mode, units),
-        )
-
-    print(f"Loaded {len(tracks)} tracks. Primary variable: {tracks.primary_var}")
-    print(f"Writing to {args.output} (format: {args.out_format})...")
-
-    tracks.write(args.output, format=args.out_format)
-
-    print("Done!")
+        tracks = _rename_primary_variable(tracks, args.var, args.unit)
+    final_mode = resolve_mode(tracks.primary_var, args.mode)
+    if final_mode != tracks.mode:
+        tracks = tracks.with_metadata(replace(tracks.metadata, mode=final_mode))
+    if out_format == "html" or (
+        out_format is None and Path(args.output).suffix.lower() == ".html"
+    ):
+        generate_html(args.output)
+    else:
+        tracks.write(args.output, format=out_format)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
+    argument_parser = argparse.ArgumentParser()
+    subparsers = argument_parser.add_subparsers()
     setup_parser(subparsers)
-    args = parser.parse_args()
-    if hasattr(args, "func"):
-        args.func(args)
+    namespace = argument_parser.parse_args()
+    if hasattr(namespace, "func"):
+        namespace.func(namespace)

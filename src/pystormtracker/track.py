@@ -5,16 +5,19 @@ import json
 import os
 import timeit
 from argparse import Namespace
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 
 from .hodges import constants
 from .hodges.tracker import HodgesTracker
+from .io.format import SUPPORTED_FORMATS, SupportedFormat
 from .models import constants as model_constants
 from .models.tracks import Tracks
+from .models.units import ModeOption, resolve_mode
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
+from .time import TimeInput
 from .utils.cli import (
     finite_float,
     nonnegative_float,
@@ -101,9 +104,9 @@ def run_tracker(
     infile: str,
     varname: str,
     outfile: str,
-    start_time: str | np.datetime64 | None = None,
-    end_time: str | np.datetime64 | None = None,
-    mode: Literal["min", "max"] = "min",
+    start_time: TimeInput | None = None,
+    end_time: TimeInput | None = None,
+    mode: ModeOption | None = "auto",
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: tuple[float, float, float, float] | None = None,
@@ -113,7 +116,7 @@ def run_tracker(
     threshold: float | None = None,
     engine: str | None = None,
     algorithm: Algorithm = "simple",
-    output_format: str = "imilast",
+    output_format: str | None = "auto",
     # Hodges-specific
     min_points: int = constants.MIN_POINTS_DEFAULT,
     w1: float | None = None,
@@ -134,6 +137,7 @@ def run_tracker(
 ) -> Tracks:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
+    resolved_mode = resolve_mode(varname, mode)
 
     # 1. Backend Auto-detection
     detected_backend: Backend = "serial"
@@ -256,7 +260,7 @@ def run_tracker(
         varname=varname,
         start_time=start_time,
         end_time=end_time,
-        mode=mode,
+        mode=resolved_mode,
         map_proj=map_proj,
         resolution=resolution,
         extent=extent,
@@ -280,7 +284,12 @@ def run_tracker(
         print(f"Total number of tracks: {num_tracks}")
 
         timer["export"] = timeit.default_timer()
-        tracks.write(outfile, format=output_format)
+        selected_format = (
+            None
+            if output_format in (None, "auto")
+            else cast("SupportedFormat", output_format)
+        )
+        tracks.write(outfile, format=selected_format)
         timer["export"] = timeit.default_timer() - timer["export"]
 
         print(f"Export time: {timer['export']:.4f}s")
@@ -329,16 +338,16 @@ def setup_parser(
     general.add_argument(
         "-f",
         "--format",
-        choices=["imilast", "hodges"],
-        default="imilast",
-        help="Output format. Default is 'imilast'.",
+        choices=["auto", *SUPPORTED_FORMATS],
+        default="auto",
+        help="Output format; inferred from the extension, defaulting to TrackJSON.",
     )
     general.add_argument(
         "-m",
         "--mode",
-        choices=["min", "max"],
-        default="min",
-        help="Detection mode: 'min' for minima or 'max' for maxima.",
+        choices=["auto", "min", "max"],
+        default="auto",
+        help="Detection mode; inferred from known variable aliases.",
     )
     general.add_argument(
         "--map-proj",

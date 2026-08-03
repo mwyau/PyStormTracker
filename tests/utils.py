@@ -220,7 +220,7 @@ def fetch_era5_uv850(
 
 BASE_DIR = get_base_dir()
 ERA5_TEST_DIR = BASE_DIR / "tests" / "data" / "era5"
-TRACKS_TEST_DIR = BASE_DIR / "tests" / "data" / "tracks"
+TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "tracks"
 
 
 def get_era5_msl_path(res: str = "2.5x2.5", suffix: str = "") -> Path:
@@ -250,7 +250,7 @@ def get_era5_vodv_path(res: str = "2.5x2.5", suffix: str = "ncl") -> Path:
 def get_legacy_track_path(var: str = "msl") -> Path:
     """Returns the path to legacy regression track files."""
     if var == "msl":
-        return TRACKS_TEST_DIR / "era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
+        return TEST_DATA_DIR / "era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
     if var == "vo":
-        return TRACKS_TEST_DIR / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
+        return TEST_DATA_DIR / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
     raise ValueError(f"Unknown legacy variable: {var}")
