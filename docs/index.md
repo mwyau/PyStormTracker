@@ -15,6 +15,7 @@ API Reference <api>
 
 Architecture <architecture>
 TrackJSON Format <trackjson>
+WebGL Explorer <explorer>
 Hodges (TRACK) Implementation <hodges>
 Spectral Accuracy <spectral_accuracy>
 HEALPix Support <healpix>

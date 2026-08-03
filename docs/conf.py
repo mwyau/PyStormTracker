@@ -1,6 +1,10 @@
 # Configuration file for the Sphinx documentation builder.
 
+import sys
 from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "_ext"))
 
 # -- Project information -----------------------------------------------------
 project = "PyStormTracker"
@@ -13,6 +17,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "explorer",
 ]
 
 templates_path = ["_templates"]

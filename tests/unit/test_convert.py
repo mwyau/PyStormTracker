@@ -51,6 +51,7 @@ def test_convert_infers_trackjson_and_geojson_formats(tmp_path: Path) -> None:
     converted = load_tracks(target)
     assert converted.track_type == "msl"
     np.testing.assert_allclose(converted.vars["msl"], [100_000.0, 99_000.0])
+<<<<<<< Updated upstream
 
 
 def test_convert_var_override_renames_single_custom_input_variable(
@@ -91,3 +92,5 @@ def test_convert_var_override_renames_single_custom_input_variable(
     assert converted.track_type == "msl"
     assert set(converted.vars) == {"msl"}
     np.testing.assert_allclose(converted.vars["msl"], [100_000.0, 99_000.0])
+=======
+>>>>>>> Stashed changes

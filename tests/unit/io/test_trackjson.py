@@ -144,6 +144,7 @@ def test_format_facade_infers_and_routes(tmp_path: Path) -> None:
     assert infer_format("tracks.dat") == "imilast"
     assert infer_format("tracks.tdump") == "hodges"
     assert load_tracks(output).track_type == "msl"
+<<<<<<< Updated upstream
 
 
 def test_save_tracks_uses_extension_when_overwriting_existing_file(
@@ -164,3 +165,5 @@ def test_save_tracks_uses_extension_when_overwriting_existing_file(
     assert (
         json.loads(json_output.read_text(encoding="utf-8"))["format"] == "TrackJSON/1.0"
     )
+=======
+>>>>>>> Stashed changes

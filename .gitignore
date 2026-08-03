@@ -25,6 +25,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+docs/_static/explorer/
 
 # IPython intermediate checkpoints
 .ipynb_checkpoints

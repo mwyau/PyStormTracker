@@ -307,6 +307,15 @@ jobs:
       - name: Build documentation
         run: uv run --no-dev --group docs sphinx-build -b html docs docs/_build/html
 
+      - name: Verify generated explorer assets
+        run: |
+          test -f docs/_build/html/_static/explorer/explorer.html
+          test -f docs/_build/html/_static/explorer/explorer.css
+          test -f docs/_build/html/_static/explorer/explorer.js
+          test -f docs/_build/html/_static/explorer/tracks.trackjson
+          rg -q '_static/explorer/explorer.html' docs/_build/html/explorer.html
+          rg -q 'tracks.trackjson' docs/_build/html/_static/explorer/explorer.js
+
   docker-build:
     name: Build and test Docker images
     if: github.event_name != 'workflow_dispatch'
