@@ -4,7 +4,25 @@ import numpy as np
 import pytest
 
 from pystormtracker.metrics.tracks import compute_track_metrics
-from pystormtracker.models.tracks import Tracks
+from pystormtracker.models.tracks import Tracks, TracksMetadata
+
+
+def _packed(
+    track_ids: np.ndarray,
+    times: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    variables: dict[str, np.ndarray],
+) -> Tracks:
+    return Tracks(
+        ids=np.array([track_ids[0]], dtype=np.int64),
+        offsets=np.array([0, len(track_ids)], dtype=np.int64),
+        times=times,
+        lats=lats,
+        lons=lons,
+        variables=variables,
+        metadata=TracksMetadata("intensity", "max", {"intensity": "1"}),
+    )
 
 
 @pytest.fixture
@@ -17,7 +35,7 @@ def equator_crossing_track() -> Tracks:
     lons = np.array([359.0, 1.0])
     track_ids = np.array([1, 1], dtype=np.int64)
     variables = {"intensity": np.array([100.0, 120.0])}
-    return Tracks(track_ids, times, lats, lons, variables)
+    return _packed(track_ids, times, lats, lons, variables)
 
 
 @pytest.fixture
@@ -30,7 +48,7 @@ def polar_track() -> Tracks:
     lons = np.array([0.0, 180.0])  # Crosses over the pole
     track_ids = np.array([1, 1], dtype=np.int64)
     variables = {"intensity": np.array([100.0, 100.0])}
-    return Tracks(track_ids, times, lats, lons, variables)
+    return _packed(track_ids, times, lats, lons, variables)
 
 
 def test_equator_wrapping(equator_crossing_track: Tracks) -> None:
@@ -141,7 +159,7 @@ def test_ata_max_logic_multipoint() -> None:
     track_ids = np.array([1, 1, 1], dtype=np.int64)
     # Amplitudes: 100 at 2deg (~222km), 150 at center, 80 at -2deg (~222km)
     variables = {"intensity": np.array([100.0, 150.0, 80.0])}
-    tracks = Tracks(track_ids, times, lats, lons, variables)
+    tracks = _packed(track_ids, times, lats, lons, variables)
 
     grid_lat, grid_lon = np.array([0.0]), np.array([0.0])
 

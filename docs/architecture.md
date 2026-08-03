@@ -17,9 +17,18 @@ The architecture has four main features:
 
 The data models use contiguous array-backed storage:
 
-- **`Tracks`:** The central container holding one-dimensional NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and additional meteorological variables.
-- **`Track`:** A lightweight view into the `Tracks` arrays for one cyclone track.
+- **`Tracks`:** The immutable central container holding per-track `ids` and
+  half-open `offsets`, plus aligned one-dimensional `times`, `lats`, `lons`,
+  and meteorological variable arrays. For example, `ids=[10, 20, 35]` and
+  `offsets=[0, 4, 7, 12]` represent points `[0:4]`, `[4:7]`, and `[7:12]`.
+- **`Track`:** A lightweight view storing its parent and packed track position;
+  its `point_slice` is derived directly from adjacent offsets.
 - **`Center`:** A dataclass used during cyclone-center detection.
+
+Mutation occurs in `TracksBuilder`. Finalized arrays are native-endian,
+C-contiguous, and read-only. Point columns are aligned by position; a
+point-level ID array is available only through the explicit
+`Tracks.point_track_ids()` derived operation.
 
 This layout avoids one persistent Python object per center, reduces allocation overhead, and supports NumPy selection, broadcasting, and serialization between workers.
 
@@ -234,7 +243,7 @@ Detailed execution timings (breaking down Detection, Linking, Export, and I/O Ov
 
 | Feature | Legacy Architecture (v0.0.2) | Current Architecture (v0.4.0+) |
 | --- | --- | --- |
-| **Data storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
+| **Data storage** | Nested lists of `Center` and `Track` objects. | Immutable packed C-contiguous NumPy columns with IDs and offsets. |
 | **Parallelism** | Threaded tree reduction. | Parallel detection followed by centralized linking. |
 | **Linking strategy** | Tree reduction across chunks. | Ordered detection gathering and one linking pass with serial-equality tests. |
 | **Linker** | $O(N^2)$ nested Python loops. | Vectorized great-circle distance matrices and deterministic greedy matching. |

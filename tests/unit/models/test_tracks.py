@@ -1,258 +1,205 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
-from numpy.typing import NDArray
+import pytest
 
-from pystormtracker.io.imilast import read_imilast, write_imilast
-from pystormtracker.models.center import Center
-from pystormtracker.models.tracks import Tracks
-
-
-def test_tracks_init() -> None:
-    t = Tracks()
-    assert len(t) == 0
-    assert t.head == []
-    assert t.tail == []
-    assert t.time_range is None
+from pystormtracker.models.tracks import (
+    Tracks,
+    TracksBuilder,
+    TracksMetadata,
+    compute_track_summaries,
+)
 
 
-def test_tracks_append_and_access() -> None:
-    t = Tracks()
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, {"msl": 0})
-    c2 = Center(t0, 1, 1, {"msl": 1})
-
-    tr1 = t.add_track([c1])
-    assert len(t) == 1
-    assert t[0] == tr1
-
-    tr2 = t.add_track([c2])
-    assert len(t) == 2
-    assert t[1] == tr2
-
-    # Test __setitem__ with a track from the same Tracks object
-    tr_new_same = t.add_track([c1, c2])
-    t[0] = tr_new_same
-    assert t[0].track_id == tr_new_same.track_id
-
-    # Test __setitem__ with a track from a different Tracks object
-    # Note: we need another Tracks object to get a properly baked Track view
-    # to replace into the first Tracks object.
-    t2 = Tracks()
-    tr_new = t2.add_track([c1, c2])
-
-    # Replaces the first track. The new track is appended at the end.
-    t[0] = tr_new
-    assert len(t[-1]) == 2
-    assert t[-1][0].lat == c1.lat
-    assert t[-1][1].lat == c2.lat
+def _metadata(primary_var: str = "msl", mode: str = "min") -> TracksMetadata:
+    return TracksMetadata(primary_var, mode, {primary_var: "Pa"})  # type: ignore[arg-type]
 
 
-def test_tracks_head_tail() -> None:
-    t = Tracks()
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, {"msl": 0})
-    tr = t.add_track([c1])
-
-    t.head = [tr]
-    assert len(t.head) == 1
-    assert t.head[0].track_id == tr.track_id
-
-    t.tail = [tr]
-    assert len(t.tail) == 1
-    assert t.tail[0].track_id == tr.track_id
-
-
-def test_tracks_init_with_data() -> None:
-    t_id: NDArray[np.int64] = np.array([1])
-    t_time: NDArray[np.datetime64] = np.array(
-        ["2025-12-01T00:00:00"], dtype="datetime64[s]"
+def _tracks() -> Tracks:
+    return Tracks(
+        ids=np.array([10, 20, 35], dtype=np.int64),
+        offsets=np.array([0, 4, 7, 12], dtype=np.int64),
+        times=np.array(
+            [
+                "2020-01-01T00:00",
+                "2020-01-01T06:00",
+                "2020-01-01T12:00",
+                "2020-01-01T18:00",
+                "2020-01-02T00:00",
+                "2020-01-02T06:00",
+                "2020-01-02T12:00",
+                "2020-01-03T00:00",
+                "2020-01-03T06:00",
+                "2020-01-03T12:00",
+                "2020-01-03T18:00",
+                "2020-01-04T00:00",
+            ],
+            dtype="datetime64[ms]",
+        ),
+        lats=np.arange(12, dtype=np.float64),
+        lons=np.arange(12, dtype=np.float64),
+        variables={"msl": np.arange(12, dtype=np.float64)},
+        metadata=_metadata(),
     )
-    t_lat: NDArray[np.float64] = np.array([0.0])
-    t_lon: NDArray[np.float64] = np.array([0.0])
-    t_vars: dict[str, NDArray[np.float64]] = {"msl": np.array([0.0])}
-
-    t = Tracks(track_ids=t_id, times=t_time, lats=t_lat, lons=t_lon, vars_dict=t_vars)
-    assert len(t) == 1
-    assert t[0][0].vars["msl"] == 0.0
 
 
-def test_tracks_iterator() -> None:
-    t = Tracks()
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, {"msl": 0})
-    c2 = Center(t0, 1, 1, {"msl": 1})
-    tr1 = t.add_track([c1])
-    tr2 = t.add_track([c2])
-
-    collected = list(t)
-    assert collected == [tr1, tr2]
-
-
-def test_tracks_imilast_io(tmp_path: Path) -> None:
-    """Test round-trip serialization to IMILAST format."""
-    t = Tracks()
-    # Create two tracks with standardized datetime64 times
-    t1_time = np.datetime64("2025-12-01T00:00:00")
-    t1_time2 = np.datetime64("2025-12-01T06:00:00")
-
-    c1 = Center(t1_time, 10.0, 20.0, {"Intensity1": 1000.0})
-    c2 = Center(t1_time2, 11.0, 21.0, {"Intensity1": 990.0})
-    t.add_track([c1, c2])
-
-    # Track 2: 1 point
-    c3 = Center(t1_time, -10.0, -20.0, {"Intensity1": 1010.0})
-    t.add_track([c3])
-
-    out_file = tmp_path / "test_io.txt"
-    write_imilast(t, out_file)
-
-    # Read back
-    t2 = read_imilast(out_file)
-
-    assert len(t2) == 2
-
-    # Check that we can compare them (must sort first as order isn't guaranteed in IO)
-    t.sort()
-    t2.sort()
-    assert t == t2
-
-
-def test_track_methods() -> None:
-    t = Tracks()
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, {"msl": 0})
-    c2 = Center(t0 + np.timedelta64(6, "h"), 1, 1, {"msl": 1})
-
-    track = t.add_track([c1])
-    assert len(track) == 1
-    assert track[0].lat == c1.lat
-
-    # iter
-    assert [c.lat for c in track] == [c1.lat]
-
-    # append
-    track.append(c2)
-    assert len(track) == 2
-    assert track[1].lat == c2.lat
-
-    # extend
-    t2 = Tracks()
-    track2 = t2.add_track([Center(t0 + np.timedelta64(12, "h"), 2, 2, {"msl": 2})])
-    track.extend(track2)
-    assert len(track) == 3
-    assert track[2].vars["msl"] == 2
-
-    # abs_dist (distance between last point of track and another center)
-    c3 = Center(t0 + np.timedelta64(18, "h"), 0, 1, {"msl": 0})
-    # Haversine distance from track last point (2,2) to target center (0,1)
-    dist = track.abs_dist(c3)
-    assert dist > 240
-    assert dist < 260
-
-
-def test_tracks_sort() -> None:
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    t1 = t0 + np.timedelta64(6, "h")
-
-    tracks = Tracks()
-    tr1 = tracks.add_track([Center(t1, 0, 0, {"msl": 0})])
-    tr2 = tracks.add_track([Center(t0, 10, 10, {"msl": 0})])
-    tr3 = tracks.add_track([Center(t0, 5, 5, {"msl": 0})])
-
-    tracks.sort()
-
-    # Should be sorted by time, then lat, then lon
-    assert tracks[0] == tr3  # t0, lat 5
-    assert tracks[1] == tr2  # t0, lat 10
-    assert tracks[2] == tr1  # t1, lat 0
-
-
-def test_tracks_equality() -> None:
-    t1 = Tracks()
-    t2 = Tracks()
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, {"msl": 0})
-
-    t1.add_track([c1])
-    t2.add_track([c1])
-
-    # __eq__ testing is only defined on Track, not Tracks
-    assert t1[0] == t2[0]
-
-    # Not eq type
-    assert t1[0] != "not a track"
-
-    # Not eq len
-    t2[0].append(c1)
-    assert t1[0] != t2[0]
-
-    # Not eq elements
-    t3 = Tracks()
-    t3.add_track([Center(t0, 1, 1, {"msl": 1})])
-    assert t1[0] != t3[0]
-
-
-def test_tracks_empty_track() -> None:
-    t = Tracks()
-    tr = t.add_track([])
-    assert len(tr) == 0
-    assert tr.track_id == 1  # First ID is 1
-
-    # Test extending from self vs other
-    t0 = np.datetime64("2025-12-01T00:00:00")
-    c1 = Center(t0, 0, 0, {"msl": 0})
-    tr.append(c1)
-
-    t2 = Tracks()
-    t2.add_track([c1])
-
-    # Test extend onto a different track in the same Tracks object
-    tr2_same = t.add_track([c1])
-    tr.extend(tr2_same)
-    assert len(tr) == 2
-
-
-def test_tracks_init_no_vars() -> None:
-    t_id: NDArray[np.int64] = np.array([1])
-    t_time: NDArray[np.datetime64] = np.array(
-        ["2025-12-01T00:00:00"], dtype="datetime64[s]"
+def test_packed_shape_and_direct_views() -> None:
+    tracks = _tracks()
+    assert len(tracks) == 3
+    assert tracks[0].track_id == 10
+    assert tracks[0].point_slice == slice(0, 4)
+    assert tracks[-1].point_slice == slice(7, 12)
+    assert not hasattr(tracks, "track_ids")
+    np.testing.assert_array_equal(
+        tracks.point_track_ids(), [10] * 4 + [20] * 3 + [35] * 5
     )
-    t_lat: NDArray[np.float64] = np.array([0.0])
-    t_lon: NDArray[np.float64] = np.array([0.0])
-
-    t = Tracks(track_ids=t_id, times=t_time, lats=t_lat, lons=t_lon)
-    assert len(t) == 1
-    assert len(t.vars) == 0
 
 
-def test_tracks_bulk_append() -> None:
-    t = Tracks()
-    t_id: NDArray[np.int64] = np.array([1, 2])
-    t_time: NDArray[np.datetime64] = np.array(
-        ["2025-12-01T00:00:00", "2025-12-01T00:00:00"], dtype="datetime64[s]"
+def test_empty_layout_and_singletons() -> None:
+    empty = Tracks(
+        ids=[],
+        offsets=[0],
+        times=[],
+        lats=[],
+        lons=[],
+        variables={"msl": []},
+        metadata=_metadata(),
     )
-    t_lat: NDArray[np.float64] = np.array([0.0, 1.0])
-    t_lon: NDArray[np.float64] = np.array([0.0, 1.0])
-    t_vars: dict[str, NDArray[np.float64]] = {"msl": np.array([0.0, 1.0])}
+    assert len(empty) == 0
+    builder = TracksBuilder("msl", "min", {"msl": "Pa"})
+    builder.add_track(35, [np.datetime64("2020-01-01")], [0], [0], {"msl": [1]})
+    singleton = builder.finish()
+    np.testing.assert_array_equal(singleton.offsets, [0, 1])
+    assert len(singleton[0]) == 1
 
-    t.bulk_append(t_id, t_time, t_lat, t_lon, t_vars)
-    assert len(t) == 2
-    assert t[1][0].vars["msl"] == 1.0
 
-    # Bulk append with missing var to test NaN filling
-    t_id2: NDArray[np.int64] = np.array([3])
-    t_time2: NDArray[np.datetime64] = np.array(
-        ["2025-12-01T06:00:00"], dtype="datetime64[s]"
+@pytest.mark.parametrize(
+    ("ids", "offsets", "point_count", "message"),
+    [
+        ([1, 1], [0, 1, 2], 2, "unique"),
+        ([1], [1, 2], 2, "start"),
+        ([1, 2], [0, 1, 1], 1, "strictly increasing"),
+        ([1], [0, 2], 1, "final offset"),
+        ([1], [0, 0], 0, "strictly increasing"),
+    ],
+)
+def test_structural_invariants(
+    ids: list[int], offsets: list[int], point_count: int, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        Tracks(
+            ids=ids,
+            offsets=offsets,
+            times=[
+                np.datetime64("2020-01-01") + np.timedelta64(i, "D")
+                for i in range(point_count)
+            ],
+            lats=[0.0] * point_count,
+            lons=[0.0] * point_count,
+            variables={"msl": [1.0] * point_count},
+            metadata=_metadata(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("lats", "lons", "message"),
+    [([91.0], [0.0], "latitudes"), ([0.0], [np.inf], "infinity")],
+)
+def test_coordinate_validation(
+    lats: list[float], lons: list[float], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        Tracks(
+            ids=[1],
+            offsets=[0, 1],
+            times=[np.datetime64("2020-01-01")],
+            lats=lats,
+            lons=lons,
+            variables={"msl": [1.0]},
+            metadata=_metadata(),
+        )
+
+
+def test_time_and_variable_validation() -> None:
+    with pytest.raises(ValueError, match="NaT"):
+        Tracks(
+            ids=[1],
+            offsets=[0, 1],
+            times=[np.datetime64("NaT")],
+            lats=[0.0],
+            lons=[0.0],
+            variables={"msl": [1.0]},
+            metadata=_metadata(),
+        )
+    with pytest.raises(ValueError, match="strictly increasing"):
+        Tracks(
+            ids=[1],
+            offsets=[0, 2],
+            times=[np.datetime64("2020-01-01"), np.datetime64("2020-01-01")],
+            lats=[0.0, 0.0],
+            lons=[0.0, 0.0],
+            variables={"msl": [1.0, 2.0]},
+            metadata=_metadata(),
+        )
+    with pytest.raises(ValueError, match="explicit unit"):
+        Tracks(
+            ids=[1],
+            offsets=[0, 1],
+            times=[np.datetime64("2020-01-01")],
+            lats=[0.0],
+            lons=[0.0],
+            variables={"custom": [1.0]},
+            metadata=TracksMetadata("custom", "max", {}),
+        )
+
+
+def test_immutability_and_read_only_mapping() -> None:
+    tracks = _tracks()
+    assert not tracks.ids.flags.writeable
+    assert not tracks.variables["msl"].flags.writeable
+    with pytest.raises(ValueError, match="read-only"):
+        tracks.ids[0] = 99
+    with pytest.raises(TypeError):
+        tracks.variables["new"] = np.empty(12)  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        tracks.primary_var = "vo"  # type: ignore[misc]
+
+
+def test_builder_backfills_new_variables() -> None:
+    builder = TracksBuilder("msl", "min", {"msl": "Pa", "vo": "s^-1"})
+    handle = builder.new_track(10)
+    handle.append(np.datetime64("2020-01-01"), 0, 0, {"msl": 100000})
+    handle.append(np.datetime64("2020-01-02"), 1, 1, {"msl": 99000, "vo": 1e-4})
+    tracks = builder.finish()
+    np.testing.assert_allclose(tracks.variables["vo"], [np.nan, 1e-4], equal_nan=True)
+
+
+def test_subset_filter_sort_concatenate_and_summaries() -> None:
+    tracks = _tracks().with_summaries(compute_track_summaries(_tracks()))
+    subset = tracks.subset([-1, 0])
+    np.testing.assert_array_equal(subset.ids, [35, 10])
+    assert subset.summaries is not None
+    filtered = tracks.filter([True, False, True])
+    np.testing.assert_array_equal(filtered.ids, [10, 35])
+    sorted_tracks = tracks.sort()
+    np.testing.assert_array_equal(sorted_tracks.ids, [10, 20, 35])
+    combined = Tracks.concatenate([tracks.subset([0]), tracks.subset([1])])
+    np.testing.assert_array_equal(combined.ids, [10, 20])
+
+
+def test_longitude_normalization() -> None:
+    tracks = Tracks(
+        ids=[1],
+        offsets=[0, 4],
+        times=[
+            np.datetime64("2020-01-01"),
+            np.datetime64("2020-01-02"),
+            np.datetime64("2020-01-03"),
+            np.datetime64("2020-01-04"),
+        ],
+        lats=[0, 0, 0, 0],
+        lons=[180, 360, -181, 540],
+        variables={"msl": [1, 2, 3, 4]},
+        metadata=_metadata(),
     )
-    t_lat2: NDArray[np.float64] = np.array([2.0])
-    t_lon2: NDArray[np.float64] = np.array([2.0])
-    t_vars2: dict[str, NDArray[np.float64]] = {"new_var": np.array([2.0])}
-
-    t.bulk_append(t_id2, t_time2, t_lat2, t_lon2, t_vars2)
-    assert len(t) == 3
-    assert np.isnan(t[2][0].vars["msl"])
-    assert t[2][0].vars["new_var"] == 2.0
-    assert np.isnan(t[0][0].vars["new_var"])
+    np.testing.assert_array_equal(tracks.lons, [-180, 0, 179, -180])
