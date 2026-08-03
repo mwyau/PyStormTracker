@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from ..hodges import constants
 from ..models import TimeRange, Tracks
-from ..models.geo import spatial_bounds_from_xarray
+from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import ProcessingStep, TracksMetadata
 from ..models.units import normalize_variable_units
@@ -179,8 +179,15 @@ def run_simple_mpi(
 
         detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
+        metadata_values: tuple[
+            str, SpatialBounds | None, tuple[ProcessingStep, ...]
+        ] | None = (stored_unit, bounds, processing)
     else:
         detectors = None
+        metadata_values = None
+
+    stored_unit, bounds, processing = comm.bcast(metadata_values, root=root)
+    metadata = TracksMetadata(varname, mode, {varname: stored_unit}, bounds, processing)
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
     t_scatter = timeit.default_timer()
@@ -221,5 +228,5 @@ def run_simple_mpi(
         print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
         return tracks
 
-    # Non-root ranks return empty Tracks
-    return Tracks.empty(TracksMetadata(varname, mode, {varname: "1"}))
+    # Non-root ranks return a valid empty result; only rank zero is exported.
+    return Tracks.empty(metadata)
