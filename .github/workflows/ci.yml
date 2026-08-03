@@ -116,6 +116,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: uv sync --frozen --all-extras
 
+      - name: Check TrackJSON schema
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync python scripts/generate_trackjson_schema.py --check
+
       - name: Mypy
         if: ${{ !cancelled() }}
         run: uv run --no-sync mypy .
@@ -265,6 +269,13 @@ jobs:
 
       - name: Test wheel import
         run: .wheel-venv/bin/python -c 'import pystormtracker; print("wheel import success")'
+
+      - name: Test packaged TrackJSON schema
+        run: >-
+          .wheel-venv/bin/python -c
+          'import json; from importlib.resources import files;
+          schema_bytes = files("pystormtracker.schemas").joinpath("trackjson.schema.json").read_bytes();
+          json.loads(schema_bytes); print("packaged TrackJSON schema is valid")'
 
       - name: Test wheel CLI
         run: .wheel-venv/bin/stormtracker --help
