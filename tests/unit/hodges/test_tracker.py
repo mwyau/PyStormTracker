@@ -91,7 +91,6 @@ def test_hodges_tracker_gathers_chunks_before_linking(
     HodgesTracker().track(
         data,
         "msl",
-        filter=False,
         max_chunk_size=2,
         overlap=99,
     )
@@ -129,7 +128,6 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
     kwargs = {
         "mode": "min",
         "threshold": 0.0,
-        "filter": False,
         "subgrid_refine": False,
     }
 
@@ -176,7 +174,7 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
         "pystormtracker.hodges.tracker.normalize_tracking_data",
         return_value=data,
     ):
-        tracks = tracker.track("dummy.nc", "msl", filter=False)
+        tracks = tracker.track("dummy.nc", "msl")
 
     assert len(tracks) == 1
     assert len(tracks[0]) == 2

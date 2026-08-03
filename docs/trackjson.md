@@ -81,6 +81,13 @@ recorded in the optional `metadata.processing` sequence rather than encoded in
 temporary variable names. Each entry contains an `operation`, an `enabled`
 flag, and JSON-scalar `parameters`.
 
+For tracking inputs, both `lmin` and `lmax` must be supplied to record a
+`spectral_filter` operation; omitting both means that no optional spectral
+filter occurred. `taper_points` is independent. A projection or HEALPix
+conversion may record a `regrid` operation with its derived
+`transform_lmax` even when no optional filter occurred. The transform bandwidth
+must not be interpreted as a user-requested filter.
+
 Recognized pressure variables are stored in pascals and recognized vorticity
 variables in inverse seconds. Source values and detection thresholds are
 converted together before detection. Custom variable units are preserved when

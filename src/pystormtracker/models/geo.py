@@ -153,6 +153,17 @@ def normalize_longitudes_360(
     return np.remainder(values, 360.0)
 
 
+def cyclic_longitude_delta(
+    longitude: NDArray[np.float64] | float,
+    center: float,
+) -> NDArray[np.float64]:
+    """Return signed shortest-arc differences from ``center`` in degrees."""
+    values = np.asarray(longitude, dtype=np.float64)
+    if not np.isfinite(values).all() or not np.isfinite(center):
+        raise ValueError("longitude values and center must be finite")
+    return (values - center + 180.0) % 360.0 - 180.0
+
+
 @nb.njit(cache=True, nogil=True)
 def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculates the great circle distance (angular separation) in radians."""

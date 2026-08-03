@@ -12,7 +12,12 @@ This document describes the Hodges tracker and its relationship to TRACK (Hodges
 - **Accuracy**: See [Spectral Filtering Accuracy](spectral_accuracy.md) for detailed RMSE/Correlation metrics against NCL.
 
 **Reasoning**: 
-Original TRACK workflows commonly filter fields before tracking. PyStormTracker applies a T5-42 filter by default for Hodges tracking unless `--no-filter` is specified. The Python kinematics API computes relative vorticity and divergence from wind with spin-1 vector harmonics. Reference-data errors are reported in [Spectral Filtering Accuracy](spectral_accuracy.md).
+Original TRACK workflows commonly filter fields before tracking. PyStormTracker
+applies an optional spectral filter only when both `lmin` and `lmax` are
+provided; otherwise the native field is retained. Spatial tapering is
+controlled independently by `taper_points`. The Python kinematics API computes
+relative vorticity and divergence from wind with spin-1 vector harmonics.
+Reference-data errors are reported in [Spectral Filtering Accuracy](spectral_accuracy.md).
 
 ### 1.2 Object-Based Detection
 **Implementation**: Feature detection uses `Thresholding -> Connected Component Labeling (CCL) -> Object Filtering -> Local Extrema`.

@@ -61,6 +61,19 @@ Data loading is encapsulated in `DataLoader` (`io/data_loader.py`). It handles:
 - **Variable and coordinate mapping:** Common field aliases such as `msl` and `slp`, and latitude, longitude, and time coordinate aliases.
 - **Grid metadata:** Regular latitude-longitude, full Gaussian, reduced Gaussian, projected `x/y`, and HEALPix coordinates, including metadata required by spherical harmonic transforms and map projections.
 
+Tracker preprocessing is centralized in `preprocessing.tracking`. The shared
+boundary validates `lmin`, `lmax`, and `taper_points`, applies optional
+filtering, and performs projection-specific regridding. A requested spectral
+filter is distinct from the finite transform bandwidth needed to project a
+field: the latter is derived from source and target grid capacity and is
+recorded only as regridding metadata. The same values are routed through file,
+in-memory, serial, Dask, and MPI Simple paths.
+
+Sampling treats longitude as cyclic. Its coordinate axis is validated once per
+sampling call, then nearest, radius, and bilinear operations use the shared
+cyclic longitude difference. Signed and `0..360` source coordinates, including
+descending axes, are therefore sampled with the same antimeridian behavior.
+
 ### 2.3 Heuristic Tracking (`SimpleTracker`)
 
 The Simple tracker constructs great-circle distance matrices from clamped unit-vector dot products using NumPy broadcasting. Candidate centers are sorted lexicographically before deterministic greedy nearest-neighbor matching between consecutive time steps.

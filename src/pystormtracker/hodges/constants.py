@@ -13,11 +13,6 @@ ITERATIONS_DEFAULT = 3
 LIFETIME_DEFAULT = model_constants.MIN_LIFETIME_DEFAULT
 MISSING_DEFAULT = model_constants.MAX_MISSING_DEFAULT
 
-# Spectral Filter defaults (T5-42)
-LMIN_DEFAULT = model_constants.LMIN_DEFAULT
-LMAX_DEFAULT = model_constants.LMAX_DEFAULT
-TAPER_DEFAULT = model_constants.TAPER_POINTS_DEFAULT
-
 # Hodges Object-based detection defaults
 MIN_POINTS_DEFAULT = 1
 

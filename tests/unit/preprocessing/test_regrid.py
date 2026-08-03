@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 
 from pystormtracker.preprocessing.regrid import SpectralRegridder
-from pystormtracker.preprocessing.spectral import apply_sht_filter
+from pystormtracker.preprocessing.spectral import SHTFilter, apply_sht_filter
 
 
 def test_regrid_to_grid() -> None:
@@ -159,9 +159,9 @@ def test_regrid_to_polar_stereo_lmax_override() -> None:
         },
     )
 
-    regridded = SpectralRegridder(lmax=42).to_polar_stereo(
+    regridded = SpectralRegridder().to_polar_stereo(
         da,
-        lmax=7,
+        transform_lmax=7,
         extent=(-100.0, 100.0, -100.0, 100.0),
         resolution=100.0,
     )
@@ -189,11 +189,17 @@ def test_regrid_to_polar_stereo_with_filter() -> None:
     regridder = SpectralRegridder()
     # No filter
     regridded_raw = regridder.to_polar_stereo(
-        da, hemisphere="nh", extent=(-1000.0, 1000.0, -1000.0, 1000.0), filter_lmin=None
+        da,
+        hemisphere="nh",
+        extent=(-1000.0, 1000.0, -1000.0, 1000.0),
+        transform_lmax=42,
     )
-    # With filter (remove l=1)
+    filtered = SHTFilter(lmin=5, lmax=42).filter(da)
     regridded_filtered = regridder.to_polar_stereo(
-        da, hemisphere="nh", extent=(-1000.0, 1000.0, -1000.0, 1000.0), filter_lmin=5
+        filtered,
+        hemisphere="nh",
+        extent=(-1000.0, 1000.0, -1000.0, 1000.0),
+        transform_lmax=42,
     )
 
     # The filtered field should have significantly lower mean/variance

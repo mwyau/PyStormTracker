@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import timeit
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import xarray as xr
@@ -14,14 +14,10 @@ from ..models import Tracks
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep, Tracker
 from ..models.tracks import (
-    REGRID_OPERATION,
-    SPATIAL_TAPER_OPERATION,
-    SPECTRAL_FILTER_OPERATION,
     ProcessingStep,
 )
 from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
-from ..preprocessing.spectral import SHTFilter
-from ..preprocessing.taper import TaperFilter
+from ..preprocessing.tracking import preprocess_tracking_data
 from ..time import TimeInput
 from .detector import HealpixDetector
 
@@ -90,70 +86,19 @@ class HealpixTracker(Tracker):
     def preprocess_standard_track(
         self,
         data: xr.DataArray,
-        lmin: int = constants.LMIN_DEFAULT,
-        lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = constants.TAPER_DEFAULT,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        nside: int | None = None,
     ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
-        """
-        Apply spectral filtering and convert regular grids to HEALPix.
-        """
-        if data.chunks:
-            data = data.compute()
-
-        steps: list[ProcessingStep] = []
-        # 1. Tapering - Note: Tapering might need adjustment for 1D maps
-        # if not using a 2D source.
-        # But here we assume data might be regridded 2D -> 1D.
-        if taper_points > 0:
-            taper = TaperFilter(n_points=taper_points)
-            data = cast(xr.DataArray, taper.filter(data))
-            steps.append(
-                ProcessingStep(SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
-            )
-
-        if data.ndim == 3:
-            from ..io.data_loader import DataLoader
-            from ..preprocessing.regrid import SpectralRegridder
-
-            loader = DataLoader(data)
-            time_dim, _, _ = loader.get_coords()
-            lat_reverse = loader.is_lat_reversed()
-            nside_estimate = max(1, lmax + 1)
-            nside = 2 ** int(np.round(np.log2(nside_estimate)))
-            regridder = SpectralRegridder(lmax=lmax)
-
-            frames: list[xr.DataArray] = []
-            for index in range(data.sizes[time_dim]):
-                frame = data.isel({time_dim: index}).squeeze()
-                if lmin > 0:
-                    frame = SHTFilter(lmin=lmin, lmax=lmax).filter(frame)
-                frames.append(
-                    regridder.to_healpix(
-                        frame,
-                        nside=nside,
-                        lat_reverse=lat_reverse,
-                    )
-                )
-            data = xr.concat(frames, dim=data[time_dim])
-            data.attrs["map_proj"] = "healpix"
-            data.attrs["nside"] = nside
-            if lmin > 0:
-                steps.append(
-                    ProcessingStep(
-                        SPECTRAL_FILTER_OPERATION,
-                        True,
-                        {"lmin": lmin, "lmax": lmax},
-                    )
-                )
-            steps.append(
-                ProcessingStep(
-                    REGRID_OPERATION,
-                    True,
-                    {"map_proj": "healpix", "nside": nside},
-                )
-            )
-
-        return data, tuple(steps)
+        return preprocess_tracking_data(
+            data,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            projection="healpix",
+            nside=nside,
+        )
 
     def track(
         self,
@@ -172,10 +117,10 @@ class HealpixTracker(Tracker):
         engine: str | None = None,
         overlap: int = 3,
         min_points: int = 1,
-        filter: bool = True,
-        lmin: int = constants.LMIN_DEFAULT,
-        lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = constants.TAPER_DEFAULT,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        nside: int | None = None,
         subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
@@ -201,13 +146,13 @@ class HealpixTracker(Tracker):
             bounds: SpatialBounds | None = spatial_bounds_from_xarray(data_xr)
             processing: tuple[ProcessingStep, ...] = ()
 
-            if data_xr.ndim == 3:
-                data_xr, processing = self.preprocess_standard_track(
-                    data_xr,
-                    lmin=lmin if filter else 0,
-                    lmax=lmax,
-                    taper_points=taper_points,
-                )
+            data_xr, processing = self.preprocess_standard_track(
+                data_xr,
+                lmin=lmin,
+                lmax=lmax,
+                taper_points=taper_points,
+                nside=nside,
+            )
 
             detector = HealpixDetector.from_xarray(data_xr, varname=varname)
             raw_steps = _detect_and_gather(

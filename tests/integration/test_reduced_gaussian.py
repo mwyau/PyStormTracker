@@ -133,7 +133,6 @@ def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) 
         varname="msl",
         mode="min",
         threshold=101000.0,  # Pa
-        filter=False,  # Already filtered
     )
 
     assert len(tracks) > 0
@@ -193,14 +192,12 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
         varname="vo",
         mode="max",
         threshold=1.0e-4,
-        filter=False,
     )
     regular_tracks = tracker.track(
         regular_filtered,
         varname="vo",
         mode="max",
         threshold=1.0e-4,
-        filter=False,
     )
     assert len(n320_tracks) > 0
     assert len(regular_tracks) > 0

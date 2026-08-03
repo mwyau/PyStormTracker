@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
     from ..models.geo import MapExtent
 
-from ..hodges import constants
 from ..models import TimeRange, Tracks
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep
@@ -28,10 +27,10 @@ def run_simple_dask(
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = False,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
+    lmin: int | None = None,
+    lmax: int | None = None,
+    taper_points: int = 0,
+    nside: int | None = None,
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: MapExtent | None = None,
@@ -48,26 +47,25 @@ def run_simple_dask(
         pathname=infile, varname=varname, time_range=time_range, engine=engine
     )
     data_xr = detector_peek.get_xarray()
-    data_xr, threshold, stored_unit = normalize_variable_units(
+    data_xr, threshold, variable_unit = normalize_variable_units(
         data_xr,
         variable_name=varname,
         threshold=threshold,
     )
     bounds = spatial_bounds_from_xarray(data_xr)
 
-    processing: tuple[ProcessingStep, ...] = ()
-    if filter or map_proj != "global":
-        from .tracker import SimpleTracker
+    from .tracker import SimpleTracker
 
-        data_xr, processing = SimpleTracker().preprocess_standard_track(
-            data_xr,
-            lmin=lmin if filter else 0,
-            lmax=lmax,
-            taper_points=taper_points,
-            map_proj=map_proj,
-            resolution=resolution,
-            extent=extent,
-        )
+    data_xr, processing = SimpleTracker().preprocess_standard_track(
+        data_xr,
+        lmin=lmin,
+        lmax=lmax,
+        taper_points=taper_points,
+        map_proj=map_proj,
+        nside=nside,
+        resolution=resolution,
+        extent=extent,
+    )
 
     detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
 
@@ -117,7 +115,7 @@ def run_simple_dask(
         primary_var=varname,
         mode=mode,
         bounds=bounds,
-        unit=stored_unit,
+        unit=variable_unit,
         processing=processing,
     )
     t4 = timeit.default_timer()
@@ -132,10 +130,10 @@ def run_simple_mpi(
     mode: Literal["min", "max"],
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = False,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
+    lmin: int | None = None,
+    lmax: int | None = None,
+    taper_points: int = 0,
+    nside: int | None = None,
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: MapExtent | None = None,
@@ -151,43 +149,52 @@ def run_simple_mpi(
     root = 0
 
     t0 = timeit.default_timer()
+    variable_unit: str | None = None
+    bounds: SpatialBounds | None = None
+    processing: tuple[ProcessingStep, ...] = ()
     if rank == root:
         detector_peek = SimpleDetector(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
         data_xr = detector_peek.get_xarray()
-        data_xr, threshold, stored_unit = normalize_variable_units(
+        data_xr, threshold, variable_unit = normalize_variable_units(
             data_xr,
             variable_name=varname,
             threshold=threshold,
         )
         bounds = spatial_bounds_from_xarray(data_xr)
 
-        processing: tuple[ProcessingStep, ...] = ()
-        if filter or map_proj != "global":
-            from .tracker import SimpleTracker
+        from .tracker import SimpleTracker
 
-            data_xr, processing = SimpleTracker().preprocess_standard_track(
-                data_xr,
-                lmin=lmin if filter else 0,
-                lmax=lmax,
-                taper_points=taper_points,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-            )
+        data_xr, processing = SimpleTracker().preprocess_standard_track(
+            data_xr,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            map_proj=map_proj,
+            nside=nside,
+            resolution=resolution,
+            extent=extent,
+        )
 
         detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
-        metadata_values: tuple[
-            str, SpatialBounds | None, tuple[ProcessingStep, ...]
-        ] | None = (stored_unit, bounds, processing)
     else:
         detectors = None
-        metadata_values = None
 
-    stored_unit, bounds, processing = comm.bcast(metadata_values, root=root)
-    metadata = TracksMetadata(varname, mode, {varname: stored_unit}, bounds, processing)
+    threshold, variable_unit, bounds, processing = comm.bcast(
+        (threshold, variable_unit, bounds, processing) if rank == root else None,
+        root=root,
+    )
+    if variable_unit is None:
+        raise RuntimeError("MPI variable-unit normalization failed")
+    metadata = TracksMetadata(
+        primary_var=varname,
+        mode=mode,
+        units={varname: variable_unit},
+        bounds=bounds,
+        processing=processing,
+    )
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
     t_scatter = timeit.default_timer()
@@ -221,7 +228,7 @@ def run_simple_mpi(
             primary_var=varname,
             mode=mode,
             bounds=bounds,
-            unit=stored_unit,
+            unit=variable_unit,
             processing=processing,
         )
         t5 = timeit.default_timer()

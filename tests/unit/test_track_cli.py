@@ -97,7 +97,8 @@ def test_track_parser_uses_automatic_format_and_mode_defaults() -> None:
         ("--chunk-size", "0"),
         ("--extent", "1,0,-1,1"),
         ("--extent", "nan,1,-1,1"),
-        ("--filter-range", "42-5"),
+        ("--lmin", "-1"),
+        ("--lmax", "-1"),
         ("--resolution", "nan"),
         ("--threshold", "inf"),
     ],
@@ -124,7 +125,7 @@ def test_track_rejects_invalid_cli_values(option: str, value: str) -> None:
     assert exc_info.value.code == 2
 
 
-def test_filter_range_enables_simple_filter() -> None:
+def test_filter_bounds_are_forwarded_without_algorithm_defaults() -> None:
     test_args = [
         "stormtracker",
         "track",
@@ -134,8 +135,14 @@ def test_filter_range_enables_simple_filter() -> None:
         "msl",
         "-o",
         "unused.txt",
-        "--filter-range",
-        "3-21",
+        "--lmin",
+        "3",
+        "--lmax",
+        "21",
+        "--taper-points",
+        "4",
+        "--nside",
+        "16",
         "--subgrid-refine",
     ]
     with (
@@ -146,24 +153,14 @@ def test_filter_range_enables_simple_filter() -> None:
     ):
         main()
 
-    assert mocked_run.call_args.kwargs["filter"] is True
     assert mocked_run.call_args.kwargs["lmin"] == 3
     assert mocked_run.call_args.kwargs["lmax"] == 21
+    assert mocked_run.call_args.kwargs["taper_points"] == 4
+    assert mocked_run.call_args.kwargs["nside"] == 16
     assert mocked_run.call_args.kwargs["subgrid_refine"] is True
 
 
-@pytest.mark.parametrize(
-    ("algorithm", "option", "expected"),
-    [
-        ("simple", None, False),
-        ("simple", "--filter", True),
-        ("hodges", None, True),
-        ("hodges", "--no-filter", False),
-    ],
-)
-def test_filter_uses_algorithm_default_or_explicit_override(
-    algorithm: str, option: str | None, expected: bool
-) -> None:
+def test_filter_bounds_must_be_supplied_together() -> None:
     test_args = [
         "stormtracker",
         "track",
@@ -173,21 +170,15 @@ def test_filter_uses_algorithm_default_or_explicit_override(
         "msl",
         "-o",
         "unused.txt",
-        "--algorithm",
-        algorithm,
+        "--lmin",
+        "3",
     ]
-    if option is not None:
-        test_args.append(option)
-
     with (
         patch.object(sys, "argv", test_args),
-        patch(
-            "pystormtracker.track.run_tracker", return_value=_empty_tracks()
-        ) as mocked_run,
+        pytest.raises(SystemExit) as exc_info,
     ):
         main()
-
-    assert mocked_run.call_args.kwargs["filter"] is expected
+    assert exc_info.value.code == 2
 
 
 @pytest.mark.parametrize(
@@ -252,28 +243,20 @@ def test_run_tracker_resolves_subgrid_default_by_algorithm(
     assert mocked_track.call_args.kwargs["subgrid_refine"] is expected
 
 
-@pytest.mark.parametrize(
-    ("algorithm", "expected"), [("simple", False), ("hodges", True)]
-)
-def test_run_tracker_resolves_filter_default_by_algorithm(
-    tmp_path: Path, algorithm: str, expected: bool
-) -> None:
-    tracker_target = (
-        "pystormtracker.track.SimpleTracker.track"
-        if algorithm == "simple"
-        else "pystormtracker.track.HodgesTracker.track"
-    )
-    with patch(tracker_target, return_value=_empty_tracks()) as mocked_track:
+def test_run_tracker_forwards_no_filter_defaults(tmp_path: Path) -> None:
+    with patch(
+        "pystormtracker.track.SimpleTracker.track", return_value=_empty_tracks()
+    ) as mocked_track:
         run_tracker(
             infile="unused.nc",
             varname="msl",
             outfile=str(tmp_path / "tracks.json"),
-            algorithm=algorithm,  # type: ignore[arg-type]
             output_format="trackjson",
-            filter=None,
         )
 
-    assert mocked_track.call_args.kwargs["filter"] is expected
+    assert mocked_track.call_args.kwargs["lmin"] is None
+    assert mocked_track.call_args.kwargs["lmax"] is None
+    assert mocked_track.call_args.kwargs["taper_points"] == 0
 
 
 def test_runtime_validation_reports_clean_cli_error(

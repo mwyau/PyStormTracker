@@ -217,8 +217,8 @@ def _filter_ducc0_frame(
 
 def apply_dct_filter(
     data: xr.DataArray,
-    lmin: int = 5,
-    lmax: int = 42,
+    lmin: int,
+    lmax: int,
     backend: Literal["serial", "mpi", "dask"] = "serial",
     taper_val: float = 0.1,
 ) -> xr.DataArray:
@@ -326,7 +326,7 @@ def apply_dct_filter(
     )
 
     filtered.attrs.update(data.attrs)
-    filtered.name = f"{data.name}_dct_filtered" if data.name else "dct_filtered"
+    filtered.name = data.name
     return filtered
 
 
@@ -337,8 +337,8 @@ class DCTFilter:
 
     def __init__(
         self,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int,
+        lmax: int,
         taper_val: float = 0.1,
     ) -> None:
         self.lmin = lmin
@@ -385,8 +385,8 @@ class SHTFilter:
 
     def __init__(
         self,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int,
+        lmax: int,
         lat_reverse: bool = False,
         taper_val: float = 0.1,
         geometry: Literal["CC", "GL", "DH", "auto"] = "auto",
@@ -500,8 +500,8 @@ def is_global_grid(data: xr.DataArray) -> bool:
 
 def apply_sht_filter(
     data: xr.DataArray,
-    lmin: int = 5,
-    lmax: int = 42,
+    lmin: int,
+    lmax: int,
     lat_reverse: bool = False,
     backend: Literal["serial", "mpi", "dask"] = "serial",
     taper_val: float = 0.1,
@@ -688,9 +688,7 @@ def apply_sht_filter(
         filtered = filtered.assign_coords(latitude=lats_out, longitude=lons_out)
 
     filtered.attrs.update(data.attrs)
-    filtered.name = (
-        f"{data.name}_spectral_filtered" if data.name else "spectral_filtered"
-    )
+    filtered.name = data.name
 
     if not is_reduced and is_ascending and not out_geometry:
         filtered = filtered.sortby(lat_dim, ascending=True)

@@ -33,8 +33,6 @@ def test_simple_stereographic_dask_matches_serial(
         "map_proj": map_proj,
         "extent": (-3000.0, 3000.0, -3000.0, 3000.0),
         "resolution": 300.0,
-        "filter": False,
-        "lmax": 7,
         "subgrid_refine": True,
     }
     tracker = SimpleTracker()

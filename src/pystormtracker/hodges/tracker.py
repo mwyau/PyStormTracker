@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import xarray as xr
@@ -12,14 +12,11 @@ from ..models import constants as model_constants
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep, Tracker
 from ..models.tracks import (
-    REGRID_OPERATION,
-    SPATIAL_TAPER_OPERATION,
-    SPECTRAL_FILTER_OPERATION,
     ProcessingStep,
     Tracks,
 )
 from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
-from ..preprocessing.taper import TaperFilter
+from ..preprocessing.tracking import Projection, preprocess_tracking_data
 from ..time import TimeInput
 from . import constants
 from .detector import HodgesDetector
@@ -90,131 +87,26 @@ class HodgesTracker(Tracker):
     def preprocess_standard_track(
         self,
         data: xr.DataArray,
-        lmin: int = constants.LMIN_DEFAULT,
-        lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = constants.TAPER_DEFAULT,
-        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-        resolution: float = 100.0,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        map_proj: Projection = "global",
+        nside: int | None = None,
+        resolution: float | None = 100.0,
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
     ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
-        """
-        Applies standard TRACK preprocessing: Tapering -> SHT or DCT Filter.
-        Optionally regrids to a Polar Stereographic or HEALPix projection.
-        """
-        from ..io.data_loader import DataLoader
-        from ..preprocessing.spectral import DCTFilter, SHTFilter
-
-        loader = DataLoader(data)
-        _time_dim, _lat_dim, _lon_dim = loader.get_coords()
-
-        if filter_type == "auto":
-            filter_type = "sht" if loader.is_global_longitude() else "dct"
-
-        # Ensure data is loaded into memory for spectral filtering
-        if data.chunks:
-            data = data.compute()
-
-        steps: list[ProcessingStep] = []
-        # 1. Tapering
-        if taper_points > 0:
-            taper = TaperFilter(n_points=taper_points)
-            data = cast(xr.DataArray, taper.filter(data))
-            steps.append(
-                ProcessingStep(SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
-            )
-
-        # 2. Regridding and Filtering
-        if map_proj in ("nh_stereo", "sh_stereo", "healpix"):
-            from ..preprocessing.regrid import SpectralRegridder
-
-            regridder = SpectralRegridder(lmax=lmax)
-            is_lat_reversed = loader.is_lat_reversed()
-
-            time_dim = next(
-                (c for c in DataLoader.VAR_MAPPING["time"] if c in data.dims), "time"
-            )
-
-            out_frames = []
-            for i in range(len(data[time_dim])):
-                frame = data.isel({time_dim: i}).squeeze()
-                if map_proj == "healpix":
-                    nside = int(
-                        np.sqrt(12 * (lmax + 1) ** 2 / 12)
-                    )  # Rough heuristic, can be customized
-                    nside = 2 ** int(
-                        np.round(np.log2(max(1, nside)))
-                    )  # Round to power of 2
-                    # Note: filter_lmin is not directly in to_healpix currently,
-                    # but we can filter first
-                    if lmin > 0:
-                        f_obj = SHTFilter(lmin=lmin, lmax=lmax)
-                        frame = f_obj.filter(frame)
-                    out_frame = regridder.to_healpix(
-                        frame, nside=nside, lat_reverse=is_lat_reversed
-                    )
-                else:
-                    hemi: Literal["nh", "sh"] = (
-                        "nh" if map_proj == "nh_stereo" else "sh"
-                    )
-
-                    out_frame = regridder.to_polar_stereo(
-                        frame,
-                        hemisphere=hemi,
-                        filter_lmin=lmin if lmin > 0 else None,
-                        lmax=lmax,
-                        lat_reverse=is_lat_reversed,
-                        resolution=resolution,
-                        extent=extent
-                        if extent is not None
-                        else (-13000.0, 13000.0, -13000.0, 13000.0),
-                    )
-                out_frames.append(out_frame)
-            regrid_parameters: dict[str, str | int | float | bool | None] = {
-                "map_proj": map_proj,
-            }
-            if map_proj == "healpix":
-                regrid_parameters["nside"] = nside
-            else:
-                regrid_parameters["resolution"] = resolution
-                if extent is not None:
-                    regrid_parameters["extent"] = ",".join(
-                        str(value) for value in extent
-                    )
-                if lmin > 0:
-                    steps.append(
-                        ProcessingStep(
-                            SPECTRAL_FILTER_OPERATION,
-                            True,
-                            {"lmin": lmin, "lmax": lmax},
-                        )
-                    )
-            if map_proj == "healpix" and lmin > 0:
-                steps.append(
-                    ProcessingStep(
-                        SPECTRAL_FILTER_OPERATION,
-                        True,
-                        {"lmin": lmin, "lmax": lmax},
-                    )
-                )
-            steps.append(ProcessingStep(REGRID_OPERATION, True, regrid_parameters))
-            # Concatenate back
-            data = xr.concat(out_frames, dim=data[time_dim])
-            data.attrs["map_proj"] = map_proj
-        else:
-            # Global or regional grid filtering
-            f_cls = SHTFilter if filter_type == "sht" else DCTFilter
-            spectral_filter = f_cls(lmin=lmin, lmax=lmax)
-            data = spectral_filter.filter(data)
-            steps.append(
-                ProcessingStep(
-                    SPECTRAL_FILTER_OPERATION,
-                    True,
-                    {"lmin": lmin, "lmax": lmax},
-                )
-            )
-
-        return data, tuple(steps)
+        return preprocess_tracking_data(
+            data,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            projection=map_proj,
+            nside=nside,
+            resolution=resolution,
+            extent=extent,
+            filter_type=filter_type,
+        )
 
     def track(
         self,
@@ -233,10 +125,10 @@ class HodgesTracker(Tracker):
         engine: str | None = None,
         overlap: int = model_constants.OVERLAP_DEFAULT,
         min_points: int = constants.MIN_POINTS_DEFAULT,
-        filter: bool = True,
-        lmin: int = constants.LMIN_DEFAULT,
-        lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = constants.TAPER_DEFAULT,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        nside: int | None = None,
         subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
@@ -259,9 +151,8 @@ class HodgesTracker(Tracker):
             overlap: Retained for cross-tracker API compatibility. Hodges gathers
                 detections before linking and does not require overlap.
             min_points: Minimum grid points per object.
-            filter: If True, apply spectral filtering.
-            lmin, lmax: Spectral truncation range (default T5-42).
-            taper_points: Boundary tapering points.
+            lmin, lmax: Optional spectral filter bounds.
+            taper_points: Independent boundary tapering points.
         """
         import timeit
 
@@ -294,16 +185,16 @@ class HodgesTracker(Tracker):
         bounds = spatial_bounds_from_xarray(data_xr)
         processing: tuple[ProcessingStep, ...] = ()
 
-        if filter or map_proj != "global":
-            data_xr, processing = self.preprocess_standard_track(
-                data_xr,
-                lmin=lmin if filter else 0,
-                lmax=lmax,
-                taper_points=taper_points,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-            )
+        data_xr, processing = self.preprocess_standard_track(
+            data_xr,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            map_proj=map_proj,
+            nside=nside,
+            resolution=resolution,
+            extent=extent,
+        )
         t1 = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")
 

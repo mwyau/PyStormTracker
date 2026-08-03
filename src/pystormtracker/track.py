@@ -15,6 +15,7 @@ from .io.format import SUPPORTED_FORMATS, SupportedFormat
 from .models import constants as model_constants
 from .models.tracks import Tracks
 from .models.units import ModeOption, resolve_mode
+from .preprocessing.tracking import resolve_filter_bounds
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
 from .time import TimeInput
@@ -28,24 +29,6 @@ from .utils.cli import (
 
 Backend = Literal["serial", "mpi", "dask"]
 Algorithm = Literal["simple", "hodges"]
-
-
-def _parse_filter_range(value: str) -> tuple[int, int]:
-    """Parse an inclusive spectral wave-number range."""
-    try:
-        parts = [int(part) for part in value.split("-")]
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("expected MIN-MAX or MAX") from exc
-
-    if len(parts) == 1:
-        lmin, lmax = 0, parts[0]
-    elif len(parts) == 2:
-        lmin, lmax = parts
-    else:
-        raise argparse.ArgumentTypeError("expected MIN-MAX or MAX")
-    if lmin < 0 or lmax < lmin:
-        raise argparse.ArgumentTypeError("wave numbers must satisfy 0 <= MIN <= MAX")
-    return lmin, lmax
 
 
 def _parse_extent(value: str) -> tuple[float, float, float, float]:
@@ -128,10 +111,10 @@ def run_tracker(
     max_missing: int | None = None,
     zones: np.ndarray | None = None,
     adapt_params: np.ndarray | None = None,
-    filter: bool | None = None,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
+    lmin: int | None = None,
+    lmax: int | None = None,
+    taper_points: int = 0,
+    nside: int | None = None,
     overlap: int = model_constants.OVERLAP_DEFAULT,
     subgrid_refine: bool | None = None,
 ) -> Tracks:
@@ -251,10 +234,6 @@ def run_tracker(
         if subgrid_refine is not None
         else algorithm != "simple" or map_proj == "healpix"
     )
-    effective_filter = (
-        filter if filter is not None else algorithm != "simple" or map_proj == "healpix"
-    )
-
     tracks = tracker.track(
         infile=infile,
         varname=varname,
@@ -270,10 +249,10 @@ def run_tracker(
         threshold=threshold,
         engine=engine,
         min_points=min_points,
-        filter=effective_filter,
         lmin=lmin,
         lmax=lmax,
         taper_points=taper_points,
+        nside=nside,
         overlap=overlap,
         subgrid_refine=effective_subgrid_refine,
     )
@@ -375,28 +354,33 @@ def setup_parser(
         help="Intensity threshold for features.",
     )
 
-    # Filtering Options (Mutually Exclusive)
-    filter_group = general.add_mutually_exclusive_group()
-    filter_group.add_argument(
-        "--filter-range",
-        type=_parse_filter_range,
+    general.add_argument(
+        "--lmin",
+        type=nonnegative_int,
+        default=None,
+        help="Optional lower spectral filter bound; supply with --lmax.",
+    )
+    general.add_argument(
+        "--lmax",
+        type=nonnegative_int,
+        default=None,
+        help="Optional upper spectral filter bound; supply with --lmin.",
+    )
+    general.add_argument(
+        "--taper-points",
+        type=nonnegative_int,
+        default=0,
+        help="Independent spatial taper width; zero disables tapering.",
+    )
+    general.add_argument(
+        "--nside",
+        type=positive_int,
         default=None,
         help=(
-            f"Spectral filter range (min-max). "
-            f"Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'."
+            "Target HEALPix resolution; omitted values are derived from the "
+            "source grid."
         ),
     )
-    filter_group.add_argument(
-        "--filter",
-        action=argparse.BooleanOptionalAction,
-        dest="filter",
-        default=None,
-        help=(
-            "Control spectral filtering. Disabled by default for simple tracking "
-            "and enabled by default for Hodges and HEALPix."
-        ),
-    )
-    # Default is determined in main() based on algorithm
 
     general.add_argument(
         "-n", "--num", type=positive_int, help="Number of time steps to process."
@@ -458,12 +442,6 @@ def setup_parser(
         type=positive_int,
         default=1,
         help="Min grid points per object (noise filter).",
-    )
-    hodges.add_argument(
-        "--taper",
-        type=nonnegative_int,
-        default=constants.TAPER_DEFAULT,
-        help="Number of points for boundary tapering. Default 0.",
     )
     hodges.add_argument(
         "--w1",
@@ -573,17 +551,8 @@ def run_track_command(args: Namespace) -> Tracks:
         start_time = times[0]
         end_time = times[num - 1]
 
-    if args.filter is None:
-        args.filter = (
-            args.filter_range is not None
-            or args.algorithm != "simple"
-            or args.map_proj == "healpix"
-        )
-
-    lmin, lmax = args.filter_range or (
-        constants.LMIN_DEFAULT,
-        constants.LMAX_DEFAULT,
-    )
+    lmin, lmax = args.lmin, args.lmax
+    resolve_filter_bounds(lmin, lmax)
 
     zones_arr = None
     if args.zone_file:
@@ -644,10 +613,10 @@ def run_track_command(args: Namespace) -> Tracks:
         max_missing=args.max_missing,
         zones=zones_arr,
         adapt_params=adapt_params_arr,
-        filter=args.filter,
         lmin=lmin,
         lmax=lmax,
-        taper_points=args.taper,
+        taper_points=args.taper_points,
+        nside=args.nside,
         overlap=args.overlap,
         subgrid_refine=args.subgrid_refine,
     )

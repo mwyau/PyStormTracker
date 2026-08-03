@@ -39,11 +39,18 @@ stormtracker track -i input.nc -v vo -o tracks.trackjson -m max -a hodges
 | `--extent` | Polar stereographic bounds as `xmin,xmax,ymin,ymax` in kilometres. |
 | `-t`, `--threshold` | Detection threshold. When omitted, the tracker selects the variable-specific default. |
 | `-n`, `--num` | Process the first specified number of time steps. |
-| `--filter`, `--no-filter` | Explicitly enable or disable spectral filtering. |
-| `--filter-range` | Inclusive wave-number range as `MIN-MAX` or `MAX`. This option enables filtering and is mutually exclusive with `--filter`/`--no-filter`. |
+| `--lmin` | Lower bound of an optional spectral filter; supply with `--lmax`. |
+| `--lmax` | Upper bound of an optional spectral filter; supply with `--lmin`. |
+| `--taper-points` | Independent spatial taper width; zero disables tapering. |
+| `--nside` | Target HEALPix resolution; omitted values are derived from the source grid. |
 | `--subgrid-refine`, `--no-subgrid-refine` | Explicitly enable or disable sub-grid refinement. |
 
-Filtering and refinement are tri-state options at the command-line orchestration layer. If neither form is supplied, Simple tracking uses no filtering and no sub-grid refinement, while Hodges and HEALPix tracking use T5-42 filtering and enabled refinement. Direct tracker calls retain their class-specific defaults.
+Supplying both `--lmin` and `--lmax` applies the requested optional spectral
+filter. Supplying only one is an error. When both are omitted, no optional
+spectral filter is applied. `--taper-points` is independent and applies a
+spatial taper when greater than zero. Projection and HEALPix conversion may
+still use a finite transform bandwidth derived from the source and target
+grids; that transform is regridding work, not optional filtering.
 
 The production default relative-vorticity threshold is `1e-5 s^-1`. The `1e-4 s^-1` value used by legacy regression test datasets is test-specific.
 
@@ -64,7 +71,7 @@ Simple supports serial, threaded Dask detection, and MPI detection. Dask and MPI
 | Option | Description |
 | :--- | :--- |
 | `--min-points` | Minimum number of grid points in a thresholded object. |
-| `--taper` | Number of points in the spatial boundary taper. |
+| `--taper-points` | Number of points in the spatial boundary taper. |
 | `--w1`, `--w2` | Direction and displacement-magnitude weights in the MGE cost function. |
 | `--dmax` | Maximum displacement in degrees before regional adjustment. |
 | `--phimax` | Smoothness or phantom-point penalty. |

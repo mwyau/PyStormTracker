@@ -76,6 +76,13 @@ This page lists the principal Python modules and public classes used by PyStormT
 
 ## Preprocessing
 
+Trackers accept the same preprocessing arguments: `lmin` and `lmax` request an
+optional spectral filter when supplied together, while `taper_points` controls
+spatial tapering independently. Projection and HEALPix conversion may perform
+a finite transform at a bandwidth derived from the source and target grids;
+this is not an optional filter. Source longitudes are sampled cyclically, so
+signed and `0..360` coordinates are handled across the antimeridian.
+
 ### Kinematics (vorticity and divergence)
 
 ```{eval-rst}

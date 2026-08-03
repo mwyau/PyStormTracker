@@ -166,6 +166,7 @@ class SpectralRegridder:
         lat_reverse: bool = False,
         nthreads: int = 1,
         pl: NDArray[np.int32] | None = None,
+        transform_lmax: int | None = None,
     ) -> xr.DataArray:
         """
         Spectrally regrid to a 1D HEALPix grid.
@@ -192,7 +193,7 @@ class SpectralRegridder:
         else:
             in_nlon = frame.shape[1]
 
-        lmax, mmax = self._get_lmax_mmax(in_nlon)
+        lmax, mmax = self._get_lmax_mmax(in_nlon, transform_lmax)
 
         # 1. Analyze
         alm: NDArray[np.complex128]
@@ -246,8 +247,7 @@ class SpectralRegridder:
         extent: MapExtent = (-13000.0, 13000.0, -13000.0, 13000.0),
         resolution: float = 100.0,
         lon_0: float = 0.0,
-        filter_lmin: int | None = None,
-        lmax: int | None = None,
+        transform_lmax: int | None = None,
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
@@ -258,10 +258,9 @@ class SpectralRegridder:
         Args:
             extent: Bounding box from pole in km (xmin, xmax, ymin, ymax).
             resolution: Grid spacing in km.
-            lmax: Maximum total wave number. Overrides the constructor value.
+            transform_lmax: Maximum total wave number for the transform.
         """
         from ..models.constants import R_EARTH_KM
-        from .spectral import apply_bandpass_mask_to_alm
 
         frame = data.values
         if data.ndim != 2:
@@ -273,7 +272,7 @@ class SpectralRegridder:
             frame = frame[::-1, :]
 
         _, in_nlon = frame.shape
-        lmax, mmax = self._get_lmax_mmax(in_nlon, lmax)
+        lmax, mmax = self._get_lmax_mmax(in_nlon, transform_lmax)
 
         # 1. Analyze
         alm = ducc0.sht.analysis_2d(
@@ -284,9 +283,6 @@ class SpectralRegridder:
             geometry=in_geometry,
             nthreads=nthreads,
         )
-
-        if filter_lmin is not None:
-            apply_bandpass_mask_to_alm(alm, filter_lmin, lmax, mmax)
 
         # 2. Coordinate Generation
         xmin, xmax, ymin, ymax = extent

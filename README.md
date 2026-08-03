@@ -149,12 +149,13 @@ Use `stormtracker <command> --help` for detailed argument lists. Key options for
 | `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | Path to the output track file. |
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
-| `--format` | `-f` | Output format: `imilast`, `hodges`, or `trackjson`. |
+| `--format` | `-f` | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically. |
 | `--mode` | `-m` | `auto` (default), `min`, or `max`; known aliases resolve automatically. |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple. |
 | `--workers` | `-w` | Number of parallel workers. |
-| `--filter-range` | | Inclusive spectral wave-number range. Supplying it enables filtering; the default range when filtering is enabled is `5-42`. |
-| `--filter`, `--no-filter` | | Override algorithm-specific filtering defaults. |
+| `--lmin`, `--lmax` | | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
+| `--taper-points` | | Independent spatial taper width; zero disables tapering. |
+| `--nside` | | Target HEALPix resolution; omitted values are derived from the source grid. |
 | `--subgrid-refine`, `--no-subgrid-refine` | | Override refinement defaults. Off for simple; on for Hodges and HEALPix. |
 
 ### Python API

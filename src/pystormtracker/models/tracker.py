@@ -47,10 +47,10 @@ class Tracker(Protocol):
         engine: str | None = None,
         overlap: int = 3,
         min_points: int = 1,
-        filter: bool = True,
-        lmin: int = 5,
-        lmax: int = 42,
+        lmin: int | None = None,
+        lmax: int | None = None,
         taper_points: int = 0,
+        nside: int | None = None,
         subgrid_refine: bool = False,
         **kwargs: float | int | str | None,
     ) -> Tracks: ...

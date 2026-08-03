@@ -7,12 +7,81 @@ from typing import Literal, cast
 import numpy as np
 import xarray as xr
 
-from .models.geo import geod_dist_km
+from .models.geo import cyclic_longitude_delta, geod_dist_km
 from .models.tracks import Tracks
 from .models.units import normalize_variable_units
 from .utils.cli import nonnegative_float
 
 SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
+
+
+def _prepare_longitude_axis(
+    da: xr.DataArray,
+    *,
+    lon_dim: str,
+) -> tuple[xr.DataArray, np.ndarray, bool]:
+    """Validate and prepare a reusable one-dimensional longitude axis."""
+    coordinate = da[lon_dim]
+    lons = np.asarray(coordinate.values, dtype=np.float64)
+    if lons.ndim != 1 or lons.size == 0:
+        raise ValueError("longitude coordinate must be one-dimensional and nonempty")
+    if not np.isfinite(lons).all():
+        raise ValueError("longitude coordinate must contain finite values")
+
+    normalized = np.mod(lons, 360.0)
+    unique_count = np.unique(normalized).size
+    if unique_count != lons.size:
+        endpoint_duplicate = np.isclose(
+            float(cyclic_longitude_delta(np.asarray([lons[-1]]), lons[0])[0]),
+            0.0,
+        )
+        if not endpoint_duplicate:
+            raise ValueError("longitude coordinate contains duplicate cyclic values")
+        first_values = np.asarray(da.isel({lon_dim: 0}).values)
+        last_values = np.asarray(da.isel({lon_dim: -1}).values)
+        if not np.allclose(first_values, last_values, equal_nan=True):
+            raise ValueError(
+                "duplicate cyclic longitude endpoints have conflicting data"
+            )
+        da = da.isel({lon_dim: slice(None, -1)})
+        lons = lons[:-1]
+
+    is_increasing = lons.size < 2 or bool(lons[1] > lons[0])
+    return da, lons, is_increasing
+
+
+def _nearest_sample(
+    data: xr.DataArray,
+    *,
+    lat_dim: str,
+    lon_dim: str,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    lat: float,
+    lon: float,
+) -> float:
+    lat_index = int(np.argmin(np.abs(lats - lat)))
+    lon_delta = cyclic_longitude_delta(lons, lon)
+    lon_index = int(np.argmin(np.abs(lon_delta)))
+    return float(data.isel({lat_dim: lat_index, lon_dim: lon_index}).values)
+
+
+def _bilinear_sample(
+    data: xr.DataArray,
+    *,
+    lat_dim: str,
+    lon_dim: str,
+    lons: np.ndarray,
+    lat: float,
+    lon: float,
+) -> float:
+    relative_lon = cyclic_longitude_delta(lons, lon)
+    temporary = data.assign_coords({lon_dim: relative_lon}).sortby(lon_dim)
+    value = temporary.interp({lon_dim: 0.0, lat_dim: lat}, method="linear").values
+    scalar = np.asarray(value)
+    if scalar.size != 1:
+        raise ValueError("bilinear interpolation did not produce one value")
+    return float(scalar.reshape(-1)[0])
 
 
 def sample_tracks(
@@ -59,7 +128,7 @@ def sample_tracks(
 
     sampled_values = np.full(len(tracks.times), np.nan, dtype=np.float64)
 
-    # Identify lat/lon dimensions
+    # Identify and validate the spatial axes once for this sampling call.
     lat_dim = next(
         (d for d in DataLoader.VAR_MAPPING["latitude"] if d in da.dims), None
     )
@@ -71,10 +140,10 @@ def sample_tracks(
     if not lat_dim or not lon_dim:
         raise ValueError("Could not identify latitude or longitude dimensions.")
 
-    lats = da[lat_dim].values
-    lons = da[lon_dim].values
-    is_lat_increasing = lats[1] > lats[0] if len(lats) > 1 else True
-    is_lon_increasing = lons[1] > lons[0] if len(lons) > 1 else True
+    lats = np.asarray(da[lat_dim].values, dtype=np.float64)
+    if lats.ndim != 1 or lats.size == 0 or not np.isfinite(lats).all():
+        raise ValueError("latitude coordinate must be one-dimensional and finite")
+    da, lons, _is_lon_increasing = _prepare_longitude_axis(da, lon_dim=lon_dim)
 
     for track in tracks:
         point_slice = track.point_slice
@@ -84,7 +153,7 @@ def sample_tracks(
             # 1. Select the correct time slice
             if time_dim and center.time is not None:
                 try:
-                    timestamp = int(cast(int, center.time))
+                    timestamp = int(cast(int | np.integer, center.time))
                     source_time = np.asarray([timestamp], dtype="datetime64[ms]")[0]
                     da_step = da.sel({time_dim: source_time}, method="nearest")
                 except KeyError:
@@ -96,25 +165,38 @@ def sample_tracks(
 
             # 2. Perform sampling
             if method in ("nearest", "bilinear"):
-                interp_method: Literal["nearest", "linear"] = (
-                    "nearest" if method == "nearest" else "linear"
-                )
-                try:
-                    val = da_step.interp(
-                        {lat_dim: center.lat, lon_dim: center.lon},
-                        method=interp_method,
-                    ).values
-                    sampled_values[global_idx] = float(val)
-                except KeyError:
-                    sampled_values[global_idx] = np.nan
+                if method == "nearest":
+                    sampled_values[global_idx] = _nearest_sample(
+                        da_step,
+                        lat_dim=lat_dim,
+                        lon_dim=lon_dim,
+                        lats=lats,
+                        lons=lons,
+                        lat=center.lat,
+                        lon=center.lon,
+                    )
+                else:
+                    sampled_values[global_idx] = _bilinear_sample(
+                        da_step,
+                        lat_dim=lat_dim,
+                        lon_dim=lon_dim,
+                        lons=lons,
+                        lat=center.lat,
+                        lon=center.lon,
+                    )
 
             elif method in ("mean", "max", "min"):
                 if radius_km <= 0:
                     # Fallback to nearest if radius is 0
-                    val = da_step.sel(
-                        {lat_dim: center.lat, lon_dim: center.lon}, method="nearest"
-                    ).values
-                    sampled_values[global_idx] = float(val)
+                    sampled_values[global_idx] = _nearest_sample(
+                        da_step,
+                        lat_dim=lat_dim,
+                        lon_dim=lon_dim,
+                        lats=lats,
+                        lons=lons,
+                        lat=center.lat,
+                        lon=center.lon,
+                    )
                     continue
 
                 # Conservative bounding box in degrees
@@ -126,26 +208,14 @@ def sample_tracks(
                     else min((radius_km / (111.0 * cos_lat)) * 1.5, 180.0)
                 )
 
-                lat_min, lat_max = center.lat - lat_buffer, center.lat + lat_buffer
-                lon_min, lon_max = center.lon - lon_buffer, center.lon + lon_buffer
-
-                lat_slice = (
-                    slice(lat_min, lat_max)
-                    if is_lat_increasing
-                    else slice(lat_max, lat_min)
-                )
-                lon_slice = (
-                    slice(lon_min, lon_max)
-                    if is_lon_increasing
-                    else slice(lon_max, lon_min)
-                )
-
-                # Handle longitude wrapping
-                if lon_min < 0 or lon_max > 360:
-                    # For now, just slice latitude and filter longitude manually
-                    subset = da_step.sel({lat_dim: lat_slice})
-                else:
-                    subset = da_step.sel({lat_dim: lat_slice, lon_dim: lon_slice})
+                lat_delta = np.abs(lats - center.lat)
+                lat_indices = np.flatnonzero(lat_delta <= lat_buffer)
+                lon_delta = np.abs(cyclic_longitude_delta(lons, center.lon))
+                lon_indices = np.flatnonzero(lon_delta <= lon_buffer)
+                if lat_indices.size == 0 or lon_indices.size == 0:
+                    sampled_values[global_idx] = np.nan
+                    continue
+                subset = da_step.isel({lat_dim: lat_indices, lon_dim: lon_indices})
 
                 if subset.size == 0:
                     sampled_values[global_idx] = np.nan

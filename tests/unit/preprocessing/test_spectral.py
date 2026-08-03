@@ -28,7 +28,7 @@ def test_spectral_filter_serial(ny: int, nx: int) -> None:
 
     assert filtered.shape == (2, ny, nx)
     assert filtered.dims == ("time", "lat", "lon")
-    assert filtered.name == "msl_spectral_filtered"
+    assert filtered.name == "msl"
 
 
 def test_spectral_filter_invalid_shape() -> None:
@@ -36,7 +36,7 @@ def test_spectral_filter_invalid_shape() -> None:
     data: NDArray[np.float64] = np.random.rand(1, 10, 15)
     da = xr.DataArray(data, dims=["time", "lat", "lon"])
 
-    filt = SHTFilter()
+    filt = SHTFilter(lmin=0, lmax=42)
     with pytest.raises(ValueError, match="Unsupported shape for spectral filter"):
         filt.filter(da, backend="serial")
 

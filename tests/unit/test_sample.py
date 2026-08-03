@@ -133,3 +133,136 @@ def test_spatial_aggregation_requires_positive_radius() -> None:
     )
     with pytest.raises(ValueError, match="requires a positive radius"):
         main(args)
+
+
+def _single_point_tracks(lon: float) -> Tracks:
+    builder = TracksBuilder(TracksMetadata("intensity", "max", {"intensity": "1"}))
+    builder.add_track(
+        1,
+        [np.datetime64("2020-01-01T00:00")],
+        [0.0],
+        [lon],
+        {"intensity": [0.0]},
+    )
+    return builder.finish()
+
+
+def _longitude_dataset(longitudes: list[float], values: list[float]) -> xr.Dataset:
+    return xr.Dataset(
+        data_vars={
+            "sample": (("time", "lat", "lon"), np.asarray(values)[None, None, :])
+        },
+        coords={
+            "time": [np.datetime64("2020-01-01T00:00")],
+            "lat": [0.0],
+            "lon": longitudes,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("longitudes", "track_lon", "expected"),
+    [
+        ([-179.0, -170.0, 170.0, 179.0], 179.0, 4.0),
+        ([181.0, 170.0, 10.0, 0.0], -179.0, 1.0),
+        ([179.0, 170.0, 0.0, -179.0], -179.0, 4.0),
+        ([181.0, 179.0, 170.0, 0.0], -179.0, 1.0),
+    ],
+)
+def test_nearest_sampling_uses_cyclic_longitude(
+    longitudes: list[float], track_lon: float, expected: float
+) -> None:
+    tracks = _single_point_tracks(track_lon)
+    dataset = _longitude_dataset(longitudes, [1.0, 2.0, 3.0, 4.0])
+
+    sampled = sample_tracks(tracks, dataset, "sample", method="nearest")
+
+    assert sampled[0][0].vars["sample"] == expected
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"), [("mean", 15.0), ("min", 10.0), ("max", 20.0)]
+)
+def test_radius_sampling_uses_both_sides_of_antimeridian(
+    method: str, expected: float
+) -> None:
+    tracks = _single_point_tracks(179.0)
+    dataset = _longitude_dataset([-179.0, 179.0], [10.0, 20.0])
+
+    sampled = sample_tracks(tracks, dataset, "sample", method=method, radius_km=300.0)  # type: ignore[arg-type]
+
+    assert sampled[0][0].vars["sample"] == pytest.approx(expected)
+
+
+def test_bilinear_sampling_uses_short_antimeridian_arc() -> None:
+    tracks = _single_point_tracks(180.0)
+    dataset = _longitude_dataset([-179.0, 179.0], [1.0, 3.0])
+
+    sampled = sample_tracks(tracks, dataset, "sample", method="bilinear")
+
+    assert sampled[0][0].vars["sample"] == pytest.approx(2.0)
+
+
+def test_equivalent_signed_and_unsigned_sampling_agree() -> None:
+    tracks = _single_point_tracks(-179.0)
+    signed = _longitude_dataset([-179.0, -170.0, 179.0], [10.0, 1.0, 20.0])
+    unsigned = _longitude_dataset([181.0, 190.0, 179.0], [10.0, 1.0, 20.0])
+
+    signed_result = sample_tracks(tracks, signed, "sample", method="nearest")
+    unsigned_result = sample_tracks(tracks, unsigned, "sample", method="nearest")
+
+    assert signed_result[0][0].vars["sample"] == unsigned_result[0][0].vars["sample"]
+
+
+def test_conflicting_duplicate_cyclic_endpoints_are_rejected() -> None:
+    tracks = _single_point_tracks(0.0)
+    dataset = _longitude_dataset([0.0, 90.0, 360.0], [1.0, 2.0, 3.0])
+
+    with pytest.raises(ValueError, match="conflicting data"):
+        sample_tracks(tracks, dataset, "sample")
+
+
+def test_equal_duplicate_cyclic_endpoints_are_removed() -> None:
+    tracks = _single_point_tracks(0.0)
+    dataset = _longitude_dataset([0.0, 90.0, 360.0], [1.0, 2.0, 1.0])
+
+    sampled = sample_tracks(tracks, dataset, "sample")
+
+    assert sampled[0][0].vars["sample"] == 1.0
+
+
+def test_regional_bilinear_sampling_does_not_synthesize_wraparound() -> None:
+    tracks = _single_point_tracks(-179.0)
+    dataset = _longitude_dataset([170.0, 179.0], [1.0, 2.0])
+
+    sampled = sample_tracks(tracks, dataset, "sample", method="bilinear")
+
+    assert np.isnan(sampled[0][0].vars["sample"])
+
+
+@pytest.mark.parametrize(
+    "longitudes",
+    [
+        [[0.0, 1.0]],
+        [0.0, np.nan],
+    ],
+)
+def test_malformed_longitude_coordinates_are_rejected(
+    longitudes: list[float] | list[list[float]],
+) -> None:
+    tracks = _single_point_tracks(0.0)
+    longitude_values = np.asarray(longitudes)
+    dataset = xr.Dataset(
+        data_vars={"sample": (("time", "lat", "lon"), np.zeros((1, 1, 2)))},
+        coords={
+            "time": [np.datetime64("2020-01-01T00:00")],
+            "lat": [0.0],
+        },
+    )
+    if longitude_values.ndim == 2:
+        dataset = dataset.assign_coords(lon=(("lat", "lon"), longitude_values))
+    else:
+        dataset = dataset.assign_coords(lon=longitudes)
+
+    with pytest.raises(ValueError, match="longitude coordinate"):
+        sample_tracks(tracks, dataset, "sample")

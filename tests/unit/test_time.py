@@ -144,16 +144,20 @@ def test_explicit_standard_source_date_before_transition_is_rejected() -> None:
         )
 
 
-def test_data_loader_rejects_pre_transition_datetime_standard_source() -> None:
+def test_data_loader_rejects_pre_transition_numeric_standard_source() -> None:
+    historical_time = xr.Variable(
+        ("time",),
+        np.array([0.0], dtype=np.float64),
+        attrs={
+            "units": "days since 1500-01-01 00:00:00",
+            "calendar": "standard",
+        },
+    )
     data = xr.DataArray(
         np.zeros((1, 1, 1)),
         dims=("time", "lat", "lon"),
         coords={
-            "time": xr.DataArray(
-                [np.datetime64("1500-01-01")],
-                dims="time",
-                attrs={"calendar": "standard"},
-            ),
+            "time": historical_time,
             "lat": [0.0],
             "lon": [0.0],
         },
