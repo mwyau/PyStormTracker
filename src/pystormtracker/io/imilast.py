@@ -102,9 +102,9 @@ def write_imilast(
 ) -> None:
     """Write packed trajectories in the supported IMILAST text subset."""
     variable_name = tracks.primary_var
-    if variable_name not in tracks.variables:
+    if len(tracks) and variable_name not in tracks.variables:
         raise ValueError("IMILAST writing requires the primary variable column")
-    values = tracks.variables[variable_name]
+    values = tracks.variables.get(variable_name, np.empty(0, dtype=np.float64))
     multiplier = 0.01 if variable_name.lower() in {"msl", "slp", "pnm", "pres"} else 1.0
     if variable_name.lower() in {"vo", "vort", "vorticity"}:
         multiplier = 1.0e5
