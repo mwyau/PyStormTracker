@@ -13,7 +13,6 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from ..io.json import infer_intensity_mode, infer_track_type
 from ..models.constants import R_EARTH_KM
 from ..models.tracks import Tracks
 
@@ -174,7 +173,7 @@ class _TrackData:
     lats: NDArray[np.float64]
     lons: NDArray[np.float64]
     intensity: NDArray[np.float64] | None
-    track_type: str = "unknown"
+    mode: str = "max"
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,40 +205,29 @@ def _great_circle_distances_km(
 
 def _collect_tracks(tracks: Tracks, var: str | None) -> tuple[_TrackData, ...]:
     """Extract time-ordered track arrays in their source-file order."""
-    if var is not None and var not in tracks.vars:
+    if var is not None and var not in tracks.variables:
         raise ValueError(f"intensity variable '{var}' is not present")
 
-    track_type = tracks.track_type
-    if track_type == "unknown":
-        track_type = infer_track_type(tracks)
-
     extracted: list[_TrackData] = []
-    for track_id in tracks.unique_track_ids:
-        indices = np.where(tracks.track_ids == track_id)[0]
-        times = tracks.times[indices]
+    for track in tracks:
+        times = track.times
         if np.unique(times).size != times.size:
-            raise ValueError(f"track {track_id} contains duplicate timestamps")
+            raise ValueError(f"track {track.track_id} contains duplicate timestamps")
         if np.any(times[1:] < times[:-1]):
-            raise ValueError(f"track {track_id} timestamps must be ordered")
+            raise ValueError(f"track {track.track_id} timestamps must be ordered")
         intensity = (
-            np.asarray(tracks.vars[var][indices], dtype=np.float64)
+            np.asarray(tracks.variables[var][track.point_slice], dtype=np.float64)
             if var is not None
             else None
         )
-        if (
-            intensity is not None
-            and track_type == "msl"
-            and np.nanmax(np.abs(intensity)) < 2000.0
-        ):
-            intensity = intensity * 100.0
         extracted.append(
             _TrackData(
-                track_id=int(track_id),
+                track_id=track.track_id,
                 times=times,
-                lats=np.asarray(tracks.lats[indices], dtype=np.float64),
-                lons=np.asarray(tracks.lons[indices], dtype=np.float64),
+                lats=np.asarray(track.lats, dtype=np.float64),
+                lons=np.asarray(track.lons, dtype=np.float64),
                 intensity=intensity,
-                track_type=track_type,
+                mode=tracks.mode,
             )
         )
     return tuple(extracted)
@@ -418,15 +406,15 @@ def compare_tracks(
         )
         candidate_track = candidate_tracks[pair.candidate_index]
         separations = pair.separation_km
-        ref_mode = infer_intensity_mode(
-            track_type=reference_track.track_type,
-            var_name=effective_config.var,
-            mode=effective_config.mode,
+        ref_mode = (
+            effective_config.mode
+            if effective_config.mode in ("min", "max")
+            else reference_track.mode
         )
-        cand_mode = infer_intensity_mode(
-            track_type=candidate_track.track_type,
-            var_name=effective_config.var,
-            mode=effective_config.mode,
+        cand_mode = (
+            effective_config.mode
+            if effective_config.mode in ("min", "max")
+            else candidate_track.mode
         )
         matches.append(
             TrackMatch(

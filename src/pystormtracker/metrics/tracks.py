@@ -17,7 +17,7 @@ from .weighting import WeightType, calculate_spherical_weight
 def _compute_weighted_stats(
     grid_lat: NDArray[np.float64],
     grid_lon: NDArray[np.float64],
-    track_ids: NDArray[np.int64],
+    offsets: NDArray[np.int64],
     lats: NDArray[np.float64],
     lons: NDArray[np.float64],
     amps: NDArray[np.float64],
@@ -25,6 +25,7 @@ def _compute_weighted_stats(
     weight_type: int,
     kappa: float,
     is_min: bool,
+    active_points: NDArray[np.bool_],
 ) -> tuple[
     NDArray[np.float64],
     NDArray[np.float64],
@@ -41,34 +42,30 @@ def _compute_weighted_stats(
     aca = np.zeros((ny, nx), dtype=np.float64)
     ata = np.zeros((ny, nx), dtype=np.float64)
 
-    n_points = len(track_ids)
+    n_points = len(lats)
     if n_points == 0:
         return cyclone_amplitude, cyclone_frequency, track_frequency, aca, ata
-
-    unique_ids = np.unique(track_ids)
 
     # For Fisher, we need a larger margin as it doesn't have a hard cutoff
     # but decays exponentially. Using 2500km for Fisher (~22 degrees).
     margin_km = radius_km if weight_type != 1 else 2500.0
     lat_margin = (margin_km / 111.0) + 1.0
 
-    for tid in unique_ids:
-        # Find points for this track
-        idx = np.where(track_ids == tid)[0]
-        t_lats = lats[idx]
-        t_lons = lons[idx]
-        t_amps = amps[idx]
-
+    for track_index in range(len(offsets) - 1):
+        start = offsets[track_index]
+        stop = offsets[track_index + 1]
         t_hits = np.zeros((ny, nx), dtype=np.float64)
 
         # Initialize max_amp array properly
         init_val = 1e9 if is_min else -1e9
         t_max_amp = np.full((ny, nx), init_val, dtype=np.float64)
 
-        for p in range(len(idx)):
-            plat = t_lats[p]
-            plon = t_lons[p]
-            pamp = t_amps[p]
+        for point_index in range(start, stop):
+            if not active_points[point_index]:
+                continue
+            plat = lats[point_index]
+            plon = lons[point_index]
+            pamp = amps[point_index]
 
             for i in range(ny):
                 glat = grid_lat[i]
@@ -171,7 +168,7 @@ def compute_track_metrics(
         radius_km: Radius of influence in km. Default 500km (Yau & Chang).
         kernel: Kernel type: 'constant', 'fisher', 'cressman', 'linear', 'quadratic'.
         kappa: Smoothing parameter for Fisher kernel (default 20.0).
-        varname: Variable in tracks.vars to use as amplitude.
+        varname: Variable in tracks.variables to use as amplitude.
         is_min: If True, tracks are defined by minima (e.g., SLP).
         monthly: If True (default), metrics are aggregated into monthly values.
 
@@ -191,12 +188,12 @@ def compute_track_metrics(
     wtype = kernel_map[kernel]
 
     if varname is None:
-        if len(tracks.vars) > 0:
-            varname = next(iter(tracks.vars.keys()))
+        if len(tracks.variables) > 0:
+            varname = next(iter(tracks.variables.keys()))
         else:
             raise ValueError("Tracks object does not contain any variables.")
 
-    if varname not in tracks.vars:
+    if varname not in tracks.variables:
         raise ValueError(f"Variable '{varname}' not found in tracks.")
 
     if monthly:
@@ -212,22 +209,18 @@ def compute_track_metrics(
             if not np.any(mask):
                 continue
 
-            m_track_ids = tracks.track_ids[mask]
-            m_lats = tracks.lats[mask]
-            m_lons = tracks.lons[mask]
-            m_amps = tracks.vars[varname][mask]
-
             ca, cf, tf, aca_val, ata_val = _compute_weighted_stats(
                 np.asarray(grid_lat, dtype=np.float64),
                 np.asarray(grid_lon, dtype=np.float64),
-                m_track_ids,
-                m_lats,
-                m_lons,
-                m_amps,
+                tracks.offsets,
+                tracks.lats,
+                tracks.lons,
+                tracks.variables[varname],
                 float(radius_km),
                 int(wtype),
                 float(kappa),
                 bool(is_min),
+                mask,
             )
 
             ds_month = xr.Dataset(
@@ -251,18 +244,18 @@ def compute_track_metrics(
 
         ds = xr.concat(ds_list, dim="time")
     else:
-        amps = tracks.vars[varname]
         ca, cf, tf, aca_val, ata_val = _compute_weighted_stats(
             np.asarray(grid_lat, dtype=np.float64),
             np.asarray(grid_lon, dtype=np.float64),
-            tracks.track_ids,
+            tracks.offsets,
             tracks.lats,
             tracks.lons,
-            amps,
+            tracks.variables[varname],
             float(radius_km),
             int(wtype),
             float(kappa),
             bool(is_min),
+            np.ones(len(tracks.times), dtype=np.bool_),
         )
 
         ds = xr.Dataset(

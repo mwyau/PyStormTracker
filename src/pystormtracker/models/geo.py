@@ -4,11 +4,26 @@ from typing import TypeAlias
 
 import numba as nb
 import numpy as np
+from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD, R_EARTH_KM
 
 # Type alias for a map bounding box (xmin, xmax, ymin, ymax) in km
 MapExtent: TypeAlias = tuple[float, float, float, float]
+
+
+def normalize_longitudes_signed(
+    values: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Normalize east-positive longitudes to the internal ``[-180, 180)`` range."""
+    return np.remainder(values + 180.0, 360.0) - 180.0
+
+
+def normalize_longitudes_360(
+    values: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Normalize east-positive longitudes to the ``[0, 360)`` range."""
+    return np.remainder(values, 360.0)
 
 
 @nb.njit(cache=True, nogil=True)

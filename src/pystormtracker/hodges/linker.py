@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from numpy.typing import NDArray
 
-from ..models.center import Center
 from ..models.constants import DEGTORAD
 from ..models.geo import geod_dist
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import Tracks
+from ..models.tracks import Tracks, TracksBuilder
+from ..models.units import canonical_unit_for
 from . import constants
 from .kernels import (
     _break_track,
@@ -58,7 +60,13 @@ class HodgesLinker:
         self.zones = zones
         self.adapt_params = adapt_params
 
-    def link(self, detections: list[RawDetectionStep]) -> Tracks:
+    def link(
+        self,
+        detections: list[RawDetectionStep],
+        *,
+        primary_var: str | None = None,
+        mode: Literal["min", "max"] = "max",
+    ) -> Tracks:
         """
         Links raw detections into trajectories using MGE optimization.
 
@@ -77,11 +85,11 @@ class HodgesLinker:
         all_lons: list[float] = []
         all_vals: list[float] = []
         step_offsets = np.zeros(n_frames + 1, dtype=np.int64)
-        varname = "intensity"
+        varname = primary_var or "intensity"
         for i, (_t, lats, lons, data) in enumerate(detections):
             all_lats.extend(lats)
             all_lons.extend(lons)
-            if i == 0:
+            if i == 0 and primary_var is None:
                 varname = next(iter(data.keys()))
             all_vals.extend(data[varname])
             step_offsets[i + 1] = step_offsets[i] + len(lats)
@@ -276,29 +284,47 @@ class HodgesLinker:
                 break
 
         # 5. Convert track_matrix back to PyStormTracker's Tracks model
-        tracks = Tracks()
+        units = {varname: canonical_unit_for(varname) or "1"}
+        builder = TracksBuilder(primary_var=varname, mode=mode, units=units)
         times = [d[0] for d in detections]
+        next_track_id = 1
         for t_idx in range(track_matrix.shape[0]):
-            centers: list[Center] = []
+            track_times: list[np.datetime64] = []
+            track_lats: list[float] = []
+            track_lons: list[float] = []
+            track_values: list[float] = []
             consecutive_missing = 0
             for k in range(n_frames):
                 f_idx = track_matrix[t_idx, k]
                 if f_idx != -1:
                     # Enforce max_missing if tracks were merged during MGE
-                    if consecutive_missing > self.max_missing and centers:
-                        tracks.add_track(centers)
-                        centers = []
-                    centers.append(
-                        Center(
-                            time=times[k],
-                            lat=features_lat[f_idx],
-                            lon=features_lon[f_idx],
-                            vars={varname: float(features_val[f_idx])},
+                    if consecutive_missing > self.max_missing and track_times:
+                        builder.add_track(
+                            next_track_id,
+                            track_times,
+                            track_lats,
+                            track_lons,
+                            {varname: track_values},
                         )
-                    )
+                        next_track_id += 1
+                        track_times = []
+                        track_lats = []
+                        track_lons = []
+                        track_values = []
+                    track_times.append(times[k])
+                    track_lats.append(float(features_lat[f_idx]))
+                    track_lons.append(float(features_lon[f_idx]))
+                    track_values.append(float(features_val[f_idx]))
                     consecutive_missing = 0
                 else:
                     consecutive_missing += 1
-            if centers:
-                tracks.add_track(centers)
-        return tracks
+            if track_times:
+                builder.add_track(
+                    next_track_id,
+                    track_times,
+                    track_lats,
+                    track_lons,
+                    {varname: track_values},
+                )
+                next_track_id += 1
+        return builder.finish()

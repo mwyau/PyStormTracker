@@ -7,8 +7,9 @@ import numpy as np
 import xarray as xr
 
 from ..hodges import constants
-from ..models import TimeRange, Tracks
+from ..models import TimeRange, Tracks, TracksBuilder
 from ..models.tracker import RawDetectionStep
+from ..models.units import canonical_unit_for
 from .detector import SimpleDetector
 from .linker import SimpleLinker
 
@@ -17,16 +18,22 @@ if TYPE_CHECKING:
 
 
 def _link_centers(
-    raw_steps: list[RawDetectionStep], time_range: TimeRange | None = None
+    raw_steps: list[RawDetectionStep],
+    time_range: TimeRange | None = None,
+    *,
+    primary_var: str = "intensity",
+    mode: Literal["min", "max"] = "max",
 ) -> Tracks:
     """Sequentially links raw detection steps into a global Tracks object."""
-    tracks = Tracks()
-    if time_range:
-        tracks.time_range = time_range
+    variable_names = {name for _, _, _, variables in raw_steps for name in variables}
+    if not variable_names:
+        variable_names = {primary_var}
+    units = {name: canonical_unit_for(name) or "1" for name in variable_names}
+    builder = TracksBuilder(primary_var=primary_var, mode=mode, units=units)
     linker = SimpleLinker()
     for step_data in raw_steps:
-        linker.append(tracks, step_data)
-    return tracks
+        linker.append(builder, step_data)
+    return builder.finish()
 
 
 def _detect_and_link(
@@ -218,7 +225,12 @@ class SimpleTracker:
         # This implementation uses fast nearest-neighbor search based on a
         # simple distance threshold, with no recursive optimization.
         t2 = timeit.default_timer()
-        tracks = _link_centers(raw_steps, time_range=detector_peek.time_range)
+        tracks = _link_centers(
+            raw_steps,
+            time_range=detector_peek.time_range,
+            primary_var=varname,
+            mode=mode,
+        )
         t3 = timeit.default_timer()
         print(f"    [Serial] Linking time: {t3 - t2:.4f}s")
         return tracks
@@ -297,7 +309,12 @@ class SimpleTracker:
             )
             raw_steps = _convert_stereo_steps(raw_steps, map_proj)
 
-            tracks = _link_centers(raw_steps, time_range=time_range)
+            tracks = _link_centers(
+                raw_steps,
+                time_range=time_range,
+                primary_var=varname,
+                mode=mode,
+            )
 
         elif backend == "mpi":
             from .concurrent import run_simple_mpi
@@ -370,5 +387,4 @@ class SimpleTracker:
         if rank == 0:
             print(f"Tracking time: {t_end - t0:.4f}s")
 
-        tracks.track_type = varname
         return tracks

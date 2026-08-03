@@ -6,9 +6,9 @@ from typing import Literal
 import numpy as np
 import xarray as xr
 
-from .io.json import read_json, write_json
 from .models.geo import geod_dist_km
 from .models.tracks import Tracks
+from .models.units import canonical_unit_for
 from .utils.cli import nonnegative_float
 
 SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
@@ -47,9 +47,7 @@ def sample_tracks(
     da = ds[varname]
     out_name = output_varname or varname
 
-    # Initialize the new variable in tracks.vars if not present
-    if out_name not in tracks.vars:
-        tracks.vars[out_name] = np.full(len(tracks.track_ids), np.nan)
+    sampled_values = np.full(len(tracks.times), np.nan, dtype=np.float64)
 
     # Identify lat/lon dimensions
     from .io.data_loader import DataLoader
@@ -71,9 +69,9 @@ def sample_tracks(
     is_lon_increasing = lons[1] > lons[0] if len(lons) > 1 else True
 
     for track in tracks:
-        global_indices = track.indices
+        point_slice = track.point_slice
         for i, center in enumerate(track):
-            global_idx = global_indices[i]
+            global_idx = (point_slice.start or 0) + i
 
             # 1. Select the correct time slice
             if time_dim and center.time is not None:
@@ -81,7 +79,7 @@ def sample_tracks(
                     da_step = da.sel({time_dim: center.time}, method="nearest")
                 except (ValueError, KeyError):
                     # Time might be out of range
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
                     continue
             else:
                 da_step = da
@@ -96,9 +94,9 @@ def sample_tracks(
                         {lat_dim: center.lat, lon_dim: center.lon},
                         method=interp_method,
                     ).values
-                    tracks.vars[out_name][global_idx] = float(val)
+                    sampled_values[global_idx] = float(val)
                 except Exception:
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
 
             elif method in ("mean", "max", "min"):
                 if radius_km <= 0:
@@ -106,7 +104,7 @@ def sample_tracks(
                     val = da_step.sel(
                         {lat_dim: center.lat, lon_dim: center.lon}, method="nearest"
                     ).values
-                    tracks.vars[out_name][global_idx] = float(val)
+                    sampled_values[global_idx] = float(val)
                     continue
 
                 # Conservative bounding box in degrees
@@ -140,7 +138,7 @@ def sample_tracks(
                     subset = da_step.sel({lat_dim: lat_slice, lon_dim: lon_slice})
 
                 if subset.size == 0:
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
                     continue
 
                 # Calculate distances to all points in subset
@@ -155,15 +153,20 @@ def sample_tracks(
                 valid_data = subset.values[mask]
 
                 if valid_data.size == 0:
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
                 elif method == "mean":
-                    tracks.vars[out_name][global_idx] = float(np.nanmean(valid_data))
+                    sampled_values[global_idx] = float(np.nanmean(valid_data))
                 elif method == "max":
-                    tracks.vars[out_name][global_idx] = float(np.nanmax(valid_data))
+                    sampled_values[global_idx] = float(np.nanmax(valid_data))
                 elif method == "min":
-                    tracks.vars[out_name][global_idx] = float(np.nanmin(valid_data))
+                    sampled_values[global_idx] = float(np.nanmin(valid_data))
 
-    return tracks
+    variables = dict(tracks.variables)
+    variables[out_name] = sampled_values
+    units = dict(tracks.units)
+    units.setdefault(out_name, canonical_unit_for(out_name) or "1")
+    metadata = type(tracks.metadata)(tracks.primary_var, tracks.mode, units)
+    return tracks.with_variables(variables, metadata=metadata)
 
 
 def setup_parser(
@@ -231,7 +234,9 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f"sampling method '{args.method}' requires a positive radius")
 
     print(f"Reading tracks from {args.input}...")
-    tracks = read_json(args.input)
+    from .io.imilast import read_imilast, write_imilast
+
+    tracks = read_imilast(args.input)
 
     print(f"Opening dataset {args.data}...")
     ds = xr.open_dataset(args.data, engine=args.engine)
@@ -250,5 +255,5 @@ def main(args: argparse.Namespace) -> None:
     )
 
     print(f"Writing updated tracks to {args.output}...")
-    write_json(tracks, args.output)
+    write_imilast(tracks, args.output)
     print("Done!")

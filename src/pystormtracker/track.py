@@ -329,19 +329,16 @@ def setup_parser(
     general.add_argument(
         "-f",
         "--format",
-        choices=["imilast", "hodges", "json"],
+        choices=["imilast", "hodges"],
         default="imilast",
         help="Output format. Default is 'imilast'.",
     )
     general.add_argument(
         "-m",
         "--mode",
-        choices=["auto", "min", "max"],
-        default="auto",
-        help=(
-            "Detection mode: 'auto' (inferred from variable), "
-            "'min' for SLP, 'max' for vorticity."
-        ),
+        choices=["min", "max"],
+        default="min",
+        help="Detection mode: 'min' for minima or 'max' for maxima.",
     )
     general.add_argument(
         "--map-proj",
@@ -610,17 +607,13 @@ def run_track_command(args: Namespace) -> Tracks:
         except json.JSONDecodeError as exc:
             raise ValueError(f"invalid adaptive-parameters JSON: {exc.msg}") from exc
 
-    from .io.json import infer_intensity_mode
-
-    effective_mode = infer_intensity_mode(var_name=args.var, mode=args.mode)
-
     return run_tracker(
         infile=args.input,
         varname=args.var,
         outfile=args.output,
         start_time=start_time,
         end_time=end_time,
-        mode=effective_mode,
+        mode=args.mode,
         map_proj=args.map_proj,
         resolution=args.resolution,
         extent=args.extent,

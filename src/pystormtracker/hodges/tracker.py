@@ -285,11 +285,10 @@ class HodgesTracker(Tracker):
                         **kwargs,
                     )
                 )
-            tracks = self._link_detections(detections)
+            tracks = self._link_detections(detections, varname=varname, mode=mode)
 
         t_total_end = timeit.default_timer()
         print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
-        tracks.track_type = varname
         return tracks
 
     def _track_single_chunk_from_data(
@@ -309,7 +308,7 @@ class HodgesTracker(Tracker):
             subgrid_refine=subgrid_refine,
             **kwargs,
         )
-        return self._link_detections(detections)
+        return self._link_detections(detections, primary_var=None, mode=mode)
 
     def _detect_single_chunk_from_data(
         self,
@@ -358,7 +357,14 @@ class HodgesTracker(Tracker):
 
         return detections
 
-    def _link_detections(self, detections: list[RawDetectionStep]) -> Tracks:
+    def _link_detections(
+        self,
+        detections: list[RawDetectionStep],
+        *,
+        varname: str | None = None,
+        primary_var: str | None = None,
+        mode: Literal["min", "max"] = "max",
+    ) -> Tracks:
         import timeit
 
         # Linking uses the MGE cost function with adaptive constraints.
@@ -376,18 +382,17 @@ class HodgesTracker(Tracker):
             adapt_params=self.adapt_params,
         )
 
-        tracks = linker.link(detections)
+        tracks = linker.link(
+            detections,
+            primary_var=varname or primary_var,
+            mode=mode,
+        )
         t_link_end = timeit.default_timer()
         print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")
 
         # Pruning
-        valid_tracks = []
-        for tr in tracks:
-            if len(tr) >= self.min_lifetime:
-                valid_tracks.append(tr)
-
-        out = Tracks()
-        for tr in valid_tracks:
-            out.append(tr)
-
-        return out
+        valid_indices = np.asarray(
+            [index for index, tr in enumerate(tracks) if len(tr) >= self.min_lifetime],
+            dtype=np.int64,
+        )
+        return tracks.subset(valid_indices)

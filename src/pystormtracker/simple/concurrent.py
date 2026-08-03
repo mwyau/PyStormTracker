@@ -102,7 +102,12 @@ def run_simple_dask(
 
     # Centralized linking guarantees bit-wise identity with Serial
     t3 = timeit.default_timer()
-    tracks = _link_centers(all_raw_steps, time_range=time_range)
+    tracks = _link_centers(
+        all_raw_steps,
+        time_range=time_range,
+        primary_var=varname,
+        mode=mode,
+    )
     t4 = timeit.default_timer()
     print(f"    [Dask] Linking time: {t4 - t3:.4f}s")
     return tracks
@@ -185,7 +190,12 @@ def run_simple_mpi(
         ]
         all_raw_steps = _convert_stereo_steps(all_raw_steps, map_proj)
         t4 = timeit.default_timer()
-        tracks = _link_centers(all_raw_steps, time_range=time_range)
+        tracks = _link_centers(
+            all_raw_steps,
+            time_range=time_range,
+            primary_var=varname,
+            mode=mode,
+        )
         t5 = timeit.default_timer()
         print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
         return tracks

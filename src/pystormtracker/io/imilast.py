@@ -1,145 +1,129 @@
+"""IMILAST text interoperability at the packed-model boundary."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
-from ..models.tracks import Tracks
+from ..models.tracks import Tracks, TracksBuilder
+from ..models.units import canonical_unit_for
 
 
-def read_imilast(filename: Path | str) -> Tracks:
-    """Loads tracks from an IMILAST format text file."""
-    track_ids = []
-    times = []
-    lats = []
-    lons = []
-    vars_vals = []
-    track_type = "unknown"
-    var_key = "Intensity1"
-
-    with open(filename) as f:
-        header = f.readline()
-        # Standard IMILAST header uses commas
-        if "," in header:
-            parts_h = [p.strip() for p in header.split(",")]
-            if len(parts_h) > 10:
-                var_key = parts_h[10]
-
-        # Determine track type from variable key or header content
-        if "MSL" in var_key.upper() or "MSL" in header.upper():
-            track_type = "msl"
-        elif "VO" in var_key.upper() or "VO" in header.upper():
-            track_type = "vo"
-
-        for line in f:
-            parts = line.split()
-            if not parts:
-                continue
-            if parts[0] == "90":
-                continue
-            elif parts[0] == "00":
-                track_id = int(parts[1])
-                lon, lat, var = float(parts[8]), float(parts[9]), float(parts[10])
-
-                # Unit conversion back to SI
-                # Heuristic: only scale if values look like they are in hPa or
-                # 10^-5 units to avoid double-scaling legacy files.
-                if track_type == "msl" and abs(var) < 5000.0:
-                    # Likely hPa (e.g., 1013 vs 101325)
-                    var *= 100.0  # hPa -> Pa
-                elif track_type == "vo" and abs(var) > 0.1:
-                    # Likely 10^-5 units (e.g., 10 vs 1e-4)
-                    var *= 1e-5  # 10^-5 s^-1 -> s^-1
-
-                s_time = parts[3]
-                if len(s_time) == 10:
-                    dt = datetime(
-                        int(s_time[:4]),
-                        int(s_time[4:6]),
-                        int(s_time[6:8]),
-                        int(s_time[8:10]),
-                        tzinfo=UTC,
-                    )
-                    time_val = np.datetime64(dt.replace(tzinfo=None), "s")
-                else:
-                    try:
-                        dt = datetime.fromtimestamp(float(s_time), tz=UTC)
-                        time_val = np.datetime64(dt.replace(tzinfo=None), "s")
-                    except ValueError:
-                        time_val = np.datetime64(s_time, "s")
-
-                track_ids.append(track_id)
-                times.append(time_val)
-                lats.append(lat)
-                lons.append(lon)
-                vars_vals.append(var)
-
-    obj = Tracks(
-        track_ids=np.array(track_ids, dtype=np.int64),
-        times=np.array(times, dtype="datetime64[s]"),
-        lats=np.array(lats, dtype=np.float64),
-        lons=np.array(lons, dtype=np.float64),
-        vars_dict={var_key: np.array(vars_vals, dtype=np.float64)},
-        track_type=track_type,
-    )
-    obj.sort()
-    return obj
-
-
-def write_imilast(tracks: Tracks, outfile: str | Path, decimal_places: int = 6) -> None:
-    """Exports tracks to an IMILAST format text file."""
-    outfile_str = str(outfile)
-
-    # Determine variable header name
-    if tracks.track_type != "unknown":
-        var_header = tracks.track_type.upper()
-    else:
-        var_names = list(tracks.vars.keys())
-        var_header = var_names[0] if var_names else "Intensity1"
-
-    with open(outfile_str, "w", newline="") as f:
-        header = (
-            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,"
-            f"{var_header}\n"
+def _parse_time(value: str) -> np.datetime64:
+    if len(value) == 10 and value.isdigit():
+        dt = datetime(
+            int(value[:4]),
+            int(value[4:6]),
+            int(value[6:8]),
+            int(value[8:10]),
+            tzinfo=UTC,
         )
-        f.write(header)
+        return np.datetime64(dt.replace(tzinfo=None), "ms")
+    try:
+        milliseconds = round(float(value) * 1000.0)
+        return np.datetime64(milliseconds, "ms")
+    except ValueError:
+        return np.datetime64(value, "ms")
 
-        t0 = np.datetime64("1970-01-01T00:00:00")
 
-        for i, track in enumerate(tracks, start=1):
-            f.write(f"90 {i} {len(track)}\n")
-            for step, center in enumerate(track, start=1):
-                try:
-                    ts = (center.time - t0) / np.timedelta64(1, "s")
-                    # Use integer timestamp for datetime to avoid float precision issues
-                    dt = datetime.fromtimestamp(int(ts), tz=UTC)
-                    yyyymmddhh = dt.strftime("%Y%m%d%H")
-                    yyyy, mm, dd, hh = dt.year, dt.month, dt.day, dt.hour
-                except Exception:
-                    yyyymmddhh = "0000000000"
-                    yyyy, mm, dd, hh = 0, 0, 0, 0
+def _canonical_variable(header_variable: str) -> str:
+    normalized = header_variable.strip()
+    aliases = {"MSL": "msl", "SLP": "slp", "VO": "vo", "VORT": "vort"}
+    return aliases.get(normalized.upper(), normalized)
 
-                # Ensure intensity is formatted with enough precision for VO
-                # Use the key corresponding to var_header if it exists in vars
-                val = center.vars.get(var_header.lower(), np.nan)
-                if np.isnan(val):
-                    val = next(iter(center.vars.values())) if center.vars else np.nan
 
-                # Unit conversion for standard variables
-                if tracks.track_type.lower() == "msl":
-                    val *= 0.01  # Pa -> hPa
-                elif tracks.track_type.lower() == "vo":
-                    val *= 1e5  # s^-1 -> 10^-5 s^-1
+def read_imilast(
+    filename: Path | str,
+    *,
+    primary_var: str | None = None,
+    mode: Literal["min", "max"] | None = None,
+) -> Tracks:
+    """Read the supported IMILAST subset into packed trajectories.
 
-                var_val = f"{float(val):.{decimal_places}f}"
+    IMILAST pressure values are interpreted as hPa and converted to Pa; the
+    vorticity field is interpreted in ``10^-5 s^-1`` and converted to ``s^-1``.
+    Generic fields are not numerically classified or scaled.
+    """
+    path = Path(filename)
+    track_points: dict[int, list[tuple[np.datetime64, float, float, float]]] = {}
+    variable_name = "Intensity1"
+    with path.open(encoding="utf-8") as source:
+        header = source.readline()
+        if "," in header:
+            fields = [field.strip() for field in header.split(",")]
+            if len(fields) > 10 and fields[10]:
+                variable_name = _canonical_variable(fields[10])
+        if primary_var is not None:
+            variable_name = primary_var
+        for line in source:
+            fields = line.split()
+            if not fields or fields[0] != "00":
+                continue
+            if len(fields) < 11:
+                raise ValueError("unsupported IMILAST record with fewer than 11 fields")
+            track_id = int(fields[1])
+            time = _parse_time(fields[3])
+            lon = float(fields[8])
+            lat = float(fields[9])
+            value = float(fields[10])
+            if variable_name.lower() in {"msl", "slp", "pnm", "pres"}:
+                value *= 100.0
+            elif variable_name.lower() in {"vo", "vort", "vorticity"}:
+                value *= 1.0e-5
+            track_points.setdefault(track_id, []).append((time, lat, lon, value))
 
-                lon = center.lon
-                if lon > 180:
-                    lon -= 360
+    effective_mode: Literal["min", "max"]
+    if mode is not None:
+        effective_mode = mode
+    elif variable_name.lower() in {"msl", "slp", "pnm", "pres"}:
+        effective_mode = "min"
+    else:
+        effective_mode = "max"
+    units = {variable_name: canonical_unit_for(variable_name) or "1"}
+    builder = TracksBuilder(variable_name, effective_mode, units)
+    for track_id, points in track_points.items():
+        builder.add_track(
+            track_id,
+            [point[0] for point in points],
+            [point[1] for point in points],
+            [point[2] for point in points],
+            {variable_name: [point[3] for point in points]},
+        )
+    return builder.finish()
 
-                f.write(
-                    f"00 {i} {step} {yyyymmddhh} {yyyy} {mm:02d} "
-                    f"{dd:02d} {hh:02d} {lon:.2f} {center.lat:.2f} "
-                    f"{var_val}\n"
+
+def write_imilast(
+    tracks: Tracks,
+    outfile: str | Path,
+    decimal_places: int = 6,
+) -> None:
+    """Write packed trajectories in the supported IMILAST text subset."""
+    variable_name = tracks.primary_var
+    if variable_name not in tracks.variables:
+        raise ValueError("IMILAST writing requires the primary variable column")
+    values = tracks.variables[variable_name]
+    multiplier = 0.01 if variable_name.lower() in {"msl", "slp", "pnm", "pres"} else 1.0
+    if variable_name.lower() in {"vo", "vort", "vorticity"}:
+        multiplier = 1.0e5
+    with Path(outfile).open("w", encoding="utf-8", newline="") as output:
+        output.write(
+            "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,"
+            f"{variable_name.upper()}\n"
+        )
+        epoch = np.datetime64("1970-01-01T00:00:00", "ms")
+        for track in tracks:
+            output.write(f"90 {track.track_id} {len(track)}\n")
+            for point_index, center in enumerate(track, start=1):
+                milliseconds = int((center.time - epoch) / np.timedelta64(1, "ms"))
+                dt = datetime.fromtimestamp(milliseconds / 1000.0, tz=UTC)
+                date_i10 = dt.strftime("%Y%m%d%H")
+                value = values[track.point_slice][point_index - 1]
+                output.write(
+                    f"00 {track.track_id} {point_index} {date_i10} {dt.year} "
+                    f"{dt.month:02d} {dt.day:02d} {dt.hour:02d} "
+                    f"{center.lon: .2f} {center.lat: .2f} "
+                    f"{float(value) * multiplier:.{decimal_places}f}\n"
                 )

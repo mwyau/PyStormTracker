@@ -166,7 +166,7 @@ class HealpixTracker(Tracker):
             zones=self.zones,
             adapt_params=self.adapt_params,
         )
-        tracks = linker.link(raw_steps)
+        tracks = linker.link(raw_steps, primary_var=varname, mode=mode)
         t3 = timeit.default_timer()
         print(f"    [Healpix] Linking time: {t3 - t2:.4f}s")
         return tracks
@@ -247,7 +247,7 @@ class HealpixTracker(Tracker):
                 zones=self.zones,
                 adapt_params=self.adapt_params,
             )
-            tracks = linker.link(raw_steps)
+            tracks = linker.link(raw_steps, primary_var=varname, mode=mode)
         else:
             msg = f"Backend '{backend}' not yet implemented for HealpixTracker."
             raise NotImplementedError(msg)
@@ -255,5 +255,4 @@ class HealpixTracker(Tracker):
         t_end = timeit.default_timer()
         print(f"Total HEALPix tracking time: {t_end - t0:.4f}s")
 
-        tracks.track_type = varname
         return tracks
