@@ -25,11 +25,13 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
-    "ducc0>=0.33.0",
+    "cftime>=1.6.5",
+    "ducc0>=0.39.0",
     "h5netcdf[h5py]>=1.8.0",
-    "numba>=0.62.0",  # numba 0.62 added support for numpy 2.3
-    "numpy>=2.3.0",
-    "scipy>=1.11.2",
+    "msgspec>=0.20.0",
+    "numba>=0.63.0",  # numba 0.63 added support for Python 3.14 wheels
+    "numpy>=2.3.3",
+    "scipy>=1.16.1",
     "xarray>=2024.9.0",
 ]
 
@@ -47,8 +49,8 @@ eof = [
 ]
 grib = [
     "cfgrib>=0.9.15.1",
-    "eccodes>=2.43.0",
-    "eccodeslib>=2.43.0; sys_platform != 'win32'",
+    "eccodes>=2.46.0",
+    "eccodeslib>=2.46.0; sys_platform != 'win32'",
 ]
 mpi = [
     "mpi4py>=4.1.0",
@@ -78,27 +80,29 @@ exclude = [
 dev = [
     { include-group = "docs" },
     { include-group = "test" },
-    "mypy>=1.19.1",
-    "ruff>=0.15.10",
+    "mypy>=2.3.0",
+    "ruff>=0.16.1",
 ]
 docs = [
-    "myst-parser>=5.0.0",
+    "myst-parser>=5.1.0",
     "sphinx>=9.0.4",
     "sphinx-rtd-theme>=3.1.0",
 ]
 test = [
     "cdsapi>=0.7.7",
+    "jsonschema>=4.26.0",
     "openmpi>=5.0.10 ; sys_platform != 'win32'",
     "pooch>=1.9.0",
-    "pytest>=9.0.2",
+    "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "types-jsonschema>=4.26.0.20260518",
 ]
 viz = [
-    "cartopy>=0.24.0",
+    "cartopy>=0.25.0",
     "ipympl>=0.10.0",
     "ipywidgets>=8.1.8",
     "jupyterlab>=4.5.6",
-    "matplotlib>=3.10",
+    "matplotlib>=3.11.1",
     "pandas>=3.0.1",
 ]
 
@@ -131,7 +135,16 @@ exclude = [".venv", "notebooks", "benchmark", "docs", "worktrees"]
 mypy_path = "src:tests"
 
 [[tool.mypy.overrides]]
-module = ["ducc0", "dask.*", "mpi4py.*", "numba.*", "scipy.*", "xeofs.*", "zarr.*"]
+module = [
+    "cftime",
+    "ducc0",
+    "dask.*",
+    "mpi4py.*",
+    "numba.*",
+    "scipy.*",
+    "xeofs.*",
+    "zarr.*",
+]
 ignore_missing_imports = true
 follow_imports = "skip"
 

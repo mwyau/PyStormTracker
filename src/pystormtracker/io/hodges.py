@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 
 from ..models.geo import normalize_longitudes_360
-from ..models.tracks import Tracks, TracksBuilder
-from ..models.units import canonical_unit_for
+from ..models.tracks import Tracks, TracksBuilder, TracksMetadata
+from ..models.units import ModeOption, canonical_unit_for, resolve_mode
+from ..time import decode_time_values
 
 
 def _parse_track_time(token: str) -> np.datetime64:
@@ -35,7 +35,7 @@ def read_hodges(
     path: str | Path,
     *,
     primary_var: str = "Intensity1",
-    mode: Literal["min", "max"] = "max",
+    mode: ModeOption | None = "auto",
 ) -> Tracks:
     """Read ``TRACK_NUM/TRACK_ID/POINT_NUM`` records into packed tracks.
 
@@ -120,7 +120,9 @@ def read_hodges(
             f"{len(point_groups)}"
         )
     units = {primary_var: canonical_unit_for(primary_var) or "1"}
-    builder = TracksBuilder(primary_var, mode, units)
+    builder = TracksBuilder(
+        TracksMetadata(primary_var, resolve_mode(primary_var, mode), units)
+    )
     for track_id, points in point_groups.items():
         builder.add_track(
             track_id,
@@ -148,17 +150,11 @@ def write_hodges(tracks: Tracks, outfile: str | Path) -> None:
             for _point_index, (timestamp, value, lat, lon) in enumerate(
                 zip(track.times, values, track.lats, track.lons, strict=True), start=1
             ):
-                if np.isnat(timestamp):
-                    raise ValueError("TRACK writing requires real timestamps")
-                milliseconds = int(
-                    (timestamp - np.datetime64("1970-01-01T00:00:00", "ms"))
-                    / np.timedelta64(1, "ms")
-                )
-                if milliseconds % (3_600 * 1000) == 0:
-                    token = datetime.fromtimestamp(
-                        milliseconds / 1000.0, tz=UTC
-                    ).strftime("%Y%m%d%H")
+                dt = decode_time_values([int(timestamp)])[0]
+                if dt.minute == 0 and dt.second == 0 and dt.microsecond == 0:
+                    token = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}{dt.hour:02d}"
                 else:
-                    token = str(milliseconds // 1000)
+                    milliseconds = int(timestamp)
+                    token = str(milliseconds / 1000.0)
                 lon_360 = float(normalize_longitudes_360(np.asarray([lon]))[0])
                 output.write(f"{token} {lon_360:10.6f} {lat:10.6f} {value:12.6e}\n")

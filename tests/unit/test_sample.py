@@ -6,8 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pystormtracker.models.center import Center
-from pystormtracker.models.tracks import Tracks
+from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
 from pystormtracker.sample import main, sample_tracks
 
 
@@ -34,32 +33,24 @@ def dummy_dataset() -> xr.Dataset:
 @pytest.fixture
 def dummy_tracks() -> Tracks:
     """Creates a dummy track for testing."""
-    tracks = Tracks()
-    centers = []
+    times = []
+    lats = []
+    lons = []
     # Point exactly on a grid point (-10, 20) -> value = -10 + 20/10 = -8
-    centers.append(
-        Center(
-            time=np.datetime64("2020-01-01T00:00"),
-            lat=-10.0,
-            lon=20.0,
-            vars={"intensity": 0.0},
-        )
-    )
+    times.append(np.datetime64("2020-01-01T00:00"))
+    lats.append(-10.0)
+    lons.append(20.0)
     # Point between grid points (5, 15)
     # Neighbors: (0, 10), (0, 20), (10, 10), (10, 20)
     # Values: (0+1=1), (0+2=2), (10+1=11), (10+2=12)
     # Nearest to (10, 20) is (10, 20) -> value 12
     # Bilinear: average of 1, 2, 11, 12 = 6.5
-    centers.append(
-        Center(
-            time=np.datetime64("2020-01-01T00:00"),
-            lat=5.0,
-            lon=15.0,
-            vars={"intensity": 0.0},
-        )
-    )
-    tracks.add_track(centers)
-    return tracks
+    times.append(np.datetime64("2020-01-01T01:00"))
+    lats.append(5.0)
+    lons.append(15.0)
+    builder = TracksBuilder(TracksMetadata("intensity", "max", {"intensity": "1"}))
+    builder.add_track(1, times, lats, lons, {"intensity": [0.0, 0.0]})
+    return builder.finish()
 
 
 def test_sample_nearest(dummy_tracks: Tracks, dummy_dataset: xr.Dataset) -> None:

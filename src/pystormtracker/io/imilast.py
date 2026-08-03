@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import cast
 
 import numpy as np
 
-from ..models.tracks import Tracks, TracksBuilder
-from ..models.units import canonical_unit_for
+from ..models.tracks import Tracks, TracksBuilder, TracksMetadata
+from ..models.units import ModeOption, canonical_unit_for, resolve_mode
+from ..time import decode_time_values
 
 
 def _parse_time(value: str) -> np.datetime64:
@@ -29,17 +30,11 @@ def _parse_time(value: str) -> np.datetime64:
         return np.datetime64(value, "ms")
 
 
-def _canonical_variable(header_variable: str) -> str:
-    normalized = header_variable.strip()
-    aliases = {"MSL": "msl", "SLP": "slp", "VO": "vo", "VORT": "vort"}
-    return aliases.get(normalized.upper(), normalized)
-
-
 def read_imilast(
     filename: Path | str,
     *,
     primary_var: str | None = None,
-    mode: Literal["min", "max"] | None = None,
+    mode: ModeOption | None = "auto",
 ) -> Tracks:
     """Read the supported IMILAST subset into packed trajectories.
 
@@ -55,7 +50,7 @@ def read_imilast(
         if "," in header:
             fields = [field.strip() for field in header.split(",")]
             if len(fields) > 10 and fields[10]:
-                variable_name = _canonical_variable(fields[10])
+                variable_name = fields[10].strip()
         if primary_var is not None:
             variable_name = primary_var
         for line in source:
@@ -75,15 +70,9 @@ def read_imilast(
                 value *= 1.0e-5
             track_points.setdefault(track_id, []).append((time, lat, lon, value))
 
-    effective_mode: Literal["min", "max"]
-    if mode is not None:
-        effective_mode = mode
-    elif variable_name.lower() in {"msl", "slp", "pnm", "pres"}:
-        effective_mode = "min"
-    else:
-        effective_mode = "max"
+    effective_mode = resolve_mode(variable_name, mode)
     units = {variable_name: canonical_unit_for(variable_name) or "1"}
-    builder = TracksBuilder(variable_name, effective_mode, units)
+    builder = TracksBuilder(TracksMetadata(variable_name, effective_mode, units))
     for track_id, points in track_points.items():
         builder.add_track(
             track_id,
@@ -113,13 +102,11 @@ def write_imilast(
             "99 00,CycloneNo,StepNo,DateI10,Year,Month,Day,Time,LongE,LatN,"
             f"{variable_name.upper()}\n"
         )
-        epoch = np.datetime64("1970-01-01T00:00:00", "ms")
         for track in tracks:
             output.write(f"90 {track.track_id} {len(track)}\n")
             for point_index, center in enumerate(track, start=1):
-                milliseconds = int((center.time - epoch) / np.timedelta64(1, "ms"))
-                dt = datetime.fromtimestamp(milliseconds / 1000.0, tz=UTC)
-                date_i10 = dt.strftime("%Y%m%d%H")
+                dt = decode_time_values([cast(int, center.time)])[0]
+                date_i10 = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}{dt.hour:02d}"
                 value = values[track.point_slice][point_index - 1]
                 output.write(
                     f"00 {track.track_id} {point_index} {date_i10} {dt.year} "

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from typing import Literal
+from dataclasses import replace
+from typing import Literal, cast
 
 import numpy as np
 import xarray as xr
 
 from .models.geo import geod_dist_km
 from .models.tracks import Tracks
-from .models.units import canonical_unit_for
+from .models.units import normalize_variable_units
 from .utils.cli import nonnegative_float
 
 SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
@@ -41,17 +42,24 @@ def sample_tracks(
         raise ValueError(f"Unsupported sampling method: {method}")
     if radius_km < 0.0:
         raise ValueError("Sampling radius must be nonnegative.")
-    if varname not in ds:
+    from .io.data_loader import DataLoader
+
+    loader = DataLoader(ds)
+    source_ds = loader.ensure_open()
+    if varname not in source_ds:
         raise ValueError(f"Variable '{varname}' not found in dataset.")
 
-    da = ds[varname]
+    da = source_ds[varname]
     out_name = output_varname or varname
+    da, _unused_threshold, sampled_unit = normalize_variable_units(
+        da,
+        variable_name=out_name,
+        threshold=None,
+    )
 
     sampled_values = np.full(len(tracks.times), np.nan, dtype=np.float64)
 
     # Identify lat/lon dimensions
-    from .io.data_loader import DataLoader
-
     lat_dim = next(
         (d for d in DataLoader.VAR_MAPPING["latitude"] if d in da.dims), None
     )
@@ -76,8 +84,10 @@ def sample_tracks(
             # 1. Select the correct time slice
             if time_dim and center.time is not None:
                 try:
-                    da_step = da.sel({time_dim: center.time}, method="nearest")
-                except (ValueError, KeyError):
+                    timestamp = int(cast(int, center.time))
+                    source_time = np.asarray([timestamp], dtype="datetime64[ms]")[0]
+                    da_step = da.sel({time_dim: source_time}, method="nearest")
+                except KeyError:
                     # Time might be out of range
                     sampled_values[global_idx] = np.nan
                     continue
@@ -95,7 +105,7 @@ def sample_tracks(
                         method=interp_method,
                     ).values
                     sampled_values[global_idx] = float(val)
-                except Exception:
+                except KeyError:
                     sampled_values[global_idx] = np.nan
 
             elif method in ("mean", "max", "min"):
@@ -164,8 +174,8 @@ def sample_tracks(
     variables = dict(tracks.variables)
     variables[out_name] = sampled_values
     units = dict(tracks.units)
-    units.setdefault(out_name, canonical_unit_for(out_name) or "1")
-    metadata = type(tracks.metadata)(tracks.primary_var, tracks.mode, units)
+    units[out_name] = sampled_unit
+    metadata = replace(tracks.metadata, units=units)
     return tracks.with_variables(variables, metadata=metadata)
 
 
@@ -234,12 +244,14 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f"sampling method '{args.method}' requires a positive radius")
 
     print(f"Reading tracks from {args.input}...")
-    from .io.imilast import read_imilast, write_imilast
+    from .io.format import load_tracks, save_tracks
 
-    tracks = read_imilast(args.input)
+    tracks = load_tracks(args.input)
 
     print(f"Opening dataset {args.data}...")
-    ds = xr.open_dataset(args.data, engine=args.engine)
+    from .io.data_loader import DataLoader
+
+    ds = DataLoader(args.data, engine=args.engine).ensure_open()
 
     print(f"Sampling '{args.var}' using method '{args.method}'...")
     if args.radius > 0:
@@ -255,5 +267,5 @@ def main(args: argparse.Namespace) -> None:
     )
 
     print(f"Writing updated tracks to {args.output}...")
-    write_imilast(tracks, args.output)
+    save_tracks(tracks, args.output)
     print("Done!")

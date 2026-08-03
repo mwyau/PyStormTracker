@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 import numba as nb
@@ -10,6 +11,7 @@ from numpy.typing import NDArray
 from ..models.constants import DEGTORAD
 from ..models.geo import geod_dist_km
 from ..models.tracks import Tracks
+from ..time import decode_time_values
 from .weighting import WeightType, calculate_spherical_weight
 
 
@@ -201,11 +203,15 @@ def compute_track_metrics(
         if len(unique_times) == 0:
             return xr.Dataset()
 
-        all_months = np.unique(unique_times.astype("datetime64[M]"))
+        decoded_times = decode_time_values(unique_times)
+        month_keys = np.asarray(
+            [(value.year, value.month) for value in decoded_times], dtype=np.int64
+        )
+        all_months = sorted(set(map(tuple, month_keys.tolist())))
         ds_list = []
 
-        for month in all_months:
-            mask = unique_times.astype("datetime64[M]") == month
+        for year, month_number in all_months:
+            mask = (month_keys[:, 0] == year) & (month_keys[:, 1] == month_number)
             if not np.any(mask):
                 continue
 
@@ -234,7 +240,11 @@ def compute_track_metrics(
                 coords={
                     "lat": grid_lat,
                     "lon": grid_lon,
-                    "time": month.astype("datetime64[ns]"),
+                    "time": datetime(
+                        int(year),
+                        int(month_number),
+                        1,
+                    ),
                 },
             )
             ds_list.append(ds_month)

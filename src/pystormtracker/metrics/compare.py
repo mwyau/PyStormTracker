@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 
 from ..models.constants import R_EARTH_KM
 from ..models.tracks import Tracks
+from ..models.units import Mode, ModeOption
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +25,7 @@ class TrackComparisonConfig:
     max_mean_separation_deg: float = 2.0
     min_overlap_fraction: float = 0.6
     var: str | None = None
-    mode: str | None = None
+    mode: ModeOption | None = None
 
     def __post_init__(self) -> None:
         if self.max_mean_separation_deg <= 0.0:
@@ -169,11 +170,11 @@ class TrackComparison:
 @dataclass(frozen=True, slots=True)
 class _TrackData:
     track_id: int
-    times: NDArray[np.datetime64]
+    times: NDArray[np.int64]
     lats: NDArray[np.float64]
     lons: NDArray[np.float64]
     intensity: NDArray[np.float64] | None
-    mode: str = "max"
+    mode: Mode
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,11 +288,9 @@ def _candidate_pair(
     )
 
 
-def _track_properties(
-    track: _TrackData, intensity_mode: str = "max"
-) -> TrackProperties:
+def _track_properties(track: _TrackData, intensity_mode: Mode) -> TrackProperties:
     """Calculate lifecycle, path, and optional intensity properties."""
-    duration_hours = float((track.times[-1] - track.times[0]) / np.timedelta64(1, "h"))
+    duration_hours = float((int(track.times[-1]) - int(track.times[0])) / 3_600_000.0)
     if track.times.size > 1:
         path_length_km = float(
             np.sum(
@@ -378,6 +377,18 @@ def compare_tracks(
     This reproduces the assumptions of the reference comparison program.
     """
     effective_config = config if config is not None else TrackComparisonConfig()
+    if effective_config.var is not None:
+        variable = effective_config.var
+        if variable not in reference.units or variable not in candidate.units:
+            raise ValueError(
+                f"comparison intensity variable {variable!r} must be present in "
+                "both tracks"
+            )
+        if reference.units[variable] != candidate.units[variable]:
+            raise ValueError(
+                f"comparison intensity variable {variable!r} requires matching units; "
+                f"got {reference.units[variable]!r} and {candidate.units[variable]!r}"
+            )
     reference_tracks = _collect_tracks(reference, effective_config.var)
     candidate_tracks = _collect_tracks(candidate, effective_config.var)
     matches: list[TrackMatch] = []
@@ -406,12 +417,12 @@ def compare_tracks(
         )
         candidate_track = candidate_tracks[pair.candidate_index]
         separations = pair.separation_km
-        ref_mode = (
+        ref_mode: Mode = (
             effective_config.mode
             if effective_config.mode in ("min", "max")
             else reference_track.mode
         )
-        cand_mode = (
+        cand_mode: Mode = (
             effective_config.mode
             if effective_config.mode in ("min", "max")
             else candidate_track.mode

@@ -9,6 +9,14 @@ import ducc0
 import numpy as np
 import xarray as xr
 
+from ..time import (
+    TimeInput,
+    encode_numeric_time_values,
+    encode_time_values,
+    infer_calendar,
+    select_time_range,
+)
+
 
 class DataLoader:
     """
@@ -45,6 +53,7 @@ class DataLoader:
                 self._ds = pathname.to_dataset()
             else:
                 self._ds = pathname
+            self._ds = self._normalize_time_coordinate(self._ds)
         elif pathname is None:
             self.pathname = None
         elif isinstance(pathname, str) and "://" in pathname:
@@ -134,6 +143,7 @@ class DataLoader:
                             self.pathname,
                             engine=engine,
                             chunks={},
+                            decode_times=False,
                             storage_options=storage_options,
                         )
                     else:
@@ -141,10 +151,56 @@ class DataLoader:
                             self.pathname,
                             engine=engine,
                             chunks={},
+                            decode_times=False,
                         )
+
+                    self._ds_cache[cache_key] = self._normalize_time_coordinate(
+                        self._ds_cache[cache_key]
+                    )
 
                 self._ds = self._ds_cache[cache_key]
         return self._ds
+
+    @classmethod
+    def _normalize_time_coordinate(cls, dataset: xr.Dataset) -> xr.Dataset:
+        """Normalize supported source time coordinates to datetime64[ms]."""
+        time_name = next(
+            (name for name in cls.VAR_MAPPING["time"] if name in dataset.coords),
+            None,
+        )
+        if time_name is None:
+            return dataset
+        coordinate = dataset[time_name]
+        source_units = coordinate.attrs.get("units") or coordinate.encoding.get("units")
+        source_calendar = coordinate.attrs.get("calendar") or coordinate.encoding.get(
+            "calendar"
+        )
+        dtype_kind = getattr(coordinate.dtype, "kind", None)
+        if not isinstance(dtype_kind, str):
+            return dataset
+        if dtype_kind in "iuf":
+            if isinstance(source_units, str):
+                values = encode_numeric_time_values(
+                    coordinate.values,
+                    units=source_units,
+                    calendar=None if source_calendar is None else str(source_calendar),
+                )
+            else:
+                values = encode_time_values(coordinate.values)
+            decoded_values = values.astype("datetime64[ms]")
+        elif dtype_kind == "M" or dtype_kind == "O":
+            if source_calendar is not None:
+                infer_calendar(
+                    coordinate.values,
+                    attrs={"calendar": str(source_calendar)},
+                )
+            decoded_values = encode_time_values(coordinate.values).astype(
+                "datetime64[ms]"
+            )
+        else:
+            return dataset
+        decoded_coordinate = coordinate.copy(data=decoded_values)
+        return dataset.assign_coords({time_name: decoded_coordinate})
 
     def get_coords(self) -> tuple[str, str, str]:
         """Returns the mapped names for (time, lat, lon)."""
@@ -288,3 +344,36 @@ class DataLoader:
             "phi0": phi0,
             "ringstart": ringstart,
         }
+
+
+def normalize_tracking_data(
+    source: str | Path | xr.DataArray | xr.Dataset,
+    varname: str,
+    *,
+    start_time: TimeInput | None = None,
+    end_time: TimeInput | None = None,
+    engine: str | None = None,
+) -> xr.DataArray:
+    """Normalize one public tracking input to one selected DataArray."""
+    loader = DataLoader(source, engine=engine)
+    dataset = loader.ensure_open()
+    candidates = DataLoader.VAR_MAPPING.get(varname, [varname])
+    actual_name = next((name for name in candidates if name in dataset.data_vars), None)
+    if (
+        actual_name is None
+        and isinstance(source, xr.DataArray)
+        and len(dataset.data_vars) == 1
+    ):
+        actual_name = cast(str, next(iter(dataset.data_vars)))
+    if actual_name is None:
+        raise KeyError(
+            f"Variable {varname!r} not found. Available: {list(dataset.data_vars)}"
+        )
+    selected = select_time_range(
+        dataset[actual_name],
+        start_time=start_time,
+        end_time=end_time,
+    )
+    if not isinstance(selected, xr.DataArray):
+        raise TypeError("normalized tracking input must be a DataArray")
+    return selected
