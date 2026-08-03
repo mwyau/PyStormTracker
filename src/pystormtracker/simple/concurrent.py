@@ -11,7 +11,10 @@ if TYPE_CHECKING:
 
 from ..hodges import constants
 from ..models import TimeRange, Tracks
+from ..models.geo import spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep
+from ..models.tracks import ProcessingStep, TracksMetadata
+from ..models.units import normalize_variable_units
 from .detector import SimpleDetector
 from .tracker import _convert_stereo_steps, _detect_and_link, _link_centers
 
@@ -45,11 +48,18 @@ def run_simple_dask(
         pathname=infile, varname=varname, time_range=time_range, engine=engine
     )
     data_xr = detector_peek.get_xarray()
+    data_xr, threshold, stored_unit = normalize_variable_units(
+        data_xr,
+        variable_name=varname,
+        threshold=threshold,
+    )
+    bounds = spatial_bounds_from_xarray(data_xr)
 
+    processing: tuple[ProcessingStep, ...] = ()
     if filter or map_proj != "global":
         from .tracker import SimpleTracker
 
-        data_xr = SimpleTracker().preprocess_standard_track(
+        data_xr, processing = SimpleTracker().preprocess_standard_track(
             data_xr,
             lmin=lmin if filter else 0,
             lmax=lmax,
@@ -59,7 +69,7 @@ def run_simple_dask(
             extent=extent,
         )
 
-    detector_obj = SimpleDetector.from_xarray(data_xr)
+    detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
 
     # Decouple task chunks from worker count to prevent OOM on high-res data.
     times = detector_obj.get_time()
@@ -104,9 +114,11 @@ def run_simple_dask(
     t3 = timeit.default_timer()
     tracks = _link_centers(
         all_raw_steps,
-        time_range=time_range,
         primary_var=varname,
         mode=mode,
+        bounds=bounds,
+        unit=stored_unit,
+        processing=processing,
     )
     t4 = timeit.default_timer()
     print(f"    [Dask] Linking time: {t4 - t3:.4f}s")
@@ -144,11 +156,18 @@ def run_simple_mpi(
             pathname=infile, varname=varname, time_range=time_range, engine=engine
         )
         data_xr = detector_peek.get_xarray()
+        data_xr, threshold, stored_unit = normalize_variable_units(
+            data_xr,
+            variable_name=varname,
+            threshold=threshold,
+        )
+        bounds = spatial_bounds_from_xarray(data_xr)
 
+        processing: tuple[ProcessingStep, ...] = ()
         if filter or map_proj != "global":
             from .tracker import SimpleTracker
 
-            data_xr = SimpleTracker().preprocess_standard_track(
+            data_xr, processing = SimpleTracker().preprocess_standard_track(
                 data_xr,
                 lmin=lmin if filter else 0,
                 lmax=lmax,
@@ -158,7 +177,7 @@ def run_simple_mpi(
                 extent=extent,
             )
 
-        detector_obj = SimpleDetector.from_xarray(data_xr)
+        detector_obj = SimpleDetector.from_xarray(data_xr, varname=varname)
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
     else:
         detectors = None
@@ -192,13 +211,15 @@ def run_simple_mpi(
         t4 = timeit.default_timer()
         tracks = _link_centers(
             all_raw_steps,
-            time_range=time_range,
             primary_var=varname,
             mode=mode,
+            bounds=bounds,
+            unit=stored_unit,
+            processing=processing,
         )
         t5 = timeit.default_timer()
         print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
         return tracks
 
     # Non-root ranks return empty Tracks
-    return Tracks()
+    return Tracks.empty(TracksMetadata(varname, mode, {varname: "1"}))

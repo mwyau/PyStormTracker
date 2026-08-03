@@ -68,8 +68,8 @@ def test_healpix_detector_detect() -> None:
     raw_results = detector.detect(threshold=1000.0, minmaxmode="min", min_points=1)
 
     assert len(raw_results) == 1
-    _time_val, lats_out, _lons_out, vars_dict = raw_results[0]
+    _time_val, lats_out, _lons_out, values = raw_results[0]
     assert len(lats_out) >= 1
     # Check if the true minimum was found (among others if any)
-    min_val = np.min(vars_dict["msl"])
+    min_val = np.min(values)
     assert min_val < 985.0

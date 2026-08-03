@@ -29,7 +29,9 @@ def test_hodges_detector_init(mock_open: MagicMock) -> None:
     detector = HodgesDetector(pathname="test.nc", varname="msl")
     detector._ensure_open()
 
-    mock_open.assert_called_once_with(Path("test.nc"), engine=None, chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.nc"), engine=None, chunks={}, decode_times=False
+    )
 
 
 @patch("xarray.open_dataset")
@@ -58,13 +60,13 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
     raw_results = detector.detect(size=5, threshold=0.0, minmaxmode="max")
 
     assert len(raw_results) == 1
-    _time_val, lats_out, lons_out, vars_dict = raw_results[0]
+    _time_val, lats_out, lons_out, values = raw_results[0]
 
     assert len(lats_out) == 1
     assert lats_out[0] == 3.0
     # Refined lon should be close to 3.2
     assert np.allclose(lons_out[0], 3.2)
-    assert vars_dict["msl"][0] == 1000.0
+    assert values[0] == 1000.0
 
     unrefined = detector.detect(
         size=5,
@@ -73,4 +75,29 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
         subgrid_refine=False,
     )[0]
     assert unrefined[2][0] == 3.0
-    assert unrefined[3]["msl"][0] == unrefined[3]["raw_val"][0]
+    assert unrefined[3][0] == pytest.approx(data[0, 3, 3])
+
+
+def test_hodges_detector_from_xarray_keeps_generic_detection_values() -> None:
+    values = np.ones((1, 5, 5), dtype=np.float64)
+    values[0, 2, 2] = -1.0
+    data = xr.DataArray(
+        values,
+        dims=("time", "latitude", "longitude"),
+        coords={
+            "time": np.array(["2025-12-01"], dtype="datetime64[ns]"),
+            "latitude": np.arange(5, dtype=np.float64),
+            "longitude": np.arange(5, dtype=np.float64),
+        },
+        name="msl_spectral_filtered",
+    )
+
+    detector = HodgesDetector.from_xarray(data, varname="msl")
+    result = detector.detect(
+        size=3,
+        threshold=0.0,
+        minmaxmode="min",
+        subgrid_refine=False,
+    )[0]
+
+    assert result[3].tolist() == [-1.0]

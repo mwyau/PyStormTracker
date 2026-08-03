@@ -13,6 +13,7 @@ from ..io.data_loader import DataLoader
 from ..models import TimeRange
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
+from ..time import is_missing_time, select_time_range
 from .kernels import (
     _numba_get_healpix_centers,
     _numba_healpix_ccl,
@@ -116,12 +117,12 @@ class HealpixDetector:
 
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 data_range = self._data.sel({time_dim: slice(start, end)})
-            elif not np.isnat(start):
-                data_range = self._data.where(self._data[time_dim] >= start, drop=True)
-            elif not np.isnat(end):
-                data_range = self._data.where(self._data[time_dim] <= end, drop=True)
+            elif not is_missing_time(start):
+                data_range = self._data.sel({time_dim: slice(start, None)})
+            elif not is_missing_time(end):
+                data_range = self._data.sel({time_dim: slice(None, end)})
             else:
                 data_range = self._data
         else:
@@ -139,7 +140,7 @@ class HealpixDetector:
             case _:
                 raise TypeError("frame must be an int, tuple[int, int], or None")
 
-    def get_time(self) -> NDArray[np.datetime64] | None:
+    def get_time(self) -> np.ndarray | None:
         self._ensure_open()
         ds = self._loader.ensure_open()
         time_dim, _, _ = self._loader.get_coords()
@@ -147,18 +148,18 @@ class HealpixDetector:
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
             time_coord = ds[time_dim]
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 times = time_coord.sel({time_dim: slice(start, end)})
-            elif not np.isnat(start):
-                times = time_coord.where(time_coord >= start, drop=True)
-            elif not np.isnat(end):
-                times = time_coord.where(time_coord <= end, drop=True)
+            elif not is_missing_time(start):
+                times = time_coord.sel({time_dim: slice(start, None)})
+            elif not is_missing_time(end):
+                times = time_coord.sel({time_dim: slice(None, end)})
             else:
                 times = time_coord
         else:
             times = ds[time_dim]
 
-        return np.asarray(times.values, dtype="datetime64[ns]")
+        return np.asarray(times.values)
 
     def detect(
         self,
@@ -234,7 +235,7 @@ class HealpixDetector:
                 current_time,
                 refined_lats,
                 refined_lons,
-                {self.varname: refined_vals},
+                refined_vals,
             )
             raw_steps.append(raw_step)
 
@@ -244,6 +245,7 @@ class HealpixDetector:
     def from_xarray(
         cls,
         data: xr.DataArray,
+        varname: str | None = None,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -253,7 +255,7 @@ class HealpixDetector:
         dummy_path = Path(f"/tmp/dummy_{uuid.uuid4().hex}.nc")
         detector = cls(
             pathname=dummy_path,
-            varname=str(data.name) if data.name is not None else "var",
+            varname=varname or (str(data.name) if data.name is not None else "var"),
             time_range=time_range,
             global_start_idx=global_start_idx,
             global_total_steps=global_total_steps,
@@ -271,7 +273,15 @@ class HealpixDetector:
     def get_xarray(self) -> xr.DataArray:
         self._ensure_open()
         assert self._data is not None
-        return self._data
+        start_time = self.time_range.start if self.time_range is not None else None
+        end_time = self.time_range.end if self.time_range is not None else None
+        selected = select_time_range(
+            self._data,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        assert isinstance(selected, xr.DataArray)
+        return selected
 
     def split(self, n: int) -> list[HealpixDetector]:
         """Splits the detector into n smaller detectors with disjoint time ranges."""

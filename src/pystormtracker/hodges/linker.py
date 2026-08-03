@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD
-from ..models.geo import geod_dist
+from ..models.geo import SpatialBounds, geod_dist
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import Tracks, TracksBuilder
-from ..models.units import canonical_unit_for
+from ..models.tracks import ProcessingStep, Tracks, TracksBuilder, TracksMetadata
+from ..models.units import Mode, canonical_unit_for
+from ..time import encode_time_values
 from . import constants
 from .kernels import (
     _break_track,
@@ -64,8 +63,11 @@ class HodgesLinker:
         self,
         detections: list[RawDetectionStep],
         *,
-        primary_var: str | None = None,
-        mode: Literal["min", "max"] = "max",
+        primary_var: str,
+        mode: Mode,
+        bounds: SpatialBounds | None = None,
+        unit: str | None = None,
+        processing: tuple[ProcessingStep, ...] = (),
     ) -> Tracks:
         """
         Links raw detections into trajectories using MGE optimization.
@@ -77,21 +79,26 @@ class HodgesLinker:
             A Tracks object containing the optimized trajectories.
         """
         n_frames = len(detections)
-        if n_frames < 2:
-            return Tracks()
+        if n_frames == 0:
+            return Tracks.empty(
+                TracksMetadata(
+                    primary_var,
+                    mode,
+                    {primary_var: unit or canonical_unit_for(primary_var) or "1"},
+                    bounds,
+                    processing,
+                )
+            )
 
         # 1. Flatten features and store offsets for mapping to track matrix
         all_lats: list[float] = []
         all_lons: list[float] = []
         all_vals: list[float] = []
         step_offsets = np.zeros(n_frames + 1, dtype=np.int64)
-        varname = primary_var or "intensity"
-        for i, (_t, lats, lons, data) in enumerate(detections):
+        for i, (_t, lats, lons, values) in enumerate(detections):
             all_lats.extend(lats)
             all_lons.extend(lons)
-            if i == 0 and primary_var is None:
-                varname = next(iter(data.keys()))
-            all_vals.extend(data[varname])
+            all_vals.extend(values)
             step_offsets[i + 1] = step_offsets[i] + len(lats)
 
         features_lat = np.array(all_lats, dtype=np.float64)
@@ -284,12 +291,14 @@ class HodgesLinker:
                 break
 
         # 5. Convert track_matrix back to PyStormTracker's Tracks model
-        units = {varname: canonical_unit_for(varname) or "1"}
-        builder = TracksBuilder(primary_var=varname, mode=mode, units=units)
-        times = [d[0] for d in detections]
+        units = {primary_var: unit or canonical_unit_for(primary_var) or "1"}
+        builder = TracksBuilder(
+            TracksMetadata(primary_var, mode, units, bounds, processing)
+        )
+        times = [int(encode_time_values([d[0]])[0]) for d in detections]
         next_track_id = 1
         for t_idx in range(track_matrix.shape[0]):
-            track_times: list[np.datetime64] = []
+            track_times: list[int] = []
             track_lats: list[float] = []
             track_lons: list[float] = []
             track_values: list[float] = []
@@ -304,7 +313,7 @@ class HodgesLinker:
                             track_times,
                             track_lats,
                             track_lons,
-                            {varname: track_values},
+                            {primary_var: track_values},
                         )
                         next_track_id += 1
                         track_times = []
@@ -324,7 +333,7 @@ class HodgesLinker:
                     track_times,
                     track_lats,
                     track_lons,
-                    {varname: track_values},
+                    {primary_var: track_values},
                 )
                 next_track_id += 1
         return builder.finish()

@@ -48,7 +48,7 @@ def test_reduced_gaussian_loader(n320_msl_path: str) -> None:
 
 @pytest.mark.integration
 def test_reduced_gaussian_vo_loader(n320_vo_path: str) -> None:
-    """Verify the N320 relative-vorticity fixture exposes reduced-grid metadata."""
+    """Verify the N320 relative-vorticity test dataset exposes reduced-grid metadata."""
     loader = DataLoader(n320_vo_path)
     loader.ensure_open()
 
@@ -190,14 +190,14 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
     tracker = HodgesTracker(min_lifetime=3)
     n320_tracks = tracker.track(
         n320_filtered,
-        varname="vo_spectral_filtered",
+        varname="vo",
         mode="max",
         threshold=1.0e-4,
         filter=False,
     )
     regular_tracks = tracker.track(
         regular_filtered,
-        varname="vo_spectral_filtered",
+        varname="vo",
         mode="max",
         threshold=1.0e-4,
         filter=False,
@@ -208,7 +208,7 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
     comparison = compare_tracks(
         regular_tracks,
         n320_tracks,
-        config=TrackComparisonConfig(var="vo_spectral_filtered"),
+        config=TrackComparisonConfig(var="vo"),
     )
     mean_separations_km = np.asarray(
         [match.mean_separation_km for match in comparison.matches], dtype=np.float64

@@ -9,10 +9,20 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..hodges import constants
-from ..models import TimeRange, Tracks
+from ..io.data_loader import normalize_tracking_data
+from ..models import Tracks
+from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep, Tracker
+from ..models.tracks import (
+    REGRID_OPERATION,
+    SPATIAL_TAPER_OPERATION,
+    SPECTRAL_FILTER_OPERATION,
+    ProcessingStep,
+)
+from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
 from ..preprocessing.spectral import SHTFilter
 from ..preprocessing.taper import TaperFilter
+from ..time import TimeInput
 from .detector import HealpixDetector
 
 if TYPE_CHECKING:
@@ -22,7 +32,7 @@ if TYPE_CHECKING:
 def _detect_and_gather(
     detector: HealpixDetector,
     threshold: float | None,
-    mode: Literal["min", "max"],
+    mode: Mode,
     min_points: int,
     subgrid_refine: bool,
 ) -> list[RawDetectionStep]:
@@ -83,19 +93,23 @@ class HealpixTracker(Tracker):
         lmin: int = constants.LMIN_DEFAULT,
         lmax: int = constants.LMAX_DEFAULT,
         taper_points: int = constants.TAPER_DEFAULT,
-    ) -> xr.DataArray:
+    ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         """
         Apply spectral filtering and convert regular grids to HEALPix.
         """
         if data.chunks:
             data = data.compute()
 
+        steps: list[ProcessingStep] = []
         # 1. Tapering - Note: Tapering might need adjustment for 1D maps
         # if not using a 2D source.
         # But here we assume data might be regridded 2D -> 1D.
         if taper_points > 0:
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
+            steps.append(
+                ProcessingStep(SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
+            )
 
         if data.ndim == 3:
             from ..io.data_loader import DataLoader
@@ -123,61 +137,31 @@ class HealpixTracker(Tracker):
             data = xr.concat(frames, dim=data[time_dim])
             data.attrs["map_proj"] = "healpix"
             data.attrs["nside"] = nside
+            if lmin > 0:
+                steps.append(
+                    ProcessingStep(
+                        SPECTRAL_FILTER_OPERATION,
+                        True,
+                        {"lmin": lmin, "lmax": lmax},
+                    )
+                )
+            steps.append(
+                ProcessingStep(
+                    REGRID_OPERATION,
+                    True,
+                    {"map_proj": "healpix", "nside": nside},
+                )
+            )
 
-        return data
-
-    def _detect_serial(
-        self,
-        infile: str,
-        varname: str,
-        time_range: TimeRange | None,
-        mode: Literal["min", "max"],
-        threshold: float | None = None,
-        engine: str | None = None,
-        min_points: int = 1,
-        subgrid_refine: bool = True,
-        **kwargs: float | int | str | None,
-    ) -> Tracks:
-        t0 = timeit.default_timer()
-        detector = HealpixDetector(
-            pathname=infile, varname=varname, time_range=time_range, engine=engine
-        )
-
-        raw_steps = _detect_and_gather(
-            detector,
-            threshold=threshold,
-            mode=mode,
-            min_points=min_points,
-            subgrid_refine=subgrid_refine,
-        )
-        t1 = timeit.default_timer()
-        print(f"    [Healpix] Detection time: {t1 - t0:.4f}s")
-
-        t2 = timeit.default_timer()
-        from ..hodges.linker import HodgesLinker
-
-        linker = HodgesLinker(
-            w1=self.w1,
-            w2=self.w2,
-            dmax=self.dmax,
-            phimax=self.phimax,
-            n_iterations=self.n_iterations,
-            max_missing=self.max_missing,
-            zones=self.zones,
-            adapt_params=self.adapt_params,
-        )
-        tracks = linker.link(raw_steps, primary_var=varname, mode=mode)
-        t3 = timeit.default_timer()
-        print(f"    [Healpix] Linking time: {t3 - t2:.4f}s")
-        return tracks
+        return data, tuple(steps)
 
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
-        mode: Literal["min", "max"] = "min",
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
+        mode: ModeOption | None = "auto",
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
@@ -197,41 +181,39 @@ class HealpixTracker(Tracker):
     ) -> Tracks:
 
         t0 = timeit.default_timer()
-
-        time_range = None
-        if start_time is not None or end_time is not None:
-            st = np.datetime64(start_time) if start_time else np.datetime64("NaT")
-            et = np.datetime64(end_time) if end_time else np.datetime64("NaT")
-            time_range = TimeRange(start=st, end=et)
+        resolved_mode = resolve_mode(varname, mode)
 
         if backend == "serial":
-            # For serial, load or extract the DataArray
-            if isinstance(infile, (xr.DataArray, xr.Dataset)):
-                data_xr = infile
-                if isinstance(data_xr, xr.Dataset):
-                    data_xr = data_xr[varname]
-            else:
-                detector_peek = HealpixDetector(
-                    pathname=infile,
-                    varname=varname,
-                    time_range=time_range,
-                    engine=engine,
-                )
-                data_xr = detector_peek.get_xarray()
+            # Normalize every supported public input to one selected DataArray.
+            data_xr = normalize_tracking_data(
+                infile,
+                varname,
+                start_time=start_time,
+                end_time=end_time,
+                engine=engine,
+            )
+            data_xr, threshold, stored_unit = normalize_variable_units(
+                data_xr,
+                variable_name=varname,
+                threshold=threshold,
+            )
+
+            bounds: SpatialBounds | None = spatial_bounds_from_xarray(data_xr)
+            processing: tuple[ProcessingStep, ...] = ()
 
             if data_xr.ndim == 3:
-                data_xr = self.preprocess_standard_track(
+                data_xr, processing = self.preprocess_standard_track(
                     data_xr,
                     lmin=lmin if filter else 0,
                     lmax=lmax,
                     taper_points=taper_points,
                 )
 
-            detector = HealpixDetector.from_xarray(data_xr)
+            detector = HealpixDetector.from_xarray(data_xr, varname=varname)
             raw_steps = _detect_and_gather(
                 detector,
                 threshold=threshold,
-                mode=mode,
+                mode=resolved_mode,
                 min_points=min_points,
                 subgrid_refine=subgrid_refine,
             )
@@ -247,7 +229,14 @@ class HealpixTracker(Tracker):
                 zones=self.zones,
                 adapt_params=self.adapt_params,
             )
-            tracks = linker.link(raw_steps, primary_var=varname, mode=mode)
+            tracks = linker.link(
+                raw_steps,
+                primary_var=varname,
+                mode=resolved_mode,
+                bounds=bounds,
+                unit=stored_unit,
+                processing=processing,
+            )
         else:
             msg = f"Backend '{backend}' not yet implemented for HealpixTracker."
             raise NotImplementedError(msg)

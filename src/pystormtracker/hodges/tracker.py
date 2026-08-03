@@ -7,10 +7,20 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
+from ..io.data_loader import normalize_tracking_data
 from ..models import constants as model_constants
+from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep, Tracker
-from ..models.tracks import Tracks
+from ..models.tracks import (
+    REGRID_OPERATION,
+    SPATIAL_TAPER_OPERATION,
+    SPECTRAL_FILTER_OPERATION,
+    ProcessingStep,
+    Tracks,
+)
+from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
 from ..preprocessing.taper import TaperFilter
+from ..time import TimeInput
 from . import constants
 from .detector import HodgesDetector
 from .linker import HodgesLinker
@@ -87,7 +97,7 @@ class HodgesTracker(Tracker):
         resolution: float = 100.0,
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
-    ) -> xr.DataArray:
+    ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         """
         Applies standard TRACK preprocessing: Tapering -> SHT or DCT Filter.
         Optionally regrids to a Polar Stereographic or HEALPix projection.
@@ -95,7 +105,7 @@ class HodgesTracker(Tracker):
         from ..io.data_loader import DataLoader
         from ..preprocessing.spectral import DCTFilter, SHTFilter
 
-        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        loader = DataLoader(data)
         _time_dim, _lat_dim, _lon_dim = loader.get_coords()
 
         if filter_type == "auto":
@@ -105,10 +115,14 @@ class HodgesTracker(Tracker):
         if data.chunks:
             data = data.compute()
 
+        steps: list[ProcessingStep] = []
         # 1. Tapering
         if taper_points > 0:
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
+            steps.append(
+                ProcessingStep(SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
+            )
 
         # 2. Regridding and Filtering
         if map_proj in ("nh_stereo", "sh_stereo", "healpix"):
@@ -156,6 +170,34 @@ class HodgesTracker(Tracker):
                         else (-13000.0, 13000.0, -13000.0, 13000.0),
                     )
                 out_frames.append(out_frame)
+            regrid_parameters: dict[str, str | int | float | bool | None] = {
+                "map_proj": map_proj,
+            }
+            if map_proj == "healpix":
+                regrid_parameters["nside"] = nside
+            else:
+                regrid_parameters["resolution"] = resolution
+                if extent is not None:
+                    regrid_parameters["extent"] = ",".join(
+                        str(value) for value in extent
+                    )
+                if lmin > 0:
+                    steps.append(
+                        ProcessingStep(
+                            SPECTRAL_FILTER_OPERATION,
+                            True,
+                            {"lmin": lmin, "lmax": lmax},
+                        )
+                    )
+            if map_proj == "healpix" and lmin > 0:
+                steps.append(
+                    ProcessingStep(
+                        SPECTRAL_FILTER_OPERATION,
+                        True,
+                        {"lmin": lmin, "lmax": lmax},
+                    )
+                )
+            steps.append(ProcessingStep(REGRID_OPERATION, True, regrid_parameters))
             # Concatenate back
             data = xr.concat(out_frames, dim=data[time_dim])
             data.attrs["map_proj"] = map_proj
@@ -164,16 +206,23 @@ class HodgesTracker(Tracker):
             f_cls = SHTFilter if filter_type == "sht" else DCTFilter
             spectral_filter = f_cls(lmin=lmin, lmax=lmax)
             data = spectral_filter.filter(data)
+            steps.append(
+                ProcessingStep(
+                    SPECTRAL_FILTER_OPERATION,
+                    True,
+                    {"lmin": lmin, "lmax": lmax},
+                )
+            )
 
-        return data
+        return data, tuple(steps)
 
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
-        mode: Literal["min", "max"] = "min",
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
+        mode: ModeOption | None = "auto",
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
@@ -216,6 +265,8 @@ class HodgesTracker(Tracker):
         """
         import timeit
 
+        resolved_mode = resolve_mode(varname, mode)
+
         if backend != "serial":
             raise NotImplementedError(
                 "HodgesTracker currently supports only the serial backend."
@@ -227,23 +278,24 @@ class HodgesTracker(Tracker):
 
         # 1. Load and optionally filter data
         t0 = timeit.default_timer()
-        if isinstance(infile, (xr.DataArray, xr.Dataset)):
-            data_xr = infile
-            if isinstance(data_xr, xr.Dataset):
-                data_xr = data_xr[varname]
-        else:
-            detector_peek = HodgesDetector(infile, varname, engine=engine)
-            if start_time is None or end_time is None:
-                full_times = detector_peek.get_time()
-                if start_time is None:
-                    start_time = full_times[0]
-                if end_time is None:
-                    end_time = full_times[-1]
+        data_xr = normalize_tracking_data(
+            infile,
+            varname,
+            start_time=start_time,
+            end_time=end_time,
+            engine=engine,
+        )
+        data_xr, threshold, stored_unit = normalize_variable_units(
+            data_xr,
+            variable_name=varname,
+            threshold=threshold,
+        )
 
-            data_xr = detector_peek.get_xarray(start_time, end_time)
+        bounds = spatial_bounds_from_xarray(data_xr)
+        processing: tuple[ProcessingStep, ...] = ()
 
         if filter or map_proj != "global":
-            data_xr = self.preprocess_standard_track(
+            data_xr, processing = self.preprocess_standard_track(
                 data_xr,
                 lmin=lmin if filter else 0,
                 lmax=lmax,
@@ -258,10 +310,14 @@ class HodgesTracker(Tracker):
         if max_chunk_size is None:
             tracks = self._track_single_chunk_from_data(
                 data_xr,
-                mode,
-                threshold,
+                primary_var=varname,
+                mode=resolved_mode,
+                bounds=bounds,
+                threshold=threshold,
+                unit=stored_unit,
                 min_points=min_points,
                 subgrid_refine=subgrid_refine,
+                processing=processing,
                 **kwargs,
             )
         else:
@@ -278,14 +334,22 @@ class HodgesTracker(Tracker):
                 detections.extend(
                     self._detect_single_chunk_from_data(
                         chunk_data,
-                        mode,
-                        threshold,
+                        primary_var=varname,
+                        mode=resolved_mode,
+                        threshold=threshold,
                         min_points=min_points,
                         subgrid_refine=subgrid_refine,
                         **kwargs,
                     )
                 )
-            tracks = self._link_detections(detections, varname=varname, mode=mode)
+            tracks = self._link_detections(
+                detections,
+                primary_var=varname,
+                mode=resolved_mode,
+                bounds=bounds,
+                unit=stored_unit,
+                processing=processing,
+            )
 
         t_total_end = timeit.default_timer()
         print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
@@ -294,7 +358,12 @@ class HodgesTracker(Tracker):
     def _track_single_chunk_from_data(
         self,
         data: xr.DataArray,
-        mode: Literal["min", "max"] = "min",
+        *,
+        primary_var: str,
+        mode: Mode,
+        bounds: SpatialBounds | None,
+        unit: str | None,
+        processing: tuple[ProcessingStep, ...],
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         subgrid_refine: bool = True,
@@ -302,18 +371,28 @@ class HodgesTracker(Tracker):
     ) -> Tracks:
         detections = self._detect_single_chunk_from_data(
             data,
-            mode,
-            threshold,
+            primary_var=primary_var,
+            mode=mode,
+            threshold=threshold,
             min_points=min_points,
             subgrid_refine=subgrid_refine,
             **kwargs,
         )
-        return self._link_detections(detections, primary_var=None, mode=mode)
+        return self._link_detections(
+            detections,
+            primary_var=primary_var,
+            mode=mode,
+            bounds=bounds,
+            unit=unit,
+            processing=processing,
+        )
 
     def _detect_single_chunk_from_data(
         self,
         data: xr.DataArray,
-        mode: Literal["min", "max"] = "min",
+        *,
+        primary_var: str,
+        mode: Mode,
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         subgrid_refine: bool = True,
@@ -323,7 +402,7 @@ class HodgesTracker(Tracker):
 
         # 1. Detection
         t_detect_start = timeit.default_timer()
-        detector = HodgesDetector.from_xarray(data)
+        detector = HodgesDetector.from_xarray(data, varname=primary_var)
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 
@@ -361,9 +440,11 @@ class HodgesTracker(Tracker):
         self,
         detections: list[RawDetectionStep],
         *,
-        varname: str | None = None,
-        primary_var: str | None = None,
-        mode: Literal["min", "max"] = "max",
+        primary_var: str,
+        mode: Mode,
+        bounds: SpatialBounds | None = None,
+        unit: str | None = None,
+        processing: tuple[ProcessingStep, ...] = (),
     ) -> Tracks:
         import timeit
 
@@ -384,8 +465,11 @@ class HodgesTracker(Tracker):
 
         tracks = linker.link(
             detections,
-            primary_var=varname or primary_var,
+            primary_var=primary_var,
             mode=mode,
+            bounds=bounds,
+            unit=unit,
+            processing=processing,
         )
         t_link_end = timeit.default_timer()
         print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")

@@ -87,7 +87,7 @@ def test_polar_preprocessing_uses_requested_lmax(
     map_proj: str,
     global_data: xr.DataArray,
 ) -> None:
-    processed = tracker.preprocess_standard_track(
+    processed, _steps = tracker.preprocess_standard_track(
         global_data,
         lmin=0,
         lmax=7,

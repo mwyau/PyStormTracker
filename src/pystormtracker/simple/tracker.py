@@ -7,9 +7,30 @@ import numpy as np
 import xarray as xr
 
 from ..hodges import constants
-from ..models import TimeRange, Tracks, TracksBuilder
+from ..io.data_loader import normalize_tracking_data
+from ..models import TimeRange, Tracks
+from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep
-from ..models.units import canonical_unit_for
+from ..models.tracks import (
+    REGRID_OPERATION,
+    SPATIAL_TAPER_OPERATION,
+    SPECTRAL_FILTER_OPERATION,
+    ProcessingStep,
+    TracksBuilder,
+    TracksMetadata,
+)
+from ..models.units import (
+    Mode,
+    ModeOption,
+    canonical_unit_for,
+    normalize_variable_units,
+    resolve_mode,
+)
+from ..time import (
+    TimeInput,
+    coerce_time_input,
+    encode_time_values,
+)
 from .detector import SimpleDetector
 from .linker import SimpleLinker
 
@@ -19,19 +40,29 @@ if TYPE_CHECKING:
 
 def _link_centers(
     raw_steps: list[RawDetectionStep],
-    time_range: TimeRange | None = None,
     *,
-    primary_var: str = "intensity",
-    mode: Literal["min", "max"] = "max",
+    primary_var: str,
+    mode: Mode,
+    bounds: SpatialBounds | None = None,
+    unit: str | None = None,
+    processing: tuple[ProcessingStep, ...] = (),
 ) -> Tracks:
     """Sequentially links raw detection steps into a global Tracks object."""
-    variable_names = {name for _, _, _, variables in raw_steps for name in variables}
-    if not variable_names:
-        variable_names = {primary_var}
-    units = {name: canonical_unit_for(name) or "1" for name in variable_names}
-    builder = TracksBuilder(primary_var=primary_var, mode=mode, units=units)
+    units = {primary_var: unit or canonical_unit_for(primary_var) or "1"}
+    numeric_steps: list[RawDetectionStep] = [
+        (
+            int(encode_time_values([step[0]])[0]),
+            step[1],
+            step[2],
+            step[3],
+        )
+        for step in raw_steps
+    ]
+    builder = TracksBuilder(
+        TracksMetadata(primary_var, mode, units, bounds, processing)
+    )
     linker = SimpleLinker()
-    for step_data in raw_steps:
+    for step_data in numeric_steps:
         linker.append(builder, step_data)
     return builder.finish()
 
@@ -88,7 +119,7 @@ class SimpleTracker:
         resolution: float = 100.0,
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
-    ) -> xr.DataArray:
+    ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         """
         Applies standard spectral preprocessing using SHT or DCT.
         Optionally regrids to a Polar Stereographic or HEALPix projection.
@@ -98,7 +129,7 @@ class SimpleTracker:
         from ..preprocessing.spectral import DCTFilter, SHTFilter
         from ..preprocessing.taper import TaperFilter
 
-        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        loader = DataLoader(data)
         _time_dim, _lat_dim, _lon_dim = loader.get_coords()
 
         if filter_type == "auto":
@@ -110,10 +141,14 @@ class SimpleTracker:
 
         from typing import cast
 
+        steps: list[ProcessingStep] = []
         # 1. Tapering (Spatial domain boundary tapering)
         if taper_points > 0:
             taper = TaperFilter(n_points=taper_points)
             data = cast(xr.DataArray, taper.filter(data))
+            steps.append(
+                ProcessingStep(SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
+            )
 
         # 2. Regridding and Filtering
         if map_proj in ("nh_stereo", "sh_stereo", "healpix"):
@@ -156,6 +191,34 @@ class SimpleTracker:
                         else (-13000.0, 13000.0, -13000.0, 13000.0),
                     )
                 out_frames.append(out_frame)
+            regrid_parameters: dict[str, str | int | float | bool | None] = {
+                "map_proj": map_proj,
+            }
+            if map_proj == "healpix":
+                regrid_parameters["nside"] = nside
+            else:
+                regrid_parameters["resolution"] = resolution
+                if extent is not None:
+                    regrid_parameters["extent"] = ",".join(
+                        str(value) for value in extent
+                    )
+                if lmin > 0:
+                    steps.append(
+                        ProcessingStep(
+                            SPECTRAL_FILTER_OPERATION,
+                            True,
+                            {"lmin": lmin, "lmax": lmax},
+                        )
+                    )
+            if map_proj == "healpix" and lmin > 0:
+                steps.append(
+                    ProcessingStep(
+                        SPECTRAL_FILTER_OPERATION,
+                        True,
+                        {"lmin": lmin, "lmax": lmax},
+                    )
+                )
+            steps.append(ProcessingStep(REGRID_OPERATION, True, regrid_parameters))
             # Concatenate back
             data = xr.concat(out_frames, dim=data[time_dim])
             data.attrs["map_proj"] = map_proj
@@ -164,15 +227,22 @@ class SimpleTracker:
             f_cls = SHTFilter if filter_type == "sht" else DCTFilter
             spectral_filter = f_cls(lmin=lmin, lmax=lmax)
             data = spectral_filter.filter(data)
+            steps.append(
+                ProcessingStep(
+                    SPECTRAL_FILTER_OPERATION,
+                    True,
+                    {"lmin": lmin, "lmax": lmax},
+                )
+            )
 
-        return data
+        return data, tuple(steps)
 
     def _detect_serial(
         self,
-        infile: str,
+        infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
         time_range: TimeRange | None,
-        mode: Literal["min", "max"],
+        mode: Mode,
         threshold: float | None = None,
         engine: str | None = None,
         filter: bool = False,
@@ -188,13 +258,23 @@ class SimpleTracker:
         import timeit
 
         t0 = timeit.default_timer()
-        detector_peek = SimpleDetector(
-            pathname=infile, varname=varname, time_range=time_range, engine=engine
+        data_xr = normalize_tracking_data(
+            infile,
+            varname,
+            start_time=time_range.start if time_range else None,
+            end_time=time_range.end if time_range else None,
+            engine=engine,
         )
-        data_xr = detector_peek.get_xarray()
+        data_xr, threshold, stored_unit = normalize_variable_units(
+            data_xr,
+            variable_name=varname,
+            threshold=threshold,
+        )
+        bounds = spatial_bounds_from_xarray(data_xr)
 
+        processing: tuple[ProcessingStep, ...] = ()
         if filter or map_proj != "global":
-            data_xr = self.preprocess_standard_track(
+            data_xr, processing = self.preprocess_standard_track(
                 data_xr,
                 lmin=lmin if filter else 0,
                 lmax=lmax,
@@ -207,7 +287,7 @@ class SimpleTracker:
         print(f"    [Serial] Preprocessing time: {t_pre - t0:.4f}s")
 
         t0_detect = timeit.default_timer()
-        detector = SimpleDetector.from_xarray(data_xr)
+        detector = SimpleDetector.from_xarray(data_xr, varname=varname)
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
         raw_steps = _detect_and_link(
             detector,
@@ -227,9 +307,11 @@ class SimpleTracker:
         t2 = timeit.default_timer()
         tracks = _link_centers(
             raw_steps,
-            time_range=detector_peek.time_range,
             primary_var=varname,
             mode=mode,
+            bounds=bounds,
+            unit=stored_unit,
+            processing=processing,
         )
         t3 = timeit.default_timer()
         print(f"    [Serial] Linking time: {t3 - t2:.4f}s")
@@ -239,9 +321,9 @@ class SimpleTracker:
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
         varname: str,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
-        mode: Literal["min", "max"] = "min",
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
+        mode: ModeOption | None = "auto",
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
@@ -262,68 +344,31 @@ class SimpleTracker:
         import timeit
 
         t0 = timeit.default_timer()
+        resolved_mode = resolve_mode(varname, mode)
 
         time_range = None
         if start_time is not None or end_time is not None:
-            st = np.datetime64(start_time) if start_time else None
-            et = np.datetime64(end_time) if end_time else None
-
-            if st is None:
-                st = np.datetime64("NaT")
-            if et is None:
-                et = np.datetime64("NaT")
+            st = coerce_time_input(start_time)
+            et = coerce_time_input(end_time)
 
             time_range = TimeRange(start=st, end=et)
 
-        if isinstance(infile, (xr.DataArray, xr.Dataset)):
-            if backend != "serial":
-                msg = (
-                    "Dask and MPI backends for SimpleTracker require a file path, "
-                    "not an xarray object."
-                )
-                raise NotImplementedError(msg)
-
-            data_xr = infile
-            if isinstance(data_xr, xr.Dataset):
-                data_xr = data_xr[varname]
-
-            if filter or map_proj != "global":
-                data_xr = self.preprocess_standard_track(
-                    data_xr,
-                    lmin=lmin if filter else 0,
-                    lmax=lmax,
-                    taper_points=taper_points,
-                    map_proj=map_proj,
-                    resolution=resolution,
-                    extent=extent,
-                )
-
-            detector = SimpleDetector.from_xarray(data_xr)
-            size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
-            raw_steps = _detect_and_link(
-                detector,
-                size=size,
-                threshold=threshold,
-                mode=mode,
-                subgrid_refine=subgrid_refine,
+        if backend in ("mpi", "dask") and isinstance(
+            infile, (xr.DataArray, xr.Dataset)
+        ):
+            msg = (
+                "Dask and MPI backends for SimpleTracker require a file path, "
+                "not an xarray object."
             )
-            raw_steps = _convert_stereo_steps(raw_steps, map_proj)
-
-            tracks = _link_centers(
-                raw_steps,
-                time_range=time_range,
-                primary_var=varname,
-                mode=mode,
-            )
-
-        elif backend == "mpi":
+            raise NotImplementedError(msg)
+        if backend == "mpi":
             from .concurrent import run_simple_mpi
 
             tracks = run_simple_mpi(
                 str(infile),
                 varname,
                 time_range,
-                mode,
+                resolved_mode,
                 threshold=threshold,
                 engine=engine,
                 filter=filter,
@@ -343,7 +388,7 @@ class SimpleTracker:
                 str(infile),
                 varname,
                 time_range,
-                mode,
+                resolved_mode,
                 n_workers,
                 max_chunk_size=max_chunk_size,
                 threshold=threshold,
@@ -360,10 +405,10 @@ class SimpleTracker:
             )
         else:
             tracks = self._detect_serial(
-                str(infile),
+                infile,
                 varname,
                 time_range,
-                mode,
+                resolved_mode,
                 threshold=threshold,
                 engine=engine,
                 filter=filter,
