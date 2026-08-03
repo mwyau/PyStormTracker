@@ -2,6 +2,9 @@
 
 This document describes the data model, tracker interfaces, preprocessing, execution paths, testing, and release workflows in PyStormTracker.
 
+TrackJSON-specific wire structure, bounds semantics, statistics, and schema
+maintenance are maintained in the [TrackJSON v1.0 specification](trackjson.md).
+
 ## 1. Architecture Principles
 
 The architecture has four main features:
@@ -31,6 +34,23 @@ point-level ID array is available only through the explicit
 `Tracks.point_track_ids()` derived operation.
 
 This layout avoids one persistent Python object per center, reduces allocation overhead, and supports NumPy selection, broadcasting, and serialization between workers.
+
+All finalized `Tracks` use signed `int64` milliseconds since
+`1970-01-01 00:00:00` under the proleptic Gregorian calendar. Source CF time
+decoding is delegated to `cftime` in `pystormtracker.time`; tracking, linking,
+ordering, filtering, and statistics operate on the canonical integers. The
+source policy accepts proleptic Gregorian dates and modern `standard` or
+`gregorian` dates; other CF calendars are rejected pending future support. The
+complete wire specification is maintained in
+[TrackJSON v1.0](trackjson.md).
+
+`TracksBuilder` and its private mutable candidates are construction details;
+finalized `Tracks` is immutable packed output. `Tracks` contains canonical
+trajectory data and metadata only. `TrackJSONStats` is a wire-only optional
+derived cache, computed explicitly during serialization and discarded after
+reads or verification. Source variable identity is preserved; algorithm
+classification is separate from the public name, generic detection values are
+passed to linkers, and preprocessing is recorded in `metadata.processing`.
 
 ### 2.2 Shared `DataLoader`
 
@@ -103,7 +123,7 @@ tracks = tracker.track(
     backend="dask",
 )
 
-tracks.write("output.txt", format="imilast")
+tracks.write("output.trackjson")
 ```
 
 Tracker implementations retain algorithm-specific defaults while accepting shared orchestration arguments. The high-level API and CLI pass algorithm-specific options through `**kwargs` where required.

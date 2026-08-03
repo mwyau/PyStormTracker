@@ -41,7 +41,7 @@ No JAX or other GPU execution backend is present in the current package dependen
 
 ### 2.1 Performance regression testing
 
-Historical benchmark results are documented, but CI does not enforce performance limits. A suitable CI benchmark requires a deterministic fixture, repeated measurements, and criteria that account for timing variability.
+Historical benchmark results are documented, but CI does not enforce performance limits. A suitable CI benchmark requires a deterministic test dataset, repeated measurements, and criteria that account for timing variability.
 
 ### 2.2 SHTns comparison benchmark
 
@@ -241,17 +241,17 @@ comparison covers the reduced-Gaussian vorticity workflow.
 
 **Progress:** `DataLoader` identifies Gaussian latitude spacing, and the SHT and regridding paths support `GL` geometry.
 
-**Verification:** Geometry-detection and `GL` synthesis paths have repository coverage. A versioned full-Gaussian input fixture remains to be tested end to end.
+**Verification:** Geometry-detection and `GL` synthesis paths have repository coverage. A versioned full-Gaussian input test dataset remains to be tested end to end.
 
 ### 5.16 Reduced Gaussian grids — 🚧 In progress
 
 **Description:** Process one-dimensional reduced Gaussian fields, such as ERA5 N320 data, using the number of longitude points on each latitude ring.
 
-**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Integration tests download versioned N320 mean sea level pressure and relative-vorticity GRIB fixtures, then cover loading, filtering, regridding, and tracking.
+**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Integration tests download versioned N320 mean sea level pressure and relative-vorticity GRIB test datasets, then cover loading, filtering, regridding, and tracking.
 
 **Verification:** Repository integration tests exercise end-to-end loading,
 filtering, regridding, detection, and Hodges tracking on versioned N320
-fixtures. The vorticity coverage compares N320 trajectories with the paired
+test datasets. The vorticity coverage compares N320 trajectories with the paired
 0.25-degree input after common-grid preprocessing; it is not a TRACK-parity or
 external-validation claim.
 
