@@ -4,9 +4,10 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import xarray as xr
 
 from pystormtracker.hodges.tracker import HodgesTracker
-from pystormtracker.models.tracks import Tracks
+from pystormtracker.models.tracks import Tracks, TracksMetadata
 
 
 def test_hodges_tracker_init() -> None:
@@ -85,12 +86,11 @@ def test_hodges_tracker_gathers_chunks_before_linking(
         detected_steps[2:4],
         detected_steps[4:],
     ]
-    mock_link.return_value = Tracks()
+    mock_link.return_value = Tracks.empty(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
     HodgesTracker().track(
         data,
         "msl",
-        filter=False,
         max_chunk_size=2,
         overlap=99,
     )
@@ -128,7 +128,6 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
     kwargs = {
         "mode": "min",
         "threshold": 0.0,
-        "filter": False,
         "subgrid_refine": False,
     }
 
@@ -140,7 +139,13 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
         **kwargs,  # type: ignore[arg-type]
     )
 
-    assert unchunked == chunked
+    assert unchunked.metadata == chunked.metadata
+    np.testing.assert_array_equal(unchunked.ids, chunked.ids)
+    np.testing.assert_array_equal(unchunked.offsets, chunked.offsets)
+    np.testing.assert_array_equal(unchunked.times, chunked.times)
+    np.testing.assert_array_equal(unchunked.lats, chunked.lats)
+    np.testing.assert_array_equal(unchunked.lons, chunked.lons)
+    np.testing.assert_array_equal(unchunked.variables["msl"], chunked.variables["msl"])
 
 
 @patch("pystormtracker.hodges.detector.HodgesDetector.detect")
@@ -150,23 +155,26 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
     t1 = np.datetime64("2025-12-01T06:00:00")
 
     mock_detect.return_value = [
-        (t0, np.array([0.0]), np.array([0.0]), {"msl": np.array([1000.0])}),
-        (t1, np.array([1.0]), np.array([1.0]), {"msl": np.array([990.0])}),
+        (t0, np.array([0.0]), np.array([0.0]), np.array([1000.0])),
+        (t1, np.array([1.0]), np.array([1.0]), np.array([990.0])),
     ]
 
+    data = xr.DataArray(
+        np.zeros((2, 1, 1)),
+        dims=("time", "lat", "lon"),
+        coords={
+            "time": [t0, t1],
+            "lat": [0.0],
+            "lon": [0.0],
+        },
+        name="msl",
+    )
     tracker = HodgesTracker(min_lifetime=2)
-    # Patch get_time and get_xarray to avoid file opening
-    with (
-        patch(
-            "pystormtracker.hodges.detector.HodgesDetector.get_time",
-            return_value=[t0, t1],
-        ),
-        patch(
-            "pystormtracker.hodges.detector.HodgesDetector.get_xarray",
-            return_value=MagicMock(),
-        ),
+    with patch(
+        "pystormtracker.hodges.tracker.normalize_tracking_data",
+        return_value=data,
     ):
-        tracks = tracker.track("dummy.nc", "msl", filter=False)
+        tracks = tracker.track("dummy.nc", "msl")
 
     assert len(tracks) == 1
     assert len(tracks[0]) == 2
@@ -195,11 +203,11 @@ def test_hodges_tracker_preprocess_map_proj() -> None:
     tracker = HodgesTracker()
 
     # Test nh_stereo
-    processed = tracker.preprocess_standard_track(da, map_proj="nh_stereo")
+    processed, _steps = tracker.preprocess_standard_track(da, map_proj="nh_stereo")
     assert processed.dims == ("time", "y", "x")
     assert processed.attrs["map_proj"] == "nh_stereo"
 
     # Test healpix
-    processed_hp = tracker.preprocess_standard_track(da, map_proj="healpix")
+    processed_hp, _steps = tracker.preprocess_standard_track(da, map_proj="healpix")
     assert processed_hp.dims == ("time", "cell")
     assert processed_hp.attrs["map_proj"] == "healpix"

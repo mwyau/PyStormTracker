@@ -27,10 +27,12 @@ def test_simple_detector_init(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = SimpleDetector(pathname="test.nc", varname="msl")
+    detector = SimpleDetector(pathname="test.nc", variable_name="msl")
     detector._ensure_open()
 
-    mock_open.assert_called_once_with(Path("test.nc"), engine=None, chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.nc"), engine=None, chunks={}, decode_times=False
+    )
 
 
 @patch("xarray.open_dataset")
@@ -49,16 +51,16 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     )
     mock_open.return_value = ds
 
-    detector = SimpleDetector(pathname="test2.nc", varname="msl")
+    detector = SimpleDetector(pathname="test2.nc", variable_name="msl")
     raw_results = detector.detect(size=5, threshold=0.0)
 
     assert len(raw_results) == 1
-    _time_val, lats_out, lons_out, vars_dict = raw_results[0]
+    _time_val, lats_out, lons_out, values = raw_results[0]
 
     assert len(lats_out) == 1
     assert lats_out[0] == 3.0
     assert lons_out[0] == 3.0
-    assert vars_dict["msl"][0] == 950.0
+    assert values[0] == 950.0
 
 
 def test_simple_detector_optional_subgrid_refinement() -> None:
@@ -83,4 +85,4 @@ def test_simple_detector_optional_subgrid_refinement() -> None:
     assert raw[2][0] == 3.0
     assert refined[1][0] == pytest.approx(3.25)
     assert refined[2][0] == pytest.approx(3.2)
-    assert refined[3]["msl"][0] < refined[3]["raw_val"][0]
+    assert refined[3][0] < raw[3][0]

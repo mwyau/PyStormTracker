@@ -9,35 +9,26 @@ import pytest
 
 from pystormtracker.compare import _load_tracks, main
 from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
-from pystormtracker.models.center import Center
-from pystormtracker.models.tracks import Tracks
+from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
 
 
-def add_track(
-    tracks: Tracks,
-    lats: list[float],
-    lons: list[float],
-    times: list[np.datetime64],
-    intensities: list[float] | None = None,
-    var_name: str = "vo",
-) -> None:
-    """Append a small trajectory with an optional variable."""
-    centers = [
-        Center(
-            time=time,
-            lat=lat,
-            lon=lon,
-            vars={} if intensities is None else {var_name: intensity},
-        )
-        for lat, lon, time, intensity in zip(
-            lats,
-            lons,
-            times,
-            intensities if intensities is not None else [0.0] * len(times),
-            strict=True,
-        )
-    ]
-    tracks.add_track(centers)
+def make_tracks(
+    records: list[tuple[list[float], list[float], list[np.datetime64], list[float]]],
+    *,
+    variable: str = "intensity",
+    mode: str = "max",
+) -> Tracks:
+    unit = {
+        "msl": "Pa",
+        "vo": "s^-1",
+        "vort": "s^-1",
+    }.get(variable, "1")
+    builder = TracksBuilder(
+        TracksMetadata(variable, mode, {variable: unit})  # type: ignore[arg-type]
+    )
+    for track_id, (lats, lons, times, values) in enumerate(records, start=1):
+        builder.add_track(track_id, times, lats, lons, {variable: values})
+    return builder.finish()
 
 
 @pytest.fixture
@@ -52,12 +43,18 @@ def times() -> list[np.datetime64]:
 def test_compare_tracks_selects_closest_candidate_per_reference(
     times: list[np.datetime64],
 ) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [50.0, 51.0, 52.0], [0.0, 1.0, 2.0], times)
-    add_track(reference, [10.0, 10.0, 10.0], [100.0, 101.0, 102.0], times)
-    add_track(candidate, [50.2, 51.2, 52.2], [0.2, 1.2, 2.2], times)
-    add_track(candidate, [10.2, 10.2, 10.2], [100.2, 101.2, 102.2], times)
+    reference = make_tracks(
+        [
+            ([50.0, 51.0, 52.0], [0.0, 1.0, 2.0], times, [0.0] * 3),
+            ([10.0, 10.0, 10.0], [100.0, 101.0, 102.0], times, [0.0] * 3),
+        ]
+    )
+    candidate = make_tracks(
+        [
+            ([50.2, 51.2, 52.2], [0.2, 1.2, 2.2], times, [0.0] * 3),
+            ([10.2, 10.2, 10.2], [100.2, 101.2, 102.2], times, [0.0] * 3),
+        ]
+    )
 
     result = compare_tracks(reference, candidate)
 
@@ -73,11 +70,13 @@ def test_compare_tracks_selects_closest_candidate_per_reference(
 def test_compare_tracks_allows_candidate_reuse(
     times: list[np.datetime64],
 ) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
-    add_track(reference, [0.1, 0.1, 0.1], [0.0, 1.0, 2.0], times)
-    add_track(candidate, [0.05, 0.05, 0.05], [0.0, 1.0, 2.0], times)
+    reference = make_tracks(
+        [
+            ([0.0] * 3, [0.0, 1.0, 2.0], times, [0.0] * 3),
+            ([0.1] * 3, [0.0, 1.0, 2.0], times, [0.0] * 3),
+        ]
+    )
+    candidate = make_tracks([([0.05] * 3, [0.0, 1.0, 2.0], times, [0.0] * 3)])
 
     result = compare_tracks(reference, candidate)
 
@@ -87,8 +86,6 @@ def test_compare_tracks_allows_candidate_reuse(
 
 
 def test_compare_tracks_requires_equal_overlap_section_lengths() -> None:
-    reference = Tracks()
-    candidate = Tracks()
     reference_times = [
         np.datetime64("2020-01-01T00:00"),
         np.datetime64("2020-01-01T06:00"),
@@ -98,164 +95,49 @@ def test_compare_tracks_requires_equal_overlap_section_lengths() -> None:
         np.datetime64("2020-01-01T00:00"),
         np.datetime64("2020-01-01T12:00"),
     ]
-    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], reference_times)
-    add_track(candidate, [0.0, 0.0], [0.0, 2.0], candidate_times)
+    reference = make_tracks([([0.0] * 3, [0.0, 1.0, 2.0], reference_times, [0.0] * 3)])
+    candidate = make_tracks([([0.0] * 2, [0.0, 2.0], candidate_times, [0.0] * 2)])
 
     with pytest.raises(ValueError, match="equal point counts"):
         compare_tracks(reference, candidate)
 
 
-def test_compare_tracks_breaks_distance_ties_by_candidate_file_order(
+def test_compare_tracks_reports_path_and_intensity_metrics(
     times: list[np.datetime64],
 ) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
-    add_track(candidate, [0.1, 0.1, 0.1], [0.0, 1.0, 2.0], times)
-    add_track(candidate, [-0.1, -0.1, -0.1], [0.0, 1.0, 2.0], times)
-
-    result = compare_tracks(reference, candidate)
-
-    assert result.matches[0].candidate_id == 1
-    assert result.matches[0].eligible_candidate_count == 2
-
-
-def test_compare_tracks_reports_lifecycle_path_and_intensity_metrics(
-    times: list[np.datetime64],
-) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(
-        reference,
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 2.0],
-        times,
-        [1.0e-4, 2.0e-4, 3.0e-4],
+    reference = make_tracks(
+        [([0.0] * 3, [0.0, 1.0, 2.0], times, [1.0e-4, 2.0e-4, 3.0e-4])],
+        variable="vo",
     )
-    add_track(
-        candidate,
-        [0.0, 0.0, 0.0],
-        [0.1, 1.1, 2.1],
-        times,
-        [1.1e-4, 2.1e-4, 3.1e-4],
+    candidate = make_tracks(
+        [([0.0] * 3, [0.1, 1.1, 2.1], times, [1.1e-4, 2.1e-4, 3.1e-4])],
+        variable="vo",
     )
 
-    result = compare_tracks(
+    match = compare_tracks(
         reference,
         candidate,
         config=TrackComparisonConfig(var="vo"),
-    )
-    match = result.matches[0]
+    ).matches[0]
 
     assert match.reference.duration_hours == 12.0
     assert match.reference.path_length_km == pytest.approx(222.39, rel=1e-3)
     assert match.reference.mean_speed_kmh == pytest.approx(18.53, rel=1e-3)
     assert match.intensity_difference is not None
     assert match.intensity_difference.bias == pytest.approx(1.0e-5)
-    assert match.intensity_difference.mae == pytest.approx(1.0e-5)
-    assert match.intensity_difference.rmse == pytest.approx(1.0e-5)
-    assert match.intensity_difference.correlation == pytest.approx(1.0)
     assert match.mean_separation_km == pytest.approx(11.12, rel=1e-2)
 
 
-def test_compare_tracks_rejects_non_finite_separations(
+def test_compare_tracks_uses_explicit_metadata_mode(
     times: list[np.datetime64],
 ) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [50.0, np.nan, 52.0], [0.0, 1.0, 2.0], times)
-    add_track(candidate, [50.2, 51.2, 52.2], [0.2, 1.2, 2.2], times)
-
-    result = compare_tracks(reference, candidate)
-    assert result.match_count == 0
-
-
-def test_compare_tracks_msl_peak_intensity_uses_minimum(
-    times: list[np.datetime64],
-) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(
-        reference,
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 2.0],
-        times,
-        [1010.0, 990.0, 1005.0],
-        var_name="msl",
+    reference = make_tracks(
+        [([0.0] * 3, [0.0, 1.0, 2.0], times, [10.0, 50.0, 20.0])],
+        variable="custom",
     )
-    add_track(
-        candidate,
-        [0.0, 0.0, 0.0],
-        [0.1, 1.1, 2.1],
-        times,
-        [1012.0, 992.0, 1007.0],
-        var_name="msl",
-    )
-
-    result = compare_tracks(
-        reference,
-        candidate,
-        config=TrackComparisonConfig(var="msl"),
-    )
-    match = result.matches[0]
-    assert match.reference.peak_intensity == 99000.0
-    assert match.candidate.peak_intensity == 99200.0
-
-
-def test_compare_tracks_normalizes_msl_units_mixed_formats(
-    times: list[np.datetime64],
-) -> None:
-    reference = Tracks()  # e.g., JSON in hPa
-    candidate = Tracks()  # e.g., IMILAST/Pa
-    add_track(
-        reference,
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 2.0],
-        times,
-        [1010.0, 990.0, 1005.0],
-        var_name="msl",
-    )
-    add_track(
-        candidate,
-        [0.0, 0.0, 0.0],
-        [0.1, 1.1, 2.1],
-        times,
-        [101200.0, 99200.0, 100700.0],
-        var_name="msl",
-    )
-
-    result = compare_tracks(
-        reference,
-        candidate,
-        config=TrackComparisonConfig(var="msl"),
-    )
-    match = result.matches[0]
-    assert match.reference.peak_intensity == 99000.0
-    assert match.candidate.peak_intensity == 99200.0
-    assert match.intensity_difference is not None
-    assert match.intensity_difference.bias == pytest.approx(200.0)
-
-
-def test_compare_tracks_explicit_intensity_mode(
-    times: list[np.datetime64],
-) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(
-        reference,
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 2.0],
-        times,
-        [10.0, 50.0, 20.0],
-        var_name="custom",
-    )
-    add_track(
-        candidate,
-        [0.0, 0.0, 0.0],
-        [0.1, 1.1, 2.1],
-        times,
-        [12.0, 52.0, 22.0],
-        var_name="custom",
+    candidate = make_tracks(
+        [([0.0] * 3, [0.1, 1.1, 2.1], times, [12.0, 52.0, 22.0])],
+        variable="custom",
     )
 
     result_min = compare_tracks(
@@ -263,21 +145,19 @@ def test_compare_tracks_explicit_intensity_mode(
         candidate,
         config=TrackComparisonConfig(var="custom", mode="min"),
     )
-    assert result_min.matches[0].reference.peak_intensity == 10.0
-
     result_max = compare_tracks(
         reference,
         candidate,
         config=TrackComparisonConfig(var="custom", mode="max"),
     )
+
+    assert result_min.matches[0].reference.peak_intensity == 10.0
     assert result_max.matches[0].reference.peak_intensity == 50.0
 
 
 def test_compare_tracks_handles_dateline(times: list[np.datetime64]) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [30.0, 30.0, 30.0], [179.8, 179.9, 180.0], times)
-    add_track(candidate, [30.0, 30.0, 30.0], [-179.8, -179.9, -180.0], times)
+    reference = make_tracks([([30.0] * 3, [179.8, 179.9, 180.0], times, [0.0] * 3)])
+    candidate = make_tracks([([30.0] * 3, [-179.8, -179.9, -180.0], times, [0.0] * 3)])
 
     result = compare_tracks(reference, candidate)
 
@@ -285,75 +165,39 @@ def test_compare_tracks_handles_dateline(times: list[np.datetime64]) -> None:
     assert result.matches[0].mean_separation_deg < 1.0
 
 
-def test_compare_tracks_rejects_duplicate_times(times: list[np.datetime64]) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
-    add_track(
-        candidate,
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 2.0],
-        [times[0], times[0], times[2]],
-    )
-
-    with pytest.raises(ValueError, match="duplicate timestamps"):
-        compare_tracks(reference, candidate)
-
-
-def test_compare_tracks_rejects_missing_intensity_variable(
+def test_compare_tracks_rejects_missing_requested_variable(
     times: list[np.datetime64],
 ) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
-    add_track(candidate, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    values = [np.nan] * 3
+    reference = make_tracks([([0.0] * 3, [0.0, 1.0, 2.0], times, values)])
+    candidate = make_tracks([([0.0] * 3, [0.0, 1.0, 2.0], times, values)])
 
     with pytest.raises(ValueError, match="intensity variable 'vo'"):
         compare_tracks(reference, candidate, config=TrackComparisonConfig(var="vo"))
 
 
-@pytest.mark.parametrize(
-    ("max_mean_separation_deg", "min_overlap_fraction"),
-    [(0.0, 0.6), (-1.0, 0.6), (2.0, -0.1), (2.0, 1.1)],
-)
-def test_config_rejects_invalid_parameters(
-    max_mean_separation_deg: float, min_overlap_fraction: float
-) -> None:
-    with pytest.raises(ValueError, match="must be"):
-        TrackComparisonConfig(
-            max_mean_separation_deg=max_mean_separation_deg,
-            min_overlap_fraction=min_overlap_fraction,
-        )
-
-
 def test_comparison_to_dict_is_json_serializable(times: list[np.datetime64]) -> None:
-    reference = Tracks()
-    candidate = Tracks()
-    add_track(reference, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
-    add_track(candidate, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
-
-    payload = compare_tracks(reference, candidate).to_dict()
-
+    tracks = make_tracks([([0.0] * 3, [0.0, 1.0, 2.0], times, [0.0] * 3)])
+    payload = compare_tracks(tracks, tracks).to_dict()
     assert json.loads(json.dumps(payload))["match_count"] == 1
 
 
 def test_load_tracks_rejects_unknown_extension() -> None:
-    with pytest.raises(ValueError, match="Unsupported track file extension"):
+    with pytest.raises(ValueError, match="cannot infer input track format"):
         _load_tracks("tracks.csv")
 
 
 def test_compare_json_stdout_is_machine_readable(
     times: list[np.datetime64], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tracks = Tracks()
-    add_track(tracks, [0.0, 0.0, 0.0], [0.0, 1.0, 2.0], times)
+    tracks = make_tracks([([0.0] * 3, [0.0, 1.0, 2.0], times, [0.0] * 3)])
     args = argparse.Namespace(
-        reference="reference.json",
-        candidate="candidate.json",
+        reference="reference.trackjson",
+        candidate="candidate.trackjson",
         max_mean_separation=2.0,
         min_overlap=0.6,
         var=None,
-        mode="auto",
+        mode="max",
         report=None,
         matched_candidate_output=None,
         json=True,

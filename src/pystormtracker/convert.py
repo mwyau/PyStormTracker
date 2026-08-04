@@ -1,93 +1,76 @@
+"""Track-format conversion and temporary HTML placeholder output."""
+
 from __future__ import annotations
 
 import argparse
-import os
+import warnings
+from dataclasses import replace
 from pathlib import Path
 
-from . import __version__
-from .io.imilast import read_imilast
-from .io.json import infer_track_type, read_json, write_json
+from .io.format import SUPPORTED_FORMATS, load_tracks
 from .models.tracks import Tracks
+from .models.units import canonical_unit_for, resolve_mode
 
 
-def generate_html(tracks: Tracks, outfile: str | Path, split: bool = False) -> None:
-    """
-    Generates an HTML explorer by injecting the json string and version info.
-    If split=True, generates a separate .tracks.js file.
-    """
-    # 1. Generate the JSON string in memory
-    from tempfile import NamedTemporaryFile
-
-    with NamedTemporaryFile(mode="w+", encoding="utf-8", delete=False) as tmp:
-        tmp_name = tmp.name
-
-    try:
-        write_json(tracks, tmp_name)
-        with open(tmp_name, encoding="utf-8") as f:
-            json_str = f.read()
-    finally:
-        if os.path.exists(tmp_name):
-            os.remove(tmp_name)
-
-    # 2. Read the HTML template
-    base_dir = Path(__file__).parent
-    template_path = base_dir / "templates" / "explorer.html"
-
+def generate_html(outfile: str | Path) -> None:
+    """Write the temporary static explorer placeholder."""
+    warnings.warn(
+        "HTML explorer output is temporarily a static placeholder; "
+        "track data was not embedded.",
+        stacklevel=2,
+    )
+    template_path = Path(__file__).parent / "templates" / "explorer.html"
     if not template_path.exists():
         raise FileNotFoundError(f"HTML template not found at {template_path}")
+    Path(outfile).write_text(
+        template_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
 
-    with open(template_path, encoding="utf-8") as f:
-        html_content = f.read()
 
-    # 3. Handle Split vs Standalone
-    if split:
-        out_path = Path(outfile)
-        js_path = out_path.with_suffix(".tracks.js")
-
-        with open(js_path, "w", encoding="utf-8") as f:
-            f.write(f"window.TRACKS_DATA = {json_str};")
-
-        print(f"Data written to {js_path}")
-
-        script_tag = f'<script src="{js_path.name}"></script>'
-
-        if "// TRACKS_DATA_PLACEHOLDER" in html_content:
-            html_content = html_content.replace(
-                "// TRACKS_DATA_PLACEHOLDER", script_tag
-            )
-        else:
-            html_content = html_content.replace(
-                '<script src="tracks_data.js"></script>', script_tag
-            )
+def _rename_primary_variable(
+    tracks: Tracks,
+    target: str,
+    requested_unit: str | None,
+) -> Tracks:
+    variables = dict(tracks.variables)
+    units = dict(tracks.units)
+    if target in variables:
+        source_name = target
+    elif "Intensity1" in variables:
+        source_name = "Intensity1"
+    elif len(variables) == 1:
+        source_name = next(iter(variables))
     else:
-        injected_script = f"<script>\nwindow.TRACKS_DATA = {json_str};\n</script>"
-
-        if "// TRACKS_DATA_PLACEHOLDER" in html_content:
-            html_content = html_content.replace(
-                "// TRACKS_DATA_PLACEHOLDER", injected_script
-            )
-        else:
-            html_content = html_content.replace(
-                '<script src="tracks_data.js"></script>', injected_script
-            )
-
-    version_str = f"v{__version__}"
-    html_content = html_content.replace("{{version}}", version_str)
-
-    with open(outfile, "w", encoding="utf-8") as f:
-        f.write(html_content)
+        raise ValueError(
+            f"cannot select variable {target!r}; source has multiple variables and "
+            "the requested target is absent"
+        )
+    if source_name != target:
+        variables[target] = variables.pop(source_name)
+        source_unit = units.pop(source_name, None)
+    else:
+        source_unit = units.get(source_name)
+    unit = requested_unit or canonical_unit_for(target) or source_unit
+    if unit is None or (
+        unit == "1" and canonical_unit_for(target) is None and requested_unit is None
+    ):
+        raise ValueError(
+            f"unit for renamed variable {target!r} cannot be established; "
+            "provide --unit"
+        )
+    units[target] = unit
+    metadata = replace(tracks.metadata, primary_var=target, units=units)
+    return tracks.with_variables(variables, metadata=metadata)
 
 
 def setup_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    """Sets up the argument parser for the convert command."""
+    """Set up the trajectory conversion command."""
     parser = subparsers.add_parser(
         "convert",
         description=(
-            "Convert PyStormTracker data between formats and generate "
-            "interactive HTML visualizations. "
-            "For JSON output, the '.tracks.json' extension is recommended."
+            "Convert supported trajectory formats or write an HTML placeholder."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -98,72 +81,57 @@ def setup_parser(
     parser.add_argument(
         "-f",
         "--in-format",
-        choices=["imilast", "json"],
-        required=True,
-        help="Input file format",
+        choices=["auto", *SUPPORTED_FORMATS],
+        default="auto",
+        help="Input format; inferred from the extension by default.",
     )
     parser.add_argument(
         "-F",
         "--out-format",
-        choices=["imilast", "hodges", "json", "html"],
-        required=True,
-        help="Output file format",
+        choices=["auto", *SUPPORTED_FORMATS, "html"],
+        default="auto",
+        help="Output format; inferred from the extension by default.",
+    )
+    parser.add_argument("-v", "--var", help="Override the primary variable name")
+    parser.add_argument(
+        "--unit", help="Unit for a renamed or otherwise ambiguous variable"
     )
     parser.add_argument(
-        "-v", "--var", help="Override track variable / type (e.g., msl or vo)"
-    )
-    parser.add_argument(
-        "--split",
-        action="store_true",
-        help="For 'html' output, generate separate .html and .tracks.js files.",
+        "--mode",
+        choices=["auto", "min", "max"],
+        default="auto",
+        help="Extremum mode for the final primary variable.",
     )
     parser.set_defaults(func=main)
 
 
 def main(args: argparse.Namespace) -> None:
-    """
-    Main entry point for the convert command.
-
-    Supports conversion between IMILAST and JSON formats, and generation of
-    interactive HTML explorers.
-    """
-    if args.split and args.out_format != "html":
-        raise ValueError("--split is only valid with --out-format html")
-
-    print(f"Reading {args.input} (format: {args.in_format})...")
-
-    tracks = Tracks()
-    if args.in_format == "imilast":
-        tracks = read_imilast(args.input)
-    elif args.in_format == "json":
-        tracks = read_json(args.input)
-
-    # Track Variable / Type Detection / Override
+    """Convert a trajectory file using extension or explicitly selected formats."""
+    in_format = None if args.in_format == "auto" else args.in_format
+    out_format = None if args.out_format == "auto" else args.out_format
+    tracks = load_tracks(
+        args.input,
+        format=in_format,
+        primary_var=args.var,
+        mode=args.mode,
+    )
     if args.var:
-        tracks.track_type = args.var.lower()
+        tracks = _rename_primary_variable(tracks, args.var, args.unit)
+    final_mode = resolve_mode(tracks.primary_var, args.mode)
+    if final_mode != tracks.mode:
+        tracks = tracks.with_metadata(replace(tracks.metadata, mode=final_mode))
+    if out_format == "html" or (
+        out_format is None and Path(args.output).suffix.lower() == ".html"
+    ):
+        generate_html(args.output)
     else:
-        # Detect if unknown
-        tracks.track_type = infer_track_type(tracks)
-
-    # Sync internal variable naming if Intensity1 is present
-    if "Intensity1" in tracks.vars and tracks.track_type != "unknown":
-        tracks.vars[tracks.track_type] = tracks.vars.pop("Intensity1")
-
-    print(f"Loaded {len(tracks)} tracks. Detected type: {tracks.track_type}")
-    print(f"Writing to {args.output} (format: {args.out_format})...")
-
-    if args.out_format == "html":
-        generate_html(tracks, args.output, split=args.split)
-    else:
-        tracks.write(args.output, format=args.out_format)
-
-    print("Done!")
+        tracks.write(args.output, format=out_format)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
+    argument_parser = argparse.ArgumentParser()
+    subparsers = argument_parser.add_subparsers()
     setup_parser(subparsers)
-    args = parser.parse_args()
-    if hasattr(args, "func"):
-        args.func(args)
+    namespace = argument_parser.parse_args()
+    if hasattr(namespace, "func"):
+        namespace.func(namespace)

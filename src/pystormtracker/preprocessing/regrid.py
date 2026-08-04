@@ -66,10 +66,10 @@ class SpectralRegridder:
         """
         from ..io.data_loader import DataLoader
 
-        varname = str(data.name) if data.name is not None else ""
+        variable_name = str(data.name) if data.name is not None else ""
         frame = data.values
         loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-        is_reduced = loader.is_reduced_gaussian(varname) or pl is not None
+        is_reduced = loader.is_reduced_gaussian(variable_name) or pl is not None
 
         if not is_reduced and data.ndim != 2:
             raise ValueError("Input must be 2D (lat, lon) or reduced Gaussian 1D grid.")
@@ -81,7 +81,7 @@ class SpectralRegridder:
         in_nlon: int
         if is_reduced:
             if pl is None:
-                pl = loader.get_reduced_grid_pl(varname)
+                pl = loader.get_reduced_grid_pl(variable_name)
             if pl is None:
                 raise ValueError("pl array required for reduced grid.")
             in_nlon = int(np.max(pl))
@@ -94,7 +94,7 @@ class SpectralRegridder:
         alm: NDArray[np.complex128]
         if is_reduced:
             # For reduced/unstructured grids, use iterative pseudo-analysis
-            meta = loader.get_grid_metadata(varname)
+            meta = loader.get_grid_metadata(variable_name)
             alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
                 map=np.expand_dims(frame, axis=0),
                 spin=0,
@@ -166,6 +166,7 @@ class SpectralRegridder:
         lat_reverse: bool = False,
         nthreads: int = 1,
         pl: NDArray[np.int32] | None = None,
+        transform_lmax: int | None = None,
     ) -> xr.DataArray:
         """
         Spectrally regrid to a 1D HEALPix grid.
@@ -173,10 +174,10 @@ class SpectralRegridder:
         """
         from ..io.data_loader import DataLoader
 
-        varname = str(data.name) if data.name is not None else ""
+        variable_name = str(data.name) if data.name is not None else ""
         frame = data.values
         loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-        is_reduced = loader.is_reduced_gaussian(varname) or pl is not None
+        is_reduced = loader.is_reduced_gaussian(variable_name) or pl is not None
 
         if not is_reduced and not lat_reverse:
             frame = frame[::-1, :]
@@ -185,19 +186,19 @@ class SpectralRegridder:
         in_nlon: int
         if is_reduced:
             if pl is None:
-                pl = loader.get_reduced_grid_pl(varname)
+                pl = loader.get_reduced_grid_pl(variable_name)
             if pl is None:
                 raise ValueError("pl array required for reduced grid.")
             in_nlon = int(np.max(pl))
         else:
             in_nlon = frame.shape[1]
 
-        lmax, mmax = self._get_lmax_mmax(in_nlon)
+        lmax, mmax = self._get_lmax_mmax(in_nlon, transform_lmax)
 
         # 1. Analyze
         alm: NDArray[np.complex128]
         if is_reduced:
-            meta = loader.get_grid_metadata(varname)
+            meta = loader.get_grid_metadata(variable_name)
             alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
                 map=np.expand_dims(frame, axis=0),
                 spin=0,
@@ -246,8 +247,7 @@ class SpectralRegridder:
         extent: MapExtent = (-13000.0, 13000.0, -13000.0, 13000.0),
         resolution: float = 100.0,
         lon_0: float = 0.0,
-        filter_lmin: int | None = None,
-        lmax: int | None = None,
+        transform_lmax: int | None = None,
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
         nthreads: int = 1,
@@ -258,10 +258,9 @@ class SpectralRegridder:
         Args:
             extent: Bounding box from pole in km (xmin, xmax, ymin, ymax).
             resolution: Grid spacing in km.
-            lmax: Maximum total wave number. Overrides the constructor value.
+            transform_lmax: Maximum total wave number for the transform.
         """
         from ..models.constants import R_EARTH_KM
-        from .spectral import apply_bandpass_mask_to_alm
 
         frame = data.values
         if data.ndim != 2:
@@ -273,7 +272,7 @@ class SpectralRegridder:
             frame = frame[::-1, :]
 
         _, in_nlon = frame.shape
-        lmax, mmax = self._get_lmax_mmax(in_nlon, lmax)
+        lmax, mmax = self._get_lmax_mmax(in_nlon, transform_lmax)
 
         # 1. Analyze
         alm = ducc0.sht.analysis_2d(
@@ -284,9 +283,6 @@ class SpectralRegridder:
             geometry=in_geometry,
             nthreads=nthreads,
         )
-
-        if filter_lmin is not None:
-            apply_bandpass_mask_to_alm(alm, filter_lmin, lmax, mmax)
 
         # 2. Coordinate Generation
         xmin, xmax, ymin, ymax = extent

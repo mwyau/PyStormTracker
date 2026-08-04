@@ -13,6 +13,7 @@ from ..io.data_loader import DataLoader
 from ..models import TimeRange
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
+from ..time import is_missing_time, select_time_range
 from .kernels import (
     _numba_get_healpix_centers,
     _numba_healpix_ccl,
@@ -33,21 +34,21 @@ class HealpixDetector:
     def __init__(
         self,
         pathname: str | Path,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
         engine: str | None = None,
     ) -> None:
         self.pathname = Path(pathname)
-        self.requested_varname = varname
+        self.requested_variable_name = variable_name
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
 
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self.varname = varname
+        self.variable_name = variable_name
         self._hp_base: ducc0.healpix.Healpix_Base | None = None
         self._neighbor_table: NDArray[np.int64] | None = None
         self._lat_lon_map: tuple[NDArray[np.float64], NDArray[np.float64]] | None = None
@@ -58,7 +59,7 @@ class HealpixDetector:
 
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
-                self.requested_varname, [self.requested_varname]
+                self.requested_variable_name, [self.requested_variable_name]
             )
             for name in possible_names:
                 if name in ds.data_vars:
@@ -66,10 +67,10 @@ class HealpixDetector:
                     break
 
             if actual_var is None:
-                actual_var = self.requested_varname
+                actual_var = self.requested_variable_name
 
-            self.varname = actual_var
-            self._data = ds[self.varname]
+            self.variable_name = actual_var
+            self._data = ds[self.variable_name]
 
         if self._hp_base is None:
             # Enforce 1D spatial dimension (time, cell)
@@ -116,12 +117,12 @@ class HealpixDetector:
 
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 data_range = self._data.sel({time_dim: slice(start, end)})
-            elif not np.isnat(start):
-                data_range = self._data.where(self._data[time_dim] >= start, drop=True)
-            elif not np.isnat(end):
-                data_range = self._data.where(self._data[time_dim] <= end, drop=True)
+            elif not is_missing_time(start):
+                data_range = self._data.sel({time_dim: slice(start, None)})
+            elif not is_missing_time(end):
+                data_range = self._data.sel({time_dim: slice(None, end)})
             else:
                 data_range = self._data
         else:
@@ -139,7 +140,7 @@ class HealpixDetector:
             case _:
                 raise TypeError("frame must be an int, tuple[int, int], or None")
 
-    def get_time(self) -> NDArray[np.datetime64] | None:
+    def get_time(self) -> np.ndarray | None:
         self._ensure_open()
         ds = self._loader.ensure_open()
         time_dim, _, _ = self._loader.get_coords()
@@ -147,18 +148,18 @@ class HealpixDetector:
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
             time_coord = ds[time_dim]
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 times = time_coord.sel({time_dim: slice(start, end)})
-            elif not np.isnat(start):
-                times = time_coord.where(time_coord >= start, drop=True)
-            elif not np.isnat(end):
-                times = time_coord.where(time_coord <= end, drop=True)
+            elif not is_missing_time(start):
+                times = time_coord.sel({time_dim: slice(start, None)})
+            elif not is_missing_time(end):
+                times = time_coord.sel({time_dim: slice(None, end)})
             else:
                 times = time_coord
         else:
             times = ds[time_dim]
 
-        return np.asarray(times.values, dtype="datetime64[ns]")
+        return np.asarray(times.values)
 
     def detect(
         self,
@@ -174,7 +175,7 @@ class HealpixDetector:
 
         # Set variable specific thresholds if not provided
         if threshold is None:
-            if self.requested_varname == "vo":
+            if self.requested_variable_name == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
                 threshold = model_constants.DEFAULT_MSL_THRESHOLD
@@ -234,7 +235,7 @@ class HealpixDetector:
                 current_time,
                 refined_lats,
                 refined_lons,
-                {self.varname: refined_vals},
+                refined_vals,
             )
             raw_steps.append(raw_step)
 
@@ -244,6 +245,7 @@ class HealpixDetector:
     def from_xarray(
         cls,
         data: xr.DataArray,
+        variable_name: str | None = None,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -253,7 +255,8 @@ class HealpixDetector:
         dummy_path = Path(f"/tmp/dummy_{uuid.uuid4().hex}.nc")
         detector = cls(
             pathname=dummy_path,
-            varname=str(data.name) if data.name is not None else "var",
+            variable_name=variable_name
+            or (str(data.name) if data.name is not None else "var"),
             time_range=time_range,
             global_start_idx=global_start_idx,
             global_total_steps=global_total_steps,
@@ -271,7 +274,15 @@ class HealpixDetector:
     def get_xarray(self) -> xr.DataArray:
         self._ensure_open()
         assert self._data is not None
-        return self._data
+        start_time = self.time_range.start if self.time_range is not None else None
+        end_time = self.time_range.end if self.time_range is not None else None
+        selected = select_time_range(
+            self._data,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        assert isinstance(selected, xr.DataArray)
+        return selected
 
     def split(self, n: int) -> list[HealpixDetector]:
         """Splits the detector into n smaller detectors with disjoint time ranges."""
@@ -298,7 +309,7 @@ class HealpixDetector:
             # Create a shallow copy with the new time range and global index tracking
             detector = HealpixDetector(
                 pathname=self.pathname,
-                varname=self.requested_varname,
+                variable_name=self.requested_variable_name,
                 time_range=chunk_time_range,
                 global_start_idx=self.global_start_idx + start_idx,
                 global_total_steps=self.global_total_steps or len(times),

@@ -8,7 +8,7 @@ import pytest
 from utils import fetch_era5_msl
 
 from pystormtracker import compare, convert, sample, track
-from pystormtracker.io.json import read_json
+from pystormtracker.io.trackjson import read_trackjson
 from pystormtracker.models.tracks import Tracks
 
 
@@ -32,7 +32,7 @@ def sample_tracks_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Generate a small track file for integration testing."""
     msl_data = fetch_era5_msl(resolution="2.5x2.5")
     out_dir = tmp_path_factory.mktemp("cli_extra")
-    out_file = out_dir / "tracks.json"
+    out_file = out_dir / "tracks.trackjson"
 
     args = [
         "track",
@@ -45,7 +45,7 @@ def sample_tracks_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "-n",
         "5",
         "-f",
-        "json",
+        "trackjson",
     ]
     run_command_direct(args)
     return out_file
@@ -55,7 +55,7 @@ def sample_tracks_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_cli_sample(sample_tracks_file: Path, tmp_path: Path) -> None:
     """Test 'stormtracker sample' command."""
     msl_data = fetch_era5_msl(resolution="2.5x2.5")
-    out_file = tmp_path / "sampled.json"
+    out_file = tmp_path / "sampled.trackjson"
 
     args = [
         "sample",
@@ -73,15 +73,14 @@ def test_cli_sample(sample_tracks_file: Path, tmp_path: Path) -> None:
     run_command_direct(args)
 
     assert out_file.exists()
-    tracks = read_json(out_file)
-    # Check if 'msl' variable exists in tracks.vars
-    assert "msl" in tracks.vars
+    tracks = read_trackjson(out_file)
+    assert "msl" in tracks.variables
 
 
 @pytest.mark.integration
 def test_cli_compare(sample_tracks_file: Path, tmp_path: Path) -> None:
     """Test 'stormtracker compare' command with short flags."""
-    out_file = tmp_path / "matched.json"
+    out_file = tmp_path / "matched.trackjson"
     report_file = tmp_path / "report.json"
 
     args = [
@@ -97,7 +96,7 @@ def test_cli_compare(sample_tracks_file: Path, tmp_path: Path) -> None:
         "-v",
         "msl",
         "-m",
-        "auto",
+        "max",
         "-o",
         str(report_file),
         "-M",
@@ -107,7 +106,7 @@ def test_cli_compare(sample_tracks_file: Path, tmp_path: Path) -> None:
 
     assert out_file.exists()
     assert report_file.exists()
-    tracks = read_json(out_file)
+    tracks = read_trackjson(out_file)
     assert len(tracks) > 0
 
 
@@ -123,11 +122,13 @@ def test_cli_convert(sample_tracks_file: Path, tmp_path: Path) -> None:
         "-o",
         str(out_file),
         "-f",
-        "json",
+        "trackjson",
         "-F",
         "html",
     ]
     run_command_direct(args)
 
     assert out_file.exists()
-    assert "window.TRACKS_DATA" in out_file.read_text(encoding="utf-8")
+    html = out_file.read_text(encoding="utf-8")
+    assert "explorer is being redesigned" in html
+    assert "trackjson-data" not in html

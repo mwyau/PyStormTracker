@@ -39,7 +39,12 @@ Optional `subgrid_refine_healpix` applies these steps:
 ## 4. Engineering Standards
 - **Dependencies**: HEALPix operations use the existing `ducc0` dependency; `healpy` is not required.
 - **Numba JIT**: Graph traversal and local quadratic fitting kernels are compiled with `cache=True` and `nogil=True`.
-- **Defaults**: HEALPix tracking defaults to T5-42 filtering and enabled subgrid refinement. Both can be disabled explicitly. The `min_lifetime` constructor value is currently stored but not applied during HEALPix linking.
+- **Defaults**: HEALPix tracking does not apply optional spectral filtering
+  unless both `lmin` and `lmax` are supplied. `taper_points` is independent.
+  Regridding derives a finite transform bandwidth from the source grid and
+  target `nside`; that bandwidth is not an optional filter. Subgrid refinement
+  remains enabled by default. The `min_lifetime` constructor value is currently
+  stored but not applied during HEALPix linking.
 - **Tracker protocol and output**: `HealpixTracker` implements the common `Tracker` protocol and returns the array-backed `Tracks` model. Dask and MPI tracking are not implemented.
 
 ## 5. Usage Example
@@ -52,18 +57,24 @@ from pystormtracker import HealpixTracker, SpectralRegridder
 ds = xr.open_dataset("data.nc")
 field = ds["msl"]
 frame = field.isel({field.dims[0]: 0})
-regridder = SpectralRegridder(lmax=42)
+regridder = SpectralRegridder()
 da_hp = regridder.to_healpix(frame, nside=64)
 
 # Track the first eight time steps after automatic HEALPix conversion
 tracker = HealpixTracker()
 tracks = tracker.track(
     infile=field.isel({field.dims[0]: slice(0, 8)}),
-    varname="msl",
+    variable_name="msl",
     mode="min",
     threshold=1000.0,
-    filter=True,  # Apply T5-42 spectral filtering
+    lmin=5,
+    lmax=42,
 )
 ```
 
-The first part demonstrates one-frame regridding; the second passes a regular three-dimensional latitude-longitude field to `HealpixTracker.track()`, which triggers T5-42 filtering and HEALPix conversion by default. For an already regridded time-by-cell field, preprocessing must be performed before tracking.
+The first part demonstrates one-frame regridding; the second passes a regular
+three-dimensional latitude-longitude field to `HealpixTracker.track()`, which
+requests T5-42 filtering and HEALPix conversion. If `lmin` and `lmax` are
+omitted, only the transform needed for HEALPix conversion is performed. For an
+already regridded time-by-cell field, preprocessing must be performed before
+tracking.

@@ -2,7 +2,12 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .healpix.tracker import HealpixTracker
 from .hodges.tracker import HodgesTracker
-from .models import Center, TimeRange, Tracker, Tracks
+from .models import (
+    Center,
+    TimeRange,
+    Tracker,
+    Tracks,
+)
 from .preprocessing.regrid import SpectralRegridder
 from .simple import SimpleDetector, SimpleLinker, SimpleTracker
 

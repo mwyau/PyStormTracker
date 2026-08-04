@@ -6,7 +6,7 @@ import pytest
 from pystormtracker.preprocessing.refinement import subgrid_refine
 
 
-def test_subgrid_refine_preserves_negative_longitude_convention() -> None:
+def test_subgrid_refine_preserves_negative_longitudes() -> None:
     frame = np.array([[0.0, 0.5, 0.0], [0.6, 1.0, 0.4], [0.0, 0.5, 0.0]])
     lat = np.array([10.0, 11.0, 12.0])
     lon = np.array([-180.0, -179.0, -178.0])

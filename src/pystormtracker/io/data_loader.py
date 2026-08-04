@@ -9,6 +9,14 @@ import ducc0
 import numpy as np
 import xarray as xr
 
+from ..time import (
+    TimeInput,
+    encode_numeric_time_values,
+    encode_time_values,
+    infer_calendar,
+    select_time_range,
+)
+
 
 class DataLoader:
     """
@@ -45,6 +53,7 @@ class DataLoader:
                 self._ds = pathname.to_dataset()
             else:
                 self._ds = pathname
+            self._ds = self._normalize_time_coordinate(self._ds)
         elif pathname is None:
             self.pathname = None
         elif isinstance(pathname, str) and "://" in pathname:
@@ -134,6 +143,7 @@ class DataLoader:
                             self.pathname,
                             engine=engine,
                             chunks={},
+                            decode_times=False,
                             storage_options=storage_options,
                         )
                     else:
@@ -141,10 +151,56 @@ class DataLoader:
                             self.pathname,
                             engine=engine,
                             chunks={},
+                            decode_times=False,
                         )
+
+                    self._ds_cache[cache_key] = self._normalize_time_coordinate(
+                        self._ds_cache[cache_key]
+                    )
 
                 self._ds = self._ds_cache[cache_key]
         return self._ds
+
+    @classmethod
+    def _normalize_time_coordinate(cls, dataset: xr.Dataset) -> xr.Dataset:
+        """Normalize supported source time coordinates to datetime64[ms]."""
+        time_name = next(
+            (name for name in cls.VAR_MAPPING["time"] if name in dataset.coords),
+            None,
+        )
+        if time_name is None:
+            return dataset
+        coordinate = dataset[time_name]
+        source_units = coordinate.attrs.get("units") or coordinate.encoding.get("units")
+        source_calendar = coordinate.attrs.get("calendar") or coordinate.encoding.get(
+            "calendar"
+        )
+        dtype_kind = getattr(coordinate.dtype, "kind", None)
+        if not isinstance(dtype_kind, str):
+            return dataset
+        if dtype_kind in "iuf":
+            if isinstance(source_units, str):
+                values = encode_numeric_time_values(
+                    coordinate.values,
+                    units=source_units,
+                    calendar=None if source_calendar is None else str(source_calendar),
+                )
+            else:
+                values = encode_time_values(coordinate.values)
+            decoded_values = values.astype("datetime64[ms]")
+        elif dtype_kind == "M" or dtype_kind == "O":
+            if source_calendar is not None:
+                infer_calendar(
+                    coordinate.values,
+                    attrs={"calendar": str(source_calendar)},
+                )
+            decoded_values = encode_time_values(coordinate.values).astype(
+                "datetime64[ms]"
+            )
+        else:
+            return dataset
+        decoded_coordinate = coordinate.copy(data=decoded_values)
+        return dataset.assign_coords({time_name: decoded_coordinate})
 
     def get_coords(self) -> tuple[str, str, str]:
         """Returns the mapped names for (time, lat, lon)."""
@@ -192,15 +248,17 @@ class DataLoader:
         typical_gap = float(np.median(gaps))
         return typical_gap > 0.0 and float(np.max(gaps)) <= 1.5 * typical_gap
 
-    def is_reduced_gaussian(self, varname: str | None = None) -> bool:
+    def is_reduced_gaussian(self, variable_name: str | None = None) -> bool:
         """Detects if the dataset represents a reduced Gaussian grid."""
         ds = self.ensure_open()
-        # If varname not provided, check the first data variable
-        if varname is None:
-            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+        # If variable_name not provided, check the first data variable
+        if variable_name is None:
+            variable_name = (
+                cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+            )
 
-        if varname and varname in ds:
-            da = ds[varname]
+        if variable_name and variable_name in ds:
+            da = ds[variable_name]
             # cfgrib tags reduced Gaussian grids with this attribute
             if da.attrs.get("GRIB_gridType") == "reduced_gg":
                 return True
@@ -210,14 +268,18 @@ class DataLoader:
                 return True
         return False
 
-    def get_reduced_grid_pl(self, varname: str | None = None) -> np.ndarray | None:
+    def get_reduced_grid_pl(
+        self, variable_name: str | None = None
+    ) -> np.ndarray | None:
         """Returns the 'pl' array (points per latitude) for a reduced grid."""
         ds = self.ensure_open()
-        if varname is None:
-            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+        if variable_name is None:
+            variable_name = (
+                cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+            )
 
-        if varname and varname in ds:
-            da = ds[varname]
+        if variable_name and variable_name in ds:
+            da = ds[variable_name]
             pl = da.attrs.get("GRIB_pl")
             if pl is not None:
                 return np.array(pl, dtype=np.int32)
@@ -233,16 +295,20 @@ class DataLoader:
         # Default to equidistant
         return np.linspace(0, np.pi, ntheta)
 
-    def get_grid_metadata(self, varname: str | None = None) -> dict[str, np.ndarray]:
+    def get_grid_metadata(
+        self, variable_name: str | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Returns grid metadata (theta, nphi, phi0, ringstart) for SHT.
         Works for reduced Gaussian and HEALPix grids.
         """
         ds = self.ensure_open()
-        if varname is None:
-            varname = cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+        if variable_name is None:
+            variable_name = (
+                cast(str, next(iter(ds.data_vars))) if ds.data_vars else None
+            )
 
-        da = ds[varname] if varname else next(iter(ds.data_vars.values()))
+        da = ds[variable_name] if variable_name else next(iter(ds.data_vars.values()))
 
         # 1. Check for HEALPix
         if da.attrs.get("grid_type") == "healpix" or "cell" in da.dims:
@@ -252,8 +318,8 @@ class DataLoader:
             return cast(dict[str, np.ndarray], hp_base.sht_info())
 
         # 2. Check for Reduced Gaussian
-        if self.is_reduced_gaussian(varname):
-            pl = self.get_reduced_grid_pl(varname)
+        if self.is_reduced_gaussian(variable_name):
+            pl = self.get_reduced_grid_pl(variable_name)
             if pl is not None:
                 # Gaussian latitudes for N rings
                 ntheta = len(pl)
@@ -288,3 +354,37 @@ class DataLoader:
             "phi0": phi0,
             "ringstart": ringstart,
         }
+
+
+def normalize_tracking_data(
+    source: str | Path | xr.DataArray | xr.Dataset,
+    variable_name: str,
+    *,
+    start_time: TimeInput | None = None,
+    end_time: TimeInput | None = None,
+    engine: str | None = None,
+) -> xr.DataArray:
+    """Normalize one public tracking input to one selected DataArray."""
+    loader = DataLoader(source, engine=engine)
+    dataset = loader.ensure_open()
+    candidates = DataLoader.VAR_MAPPING.get(variable_name, [variable_name])
+    actual_name = next((name for name in candidates if name in dataset.data_vars), None)
+    if (
+        actual_name is None
+        and isinstance(source, xr.DataArray)
+        and len(dataset.data_vars) == 1
+    ):
+        actual_name = cast(str, next(iter(dataset.data_vars)))
+    if actual_name is None:
+        raise KeyError(
+            f"Variable {variable_name!r} not found. Available: "
+            f"{list(dataset.data_vars)}"
+        )
+    selected = select_time_range(
+        dataset[actual_name],
+        start_time=start_time,
+        end_time=end_time,
+    )
+    if not isinstance(selected, xr.DataArray):
+        raise TypeError("normalized tracking input must be a DataArray")
+    return selected

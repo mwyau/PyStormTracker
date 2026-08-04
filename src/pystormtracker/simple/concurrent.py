@@ -9,26 +9,28 @@ if TYPE_CHECKING:
 
     from ..models.geo import MapExtent
 
-from ..hodges import constants
 from ..models import TimeRange, Tracks
+from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep
+from ..models.tracks import ProcessingStep, TracksMetadata
+from ..models.units import normalize_variable_units
 from .detector import SimpleDetector
 from .tracker import _convert_stereo_steps, _detect_and_link, _link_centers
 
 
 def run_simple_dask(
     infile: str,
-    varname: str,
+    variable_name: str,
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     n_workers: int | None,
     max_chunk_size: int | None = None,
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = False,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
+    lmin: int | None = None,
+    lmax: int | None = None,
+    taper_points: int = 0,
+    nside: int | None = None,
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: MapExtent | None = None,
@@ -42,24 +44,33 @@ def run_simple_dask(
         n_workers = min(os.cpu_count() or 1, 4)
 
     detector_peek = SimpleDetector(
-        pathname=infile, varname=varname, time_range=time_range, engine=engine
+        pathname=infile,
+        variable_name=variable_name,
+        time_range=time_range,
+        engine=engine,
     )
     data_xr = detector_peek.get_xarray()
+    data_xr, threshold, variable_unit = normalize_variable_units(
+        data_xr,
+        variable_name=variable_name,
+        threshold=threshold,
+    )
+    bounds = spatial_bounds_from_xarray(data_xr)
 
-    if filter or map_proj != "global":
-        from .tracker import SimpleTracker
+    from .tracker import SimpleTracker
 
-        data_xr = SimpleTracker().preprocess_standard_track(
-            data_xr,
-            lmin=lmin if filter else 0,
-            lmax=lmax,
-            taper_points=taper_points,
-            map_proj=map_proj,
-            resolution=resolution,
-            extent=extent,
-        )
+    data_xr, processing = SimpleTracker().preprocess_standard_track(
+        data_xr,
+        lmin=lmin,
+        lmax=lmax,
+        taper_points=taper_points,
+        map_proj=map_proj,
+        nside=nside,
+        resolution=resolution,
+        extent=extent,
+    )
 
-    detector_obj = SimpleDetector.from_xarray(data_xr)
+    detector_obj = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
 
     # Decouple task chunks from worker count to prevent OOM on high-res data.
     times = detector_obj.get_time()
@@ -102,7 +113,14 @@ def run_simple_dask(
 
     # Centralized linking guarantees bit-wise identity with Serial
     t3 = timeit.default_timer()
-    tracks = _link_centers(all_raw_steps, time_range=time_range)
+    tracks = _link_centers(
+        all_raw_steps,
+        primary_var=variable_name,
+        mode=mode,
+        bounds=bounds,
+        unit=variable_unit,
+        processing=processing,
+    )
     t4 = timeit.default_timer()
     print(f"    [Dask] Linking time: {t4 - t3:.4f}s")
     return tracks
@@ -110,15 +128,15 @@ def run_simple_dask(
 
 def run_simple_mpi(
     infile: str,
-    varname: str,
+    variable_name: str,
     time_range: TimeRange | None,
     mode: Literal["min", "max"],
     threshold: float | None = None,
     engine: str | None = None,
-    filter: bool = False,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
+    lmin: int | None = None,
+    lmax: int | None = None,
+    taper_points: int = 0,
+    nside: int | None = None,
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: MapExtent | None = None,
@@ -134,29 +152,55 @@ def run_simple_mpi(
     root = 0
 
     t0 = timeit.default_timer()
+    variable_unit: str | None = None
+    bounds: SpatialBounds | None = None
+    processing: tuple[ProcessingStep, ...] = ()
     if rank == root:
         detector_peek = SimpleDetector(
-            pathname=infile, varname=varname, time_range=time_range, engine=engine
+            pathname=infile,
+            variable_name=variable_name,
+            time_range=time_range,
+            engine=engine,
         )
         data_xr = detector_peek.get_xarray()
+        data_xr, threshold, variable_unit = normalize_variable_units(
+            data_xr,
+            variable_name=variable_name,
+            threshold=threshold,
+        )
+        bounds = spatial_bounds_from_xarray(data_xr)
 
-        if filter or map_proj != "global":
-            from .tracker import SimpleTracker
+        from .tracker import SimpleTracker
 
-            data_xr = SimpleTracker().preprocess_standard_track(
-                data_xr,
-                lmin=lmin if filter else 0,
-                lmax=lmax,
-                taper_points=taper_points,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-            )
+        data_xr, processing = SimpleTracker().preprocess_standard_track(
+            data_xr,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            map_proj=map_proj,
+            nside=nside,
+            resolution=resolution,
+            extent=extent,
+        )
 
-        detector_obj = SimpleDetector.from_xarray(data_xr)
+        detector_obj = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
         detectors: list[SimpleDetector] | None = detector_obj.split(size)
     else:
         detectors = None
+
+    threshold, variable_unit, bounds, processing = comm.bcast(
+        (threshold, variable_unit, bounds, processing) if rank == root else None,
+        root=root,
+    )
+    if variable_unit is None:
+        raise RuntimeError("MPI variable-unit normalization failed")
+    metadata = TracksMetadata(
+        primary_var=variable_name,
+        mode=mode,
+        units={variable_name: variable_unit},
+        bounds=bounds,
+        processing=processing,
+    )
 
     detector: SimpleDetector = comm.scatter(detectors, root=root)
     t_scatter = timeit.default_timer()
@@ -185,10 +229,17 @@ def run_simple_mpi(
         ]
         all_raw_steps = _convert_stereo_steps(all_raw_steps, map_proj)
         t4 = timeit.default_timer()
-        tracks = _link_centers(all_raw_steps, time_range=time_range)
+        tracks = _link_centers(
+            all_raw_steps,
+            primary_var=variable_name,
+            mode=mode,
+            bounds=bounds,
+            unit=variable_unit,
+            processing=processing,
+        )
         t5 = timeit.default_timer()
         print(f"    [MPI] Linking time: {t5 - t4:.4f}s")
         return tracks
 
-    # Non-root ranks return empty Tracks
-    return Tracks()
+    # Non-root ranks return a valid empty result; only rank zero is exported.
+    return Tracks.empty(metadata)

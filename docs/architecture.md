@@ -2,6 +2,9 @@
 
 This document describes the data model, tracker interfaces, preprocessing, execution paths, testing, and release workflows in PyStormTracker.
 
+TrackJSON-specific wire structure, bounds semantics, statistics, and schema
+maintenance are maintained in the [TrackJSON v1.0 specification](trackjson.md).
+
 ## 1. Architecture Principles
 
 The architecture has four main features:
@@ -17,11 +20,37 @@ The architecture has four main features:
 
 The data models use contiguous array-backed storage:
 
-- **`Tracks`:** The central container holding one-dimensional NumPy arrays for `track_ids`, `times`, `lats`, `lons`, and additional meteorological variables.
-- **`Track`:** A lightweight view into the `Tracks` arrays for one cyclone track.
+- **`Tracks`:** The immutable central container holding per-track `ids` and
+  half-open `offsets`, plus aligned one-dimensional `times`, `lats`, `lons`,
+  and meteorological variable arrays. For example, `ids=[10, 20, 35]` and
+  `offsets=[0, 4, 7, 12]` represent points `[0:4]`, `[4:7]`, and `[7:12]`.
+- **`Track`:** A lightweight view storing its parent and packed track position;
+  its `point_slice` is derived directly from adjacent offsets.
 - **`Center`:** A dataclass used during cyclone-center detection.
 
+Mutation occurs in `TracksBuilder`. Finalized arrays are native-endian,
+C-contiguous, and read-only. Point columns are aligned by position; a
+point-level ID array is available only through the explicit
+`Tracks.point_track_ids()` derived operation.
+
 This layout avoids one persistent Python object per center, reduces allocation overhead, and supports NumPy selection, broadcasting, and serialization between workers.
+
+All finalized `Tracks` use signed `int64` milliseconds since
+`1970-01-01 00:00:00` under the proleptic Gregorian calendar. Source CF time
+decoding is delegated to `cftime` in `pystormtracker.time`; tracking, linking,
+ordering, filtering, and statistics operate on the canonical integers. The
+source policy accepts proleptic Gregorian dates and modern `standard` or
+`gregorian` dates; other CF calendars are rejected pending future support. The
+complete wire specification is maintained in
+[TrackJSON v1.0](trackjson.md).
+
+`TracksBuilder` and its private mutable candidates are construction details;
+finalized `Tracks` is immutable packed output. `Tracks` contains canonical
+trajectory data and metadata only. `TrackJSONStats` is a wire-only optional
+derived cache, computed explicitly during serialization and discarded after
+reads or verification. Source variable identity is preserved; algorithm
+classification is separate from the public name, generic detection values are
+passed to linkers, and preprocessing is recorded in `metadata.processing`.
 
 ### 2.2 Shared `DataLoader`
 
@@ -31,6 +60,19 @@ Data loading is encapsulated in `DataLoader` (`io/data_loader.py`). It handles:
 - **Remote data:** Zarr stores over HTTP, S3, and Google Cloud Storage through `fsspec` when the optional Zarr dependencies are installed.
 - **Variable and coordinate mapping:** Common field aliases such as `msl` and `slp`, and latitude, longitude, and time coordinate aliases.
 - **Grid metadata:** Regular latitude-longitude, full Gaussian, reduced Gaussian, projected `x/y`, and HEALPix coordinates, including metadata required by spherical harmonic transforms and map projections.
+
+Tracker preprocessing is centralized in `preprocessing.tracking`. The shared
+boundary validates `lmin`, `lmax`, and `taper_points`, applies optional
+filtering, and performs projection-specific regridding. A requested spectral
+filter is distinct from the finite transform bandwidth needed to project a
+field: the latter is derived from source and target grid capacity and is
+recorded only as regridding metadata. The same values are routed through file,
+in-memory, serial, Dask, and MPI Simple paths.
+
+Sampling treats longitude as cyclic. Its coordinate axis is validated once per
+sampling call, then nearest, radius, and bilinear operations use the shared
+cyclic longitude difference. Signed and `0..360` source coordinates, including
+descending axes, are therefore sampled with the same antimeridian behavior.
 
 ### 2.3 Heuristic Tracking (`SimpleTracker`)
 
@@ -89,12 +131,12 @@ tracker = pst.SimpleTracker()
 
 tracks = tracker.track(
     infile="era5_msl.nc",
-    varname="msl",
+    variable_name="msl",
     start_time="2025-01-01",
     backend="dask",
 )
 
-tracks.write("output.txt", format="imilast")
+tracks.write("output.trackjson")
 ```
 
 Tracker implementations retain algorithm-specific defaults while accepting shared orchestration arguments. The high-level API and CLI pass algorithm-specific options through `**kwargs` where required.
@@ -234,7 +276,7 @@ Detailed execution timings (breaking down Detection, Linking, Export, and I/O Ov
 
 | Feature | Legacy Architecture (v0.0.2) | Current Architecture (v0.4.0+) |
 | --- | --- | --- |
-| **Data storage** | Nested lists of `Center` and `Track` objects. | Flat, C-contiguous NumPy arrays. |
+| **Data storage** | Nested lists of `Center` and `Track` objects. | Immutable packed C-contiguous NumPy columns with IDs and offsets. |
 | **Parallelism** | Threaded tree reduction. | Parallel detection followed by centralized linking. |
 | **Linking strategy** | Tree reduction across chunks. | Ordered detection gathering and one linking pass with serial-equality tests. |
 | **Linker** | $O(N^2)$ nested Python loops. | Vectorized great-circle distance matrices and deterministic greedy matching. |

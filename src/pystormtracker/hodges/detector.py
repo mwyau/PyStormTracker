@@ -12,6 +12,7 @@ from ..io.data_loader import DataLoader
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange
+from ..time import TimeInput, select_time_range
 from .kernels import (
     _numba_ccl,
     _numba_get_centers,
@@ -30,7 +31,7 @@ class HodgesDetector:
     def __init__(
         self,
         pathname: str | Path | None,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -42,33 +43,35 @@ class HodgesDetector:
             and not (isinstance(pathname, str) and "://" in pathname)
             else pathname
         )
-        self.requested_varname = varname
+        self.requested_variable_name = variable_name
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
 
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self.varname = varname
+        self.variable_name = variable_name
 
     def _ensure_open(self) -> None:
         if self._data is None:
             ds = self._loader.ensure_open()
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
-                self.requested_varname, [self.requested_varname]
+                self.requested_variable_name, [self.requested_variable_name]
             )
             for name in possible_names:
                 if name in ds.data_vars:
                     actual_var = name
                     break
             if actual_var is None:
-                if self.requested_varname in ds.data_vars:
-                    actual_var = self.requested_varname
+                if self.requested_variable_name in ds.data_vars:
+                    actual_var = self.requested_variable_name
                 else:
-                    raise KeyError(f"Variable '{self.requested_varname}' not found.")
-            self.varname = actual_var
-            self._data = ds[self.varname]
+                    raise KeyError(
+                        f"Variable '{self.requested_variable_name}' not found."
+                    )
+            self.variable_name = actual_var
+            self._data = ds[self.variable_name]
 
     @property
     def lat(self) -> NDArray[np.float64]:
@@ -106,7 +109,7 @@ class HodgesDetector:
             (data.shape[0], data.shape[-2], data.shape[-1])
         )
 
-    def get_time(self) -> NDArray[np.datetime64]:
+    def get_time(self) -> np.ndarray:
         self._ensure_open()
         ds = self._loader.ensure_open()
         time_dim, _, _ = self._loader.get_coords()
@@ -116,32 +119,53 @@ class HodgesDetector:
             )
         else:
             times = ds[time_dim]
-        return np.asarray(times.values).astype("datetime64[s]")
+        return np.asarray(times.values)
 
     def get_xarray(
         self,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
     ) -> xr.DataArray:
         """Returns the requested data range as an xarray DataArray."""
         self._ensure_open()
         assert self._data is not None
-        time_dim, _, _ = self._loader.get_coords()
-
-        if start_time and end_time:
-            return self._data.sel({time_dim: slice(start_time, end_time)})
-        elif self.time_range:
-            return self._data.sel(
-                {time_dim: slice(self.time_range.start, self.time_range.end)}
-            )
-        return self._data
+        effective_start = (
+            start_time
+            if start_time is not None
+            else self.time_range.start
+            if self.time_range is not None
+            else None
+        )
+        effective_end = (
+            end_time
+            if end_time is not None
+            else self.time_range.end
+            if self.time_range is not None
+            else None
+        )
+        selected = select_time_range(
+            self._data,
+            start_time=effective_start,
+            end_time=effective_end,
+        )
+        assert isinstance(selected, xr.DataArray)
+        return selected
 
     @classmethod
-    def from_xarray(cls, data: xr.DataArray) -> HodgesDetector:
-        """Creates a detector from an existing xarray DataArray."""
+    def from_xarray(
+        cls, data: xr.DataArray, variable_name: str | None = None
+    ) -> HodgesDetector:
+        """Creates a detector from an existing xarray DataArray.
+
+        ``variable_name`` is the selected source variable name. It can differ from
+        the DataArray name after preprocessing; detector values remain generic
+        and the selected source name is restored only in the packed metadata.
+        """
         obj = cls.__new__(cls)
-        obj.requested_varname = str(data.name) if data.name else "var"
-        obj.varname = obj.requested_varname
+        obj.requested_variable_name = variable_name or (
+            str(data.name) if data.name else "var"
+        )
+        obj.variable_name = obj.requested_variable_name
         obj._data = data
         obj._loader = DataLoader(data)
         obj.pathname = None
@@ -169,7 +193,7 @@ class HodgesDetector:
             subgrid_refine: Whether to refine centers with a local quadratic fit.
         """
         if threshold is None:
-            if self.requested_varname == "vo":
+            if self.requested_variable_name == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
                 threshold = model_constants.DEFAULT_MSL_THRESHOLD
@@ -298,23 +322,6 @@ class HodgesDetector:
                 f_minor[i] = minors[obj_id]
                 f_orient[i] = orientations[obj_id]
 
-            raw_results.append(
-                (
-                    t,
-                    refined_lats,
-                    refined_lons,
-                    {
-                        self.varname: quad_vals,
-                        "raw_val": raw_vals,
-                        "quad_val": quad_vals,
-                        "bspline_val": bspline_vals,
-                        "raw_size_km2": f_raw_size,
-                        "fitted_size_km2": f_fit_size,
-                        "major_axis_km": f_major,
-                        "minor_axis_km": f_minor,
-                        "orientation_deg": f_orient,
-                    },
-                )
-            )
+            raw_results.append((t, refined_lats, refined_lons, quad_vals))
 
         return raw_results

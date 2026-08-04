@@ -13,6 +13,7 @@ from ..models import TimeRange
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from ..preprocessing.refinement import subgrid_refine as refine_center
+from ..time import TimeInput, is_missing_time, select_time_range
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
@@ -33,7 +34,7 @@ class SimpleDetector:
     def __init__(
         self,
         pathname: str | Path | None,
-        varname: str,
+        variable_name: str,
         time_range: TimeRange | None = None,
         global_start_idx: int = 0,
         global_total_steps: int | None = None,
@@ -45,14 +46,14 @@ class SimpleDetector:
             and not (isinstance(pathname, str) and "://" in pathname)
             else pathname
         )
-        self.requested_varname = varname
+        self.requested_variable_name = variable_name
         self.time_range = time_range
         self.global_start_idx = global_start_idx
         self.global_total_steps = global_total_steps
 
         self._loader = DataLoader(self.pathname, engine=engine)
         self._data: xr.DataArray | None = None
-        self.varname = varname  # Updated after open
+        self.variable_name = variable_name  # Updated after open
 
     def _ensure_open(self) -> None:
         """Ensures the xarray dataset is open and basic variables are mapped."""
@@ -62,7 +63,7 @@ class SimpleDetector:
             # Identify the actual variable name using mapping aliases
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
-                self.requested_varname, [self.requested_varname]
+                self.requested_variable_name, [self.requested_variable_name]
             )
             for name in possible_names:
                 if name in ds.data_vars:
@@ -70,16 +71,16 @@ class SimpleDetector:
                     break
 
             if actual_var is None:
-                if self.requested_varname in ds.data_vars:
-                    actual_var = self.requested_varname
+                if self.requested_variable_name in ds.data_vars:
+                    actual_var = self.requested_variable_name
                 else:
                     raise KeyError(
-                        f"Variable '{self.requested_varname}' not found. "
+                        f"Variable '{self.requested_variable_name}' not found. "
                         f"Available: {list(ds.data_vars.keys())}"
                     )
 
-            self.varname = actual_var
-            self._data = ds[self.varname]
+            self.variable_name = actual_var
+            self._data = ds[self.variable_name]
 
     @property
     def lat(self) -> NDArray[np.float64]:
@@ -107,12 +108,12 @@ class SimpleDetector:
             start, end = self.time_range.start, self.time_range.end
             # Handle NaT bounds with explicit types
             # xarray .sel() accepts DataArray or slice
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 data_range = self._data.sel({time_dim: slice(start, end)})
-            elif not np.isnat(start):
-                data_range = self._data.where(self._data[time_dim] >= start, drop=True)
-            elif not np.isnat(end):
-                data_range = self._data.where(self._data[time_dim] <= end, drop=True)
+            elif not is_missing_time(start):
+                data_range = self._data.sel({time_dim: slice(start, None)})
+            elif not is_missing_time(end):
+                data_range = self._data.sel({time_dim: slice(None, end)})
             else:
                 data_range = self._data
         else:
@@ -143,7 +144,7 @@ class SimpleDetector:
             case _:
                 raise TypeError("frame must be an int, tuple[int, int], or None")
 
-    def get_time(self) -> NDArray[np.datetime64] | None:
+    def get_time(self) -> np.ndarray | None:
         self._ensure_open()
         ds = self._loader.ensure_open()
         time_dim, _, _ = self._loader.get_coords()
@@ -151,42 +152,58 @@ class SimpleDetector:
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
             time_coord = ds[time_dim]
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 times = time_coord.sel({time_dim: slice(start, end)})
-            elif not np.isnat(start):
-                times = time_coord.where(time_coord >= start, drop=True)
-            elif not np.isnat(end):
-                times = time_coord.where(time_coord <= end, drop=True)
+            elif not is_missing_time(start):
+                times = time_coord.sel({time_dim: slice(start, None)})
+            elif not is_missing_time(end):
+                times = time_coord.sel({time_dim: slice(None, end)})
             else:
                 times = time_coord
         else:
             times = ds[time_dim]
-        return np.asarray(times.values).astype("datetime64[s]")
+        return np.asarray(times.values)
 
     def get_xarray(
         self,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
     ) -> xr.DataArray:
         """Returns the requested data range as an xarray DataArray."""
         self._ensure_open()
         assert self._data is not None
-        time_dim, _, _ = self._loader.get_coords()
-
-        if start_time and end_time:
-            return self._data.sel({time_dim: slice(start_time, end_time)})
-        elif self.time_range:
-            return self._data.sel(
-                {time_dim: slice(self.time_range.start, self.time_range.end)}
-            )
-        return self._data
+        effective_start = (
+            start_time
+            if start_time is not None
+            else self.time_range.start
+            if self.time_range is not None
+            else None
+        )
+        effective_end = (
+            end_time
+            if end_time is not None
+            else self.time_range.end
+            if self.time_range is not None
+            else None
+        )
+        selected = select_time_range(
+            self._data,
+            start_time=effective_start,
+            end_time=effective_end,
+        )
+        assert isinstance(selected, xr.DataArray)
+        return selected
 
     @classmethod
-    def from_xarray(cls, data: xr.DataArray) -> SimpleDetector:
+    def from_xarray(
+        cls, data: xr.DataArray, variable_name: str | None = None
+    ) -> SimpleDetector:
         """Creates a detector from an existing xarray DataArray."""
         obj = cls.__new__(cls)
-        obj.requested_varname = str(data.name) if data.name else "var"
-        obj.varname = obj.requested_varname
+        obj.requested_variable_name = variable_name or (
+            str(data.name) if data.name else "var"
+        )
+        obj.variable_name = obj.requested_variable_name
         obj._data = data
         obj._loader = DataLoader(data)
         obj.pathname = None
@@ -203,18 +220,18 @@ class SimpleDetector:
         # Determine total length based on active time range
         if self.time_range:
             start, end = self.time_range.start, self.time_range.end
-            if not np.isnat(start) and not np.isnat(end):
+            if not is_missing_time(start) and not is_missing_time(end):
                 active_times = time_coord.sel({time_name: slice(start, end)})
-            elif not np.isnat(start):
-                active_times = time_coord.where(time_coord >= start, drop=True)
-            elif not np.isnat(end):
-                active_times = time_coord.where(time_coord <= end, drop=True)
+            elif not is_missing_time(start):
+                active_times = time_coord.sel({time_name: slice(start, None)})
+            elif not is_missing_time(end):
+                active_times = time_coord.sel({time_name: slice(None, end)})
             else:
                 active_times = time_coord
         else:
             active_times = time_coord
 
-        time_values = np.asarray(active_times.values).astype("datetime64[s]")
+        time_values = np.asarray(active_times.values)
         total_len = len(time_values)
 
         chunk_size = total_len // num
@@ -241,7 +258,7 @@ class SimpleDetector:
                 detectors.append(
                     SimpleDetector(
                         self.pathname,
-                        self.requested_varname,
+                        self.requested_variable_name,
                         time_range=TimeRange(
                             start=time_values[s_idx], end=time_values[e_idx - 1]
                         ),
@@ -264,7 +281,7 @@ class SimpleDetector:
 
         # Set variable specific thresholds if not provided
         if threshold is None:
-            if self.requested_varname == "vo":
+            if self.requested_variable_name == "vo":
                 threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
                 threshold = model_constants.DEFAULT_MSL_THRESHOLD
@@ -309,7 +326,7 @@ class SimpleDetector:
 
             # Extract raw data using Numba
             r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
-            time_val = t.astype("datetime64[s]")
+            time_val = t
 
             if subgrid_refine:
                 refined_lats = np.empty(len(r_idx), dtype=np.float64)
@@ -329,12 +346,10 @@ class SimpleDetector:
                         time_val,
                         refined_lats,
                         refined_lons,
-                        {self.varname: refined_vals, "raw_val": vals},
+                        refined_vals,
                     )
                 )
             else:
-                raw_results.append(
-                    (time_val, lat[r_idx], lon[c_idx], {self.varname: vals})
-                )
+                raw_results.append((time_val, lat[r_idx], lon[c_idx], vals))
 
         return raw_results

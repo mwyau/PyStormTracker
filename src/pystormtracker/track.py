@@ -5,16 +5,20 @@ import json
 import os
 import timeit
 from argparse import Namespace
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 
 from .hodges import constants
 from .hodges.tracker import HodgesTracker
+from .io.format import SUPPORTED_FORMATS, SupportedFormat
 from .models import constants as model_constants
 from .models.tracks import Tracks
+from .models.units import ModeOption, resolve_mode
+from .preprocessing.tracking import resolve_filter_bounds
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
+from .time import TimeInput
 from .utils.cli import (
     finite_float,
     nonnegative_float,
@@ -25,24 +29,6 @@ from .utils.cli import (
 
 Backend = Literal["serial", "mpi", "dask"]
 Algorithm = Literal["simple", "hodges"]
-
-
-def _parse_filter_range(value: str) -> tuple[int, int]:
-    """Parse an inclusive spectral wave-number range."""
-    try:
-        parts = [int(part) for part in value.split("-")]
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("expected MIN-MAX or MAX") from exc
-
-    if len(parts) == 1:
-        lmin, lmax = 0, parts[0]
-    elif len(parts) == 2:
-        lmin, lmax = parts
-    else:
-        raise argparse.ArgumentTypeError("expected MIN-MAX or MAX")
-    if lmin < 0 or lmax < lmin:
-        raise argparse.ArgumentTypeError("wave numbers must satisfy 0 <= MIN <= MAX")
-    return lmin, lmax
 
 
 def _parse_extent(value: str) -> tuple[float, float, float, float]:
@@ -99,11 +85,11 @@ def is_mpi_env() -> bool:
 
 def run_tracker(
     infile: str,
-    varname: str,
+    variable_name: str,
     outfile: str,
-    start_time: str | np.datetime64 | None = None,
-    end_time: str | np.datetime64 | None = None,
-    mode: Literal["min", "max"] = "min",
+    start_time: TimeInput | None = None,
+    end_time: TimeInput | None = None,
+    mode: ModeOption | None = "auto",
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: tuple[float, float, float, float] | None = None,
@@ -113,7 +99,7 @@ def run_tracker(
     threshold: float | None = None,
     engine: str | None = None,
     algorithm: Algorithm = "simple",
-    output_format: str = "imilast",
+    output_format: str | None = "auto",
     # Hodges-specific
     min_points: int = constants.MIN_POINTS_DEFAULT,
     w1: float | None = None,
@@ -125,15 +111,16 @@ def run_tracker(
     max_missing: int | None = None,
     zones: np.ndarray | None = None,
     adapt_params: np.ndarray | None = None,
-    filter: bool | None = None,
-    lmin: int = constants.LMIN_DEFAULT,
-    lmax: int = constants.LMAX_DEFAULT,
-    taper_points: int = constants.TAPER_DEFAULT,
+    lmin: int | None = None,
+    lmax: int | None = None,
+    taper_points: int = 0,
+    nside: int | None = None,
     overlap: int = model_constants.OVERLAP_DEFAULT,
     subgrid_refine: bool | None = None,
 ) -> Tracks:
     """Orchestrates the storm tracking process from the CLI."""
     timer: dict[str, float] = {}
+    resolved_mode = resolve_mode(variable_name, mode)
 
     # 1. Backend Auto-detection
     detected_backend: Backend = "serial"
@@ -247,16 +234,12 @@ def run_tracker(
         if subgrid_refine is not None
         else algorithm != "simple" or map_proj == "healpix"
     )
-    effective_filter = (
-        filter if filter is not None else algorithm != "simple" or map_proj == "healpix"
-    )
-
     tracks = tracker.track(
         infile=infile,
-        varname=varname,
+        variable_name=variable_name,
         start_time=start_time,
         end_time=end_time,
-        mode=mode,
+        mode=resolved_mode,
         map_proj=map_proj,
         resolution=resolution,
         extent=extent,
@@ -266,10 +249,10 @@ def run_tracker(
         threshold=threshold,
         engine=engine,
         min_points=min_points,
-        filter=effective_filter,
         lmin=lmin,
         lmax=lmax,
         taper_points=taper_points,
+        nside=nside,
         overlap=overlap,
         subgrid_refine=effective_subgrid_refine,
     )
@@ -280,7 +263,12 @@ def run_tracker(
         print(f"Total number of tracks: {num_tracks}")
 
         timer["export"] = timeit.default_timer()
-        tracks.write(outfile, format=output_format)
+        selected_format = (
+            None
+            if output_format in (None, "auto")
+            else cast("SupportedFormat", output_format)
+        )
+        tracks.write(outfile, format=selected_format)
         timer["export"] = timeit.default_timer() - timer["export"]
 
         print(f"Export time: {timer['export']:.4f}s")
@@ -329,19 +317,16 @@ def setup_parser(
     general.add_argument(
         "-f",
         "--format",
-        choices=["imilast", "hodges", "json"],
-        default="imilast",
-        help="Output format. Default is 'imilast'.",
+        choices=["auto", *SUPPORTED_FORMATS],
+        default="auto",
+        help="Output format; inferred from the extension, defaulting to TrackJSON.",
     )
     general.add_argument(
         "-m",
         "--mode",
         choices=["auto", "min", "max"],
         default="auto",
-        help=(
-            "Detection mode: 'auto' (inferred from variable), "
-            "'min' for SLP, 'max' for vorticity."
-        ),
+        help="Detection mode; inferred from known variable aliases.",
     )
     general.add_argument(
         "--map-proj",
@@ -369,28 +354,33 @@ def setup_parser(
         help="Intensity threshold for features.",
     )
 
-    # Filtering Options (Mutually Exclusive)
-    filter_group = general.add_mutually_exclusive_group()
-    filter_group.add_argument(
-        "--filter-range",
-        type=_parse_filter_range,
+    general.add_argument(
+        "--lmin",
+        type=nonnegative_int,
+        default=None,
+        help="Optional lower spectral filter bound; supply with --lmax.",
+    )
+    general.add_argument(
+        "--lmax",
+        type=nonnegative_int,
+        default=None,
+        help="Optional upper spectral filter bound; supply with --lmin.",
+    )
+    general.add_argument(
+        "--taper-points",
+        type=nonnegative_int,
+        default=0,
+        help="Independent spatial taper width; zero disables tapering.",
+    )
+    general.add_argument(
+        "--nside",
+        type=positive_int,
         default=None,
         help=(
-            f"Spectral filter range (min-max). "
-            f"Default '{constants.LMIN_DEFAULT}-{constants.LMAX_DEFAULT}'."
+            "Target HEALPix resolution; omitted values are derived from the "
+            "source grid."
         ),
     )
-    filter_group.add_argument(
-        "--filter",
-        action=argparse.BooleanOptionalAction,
-        dest="filter",
-        default=None,
-        help=(
-            "Control spectral filtering. Disabled by default for simple tracking "
-            "and enabled by default for Hodges and HEALPix."
-        ),
-    )
-    # Default is determined in main() based on algorithm
 
     general.add_argument(
         "-n", "--num", type=positive_int, help="Number of time steps to process."
@@ -452,12 +442,6 @@ def setup_parser(
         type=positive_int,
         default=1,
         help="Min grid points per object (noise filter).",
-    )
-    hodges.add_argument(
-        "--taper",
-        type=nonnegative_int,
-        default=constants.TAPER_DEFAULT,
-        help="Number of points for boundary tapering. Default 0.",
     )
     hodges.add_argument(
         "--w1",
@@ -554,11 +538,11 @@ def run_track_command(args: Namespace) -> Tracks:
         detector_preview: SimpleDetector | HodgesDetector
         if args.algorithm == "simple":
             detector_preview = SimpleDetector(
-                pathname=args.input, varname=args.var, engine=args.engine
+                pathname=args.input, variable_name=args.var, engine=args.engine
             )
         else:
             detector_preview = HodgesDetector(
-                pathname=args.input, varname=args.var, engine=args.engine
+                pathname=args.input, variable_name=args.var, engine=args.engine
             )
 
         times = detector_preview.get_time()
@@ -567,17 +551,8 @@ def run_track_command(args: Namespace) -> Tracks:
         start_time = times[0]
         end_time = times[num - 1]
 
-    if args.filter is None:
-        args.filter = (
-            args.filter_range is not None
-            or args.algorithm != "simple"
-            or args.map_proj == "healpix"
-        )
-
-    lmin, lmax = args.filter_range or (
-        constants.LMIN_DEFAULT,
-        constants.LMAX_DEFAULT,
-    )
+    lmin, lmax = args.lmin, args.lmax
+    resolve_filter_bounds(lmin, lmax)
 
     zones_arr = None
     if args.zone_file:
@@ -610,17 +585,13 @@ def run_track_command(args: Namespace) -> Tracks:
         except json.JSONDecodeError as exc:
             raise ValueError(f"invalid adaptive-parameters JSON: {exc.msg}") from exc
 
-    from .io.json import infer_intensity_mode
-
-    effective_mode = infer_intensity_mode(var_name=args.var, mode=args.mode)
-
     return run_tracker(
         infile=args.input,
-        varname=args.var,
+        variable_name=args.var,
         outfile=args.output,
         start_time=start_time,
         end_time=end_time,
-        mode=effective_mode,
+        mode=args.mode,
         map_proj=args.map_proj,
         resolution=args.resolution,
         extent=args.extent,
@@ -642,10 +613,10 @@ def run_track_command(args: Namespace) -> Tracks:
         max_missing=args.max_missing,
         zones=zones_arr,
         adapt_params=adapt_params_arr,
-        filter=args.filter,
         lmin=lmin,
         lmax=lmax,
-        taper_points=args.taper,
+        taper_points=args.taper_points,
+        nside=args.nside,
         overlap=args.overlap,
         subgrid_refine=args.subgrid_refine,
     )

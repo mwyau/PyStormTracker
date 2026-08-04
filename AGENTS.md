@@ -23,7 +23,14 @@ These instructions apply to automated changes in this repository.
 - Provide explicit type annotations. Do not introduce `Any`.
 - Keep tracker implementations compatible with the shared protocol, including `**kwargs` where required for cross-algorithm calls.
 - Use `DataLoader` and coordinate-aware Xarray paths for supported meteorological inputs.
-- Add or update focused tests for behavioral changes. Preserve historical fixtures and tolerances unless the change corrects them explicitly.
+- Do not implement CF calendar arithmetic manually. Use `pystormtracker.time` and `cftime`; finalized packed times are signed `int64` milliseconds under the proleptic Gregorian calendar.
+- Do not expose mutable track-construction helpers as public API.
+- Do not add cached statistics to `Tracks`; TrackJSON `stats` is an optional derived wire cache computed explicitly.
+- Preserve source variable names and record preprocessing in metadata rather than renaming variables for algorithms.
+- Calendar support is currently canonicalized to `proleptic_gregorian`; reject unsupported calendars and pre-1582 explicitly declared `standard` dates.
+- Stored values and metadata units must agree; normalize values and thresholds before detection.
+- The explorer is temporarily a static placeholder while it is redesigned.
+- Add or update focused tests for behavioral changes. Preserve historical test datasets and tolerances unless the change corrects them explicitly.
 
 ## Documentation and change control
 

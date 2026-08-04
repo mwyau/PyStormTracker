@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pystormtracker.io.data_loader import DataLoader
+from pystormtracker.io.data_loader import DataLoader, normalize_tracking_data
 
 
 @pytest.fixture(autouse=True)
@@ -34,8 +34,9 @@ def test_ensure_open_netcdf(mock_open: MagicMock) -> None:
     loader = DataLoader("test.nc")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    # Now defaults to None for standard xarray detection
-    mock_open.assert_called_once_with(Path("test.nc"), engine=None, chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.nc"), engine=None, chunks={}, decode_times=False
+    )
 
 
 @patch("xarray.open_dataset")
@@ -47,7 +48,9 @@ def test_ensure_open_grib(mock_open: MagicMock) -> None:
     loader = DataLoader("test.grib")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(Path("test.grib"), engine="cfgrib", chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.grib"), engine="cfgrib", chunks={}, decode_times=False
+    )
 
 
 @patch("xarray.open_dataset")
@@ -59,7 +62,9 @@ def test_ensure_open_zarr(mock_open: MagicMock) -> None:
     loader = DataLoader("test.zarr")
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(Path("test.zarr"), engine="zarr", chunks={})
+    mock_open.assert_called_once_with(
+        Path("test.zarr"), engine="zarr", chunks={}, decode_times=False
+    )
 
 
 @patch("xarray.open_dataset")
@@ -74,7 +79,9 @@ def test_ensure_open_zarr_dir(mock_open: MagicMock, tmp_path: Path) -> None:
     loader = DataLoader(zarr_dir)
     ds = loader.ensure_open()
     assert ds == mock_ds
-    mock_open.assert_called_once_with(zarr_dir, engine="zarr", chunks={})
+    mock_open.assert_called_once_with(
+        zarr_dir, engine="zarr", chunks={}, decode_times=False
+    )
 
 
 @patch("xarray.open_dataset")
@@ -111,6 +118,45 @@ def test_is_lat_reversed_direct() -> None:
     ds_asc = xr.Dataset({"var": lats_asc})
     loader_asc = DataLoader(ds_asc)
     assert loader_asc.is_lat_reversed() is False
+
+
+def test_normalize_tracking_data_selects_dataarray_and_dataset_inputs() -> None:
+    times = np.array(
+        [
+            np.datetime64("2000-01-01"),
+            np.datetime64("2000-01-02"),
+            np.datetime64("2000-01-03"),
+        ]
+    )
+    data = xr.DataArray(
+        np.arange(3.0)[:, None, None],
+        dims=("time", "lat", "lon"),
+        coords={"time": times, "lat": [0.0], "lon": [0.0]},
+        name="msl",
+    )
+
+    selected_array = normalize_tracking_data(
+        data,
+        "msl",
+        start_time="2000-01-02",
+        end_time="2000-01-03",
+    )
+    selected_dataset = normalize_tracking_data(
+        data.to_dataset(),
+        "msl",
+        start_time="2000-01-02",
+        end_time="2000-01-03",
+    )
+    selected_processed = normalize_tracking_data(
+        data.rename("msl_spectral_filtered"),
+        "msl",
+    )
+
+    assert selected_array.name == "msl"
+    assert selected_dataset.name == "msl"
+    np.testing.assert_array_equal(selected_array.time, selected_dataset.time)
+    np.testing.assert_array_equal(selected_array.values, np.array([[[1.0]], [[2.0]]]))
+    assert selected_processed.name == "msl_spectral_filtered"
 
 
 @pytest.mark.parametrize(

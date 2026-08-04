@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from pystormtracker.hodges.linker import HodgesLinker
+from pystormtracker.models.tracker import RawDetectionStep
 
 
 def test_hodges_linker_init() -> None:
@@ -10,6 +11,32 @@ def test_hodges_linker_init() -> None:
     assert linker.w1 == 0.5
     assert linker.w2 == 0.5
     assert linker.dmax == 10.0
+
+
+def test_hodges_linker_preserves_zero_and_one_frame_inputs() -> None:
+    linker = HodgesLinker(
+        zones=np.zeros((0, 5), dtype=np.float64),
+        adapt_params=np.zeros((2, 0), dtype=np.float64),
+    )
+    empty = linker.link([], primary_var="msl", mode="min")
+    assert len(empty) == 0
+
+    one_frame_detections: list[RawDetectionStep] = [
+        (
+            np.datetime64("2025-12-01T00:00:00"),
+            np.array([10.0]),
+            np.array([20.0]),
+            np.array([1000.0]),
+        )
+    ]
+    one_frame = linker.link(
+        one_frame_detections,
+        primary_var="msl",
+        mode="min",
+    )
+    assert len(one_frame) == 1
+    assert len(one_frame[0]) == 1
+    assert one_frame[0][0].lat == 10.0
 
 
 def test_hodges_linker_link_straight() -> None:
@@ -27,28 +54,28 @@ def test_hodges_linker_link_straight() -> None:
     t1 = np.datetime64("2025-12-01T06:00:00")
     t2 = np.datetime64("2025-12-01T12:00:00")
 
-    detections = [
+    detections: list[RawDetectionStep] = [
         (
             t0,
             np.array([0.0, 10.0]),
             np.array([0.0, 10.0]),
-            {"msl": np.array([1000.0, 1000.0])},
+            np.array([1000.0, 1000.0]),
         ),
         (
             t1,
             np.array([0.0, 10.0]),
             np.array([1.0, 11.0]),
-            {"msl": np.array([990.0, 990.0])},
+            np.array([990.0, 990.0]),
         ),
         (
             t2,
             np.array([0.0, 10.0]),
             np.array([2.0, 12.0]),
-            {"msl": np.array([980.0, 980.0])},
+            np.array([980.0, 980.0]),
         ),
     ]
 
-    tracks = linker.link(detections)
+    tracks = linker.link(detections, primary_var="msl", mode="min")
 
     assert len(tracks) == 2
     # Verify track 1
@@ -86,28 +113,28 @@ def test_hodges_linker_link_crossing() -> None:
     # Track B: (0,10) -> (5,5) -> (10,0)
 
     # Detections (sorted by lat for ambiguity)
-    detections = [
+    detections: list[RawDetectionStep] = [
         (
             t0,
             np.array([0.0, 0.0]),
             np.array([0.0, 10.0]),
-            {"msl": np.array([1000.0, 1000.0])},
+            np.array([1000.0, 1000.0]),
         ),
         (
             t1,
             np.array([5.0, 5.0001]),
             np.array([5.0, 5.0001]),
-            {"msl": np.array([990.0, 990.0])},
+            np.array([990.0, 990.0]),
         ),
         (
             t2,
             np.array([10.0, 10.0]),
             np.array([10.0, 0.0]),
-            {"msl": np.array([980.0, 980.0])},
+            np.array([980.0, 980.0]),
         ),
     ]
 
-    tracks = linker.link(detections)
+    tracks = linker.link(detections, primary_var="msl", mode="min")
 
     assert len(tracks) == 2
     # One track should go from (0,0) to (10,10)

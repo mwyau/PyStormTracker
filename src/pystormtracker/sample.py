@@ -1,26 +1,96 @@
 from __future__ import annotations
 
 import argparse
-from typing import Literal
+from dataclasses import replace
+from typing import Literal, cast
 
 import numpy as np
 import xarray as xr
 
-from .io.json import read_json, write_json
-from .models.geo import geod_dist_km
+from .models.geo import cyclic_longitude_delta, geod_dist_km
 from .models.tracks import Tracks
+from .models.units import normalize_variable_units
 from .utils.cli import nonnegative_float
 
 SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
 
 
+def _prepare_longitude_axis(
+    da: xr.DataArray,
+    *,
+    lon_dim: str,
+) -> tuple[xr.DataArray, np.ndarray, bool]:
+    """Validate and prepare a reusable one-dimensional longitude axis."""
+    coordinate = da[lon_dim]
+    lons = np.asarray(coordinate.values, dtype=np.float64)
+    if lons.ndim != 1 or lons.size == 0:
+        raise ValueError("longitude coordinate must be one-dimensional and nonempty")
+    if not np.isfinite(lons).all():
+        raise ValueError("longitude coordinate must contain finite values")
+
+    normalized = np.mod(lons, 360.0)
+    unique_count = np.unique(normalized).size
+    if unique_count != lons.size:
+        endpoint_duplicate = np.isclose(
+            float(cyclic_longitude_delta(np.asarray([lons[-1]]), lons[0])[0]),
+            0.0,
+        )
+        if not endpoint_duplicate:
+            raise ValueError("longitude coordinate contains duplicate cyclic values")
+        first_values = np.asarray(da.isel({lon_dim: 0}).values)
+        last_values = np.asarray(da.isel({lon_dim: -1}).values)
+        if not np.allclose(first_values, last_values, equal_nan=True):
+            raise ValueError(
+                "duplicate cyclic longitude endpoints have conflicting data"
+            )
+        da = da.isel({lon_dim: slice(None, -1)})
+        lons = lons[:-1]
+
+    is_increasing = lons.size < 2 or bool(lons[1] > lons[0])
+    return da, lons, is_increasing
+
+
+def _nearest_sample(
+    data: xr.DataArray,
+    *,
+    lat_dim: str,
+    lon_dim: str,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    lat: float,
+    lon: float,
+) -> float:
+    lat_index = int(np.argmin(np.abs(lats - lat)))
+    lon_delta = cyclic_longitude_delta(lons, lon)
+    lon_index = int(np.argmin(np.abs(lon_delta)))
+    return float(data.isel({lat_dim: lat_index, lon_dim: lon_index}).values)
+
+
+def _bilinear_sample(
+    data: xr.DataArray,
+    *,
+    lat_dim: str,
+    lon_dim: str,
+    lons: np.ndarray,
+    lat: float,
+    lon: float,
+) -> float:
+    relative_lon = cyclic_longitude_delta(lons, lon)
+    temporary = data.assign_coords({lon_dim: relative_lon}).sortby(lon_dim)
+    value = temporary.interp({lon_dim: 0.0, lat_dim: lat}, method="linear").values
+    scalar = np.asarray(value)
+    if scalar.size != 1:
+        raise ValueError("bilinear interpolation did not produce one value")
+    return float(scalar.reshape(-1)[0])
+
+
 def sample_tracks(
     tracks: Tracks,
     ds: xr.Dataset,
-    varname: str,
+    variable_name: str,
     method: SamplingMethod = "nearest",
     radius_km: float = 0.0,
-    output_varname: str | None = None,
+    output_variable_name: str | None = None,
 ) -> Tracks:
     """
     Samples a variable from a NetCDF dataset along storm tracks.
@@ -28,11 +98,11 @@ def sample_tracks(
     Args:
         tracks: The Tracks object to update.
         ds: The xarray Dataset containing the variable to sample.
-        varname: The name of the variable in the dataset.
+        variable_name: The name of the variable in the dataset.
         method: The sampling method ('nearest', 'bilinear', 'mean', 'max', 'min').
         radius_km: The radius in km for spatial operations (mean, max, min).
-        output_varname: The name to store in the track's 'vars' dictionary.
-                        Defaults to varname.
+        output_variable_name: The name to store in the track's 'vars' dictionary.
+                        Defaults to variable_name.
 
     Returns:
         The updated Tracks object.
@@ -41,19 +111,24 @@ def sample_tracks(
         raise ValueError(f"Unsupported sampling method: {method}")
     if radius_km < 0.0:
         raise ValueError("Sampling radius must be nonnegative.")
-    if varname not in ds:
-        raise ValueError(f"Variable '{varname}' not found in dataset.")
-
-    da = ds[varname]
-    out_name = output_varname or varname
-
-    # Initialize the new variable in tracks.vars if not present
-    if out_name not in tracks.vars:
-        tracks.vars[out_name] = np.full(len(tracks.track_ids), np.nan)
-
-    # Identify lat/lon dimensions
     from .io.data_loader import DataLoader
 
+    loader = DataLoader(ds)
+    source_ds = loader.ensure_open()
+    if variable_name not in source_ds:
+        raise ValueError(f"Variable '{variable_name}' not found in dataset.")
+
+    da = source_ds[variable_name]
+    out_name = output_variable_name or variable_name
+    da, _unused_threshold, sampled_unit = normalize_variable_units(
+        da,
+        variable_name=out_name,
+        threshold=None,
+    )
+
+    sampled_values = np.full(len(tracks.times), np.nan, dtype=np.float64)
+
+    # Identify and validate the spatial axes once for this sampling call.
     lat_dim = next(
         (d for d in DataLoader.VAR_MAPPING["latitude"] if d in da.dims), None
     )
@@ -65,48 +140,63 @@ def sample_tracks(
     if not lat_dim or not lon_dim:
         raise ValueError("Could not identify latitude or longitude dimensions.")
 
-    lats = da[lat_dim].values
-    lons = da[lon_dim].values
-    is_lat_increasing = lats[1] > lats[0] if len(lats) > 1 else True
-    is_lon_increasing = lons[1] > lons[0] if len(lons) > 1 else True
+    lats = np.asarray(da[lat_dim].values, dtype=np.float64)
+    if lats.ndim != 1 or lats.size == 0 or not np.isfinite(lats).all():
+        raise ValueError("latitude coordinate must be one-dimensional and finite")
+    da, lons, _is_lon_increasing = _prepare_longitude_axis(da, lon_dim=lon_dim)
 
     for track in tracks:
-        global_indices = track.indices
+        point_slice = track.point_slice
         for i, center in enumerate(track):
-            global_idx = global_indices[i]
+            global_idx = (point_slice.start or 0) + i
 
             # 1. Select the correct time slice
             if time_dim and center.time is not None:
                 try:
-                    da_step = da.sel({time_dim: center.time}, method="nearest")
-                except (ValueError, KeyError):
+                    timestamp = int(cast(int | np.integer, center.time))
+                    source_time = np.asarray([timestamp], dtype="datetime64[ms]")[0]
+                    da_step = da.sel({time_dim: source_time}, method="nearest")
+                except KeyError:
                     # Time might be out of range
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
                     continue
             else:
                 da_step = da
 
             # 2. Perform sampling
             if method in ("nearest", "bilinear"):
-                interp_method: Literal["nearest", "linear"] = (
-                    "nearest" if method == "nearest" else "linear"
-                )
-                try:
-                    val = da_step.interp(
-                        {lat_dim: center.lat, lon_dim: center.lon},
-                        method=interp_method,
-                    ).values
-                    tracks.vars[out_name][global_idx] = float(val)
-                except Exception:
-                    tracks.vars[out_name][global_idx] = np.nan
+                if method == "nearest":
+                    sampled_values[global_idx] = _nearest_sample(
+                        da_step,
+                        lat_dim=lat_dim,
+                        lon_dim=lon_dim,
+                        lats=lats,
+                        lons=lons,
+                        lat=center.lat,
+                        lon=center.lon,
+                    )
+                else:
+                    sampled_values[global_idx] = _bilinear_sample(
+                        da_step,
+                        lat_dim=lat_dim,
+                        lon_dim=lon_dim,
+                        lons=lons,
+                        lat=center.lat,
+                        lon=center.lon,
+                    )
 
             elif method in ("mean", "max", "min"):
                 if radius_km <= 0:
                     # Fallback to nearest if radius is 0
-                    val = da_step.sel(
-                        {lat_dim: center.lat, lon_dim: center.lon}, method="nearest"
-                    ).values
-                    tracks.vars[out_name][global_idx] = float(val)
+                    sampled_values[global_idx] = _nearest_sample(
+                        da_step,
+                        lat_dim=lat_dim,
+                        lon_dim=lon_dim,
+                        lats=lats,
+                        lons=lons,
+                        lat=center.lat,
+                        lon=center.lon,
+                    )
                     continue
 
                 # Conservative bounding box in degrees
@@ -118,29 +208,17 @@ def sample_tracks(
                     else min((radius_km / (111.0 * cos_lat)) * 1.5, 180.0)
                 )
 
-                lat_min, lat_max = center.lat - lat_buffer, center.lat + lat_buffer
-                lon_min, lon_max = center.lon - lon_buffer, center.lon + lon_buffer
-
-                lat_slice = (
-                    slice(lat_min, lat_max)
-                    if is_lat_increasing
-                    else slice(lat_max, lat_min)
-                )
-                lon_slice = (
-                    slice(lon_min, lon_max)
-                    if is_lon_increasing
-                    else slice(lon_max, lon_min)
-                )
-
-                # Handle longitude wrapping
-                if lon_min < 0 or lon_max > 360:
-                    # For now, just slice latitude and filter longitude manually
-                    subset = da_step.sel({lat_dim: lat_slice})
-                else:
-                    subset = da_step.sel({lat_dim: lat_slice, lon_dim: lon_slice})
+                lat_delta = np.abs(lats - center.lat)
+                lat_indices = np.flatnonzero(lat_delta <= lat_buffer)
+                lon_delta = np.abs(cyclic_longitude_delta(lons, center.lon))
+                lon_indices = np.flatnonzero(lon_delta <= lon_buffer)
+                if lat_indices.size == 0 or lon_indices.size == 0:
+                    sampled_values[global_idx] = np.nan
+                    continue
+                subset = da_step.isel({lat_dim: lat_indices, lon_dim: lon_indices})
 
                 if subset.size == 0:
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
                     continue
 
                 # Calculate distances to all points in subset
@@ -155,15 +233,20 @@ def sample_tracks(
                 valid_data = subset.values[mask]
 
                 if valid_data.size == 0:
-                    tracks.vars[out_name][global_idx] = np.nan
+                    sampled_values[global_idx] = np.nan
                 elif method == "mean":
-                    tracks.vars[out_name][global_idx] = float(np.nanmean(valid_data))
+                    sampled_values[global_idx] = float(np.nanmean(valid_data))
                 elif method == "max":
-                    tracks.vars[out_name][global_idx] = float(np.nanmax(valid_data))
+                    sampled_values[global_idx] = float(np.nanmax(valid_data))
                 elif method == "min":
-                    tracks.vars[out_name][global_idx] = float(np.nanmin(valid_data))
+                    sampled_values[global_idx] = float(np.nanmin(valid_data))
 
-    return tracks
+    variables = dict(tracks.variables)
+    variables[out_name] = sampled_values
+    units = dict(tracks.units)
+    units[out_name] = sampled_unit
+    metadata = replace(tracks.metadata, units=units)
+    return tracks.with_variables(variables, metadata=metadata)
 
 
 def setup_parser(
@@ -231,10 +314,14 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f"sampling method '{args.method}' requires a positive radius")
 
     print(f"Reading tracks from {args.input}...")
-    tracks = read_json(args.input)
+    from .io.format import load_tracks, save_tracks
+
+    tracks = load_tracks(args.input)
 
     print(f"Opening dataset {args.data}...")
-    ds = xr.open_dataset(args.data, engine=args.engine)
+    from .io.data_loader import DataLoader
+
+    ds = DataLoader(args.data, engine=args.engine).ensure_open()
 
     print(f"Sampling '{args.var}' using method '{args.method}'...")
     if args.radius > 0:
@@ -243,12 +330,12 @@ def main(args: argparse.Namespace) -> None:
     tracks = sample_tracks(
         tracks=tracks,
         ds=ds,
-        varname=args.var,
+        variable_name=args.var,
         method=args.method,
         radius_km=args.radius,
-        output_varname=args.name,
+        output_variable_name=args.name,
     )
 
     print(f"Writing updated tracks to {args.output}...")
-    write_json(tracks, args.output)
+    save_tracks(tracks, args.output)
     print("Done!")

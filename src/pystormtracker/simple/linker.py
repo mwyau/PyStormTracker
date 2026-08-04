@@ -4,10 +4,10 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
-from ..models.center import Center
 from ..models.geo import geod_dist_km
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import TimeRange, Tracks
+from ..models.tracks import TracksBuilder
+from ..time import encode_time_values
 
 
 @nb.njit(cache=True, nogil=True)
@@ -26,147 +26,123 @@ def great_circle_distance_matrix(
 
 
 class SimpleLinker:
-    """
-    Heuristic nearest-neighbor linker for cyclone trajectories.
-    Uses spatial priority sorting and vectorized distance matrices for performance.
-    """
+    """Heuristic nearest-neighbor linker operating on a mutable builder."""
 
     def __init__(self, threshold: float = 500.0) -> None:
         self.threshold = threshold
+        self._tail_ids: set[int] = set()
+        self._last_time: int | None = None
+        self._step: int | None = None
 
-    def append(self, tracks: Tracks, step_data: RawDetectionStep) -> None:
-        """
-        Links a single time step of detections to existing track tails.
-        """
-        time_val, new_lats, new_lons, vars_dict = step_data
+    def _new_track(
+        self,
+        builder: TracksBuilder,
+        time: int,
+        lat: float,
+        lon: float,
+        variables: dict[str, float],
+    ) -> int:
+        track_id = builder.new_track()
+        builder.append(track_id, time, lat, lon, variables)
+        return track_id
 
+    def append(self, builder: TracksBuilder, step_data: RawDetectionStep) -> None:
+        """Link one time step into the builder without mutating finalized tracks."""
+        raw_time, new_lats, new_lons, values = step_data
+        time_val = int(encode_time_values([raw_time])[0])
         num_centers = len(new_lats)
         if num_centers == 0:
-            # If no centers, all previous tails die
-            tracks._tail_ids = set()
+            self._tail_ids.clear()
             return
 
-        # Deterministic sorting of input centers (Spatial Priority)
-        # This ensures greedy matches are reproducible.
         sort_idx = np.lexsort((new_lons, new_lats))
         new_lats = new_lats[sort_idx]
         new_lons = new_lons[sort_idx]
-        vars_dict = {k: v[sort_idx] for k, v in vars_dict.items()}
+        values = values[sort_idx]
 
-        current_time = time_val
-
-        if not tracks._tail_ids:
-            # First ever centers in this object
-            new_tail_ids = set()
-            for i in range(num_centers):
-                c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
-                c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
-                t = tracks.add_track([c])
-                new_tail_ids.add(t.track_id)
-                tracks._head_ids.add(t.track_id)
-
-            tracks._tail_ids = new_tail_ids
-            # Update boundaries if not set
-            if tracks.time_range is None:
-                tracks.time_range = TimeRange(start=current_time, end=current_time)
-            return
-
-        # Temporal gap check
         if (
-            tracks.time_range
-            and tracks.time_range.end is not None
-            and tracks.time_range.step is not None
-            and current_time - tracks.time_range.step > tracks.time_range.end
+            self._last_time is not None
+            and self._step is not None
+            and time_val - self._last_time > self._step
         ):
-            # All previous tails die due to gap
-            new_tail_ids = set()
-            for i in range(num_centers):
-                c_vars = {k: float(v[i]) for k, v in vars_dict.items()}
-                c = Center(time_val, float(new_lats[i]), float(new_lons[i]), c_vars)
-                t = tracks.add_track([c])
-                new_tail_ids.add(t.track_id)
-                tracks._head_ids.add(t.track_id)
-            tracks._tail_ids = new_tail_ids
-            tracks.time_range.end = current_time
+            self._tail_ids.clear()
+
+        if not self._tail_ids:
+            new_tail_ids: set[int] = set()
+            for point_index in range(num_centers):
+                track_id = self._new_track(
+                    builder,
+                    time_val,
+                    float(new_lats[point_index]),
+                    float(new_lons[point_index]),
+                    {builder.metadata.primary_var: float(values[point_index])},
+                )
+                new_tail_ids.add(track_id)
+            self._tail_ids = new_tail_ids
+            self._record_time(time_val)
             return
 
-        # Deterministic sorting of existing tails
-        tail_tracks = sorted(tracks.tail, key=lambda t: (t[-1].lat, t[-1].lon))
-        tail_lats = np.array([t[-1].lat for t in tail_tracks])
-        tail_lons = np.array([t[-1].lon for t in tail_tracks])
-
-        dist_matrix = great_circle_distance_matrix(
+        tail_ids = sorted(
+            self._tail_ids,
+            key=lambda track_id: self._last_point(builder, track_id),
+        )
+        tail_lats = np.asarray(
+            [self._last_point(builder, track_id)[0] for track_id in tail_ids],
+            dtype=np.float64,
+        )
+        tail_lons = np.asarray(
+            [self._last_point(builder, track_id)[1] for track_id in tail_ids],
+            dtype=np.float64,
+        )
+        distances = great_circle_distance_matrix(
             tail_lats, tail_lons, new_lats, new_lons
         )
         matched_indices = np.full(num_centers, -1, dtype=np.int64)
-
-        # Global greedy matching with mutual-closest constraint
         while True:
             has_match = False
-            for ic in range(num_centers):
-                if matched_indices[ic] == -1:
-                    # Find closest tail for this center
-                    col = dist_matrix[:, ic]
-                    if np.any(col < self.threshold):
-                        it_match = int(np.argmin(col))
-                        # Check if this center is also the closest for that tail
-                        if np.argmin(dist_matrix[it_match, :]) == ic:
-                            matched_indices[ic] = it_match
-                            dist_matrix[:, ic] = np.inf
-                            dist_matrix[it_match, :] = np.inf
-                            has_match = True
+            for center_index in range(num_centers):
+                if matched_indices[center_index] != -1:
+                    continue
+                column = distances[:, center_index]
+                if np.any(column < self.threshold):
+                    tail_index = int(np.argmin(column))
+                    if np.argmin(distances[tail_index, :]) == center_index:
+                        matched_indices[center_index] = tail_index
+                        distances[:, center_index] = np.inf
+                        distances[tail_index, :] = np.inf
+                        has_match = True
             if not has_match:
                 break
 
-        # Prepare for bulk update
-        append_tids = []
-        append_times = []
-        append_lats = []
-        append_lons = []
-        append_vars: dict[str, list[float]] = {k: [] for k in vars_dict}
-
-        new_tail_ids = set()
-
-        # Handle matches
-        for ic in range(num_centers):
-            it_match = matched_indices[ic]
-            if it_match != -1:
-                t = tail_tracks[it_match]
-                tid = t.track_id
-                append_tids.append(tid)
-                append_times.append(time_val)
-                append_lats.append(new_lats[ic])
-                append_lons.append(new_lons[ic])
-                for k, v in vars_dict.items():
-                    append_vars[k].append(v[ic])
-                new_tail_ids.add(tid)
+        next_tail_ids: set[int] = set()
+        for center_index in range(num_centers):
+            variables = {builder.metadata.primary_var: float(values[center_index])}
+            tail_index = int(matched_indices[center_index])
+            if tail_index == -1:
+                track_id = self._new_track(
+                    builder,
+                    time_val,
+                    float(new_lats[center_index]),
+                    float(new_lons[center_index]),
+                    variables,
+                )
             else:
-                # Create new track
-                c_vars = {k: float(v[ic]) for k, v in vars_dict.items()}
-                c = Center(time_val, float(new_lats[ic]), float(new_lons[ic]), c_vars)
-                t = tracks.add_track([c])
-                tracks._head_ids.add(t.track_id)
-                new_tail_ids.add(t.track_id)
+                track_id = tail_ids[tail_index]
+                builder.append(
+                    track_id,
+                    time_val,
+                    float(new_lats[center_index]),
+                    float(new_lons[center_index]),
+                    variables,
+                )
+            next_tail_ids.add(track_id)
+        self._tail_ids = next_tail_ids
+        self._record_time(time_val)
 
-        if append_tids:
-            tracks.bulk_append(
-                np.array(append_tids, dtype=np.int64),
-                np.array(append_times, dtype="datetime64[s]"),
-                np.array(append_lats, dtype=np.float64),
-                np.array(append_lons, dtype=np.float64),
-                {k: np.array(v, dtype=np.float64) for k, v in append_vars.items()},
-            )
+    def _last_point(self, builder: TracksBuilder, track_id: int) -> tuple[float, float]:
+        return builder.last_point(track_id)
 
-        # Update tails: ONLY tracks that received a center at THIS time step
-        tracks._tail_ids = new_tail_ids
-
-        # Bookkeeping for TimeRange
-        if tracks.time_range:
-            if (
-                tracks.time_range.step is None
-                and current_time != tracks.time_range.start
-            ):
-                tracks.time_range.step = current_time - tracks.time_range.start
-            # Only extend end if it's forward in time
-            if current_time > tracks.time_range.end:
-                tracks.time_range.end = current_time
+    def _record_time(self, time_val: int) -> None:
+        if self._last_time is not None and self._step is None:
+            self._step = time_val - self._last_time
+        self._last_time = time_val

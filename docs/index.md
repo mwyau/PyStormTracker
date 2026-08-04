@@ -14,6 +14,7 @@ API Reference <api>
 :caption: Technical Reference
 
 Architecture <architecture>
+TrackJSON v1.0 <trackjson>
 Hodges (TRACK) Implementation <hodges>
 Spectral Accuracy <spectral_accuracy>
 HEALPix Support <healpix>

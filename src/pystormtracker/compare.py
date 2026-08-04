@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
-from .io.imilast import read_imilast
-from .io.json import read_json, write_json
+import numpy as np
+
+from .io.format import load_tracks
+from .io.trackjson import write_trackjson
 from .metrics.compare import TrackComparison, TrackComparisonConfig, compare_tracks
 from .models.tracks import Tracks
 from .utils.cli import fraction, positive_float
@@ -86,22 +87,21 @@ def setup_parser(
 
 
 def _load_tracks(path: str) -> Tracks:
-    """Load a JSON or IMILAST trajectory file."""
-    suffix = Path(path).suffix.lower()
-    if suffix == ".json":
-        return read_json(path)
-    if suffix in (".txt", ".dat"):
-        return read_imilast(path)
-    raise ValueError(f"Unsupported track file extension: '{suffix or '<none>'}'")
+    """Load a supported trajectory file."""
+    return load_tracks(path)
 
 
 def _matched_candidate_tracks(tracks: Tracks, candidate_ids: set[int]) -> Tracks:
     """Return candidate tracks selected by at least one reference track."""
-    matched = Tracks(track_type=tracks.track_type)
-    for track in tracks:
-        if track.track_id in candidate_ids:
-            matched.append(track)
-    return matched
+    indices = np.asarray(
+        [
+            index
+            for index, track in enumerate(tracks)
+            if track.track_id in candidate_ids
+        ],
+        dtype=np.int64,
+    )
+    return tracks.subset(indices)
 
 
 def _print_summary(result: TrackComparison) -> None:
@@ -150,7 +150,7 @@ def main(args: argparse.Namespace) -> None:
     if args.matched_candidate_output:
         log(f"Writing matched candidate tracks to {args.matched_candidate_output}...")
         candidate_ids = {match.candidate_id for match in result.matches}
-        write_json(
+        write_trackjson(
             _matched_candidate_tracks(candidate, candidate_ids),
             args.matched_candidate_output,
         )

@@ -1,0 +1,499 @@
+{
+  "$defs": {
+    "TrackJSONBounds": {
+      "additionalProperties": false,
+      "description": "Optional declared spatial domain; longitude edges may cross 180 degrees.",
+      "properties": {
+        "east": {
+          "description": "Longitude interval edge in degrees east.",
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "type": "number"
+        },
+        "north": {
+          "description": "Latitude in degrees north.",
+          "maximum": 90.0,
+          "minimum": -90.0,
+          "type": "number"
+        },
+        "south": {
+          "description": "Latitude in degrees north.",
+          "maximum": 90.0,
+          "minimum": -90.0,
+          "type": "number"
+        },
+        "west": {
+          "description": "Longitude interval edge in degrees east.",
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "south",
+        "north",
+        "west",
+        "east"
+      ],
+      "title": "TrackJSONBounds",
+      "type": "object"
+    },
+    "TrackJSONData": {
+      "additionalProperties": false,
+      "description": "Aligned packed point columns and nullable meteorological variables.",
+      "properties": {
+        "lats": {
+          "items": {
+            "description": "Latitude in degrees north.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "lons": {
+          "items": {
+            "description": "Signed longitude in degrees east, normalized to [-180, 180).",
+            "exclusiveMaximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "times": {
+          "items": {
+            "description": "A signed CF millisecond offset in the JSON safe-integer range.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "variables": {
+          "additionalProperties": {
+            "items": {
+              "anyOf": [
+                {
+                  "description": "A finite JSON number.",
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "times",
+        "lats",
+        "lons",
+        "variables"
+      ],
+      "title": "TrackJSONData",
+      "type": "object"
+    },
+    "TrackJSONDocument": {
+      "additionalProperties": false,
+      "description": "The complete TrackJSON/1.0 document.",
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/TrackJSONData"
+        },
+        "format": {
+          "enum": [
+            "TrackJSON/1.0"
+          ]
+        },
+        "index": {
+          "$ref": "#/$defs/TrackJSONIndex"
+        },
+        "metadata": {
+          "$ref": "#/$defs/TrackJSONMetadata"
+        },
+        "stats": {
+          "$ref": "#/$defs/TrackJSONStats"
+        }
+      },
+      "required": [
+        "format",
+        "metadata",
+        "index",
+        "data"
+      ],
+      "title": "TrackJSONDocument",
+      "type": "object"
+    },
+    "TrackJSONIndex": {
+      "additionalProperties": false,
+      "description": "Packed track IDs and complete half-open offset boundaries.",
+      "properties": {
+        "ids": {
+          "items": {
+            "description": "A signed 64-bit integer.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "offsets": {
+          "items": {
+            "description": "A nonnegative integer.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids",
+        "offsets"
+      ],
+      "title": "TrackJSONIndex",
+      "type": "object"
+    },
+    "TrackJSONMetadata": {
+      "additionalProperties": false,
+      "description": "Metadata needed to interpret canonical trajectory columns.",
+      "properties": {
+        "bounds": {
+          "$ref": "#/$defs/TrackJSONBounds"
+        },
+        "mode": {
+          "enum": [
+            "max",
+            "min"
+          ]
+        },
+        "primary_var": {
+          "description": "A non-empty string.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "processing": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TrackJSONProcessingStep"
+          },
+          "type": "array"
+        },
+        "time": {
+          "$ref": "#/$defs/TrackJSONTime"
+        },
+        "units": {
+          "additionalProperties": {
+            "description": "A non-empty string.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "primary_var",
+        "mode",
+        "units",
+        "time"
+      ],
+      "title": "TrackJSONMetadata",
+      "type": "object"
+    },
+    "TrackJSONProcessingStep": {
+      "additionalProperties": false,
+      "description": "One preprocessing operation recorded independently of variable names.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "operation": {
+          "description": "A non-empty string.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation",
+        "enabled"
+      ],
+      "title": "TrackJSONProcessingStep",
+      "type": "object"
+    },
+    "TrackJSONStats": {
+      "additionalProperties": false,
+      "description": "Optional columnar derived statistics; never part of the core model.",
+      "properties": {
+        "antimeridian_wrap": {
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        },
+        "displacement_km": {
+          "items": {
+            "description": "A finite nonnegative value.",
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "duration_hours": {
+          "items": {
+            "description": "A finite nonnegative value.",
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "east_lon": {
+          "items": {
+            "description": "Signed longitude in degrees east, normalized to [-180, 180).",
+            "exclusiveMaximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "end_lat": {
+          "items": {
+            "description": "Latitude in degrees north.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "end_lon": {
+          "items": {
+            "description": "Signed longitude in degrees east, normalized to [-180, 180).",
+            "exclusiveMaximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "end_time": {
+          "items": {
+            "description": "A signed CF millisecond offset in the JSON safe-integer range.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "north_lat": {
+          "items": {
+            "description": "Latitude in degrees north.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "path_length_km": {
+          "items": {
+            "description": "A finite nonnegative value.",
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "peak_lat": {
+          "items": {
+            "anyOf": [
+              {
+                "description": "Latitude in degrees north.",
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "peak_lon": {
+          "items": {
+            "anyOf": [
+              {
+                "description": "Signed longitude in degrees east, normalized to [-180, 180).",
+                "exclusiveMaximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "peak_time": {
+          "items": {
+            "anyOf": [
+              {
+                "description": "A signed CF millisecond offset in the JSON safe-integer range.",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "peak_value": {
+          "items": {
+            "anyOf": [
+              {
+                "description": "A finite JSON number.",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "point_count": {
+          "items": {
+            "description": "A positive integer.",
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "south_lat": {
+          "items": {
+            "description": "Latitude in degrees north.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "start_lat": {
+          "items": {
+            "description": "Latitude in degrees north.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "start_lon": {
+          "items": {
+            "description": "Signed longitude in degrees east, normalized to [-180, 180).",
+            "exclusiveMaximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "start_time": {
+          "items": {
+            "description": "A signed CF millisecond offset in the JSON safe-integer range.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        },
+        "west_lon": {
+          "items": {
+            "description": "Signed longitude in degrees east, normalized to [-180, 180).",
+            "exclusiveMaximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "version",
+        "point_count",
+        "start_time",
+        "end_time",
+        "duration_hours",
+        "start_lat",
+        "start_lon",
+        "end_lat",
+        "end_lon",
+        "south_lat",
+        "north_lat",
+        "west_lon",
+        "east_lon",
+        "antimeridian_wrap",
+        "peak_time",
+        "peak_lat",
+        "peak_lon",
+        "peak_value",
+        "path_length_km",
+        "displacement_km"
+      ],
+      "title": "TrackJSONStats",
+      "type": "object"
+    },
+    "TrackJSONTime": {
+      "additionalProperties": false,
+      "description": "Required canonical numeric-time units and calendar.",
+      "properties": {
+        "calendar": {
+          "enum": [
+            "proleptic_gregorian"
+          ]
+        },
+        "units": {
+          "enum": [
+            "milliseconds since 1970-01-01 00:00:00"
+          ]
+        }
+      },
+      "required": [
+        "units",
+        "calendar"
+      ],
+      "title": "TrackJSONTime",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/TrackJSONDocument",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TrackJSON v1.0"
+}

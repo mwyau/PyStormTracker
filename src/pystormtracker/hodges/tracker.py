@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
+from ..io.data_loader import normalize_tracking_data
 from ..models import constants as model_constants
+from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
 from ..models.tracker import RawDetectionStep, Tracker
-from ..models.tracks import Tracks
-from ..preprocessing.taper import TaperFilter
+from ..models.tracks import (
+    ProcessingStep,
+    Tracks,
+)
+from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
+from ..preprocessing.tracking import Projection, preprocess_tracking_data
+from ..time import TimeInput
 from . import constants
 from .detector import HodgesDetector
 from .linker import HodgesLinker
@@ -80,100 +87,34 @@ class HodgesTracker(Tracker):
     def preprocess_standard_track(
         self,
         data: xr.DataArray,
-        lmin: int = constants.LMIN_DEFAULT,
-        lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = constants.TAPER_DEFAULT,
-        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-        resolution: float = 100.0,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        map_proj: Projection = "global",
+        nside: int | None = None,
+        resolution: float | None = 100.0,
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
-    ) -> xr.DataArray:
-        """
-        Applies standard TRACK preprocessing: Tapering -> SHT or DCT Filter.
-        Optionally regrids to a Polar Stereographic or HEALPix projection.
-        """
-        from ..io.data_loader import DataLoader
-        from ..preprocessing.spectral import DCTFilter, SHTFilter
-
-        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-        _time_dim, _lat_dim, _lon_dim = loader.get_coords()
-
-        if filter_type == "auto":
-            filter_type = "sht" if loader.is_global_longitude() else "dct"
-
-        # Ensure data is loaded into memory for spectral filtering
-        if data.chunks:
-            data = data.compute()
-
-        # 1. Tapering
-        if taper_points > 0:
-            taper = TaperFilter(n_points=taper_points)
-            data = cast(xr.DataArray, taper.filter(data))
-
-        # 2. Regridding and Filtering
-        if map_proj in ("nh_stereo", "sh_stereo", "healpix"):
-            from ..preprocessing.regrid import SpectralRegridder
-
-            regridder = SpectralRegridder(lmax=lmax)
-            is_lat_reversed = loader.is_lat_reversed()
-
-            time_dim = next(
-                (c for c in DataLoader.VAR_MAPPING["time"] if c in data.dims), "time"
-            )
-
-            out_frames = []
-            for i in range(len(data[time_dim])):
-                frame = data.isel({time_dim: i}).squeeze()
-                if map_proj == "healpix":
-                    nside = int(
-                        np.sqrt(12 * (lmax + 1) ** 2 / 12)
-                    )  # Rough heuristic, can be customized
-                    nside = 2 ** int(
-                        np.round(np.log2(max(1, nside)))
-                    )  # Round to power of 2
-                    # Note: filter_lmin is not directly in to_healpix currently,
-                    # but we can filter first
-                    if lmin > 0:
-                        f_obj = SHTFilter(lmin=lmin, lmax=lmax)
-                        frame = f_obj.filter(frame)
-                    out_frame = regridder.to_healpix(
-                        frame, nside=nside, lat_reverse=is_lat_reversed
-                    )
-                else:
-                    hemi: Literal["nh", "sh"] = (
-                        "nh" if map_proj == "nh_stereo" else "sh"
-                    )
-
-                    out_frame = regridder.to_polar_stereo(
-                        frame,
-                        hemisphere=hemi,
-                        filter_lmin=lmin if lmin > 0 else None,
-                        lmax=lmax,
-                        lat_reverse=is_lat_reversed,
-                        resolution=resolution,
-                        extent=extent
-                        if extent is not None
-                        else (-13000.0, 13000.0, -13000.0, 13000.0),
-                    )
-                out_frames.append(out_frame)
-            # Concatenate back
-            data = xr.concat(out_frames, dim=data[time_dim])
-            data.attrs["map_proj"] = map_proj
-        else:
-            # Global or regional grid filtering
-            f_cls = SHTFilter if filter_type == "sht" else DCTFilter
-            spectral_filter = f_cls(lmin=lmin, lmax=lmax)
-            data = spectral_filter.filter(data)
-
-        return data
+    ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
+        return preprocess_tracking_data(
+            data,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            projection=map_proj,
+            nside=nside,
+            resolution=resolution,
+            extent=extent,
+            filter_type=filter_type,
+        )
 
     def track(
         self,
         infile: str | Path | xr.DataArray | xr.Dataset,
-        varname: str,
-        start_time: str | np.datetime64 | None = None,
-        end_time: str | np.datetime64 | None = None,
-        mode: Literal["min", "max"] = "min",
+        variable_name: str,
+        start_time: TimeInput | None = None,
+        end_time: TimeInput | None = None,
+        mode: ModeOption | None = "auto",
         map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
         resolution: float = 100.0,
         extent: MapExtent | None = None,
@@ -184,10 +125,10 @@ class HodgesTracker(Tracker):
         engine: str | None = None,
         overlap: int = model_constants.OVERLAP_DEFAULT,
         min_points: int = constants.MIN_POINTS_DEFAULT,
-        filter: bool = True,
-        lmin: int = constants.LMIN_DEFAULT,
-        lmax: int = constants.LMAX_DEFAULT,
-        taper_points: int = constants.TAPER_DEFAULT,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        nside: int | None = None,
         subgrid_refine: bool = True,
         **kwargs: float | int | str | None,
     ) -> Tracks:
@@ -199,7 +140,7 @@ class HodgesTracker(Tracker):
 
         Args:
             infile: Path to the input data file.
-            varname: Variable name to track.
+            variable_name: Variable name to track.
             start_time, end_time: Time range for tracking.
             mode: Search for 'min' or 'max' extrema.
             backend: Processing backend (serial, mpi, dask).
@@ -210,11 +151,12 @@ class HodgesTracker(Tracker):
             overlap: Retained for cross-tracker API compatibility. Hodges gathers
                 detections before linking and does not require overlap.
             min_points: Minimum grid points per object.
-            filter: If True, apply spectral filtering.
-            lmin, lmax: Spectral truncation range (default T5-42).
-            taper_points: Boundary tapering points.
+            lmin, lmax: Optional spectral filter bounds.
+            taper_points: Independent boundary tapering points.
         """
         import timeit
+
+        resolved_mode = resolve_mode(variable_name, mode)
 
         if backend != "serial":
             raise NotImplementedError(
@@ -227,41 +169,46 @@ class HodgesTracker(Tracker):
 
         # 1. Load and optionally filter data
         t0 = timeit.default_timer()
-        if isinstance(infile, (xr.DataArray, xr.Dataset)):
-            data_xr = infile
-            if isinstance(data_xr, xr.Dataset):
-                data_xr = data_xr[varname]
-        else:
-            detector_peek = HodgesDetector(infile, varname, engine=engine)
-            if start_time is None or end_time is None:
-                full_times = detector_peek.get_time()
-                if start_time is None:
-                    start_time = full_times[0]
-                if end_time is None:
-                    end_time = full_times[-1]
+        data_xr = normalize_tracking_data(
+            infile,
+            variable_name,
+            start_time=start_time,
+            end_time=end_time,
+            engine=engine,
+        )
+        data_xr, threshold, stored_unit = normalize_variable_units(
+            data_xr,
+            variable_name=variable_name,
+            threshold=threshold,
+        )
 
-            data_xr = detector_peek.get_xarray(start_time, end_time)
+        bounds = spatial_bounds_from_xarray(data_xr)
+        processing: tuple[ProcessingStep, ...] = ()
 
-        if filter or map_proj != "global":
-            data_xr = self.preprocess_standard_track(
-                data_xr,
-                lmin=lmin if filter else 0,
-                lmax=lmax,
-                taper_points=taper_points,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-            )
+        data_xr, processing = self.preprocess_standard_track(
+            data_xr,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=taper_points,
+            map_proj=map_proj,
+            nside=nside,
+            resolution=resolution,
+            extent=extent,
+        )
         t1 = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")
 
         if max_chunk_size is None:
             tracks = self._track_single_chunk_from_data(
                 data_xr,
-                mode,
-                threshold,
+                primary_var=variable_name,
+                mode=resolved_mode,
+                bounds=bounds,
+                threshold=threshold,
+                unit=stored_unit,
                 min_points=min_points,
                 subgrid_refine=subgrid_refine,
+                processing=processing,
                 **kwargs,
             )
         else:
@@ -278,24 +225,36 @@ class HodgesTracker(Tracker):
                 detections.extend(
                     self._detect_single_chunk_from_data(
                         chunk_data,
-                        mode,
-                        threshold,
+                        primary_var=variable_name,
+                        mode=resolved_mode,
+                        threshold=threshold,
                         min_points=min_points,
                         subgrid_refine=subgrid_refine,
                         **kwargs,
                     )
                 )
-            tracks = self._link_detections(detections)
+            tracks = self._link_detections(
+                detections,
+                primary_var=variable_name,
+                mode=resolved_mode,
+                bounds=bounds,
+                unit=stored_unit,
+                processing=processing,
+            )
 
         t_total_end = timeit.default_timer()
         print(f"Tracking time: {t_total_end - t_total_start:.4f}s")
-        tracks.track_type = varname
         return tracks
 
     def _track_single_chunk_from_data(
         self,
         data: xr.DataArray,
-        mode: Literal["min", "max"] = "min",
+        *,
+        primary_var: str,
+        mode: Mode,
+        bounds: SpatialBounds | None,
+        unit: str | None,
+        processing: tuple[ProcessingStep, ...],
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         subgrid_refine: bool = True,
@@ -303,18 +262,28 @@ class HodgesTracker(Tracker):
     ) -> Tracks:
         detections = self._detect_single_chunk_from_data(
             data,
-            mode,
-            threshold,
+            primary_var=primary_var,
+            mode=mode,
+            threshold=threshold,
             min_points=min_points,
             subgrid_refine=subgrid_refine,
             **kwargs,
         )
-        return self._link_detections(detections)
+        return self._link_detections(
+            detections,
+            primary_var=primary_var,
+            mode=mode,
+            bounds=bounds,
+            unit=unit,
+            processing=processing,
+        )
 
     def _detect_single_chunk_from_data(
         self,
         data: xr.DataArray,
-        mode: Literal["min", "max"] = "min",
+        *,
+        primary_var: str,
+        mode: Mode,
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         subgrid_refine: bool = True,
@@ -324,7 +293,7 @@ class HodgesTracker(Tracker):
 
         # 1. Detection
         t_detect_start = timeit.default_timer()
-        detector = HodgesDetector.from_xarray(data)
+        detector = HodgesDetector.from_xarray(data, variable_name=primary_var)
 
         size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
 
@@ -358,7 +327,16 @@ class HodgesTracker(Tracker):
 
         return detections
 
-    def _link_detections(self, detections: list[RawDetectionStep]) -> Tracks:
+    def _link_detections(
+        self,
+        detections: list[RawDetectionStep],
+        *,
+        primary_var: str,
+        mode: Mode,
+        bounds: SpatialBounds | None = None,
+        unit: str | None = None,
+        processing: tuple[ProcessingStep, ...] = (),
+    ) -> Tracks:
         import timeit
 
         # Linking uses the MGE cost function with adaptive constraints.
@@ -376,18 +354,20 @@ class HodgesTracker(Tracker):
             adapt_params=self.adapt_params,
         )
 
-        tracks = linker.link(detections)
+        tracks = linker.link(
+            detections,
+            primary_var=primary_var,
+            mode=mode,
+            bounds=bounds,
+            unit=unit,
+            processing=processing,
+        )
         t_link_end = timeit.default_timer()
         print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")
 
         # Pruning
-        valid_tracks = []
-        for tr in tracks:
-            if len(tr) >= self.min_lifetime:
-                valid_tracks.append(tr)
-
-        out = Tracks()
-        for tr in valid_tracks:
-            out.append(tr)
-
-        return out
+        valid_indices = np.asarray(
+            [index for index, tr in enumerate(tracks) if len(tr) >= self.min_lifetime],
+            dtype=np.int64,
+        )
+        return tracks.subset(valid_indices)

@@ -11,7 +11,7 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18764813-blue.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-<p align="center"> <img src="docs/_static/explorer.png" width="600px"> <br> <strong> <a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html"> Storm Track Explorer </a> </strong> <br> <em>Interactive visualization of cyclone trajectories.</em></p>
+<p align="center"> <strong> <a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html"> Storm Track Explorer </a> </strong> <br> <em>Temporarily disabled while the explorer is being redesigned.</em></p>
 
 **PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba implementation of the Simple Tracker described by **Yau and Chang (2020)** and TRACK algorithms described by **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
 
@@ -28,7 +28,7 @@
   - **Simple**: Serial, threaded Dask detection, and MPI detection. Parallel paths gather detections before one linking pass.
   - **Hodges and HEALPix**: Serial only; unsupported backend selections raise an error.
 - **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
-- **Formats and analysis**: Reads IMILAST and JSON track data; writes IMILAST, TRACK tdump, and JSON. Analysis functions include secondary-variable sampling, track matching, gridded cyclone and track metrics, Eulerian variance and wind indices, CORMAX, and CCA/PCA truncation cross-validation.
+- **Formats and analysis**: Reads IMILAST and TrackJSON track data; writes IMILAST, TRACK tdump, and TrackJSON. Analysis functions include secondary-variable sampling, track matching, gridded cyclone and track metrics, Eulerian variance and wind indices, CORMAX, and CCA/PCA truncation cross-validation.
 
 ![v0.4.0 benchmark timing breakdown](docs/_static/benchmark_0_25x0_25_breakdown.png)
 
@@ -115,28 +115,28 @@ Once installed, the `stormtracker` command provides separate subcommands for tra
 #### 1. Track Features
 Run the core storm tracking algorithm (e.g., tracking cyclones in MSLP):
 ```bash
-stormtracker track -i data.nc -v msl -o tracks.json -m min -a hodges -f json
+stormtracker track -i data.nc -v msl -o tracks.trackjson -m min -a hodges -f trackjson
 ```
 
 #### 2. Sample Variables
 Extract external variables (e.g., precipitation) along existing tracks:
 ```bash
 # Calculate mean precipitation within a 500km radius of storm centers
-stormtracker sample -i tracks.json -d precip.nc -v pr -o tracks_enriched.json --method mean --radius 500
+stormtracker sample -i tracks.trackjson -d precip.nc -v pr -o tracks_enriched.trackjson --method mean --radius 500
 ```
 
 #### 3. Match and Intercompare
 Compare tracks from different datasets or ensemble members:
 ```bash
 # Match tracks from two sources with a 200km mean distance threshold
-stormtracker compare --ref era5.json --comp gfs.json --max-dist 200 --json
+stormtracker compare --ref era5.trackjson --comp gfs.trackjson --max-dist 200 --json
 ```
 
 #### 4. Convert & Visualize
-Convert between formats or generate interactive HTML explorers:
+Convert between formats; HTML output is currently a static compatibility placeholder:
 ```bash
-# Generate a standalone interactive map
-stormtracker convert -i tracks.json -o explorer.html -f json -F html
+# Emit the temporary static HTML placeholder
+stormtracker convert -i tracks.trackjson -o explorer.html -f trackjson -F html
 ```
 
 #### CLI Argument Reference
@@ -149,12 +149,13 @@ Use `stormtracker <command> --help` for detailed argument lists. Key options for
 | `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
 | `--output` | `-o` | Path to the output track file. |
 | `--algorithm` | `-a` | `simple` (default) or `hodges`. |
-| `--format` | `-f` | Output format: `imilast`, `hodges`, or `json`. |
-| `--mode` | `-m` | `min` (default) for cyclones, `max` for vorticity. |
+| `--format` | `-f` | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically. |
+| `--mode` | `-m` | `auto` (default), `min`, or `max`; known aliases resolve automatically. |
 | `--backend` | `-b` | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple. |
 | `--workers` | `-w` | Number of parallel workers. |
-| `--filter-range` | | Inclusive spectral wave-number range. Supplying it enables filtering; the default range when filtering is enabled is `5-42`. |
-| `--filter`, `--no-filter` | | Override algorithm-specific filtering defaults. |
+| `--lmin`, `--lmax` | | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
+| `--taper-points` | | Independent spatial taper width; zero disables tapering. |
+| `--nside` | | Target HEALPix resolution; omitted values are derived from the source grid. |
 | `--subgrid-refine`, `--no-subgrid-refine` | | Override refinement defaults. Off for simple; on for Hodges and HEALPix. |
 
 ### Python API
@@ -166,7 +167,7 @@ import pystormtracker as pst
 
 tracker = pst.HodgesTracker()
 
-tracks = tracker.track(infile="data.nc", varname="vo", mode="max")
+tracks = tracker.track(infile="data.nc", variable_name="vo", mode="max")
 ```
 
 ### Analyze the results programmatically
