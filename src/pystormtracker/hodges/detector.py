@@ -67,7 +67,9 @@ class HodgesDetector:
                 if self.requested_variable_name in ds.data_vars:
                     actual_var = self.requested_variable_name
                 else:
-                    raise KeyError(f"Variable '{self.requested_variable_name}' not found.")
+                    raise KeyError(
+                        f"Variable '{self.requested_variable_name}' not found."
+                    )
             self.variable_name = actual_var
             self._data = ds[self.variable_name]
 
@@ -160,7 +162,9 @@ class HodgesDetector:
         and the selected source name is restored only in the packed metadata.
         """
         obj = cls.__new__(cls)
-        obj.requested_variable_name = variable_name or (str(data.name) if data.name else "var")
+        obj.requested_variable_name = variable_name or (
+            str(data.name) if data.name else "var"
+        )
         obj.variable_name = obj.requested_variable_name
         obj._data = data
         obj._loader = DataLoader(data)

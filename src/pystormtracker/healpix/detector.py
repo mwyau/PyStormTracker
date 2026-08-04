@@ -255,7 +255,8 @@ class HealpixDetector:
         dummy_path = Path(f"/tmp/dummy_{uuid.uuid4().hex}.nc")
         detector = cls(
             pathname=dummy_path,
-            variable_name=variable_name or (str(data.name) if data.name is not None else "var"),
+            variable_name=variable_name
+            or (str(data.name) if data.name is not None else "var"),
             time_range=time_range,
             global_start_idx=global_start_idx,
             global_total_steps=global_total_steps,

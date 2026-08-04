@@ -200,7 +200,9 @@ class SimpleDetector:
     ) -> SimpleDetector:
         """Creates a detector from an existing xarray DataArray."""
         obj = cls.__new__(cls)
-        obj.requested_variable_name = variable_name or (str(data.name) if data.name else "var")
+        obj.requested_variable_name = variable_name or (
+            str(data.name) if data.name else "var"
+        )
         obj.variable_name = obj.requested_variable_name
         obj._data = data
         obj._loader = DataLoader(data)

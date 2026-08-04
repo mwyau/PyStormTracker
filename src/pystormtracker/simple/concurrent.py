@@ -44,7 +44,10 @@ def run_simple_dask(
         n_workers = min(os.cpu_count() or 1, 4)
 
     detector_peek = SimpleDetector(
-        pathname=infile, variable_name=variable_name, time_range=time_range, engine=engine
+        pathname=infile,
+        variable_name=variable_name,
+        time_range=time_range,
+        engine=engine,
     )
     data_xr = detector_peek.get_xarray()
     data_xr, threshold, variable_unit = normalize_variable_units(
@@ -154,7 +157,10 @@ def run_simple_mpi(
     processing: tuple[ProcessingStep, ...] = ()
     if rank == root:
         detector_peek = SimpleDetector(
-            pathname=infile, variable_name=variable_name, time_range=time_range, engine=engine
+            pathname=infile,
+            variable_name=variable_name,
+            time_range=time_range,
+            engine=engine,
         )
         data_xr = detector_peek.get_xarray()
         data_xr, threshold, variable_unit = normalize_variable_units(

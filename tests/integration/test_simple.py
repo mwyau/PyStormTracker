@@ -177,7 +177,10 @@ def serial_reference(
     assert tracks is not None
 
     # Verbose print the IMILAST format output
-    print(f"\nConfiguration: Variable={variable_name}, Mode={mode}, Steps={steps or 'Full'}")
+    print(
+        f"\nConfiguration: Variable={variable_name}, Mode={mode}, "
+        f"Steps={steps or 'Full'}"
+    )
     print_head(out_file, n=15)
 
     return Path(out_file), tracks
