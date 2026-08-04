@@ -1,7 +1,40 @@
 # Changelog
 
-## v0.6.0.dev0
+## v0.6.1.dev0
+### Tracks and formats
 
+- Replaced the mutable nested track representation with packed immutable `Tracks` arrays and lightweight per-track views.
+- Added TrackJSON 1.0 with typed `msgspec` models, generated JSON Schema, semantic validation, compact encoding, and optional derived statistics.
+- Preserved primary variable, extrema mode, units, spatial bounds, time metadata, and preprocessing history across tracking and serialization.
+- Centralized CF time conversion and calendar validation using signed millisecond times and the proleptic Gregorian calendar.
+- Normalized recognized pressure and vorticity units and their detection thresholds.
+- Improved IMILAST, TRACK tdump, GeoJSON, conversion, format detection, and empty-track handling.
+- Temporarily disabled the existing HTML explorer while its replacement is developed.
+
+### Tracking and preprocessing
+
+- Consolidated preprocessing across Simple, Hodges, and HEALPix trackers.
+- Separated optional spectral filtering, spatial tapering, and projection or HEALPix regridding.
+- Derived HEALPix transform bandwidth from source and target grid resolution instead of applying an implicit T42 truncation.
+- Aligned Simple serial, Dask, and MPI preprocessing, units, thresholds, metadata, and output.
+- Fixed cyclic-longitude sampling for signed and unsigned longitude grids, descending axes, duplicate endpoints, and antimeridian crossings.
+
+### Comparison and analysis
+
+- Reworked trajectory comparison using temporal overlap and mean geodesic separation.
+- Added matched-candidate output and corrected pressure-unit handling across TrackJSON and IMILAST inputs.
+
+### Testing and infrastructure
+
+- Added committed TrackJSON reference data and expanded unit and integration coverage.
+- Added automatic verified retrieval of N320 reduced-Gaussian test data and local Zarr extraction.
+- Consolidated CI, package testing, publishing, and multi-architecture Docker workflows.
+- Added minimum-dependency, Python 3.14 free-threaded, ARM64, schema, and dependency-review checks.
+- Corrected Linux ARM64 `ducc0` compilation in the Docker build.
+
+---
+
+## v0.6.0.dev0
 ### Tracking and preprocessing
 
 - Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure. The tracking command is implemented by `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is exported.
