@@ -419,6 +419,7 @@ jobs:
     needs:
       [release_tag, code-quality, unit-tests, integration-tests, package-tests, docs]
     permissions:
+      actions: read
       contents: read
       id-token: write
       attestations: write
