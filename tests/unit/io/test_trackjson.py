@@ -75,14 +75,14 @@ def write_payload(path: Path, payload: JSONObject) -> None:
 def object_member(payload: JSONObject, key: str) -> JSONObject:
     value = payload[key]
     if not isinstance(value, dict):
-        raise AssertionError(f"{key} is not a JSON object")
+        raise TypeError(f"{key} is not a JSON object")
     return cast(JSONObject, value)
 
 
 def list_member(payload: JSONObject, key: str) -> list[object]:
     value = payload[key]
     if not isinstance(value, list):
-        raise AssertionError(f"{key} is not a JSON array")
+        raise TypeError(f"{key} is not a JSON array")
     return cast(list[object], value)
 
 

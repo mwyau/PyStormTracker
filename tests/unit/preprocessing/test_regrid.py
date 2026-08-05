@@ -10,7 +10,7 @@ from pystormtracker.preprocessing.spectral import SHTFilter, apply_sht_filter
 def test_regrid_to_grid() -> None:
     # 2.5 degree grid (73 x 144)
     ny, nx = 73, 144
-    data = np.random.rand(ny, nx)
+    data = np.random.default_rng().random((ny, nx))
     da = xr.DataArray(
         data,
         dims=["lat", "lon"],
@@ -36,7 +36,7 @@ def test_regrid_to_grid() -> None:
 def test_regrid_to_healpix() -> None:
     # 2.5 degree grid (73 x 144)
     ny, nx = 73, 144
-    data = np.random.rand(ny, nx)
+    data = np.random.default_rng().random((ny, nx))
     da = xr.DataArray(
         data,
         dims=["lat", "lon"],
@@ -124,7 +124,7 @@ def test_regrid_identity() -> None:
 def test_regrid_to_polar_stereo() -> None:
     # 2.5 degree grid (73 x 144)
     ny, nx = 73, 144
-    data = np.random.rand(ny, nx)
+    data = np.random.default_rng().random((ny, nx))
     da = xr.DataArray(
         data,
         dims=["lat", "lon"],
@@ -177,7 +177,7 @@ def test_regrid_to_polar_stereo_with_filter() -> None:
     lat = np.linspace(-90, 90, ny)
     lon = np.linspace(0, 360, nx, endpoint=False)
     LAT, _ = np.meshgrid(lat, lon, indexing="ij")
-    data = np.sin(np.radians(LAT)) + 0.1 * np.random.rand(ny, nx)
+    data = np.sin(np.radians(LAT)) + 0.1 * np.random.default_rng().random((ny, nx))
 
     da = xr.DataArray(
         data,

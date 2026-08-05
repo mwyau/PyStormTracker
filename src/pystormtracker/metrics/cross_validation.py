@@ -28,7 +28,7 @@ class CCAConstructor(Protocol):
         n_modes: int,
         use_coslat: bool,
         use_pca: bool,
-        n_pca_modes: int | float,
+        n_pca_modes: float,
     ) -> CCAModel: ...
 
 
@@ -134,7 +134,7 @@ def find_best_cca_truncation(
             predicted_scores = model.predict(X_test)
             Y_pred = model.inverse_transform(Y=predicted_scores)
             if not isinstance(Y_pred, xr.DataArray):
-                raise RuntimeError("xeofs CCA returned a non-DataArray prediction")
+                raise TypeError("xeofs CCA returned a non-DataArray prediction")
             all_preds.append(Y_pred)
 
         # Reconstruct full predicted field

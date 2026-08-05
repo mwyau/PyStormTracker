@@ -142,7 +142,7 @@ class SimpleTracker:
         resolution: float = 100.0,
         extent: MapExtent | None = None,
         subgrid_refine: bool = False,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
         import timeit
 
@@ -224,7 +224,7 @@ class SimpleTracker:
         taper_points: int = 0,
         nside: int | None = None,
         subgrid_refine: bool = False,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
         import timeit
 

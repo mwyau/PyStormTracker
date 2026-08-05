@@ -22,17 +22,21 @@ backends = [
 md_lines = [
     "# PyStormTracker Benchmark Report",
     "",
-    "This document provides a detailed breakdown of execution time (in seconds) "
-    "comparing the legacy nested-object architecture (`v0.3.3`) and the modern, "
-    "Numba JIT-compiled array architecture (`v0.4.0`).",
+    (
+        "This document provides a detailed breakdown of execution time (in seconds) "
+        "comparing the legacy nested-object architecture (`v0.3.3`) and the modern, "
+        "Numba JIT-compiled array architecture (`v0.4.0`)."
+    ),
     "",
     "## Methodology",
     "- **Hardware**: AMD Ryzen 7 5800X (16 Threads), 48GB WSL Memory Limit.",
     "- **Datasets**: ERA5 Mean Sea Level Pressure (MSL).",
     "  - `2.5x2.5`: 144x73 grid, 360 time steps.",
     "  - `0.25x0.25`: 1440x721 grid, 60 time steps.",
-    "- **Execution**: Component timings (Detection, Linking, Export, IO/Overhead) "
-    "were extracted from the CLI.",
+    (
+        "- **Execution**: Component timings (Detection, Linking, Export, IO/Overhead) "
+        "were extracted from the CLI."
+    ),
     "",
 ]
 

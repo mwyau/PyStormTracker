@@ -6,7 +6,6 @@ from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD, KM_PER_DEG, R_EARTH_KM
 from ..models.geo import geod_dist
-from ..preprocessing.refinement import subgrid_refine as subgrid_refine
 
 
 @nb.njit(cache=True, nogil=True)

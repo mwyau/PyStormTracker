@@ -233,11 +233,11 @@ def test_mpi_vs_serial(
         # Double check with a run in case it's a shell alias or something similar
         try:
             res = subprocess.run(
-                "mpiexec -help", shell=True, capture_output=True, text=True
+                "mpiexec -help", shell=True, capture_output=True, text=True, check=True
             )
             if res.returncode != 0:
                 pytest.skip("mpiexec not found or failed to run")
-        except Exception:
+        except OSError:
             pytest.skip("mpiexec not found in path")
 
     data_path, variable_name, mode, steps = config

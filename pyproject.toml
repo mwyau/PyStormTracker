@@ -85,6 +85,7 @@ ignore = [
 dev = [
     { include-group = "docs" },
     { include-group = "test" },
+    "identify>=2.6.19",
     "mypy>=2.3.0",
     "pre-commit>=4.6.1",
     "ruff>=0.16.1",
@@ -120,19 +121,18 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = [
-    "E",
-    "W",
-    "F",
-    "I",
-    "C4",
-    "B",
-    "UP",
-    "PT",
-    "SIM",
-    "RUF",
+extend-select = [
     "ANN",
+    "C4",
+    "I",
     "NPY",
+    "PT",
+    "RUF",
+    "SIM",
+    "W",
+]
+ignore = [
+    "DTZ"
 ]
 
 [tool.ty.src]
@@ -174,7 +174,7 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 [tool.pytest]
-addopts = "-ra -q"
+addopts = [ "-ra -q" ]
 testpaths = ["tests"]
 markers = [
     "integration: tests requiring test data or optional backends",

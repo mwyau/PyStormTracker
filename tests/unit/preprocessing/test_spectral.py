@@ -11,7 +11,7 @@ from pystormtracker.preprocessing import SHTFilter
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_serial(ny: int, nx: int) -> None:
     # Test with both 2.5-deg and 0.25-deg
-    data: NDArray[np.float64] = np.random.rand(2, ny, nx)
+    data: NDArray[np.float64] = np.random.default_rng().random((2, ny, nx))
     da = xr.DataArray(
         data,
         dims=["time", "lat", "lon"],
@@ -33,7 +33,7 @@ def test_spectral_filter_serial(ny: int, nx: int) -> None:
 
 def test_spectral_filter_invalid_shape() -> None:
     # 10 x 15 is invalid for SHT
-    data: NDArray[np.float64] = np.random.rand(1, 10, 15)
+    data: NDArray[np.float64] = np.random.default_rng().random((1, 10, 15))
     da = xr.DataArray(data, dims=["time", "lat", "lon"])
 
     filt = SHTFilter(lmin=0, lmax=42)
@@ -44,7 +44,7 @@ def test_spectral_filter_invalid_shape() -> None:
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_lat_reverse(ny: int, nx: int) -> None:
     # Test latitude South to North (lat_reverse=False)
-    data: NDArray[np.float64] = np.random.rand(1, ny, nx)
+    data: NDArray[np.float64] = np.random.default_rng().random((1, ny, nx))
     da = xr.DataArray(
         data,
         dims=["time", "lat", "lon"],
@@ -66,7 +66,7 @@ def test_spectral_filter_lat_reverse(ny: int, nx: int) -> None:
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_lat_descending(ny: int, nx: int) -> None:
     # Test latitude North to South (lat_reverse=True)
-    data: NDArray[np.float64] = np.random.rand(1, ny, nx)
+    data: NDArray[np.float64] = np.random.default_rng().random((1, ny, nx))
     da = xr.DataArray(
         data,
         dims=["time", "lat", "lon"],
@@ -88,7 +88,7 @@ def test_spectral_filter_lat_descending(ny: int, nx: int) -> None:
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_numpy_ndarray(ny: int, nx: int) -> None:
     # Test passing a raw numpy array
-    data: NDArray[np.float64] = np.random.rand(ny, nx)
+    data: NDArray[np.float64] = np.random.default_rng().random((ny, nx))
 
     filt = SHTFilter(lmin=5, lmax=42)
     filtered = filt.filter(data)
@@ -100,7 +100,7 @@ def test_spectral_filter_numpy_ndarray(ny: int, nx: int) -> None:
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_spectral_filter_numpy_ndarray_3d(ny: int, nx: int) -> None:
     # Test passing a 3D numpy array (T, ny, nx)
-    data: NDArray[np.float64] = np.random.rand(3, ny, nx)
+    data: NDArray[np.float64] = np.random.default_rng().random((3, ny, nx))
 
     filt = SHTFilter(lmin=5, lmax=42)
     filtered = filt.filter(data)

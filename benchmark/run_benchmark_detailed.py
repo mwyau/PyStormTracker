@@ -107,7 +107,7 @@ def parse_output(output: str, version: str) -> dict[str, float]:
 def run_cmd(cmd: str, version: str) -> dict[str, float] | None:
     print(f"Running: {cmd}")
     start = time.time()
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    res = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
     end = time.time()
     wall_time = end - start
 

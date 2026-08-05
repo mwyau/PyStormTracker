@@ -35,7 +35,7 @@ def run_simple_dask(
     resolution: float = 100.0,
     extent: MapExtent | None = None,
     subgrid_refine: bool = False,
-    **kwargs: float | int | str | None,
+    **kwargs: float | str | None,
 ) -> Tracks:
     """Dask Orchestrator: Maps detection tasks using threads."""
     import dask
@@ -141,7 +141,7 @@ def run_simple_mpi(
     resolution: float = 100.0,
     extent: MapExtent | None = None,
     subgrid_refine: bool = False,
-    **kwargs: float | int | str | None,
+    **kwargs: float | str | None,
 ) -> Tracks:
     """MPI Orchestrator: Splits frames across ranks, gathers raw detections."""
     from mpi4py import MPI

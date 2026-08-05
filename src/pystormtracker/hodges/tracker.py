@@ -130,7 +130,7 @@ class HodgesTracker(Tracker):
         taper_points: int = 0,
         nside: int | None = None,
         subgrid_refine: bool = True,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
         """
         Runs the Hodges tracking algorithm.
@@ -258,7 +258,7 @@ class HodgesTracker(Tracker):
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         subgrid_refine: bool = True,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
         detections = self._detect_single_chunk_from_data(
             data,
@@ -287,7 +287,7 @@ class HodgesTracker(Tracker):
         threshold: float | None = None,
         min_points: int = constants.MIN_POINTS_DEFAULT,
         subgrid_refine: bool = True,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> list[RawDetectionStep]:
         import timeit
 

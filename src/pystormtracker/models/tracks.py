@@ -641,7 +641,7 @@ class TracksBuilder:
             track_id = self._next_id
             self._next_id += 1
         if isinstance(track_id, bool) or not isinstance(track_id, (int, np.integer)):
-            raise ValueError("track_id must be an integer")
+            raise TypeError("track_id must be an integer")
         if track_id < np.iinfo(np.int64).min or track_id > np.iinfo(np.int64).max:
             raise ValueError("track_id must fit signed int64")
         track_id = int(track_id)

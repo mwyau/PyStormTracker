@@ -101,11 +101,9 @@ def _compute_weighted_stats(
                             t_hits[i, j] = max(t_hits[i, j], weight)
 
                             if is_min:
-                                if pamp < t_max_amp[i, j]:
-                                    t_max_amp[i, j] = pamp
+                                t_max_amp[i, j] = min(t_max_amp[i, j], pamp)
                             else:
-                                if pamp > t_max_amp[i, j]:
-                                    t_max_amp[i, j] = pamp
+                                t_max_amp[i, j] = max(t_max_amp[i, j], pamp)
                 else:
                     # Polar handling: check all longitudes
                     for j in range(nx):
@@ -121,11 +119,9 @@ def _compute_weighted_stats(
                             t_hits[i, j] = max(t_hits[i, j], weight)
 
                             if is_min:
-                                if pamp < t_max_amp[i, j]:
-                                    t_max_amp[i, j] = pamp
+                                t_max_amp[i, j] = min(t_max_amp[i, j], pamp)
                             else:
-                                if pamp > t_max_amp[i, j]:
-                                    t_max_amp[i, j] = pamp
+                                t_max_amp[i, j] = max(t_max_amp[i, j], pamp)
 
         for i in range(ny):
             for j in range(nx):

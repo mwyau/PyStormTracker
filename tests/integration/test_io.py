@@ -15,7 +15,7 @@ def clear_cache() -> None:
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "url, expected_engine",
+    ("url", "expected_engine"),
     [
         (f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr", "zarr"),
     ],

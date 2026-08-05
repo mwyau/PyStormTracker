@@ -203,11 +203,12 @@ def test_processing_metadata_is_immutable_and_preserved_by_subset() -> None:
     tracks = _tracks().with_metadata(replace(_tracks().metadata, processing=processing))
     subset = tracks.subset([2])
     assert subset.metadata.processing == processing
+    parameters = cast(
+        MutableMapping[str, object],
+        processing[0].parameters,
+    )
+
     with pytest.raises(TypeError):
-        parameters = cast(
-            MutableMapping[str, object],
-            processing[0].parameters,
-        )
         parameters["lmin"] = 10
 
 

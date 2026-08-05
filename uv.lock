@@ -3477,6 +3477,7 @@ zarr = [
 [package.dev-dependencies]
 dev = [
     { name = "cdsapi" },
+    { name = "identify" },
     { name = "jsonschema" },
     { name = "mypy" },
     { name = "myst-parser" },
@@ -3542,6 +3543,7 @@ provides-extras = ["eof", "grib", "mpi", "netcdf4", "zarr", "all"]
 [package.metadata.requires-dev]
 dev = [
     { name = "cdsapi", specifier = ">=0.7.7" },
+    { name = "identify", specifier = ">=2.6.19" },
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "myst-parser", specifier = ">=5.1.0" },

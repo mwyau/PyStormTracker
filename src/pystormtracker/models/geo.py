@@ -178,10 +178,8 @@ def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     )
 
     # Clamp for precision
-    if dot > 1.0:
-        dot = 1.0
-    if dot < -1.0:
-        dot = -1.0
+    dot = min(dot, 1.0)
+    dot = max(dot, -1.0)
 
     return float(np.arccos(dot))
 

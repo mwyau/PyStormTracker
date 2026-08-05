@@ -231,7 +231,7 @@ def subgrid_refine_healpix(
 
         return np.degrees(lat_ref), np.degrees(lon_ref) % 360.0, val_ref
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         return pixel_lats[p_idx], pixel_lons[p_idx], data[p_idx]
 
 

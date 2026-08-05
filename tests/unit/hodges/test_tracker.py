@@ -166,7 +166,7 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
 def test_hodges_tracker_preprocess_map_proj() -> None:
     ny, nx = 73, 144
     time = np.array([np.datetime64("2025-12-01T00:00:00")], dtype="datetime64[ns]")
-    data = np.random.rand(1, ny, nx)
+    data = np.random.default_rng().random((1, ny, nx))
     da = xr.DataArray(
         data,
         dims=["time", "lat", "lon"],

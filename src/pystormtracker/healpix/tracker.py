@@ -122,7 +122,7 @@ class HealpixTracker(Tracker):
         taper_points: int = 0,
         nside: int | None = None,
         subgrid_refine: bool = True,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
 
         t0 = timeit.default_timer()

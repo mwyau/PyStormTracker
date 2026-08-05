@@ -43,7 +43,7 @@ def resolve_filter_bounds(
     if lmin is None or lmax is None:
         return None
     if isinstance(lmin, bool) or isinstance(lmax, bool):
-        raise ValueError("lmin and lmax must be integers")
+        raise TypeError("lmin and lmax must be integers")
     if lmin < 0 or lmax < 0:
         raise ValueError("lmin and lmax must be nonnegative")
     if lmin > lmax:
