@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -43,24 +44,18 @@ def test_hodges_tracker_override_constraints() -> None:
 
 
 @pytest.mark.parametrize("backend", ["dask", "mpi"])
-def test_hodges_tracker_rejects_unsupported_backend(backend: str) -> None:
+def test_hodges_tracker_rejects_unsupported_backend(
+    backend: Literal["dask", "mpi"],
+) -> None:
     tracker = HodgesTracker()
     with pytest.raises(NotImplementedError, match="only the serial backend"):
-        tracker.track(
-            "unused.nc",
-            "msl",
-            backend=backend,  # type: ignore[arg-type]
-        )
+        tracker.track("unused.nc", "msl", backend=backend)
 
 
 def test_hodges_tracker_rejects_nonpositive_chunks() -> None:
     tracker = HodgesTracker()
     with pytest.raises(ValueError, match="must be positive"):
-        tracker.track(
-            "unused.nc",
-            "msl",
-            max_chunk_size=0,
-        )
+        tracker.track("unused.nc", "msl", max_chunk_size=0)
 
 
 @patch("pystormtracker.hodges.tracker.HodgesTracker._link_detections")
@@ -68,8 +63,6 @@ def test_hodges_tracker_rejects_nonpositive_chunks() -> None:
 def test_hodges_tracker_gathers_chunks_before_linking(
     mock_detect: MagicMock, mock_link: MagicMock
 ) -> None:
-    import xarray as xr
-
     times = np.arange(5).astype("timedelta64[h]") + np.datetime64("2025-12-01")
     data = xr.DataArray(
         np.zeros((5, 2, 2)),
@@ -88,12 +81,7 @@ def test_hodges_tracker_gathers_chunks_before_linking(
     ]
     mock_link.return_value = Tracks.empty(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
-    HodgesTracker().track(
-        data,
-        "msl",
-        max_chunk_size=2,
-        overlap=99,
-    )
+    HodgesTracker().track(data, "msl", max_chunk_size=2, overlap=99)
 
     assert [call.args[0].sizes["time"] for call in mock_detect.call_args_list] == [
         2,
@@ -109,8 +97,6 @@ def test_hodges_tracker_gathers_chunks_before_linking(
 
 
 def test_hodges_chunked_detection_matches_unchunked() -> None:
-    import xarray as xr
-
     times = np.arange(6).astype("timedelta64[h]") + np.datetime64("2025-12-01")
     values = np.full((6, 9, 12), 10.0)
     values[:, 4, 3] = -10.0
@@ -124,20 +110,21 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
         },
         name="msl",
     )
-    tracker = HodgesTracker(min_lifetime=2)
-    kwargs = {
-        "mode": "min",
-        "threshold": 0.0,
-        "subgrid_refine": False,
-    }
 
-    unchunked = tracker.track(data, "msl", **kwargs)  # type: ignore[arg-type]
-    chunked = tracker.track(
-        data,
-        "msl",
-        max_chunk_size=2,
-        **kwargs,  # type: ignore[arg-type]
-    )
+    def run(tracker: HodgesTracker, *, max_chunk_size: int | None = None) -> Tracks:
+        return tracker.track(
+            data,
+            "msl",
+            mode="min",
+            threshold=0.0,
+            subgrid_refine=False,
+            max_chunk_size=max_chunk_size,
+        )
+
+    tracker = HodgesTracker(min_lifetime=2)
+
+    unchunked = run(tracker, max_chunk_size=None)
+    chunked = run(tracker, max_chunk_size=2)
 
     assert unchunked.metadata == chunked.metadata
     np.testing.assert_array_equal(unchunked.ids, chunked.ids)
@@ -150,7 +137,6 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
 
 @patch("pystormtracker.hodges.detector.HodgesDetector.detect")
 def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
-    # Mock detection results
     t0 = np.datetime64("2025-12-01T00:00:00")
     t1 = np.datetime64("2025-12-01T06:00:00")
 
@@ -162,17 +148,12 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
     data = xr.DataArray(
         np.zeros((2, 1, 1)),
         dims=("time", "lat", "lon"),
-        coords={
-            "time": [t0, t1],
-            "lat": [0.0],
-            "lon": [0.0],
-        },
+        coords={"time": [t0, t1], "lat": [0.0], "lon": [0.0]},
         name="msl",
     )
     tracker = HodgesTracker(min_lifetime=2)
     with patch(
-        "pystormtracker.hodges.tracker.normalize_tracking_data",
-        return_value=data,
+        "pystormtracker.hodges.tracker.normalize_tracking_data", return_value=data
     ):
         tracks = tracker.track("dummy.nc", "msl")
 
@@ -183,9 +164,6 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
 
 
 def test_hodges_tracker_preprocess_map_proj() -> None:
-    import xarray as xr
-
-    # 2.5 degree grid
     ny, nx = 73, 144
     time = np.array([np.datetime64("2025-12-01T00:00:00")], dtype="datetime64[ns]")
     data = np.random.rand(1, ny, nx)
@@ -201,13 +179,10 @@ def test_hodges_tracker_preprocess_map_proj() -> None:
     )
 
     tracker = HodgesTracker()
-
-    # Test nh_stereo
     processed, _steps = tracker.preprocess_standard_track(da, map_proj="nh_stereo")
     assert processed.dims == ("time", "y", "x")
     assert processed.attrs["map_proj"] == "nh_stereo"
 
-    # Test healpix
     processed_hp, _steps = tracker.preprocess_standard_track(da, map_proj="healpix")
     assert processed_hp.dims == ("time", "cell")
     assert processed_hp.attrs["map_proj"] == "healpix"

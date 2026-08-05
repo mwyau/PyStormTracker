@@ -10,7 +10,7 @@ from utils import fetch_era5_msl
 
 from pystormtracker.cli import main
 from pystormtracker.models.tracks import Tracks, TracksMetadata
-from pystormtracker.track import run_tracker, setup_parser
+from pystormtracker.track import Algorithm, run_tracker, setup_parser
 
 
 def _empty_tracks() -> Tracks:
@@ -191,7 +191,7 @@ def test_filter_bounds_must_be_supplied_together() -> None:
     ],
 )
 def test_subgrid_refinement_uses_algorithm_default_or_override(
-    algorithm: str, option: str | None, expected: bool | None
+    algorithm: Algorithm, option: str | None, expected: bool | None
 ) -> None:
     test_args = [
         "stormtracker",
@@ -223,7 +223,7 @@ def test_subgrid_refinement_uses_algorithm_default_or_override(
     ("algorithm", "expected"), [("simple", False), ("hodges", True)]
 )
 def test_run_tracker_resolves_subgrid_default_by_algorithm(
-    tmp_path: Path, algorithm: str, expected: bool
+    tmp_path: Path, algorithm: Algorithm, expected: bool
 ) -> None:
     tracker_target = (
         "pystormtracker.track.SimpleTracker.track"
@@ -235,7 +235,7 @@ def test_run_tracker_resolves_subgrid_default_by_algorithm(
             infile="unused.nc",
             variable_name="msl",
             outfile=str(tmp_path / "tracks.json"),
-            algorithm=algorithm,  # type: ignore[arg-type]
+            algorithm=algorithm,
             output_format="trackjson",
             subgrid_refine=None,
         )

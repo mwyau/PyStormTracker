@@ -120,6 +120,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: uv run --no-sync python scripts/generate_trackjson_schema.py --check
 
+      - name: Ty
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync ty check
+
+
       - name: Mypy
         if: ${{ !cancelled() }}
         run: uv run --no-sync mypy .

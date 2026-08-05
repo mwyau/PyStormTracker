@@ -3,11 +3,12 @@ from __future__ import annotations
 import threading
 from importlib.util import find_spec
 from pathlib import Path
-from typing import ClassVar, cast
+from typing import ClassVar, TypedDict, cast
 
 import ducc0
 import numpy as np
 import xarray as xr
+from numpy.typing import NDArray
 
 from ..time import (
     TimeInput,
@@ -16,6 +17,13 @@ from ..time import (
     infer_calendar,
     select_time_range,
 )
+
+
+class GridMetadata(TypedDict):
+    theta: NDArray[np.float64]
+    nphi: NDArray[np.uint64]
+    phi0: NDArray[np.float64]
+    ringstart: NDArray[np.uint64]
 
 
 class DataLoader:
@@ -285,19 +293,18 @@ class DataLoader:
                 return np.array(pl, dtype=np.int32)
         return None
 
-    def _get_theta(self, ntheta: int, geometry: str) -> np.ndarray:
+    def _get_theta(self, ntheta: int, geometry: str) -> NDArray[np.float64]:
         """Calculates colatitudes (theta) for a given geometry and resolution."""
         if geometry == "GL":
             # ducc0.misc.GL_thetas returns North-to-South (0 to pi)
-            return cast(np.ndarray, ducc0.misc.GL_thetas(ntheta))
-        if geometry == "CC":
-            return np.linspace(0, np.pi, ntheta)
-        # Default to equidistant
-        return np.linspace(0, np.pi, ntheta)
+            return np.asarray(
+                ducc0.misc.GL_thetas(ntheta),
+                dtype=np.float64,
+            )
+        # Default to equidistant if geometry == "CC"
+        return np.linspace(0, np.pi, ntheta, dtype=np.float64)
 
-    def get_grid_metadata(
-        self, variable_name: str | None = None
-    ) -> dict[str, np.ndarray]:
+    def get_grid_metadata(self, variable_name: str | None = None) -> GridMetadata:
         """
         Returns grid metadata (theta, nphi, phi0, ringstart) for SHT.
         Works for reduced Gaussian and HEALPix grids.
@@ -315,7 +322,13 @@ class DataLoader:
             npix = da.sizes.get("cell", da.sizes.get("values", 0))
             nside = int(np.sqrt(npix / 12))
             hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
-            return cast(dict[str, np.ndarray], hp_base.sht_info())
+            info = hp_base.sht_info()
+            return {
+                "theta": np.asarray(info["theta"], dtype=np.float64),
+                "nphi": np.asarray(info["nphi"], dtype=np.uint64),
+                "phi0": np.asarray(info["phi0"], dtype=np.float64),
+                "ringstart": np.asarray(info["ringstart"], dtype=np.uint64),
+            }
 
         # 2. Check for Reduced Gaussian
         if self.is_reduced_gaussian(variable_name):

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from ..models import TimeRange, Tracks
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep
+from ..models.tracker import RawDetectionStep, get_int_option
 from ..models.tracks import ProcessingStep, TracksMetadata
 from ..models.units import normalize_variable_units
 from .detector import SimpleDetector
@@ -94,13 +94,13 @@ def run_simple_dask(
         f"tasks (across {n_workers} threads)"
     )
 
-    size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+    size = get_int_option(kwargs, "size", 5)
     tasks = [
         dask.delayed(_detect_and_link)(d, size, threshold, mode, subgrid_refine)
         for d in detectors
     ]
 
-    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)
+    all_raw_chunks = dask.compute(*tasks, scheduler="threads", num_workers=n_workers)  # type: ignore[no-untyped-call]
 
     # Flatten chunks into a single sequence of steps
     all_raw_steps: list[RawDetectionStep] = [
@@ -208,7 +208,7 @@ def run_simple_mpi(
         print(f"    [MPI] Prep & Scatter time: {t_scatter - t0:.4f}s")
 
     t1 = timeit.default_timer()
-    ext_size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+    ext_size = get_int_option(kwargs, "size", 5)
     raw_chunk = _detect_and_link(
         detector,
         size=ext_size,

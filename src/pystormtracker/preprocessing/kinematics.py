@@ -261,8 +261,8 @@ class Kinematics:
         """
         if isinstance(u, np.ndarray) and isinstance(v, np.ndarray):
             return compute_vort_div(
-                u,
-                v,
+                np.asarray(u, dtype=np.float64),
+                np.asarray(v, dtype=np.float64),
                 R=self.R,
                 lmax=self.lmax,
                 geometry=self.geometry,

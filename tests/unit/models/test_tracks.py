@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import replace
+from typing import cast
 
 import numpy as np
 import pytest
@@ -13,18 +15,19 @@ from pystormtracker.models.tracks import (
     TracksBuilder,
     TracksMetadata,
 )
+from pystormtracker.models.units import Mode
 
 
 def _metadata(
     primary_var: str = "msl",
-    mode: str = "min",
+    mode: Mode = "min",
     *,
     bounds: SpatialBounds | None = None,
     processing: tuple[ProcessingStep, ...] = (),
 ) -> TracksMetadata:
     return TracksMetadata(
         primary_var,
-        mode,  # type: ignore[arg-type]
+        mode,
         {primary_var: "Pa"},
         bounds,
         processing,
@@ -149,7 +152,7 @@ def test_spatial_bounds_are_immutable_and_valid(bounds: SpatialBounds) -> None:
     metadata = _metadata(bounds=bounds)
     assert metadata.bounds == bounds
     with pytest.raises(AttributeError):
-        bounds.south = -1.0  # type: ignore[misc]
+        bounds.south = -1.0  # type: ignore[misc]  # ty: ignore[invalid-assignment]
 
 
 @pytest.mark.parametrize(
@@ -201,7 +204,11 @@ def test_processing_metadata_is_immutable_and_preserved_by_subset() -> None:
     subset = tracks.subset([2])
     assert subset.metadata.processing == processing
     with pytest.raises(TypeError):
-        processing[0].parameters["lmin"] = 10  # type: ignore[index]
+        parameters = cast(
+            MutableMapping[str, object],
+            processing[0].parameters,
+        )
+        parameters["lmin"] = 10
 
 
 def test_bounds_are_preserved_by_subset() -> None:

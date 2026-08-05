@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from ..io.data_loader import normalize_tracking_data
 from ..models import constants as model_constants
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep, Tracker
+from ..models.tracker import RawDetectionStep, Tracker, get_int_option
 from ..models.tracks import (
     ProcessingStep,
     Tracks,
@@ -295,7 +295,7 @@ class HodgesTracker(Tracker):
         t_detect_start = timeit.default_timer()
         detector = HodgesDetector.from_xarray(data, variable_name=primary_var)
 
-        size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+        size = get_int_option(kwargs, "size", 5)
 
         detections = detector.detect(
             size=size,

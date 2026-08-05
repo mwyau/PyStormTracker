@@ -1,0 +1,26 @@
+default_install_hook_types:
+- pre-push
+
+default_stages:
+- pre-push
+
+repos:
+- repo: https://github.com/astral-sh/uv-pre-commit
+  rev: 0.12.1
+  hooks:
+  - id: uv-lock
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.16.1
+  hooks:
+  - id: ruff-check
+    types_or: [ python, pyproject ]
+    args: [ --fix ]
+  - id: ruff-format
+    types_or: [ python ]
+
+- repo: https://github.com/astral-sh/ty-pre-commit
+  rev: v0.0.66
+  hooks:
+  - id: ty
+    args: [ --all-extras, --isolated ]
