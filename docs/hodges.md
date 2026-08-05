@@ -2,7 +2,7 @@
 
 This document describes the Hodges tracker and its relationship to TRACK (Hodges 1994, 1995, 1999).
 
-______________________________________________________________________
+---
 
 ## 1. Feature Identification Design
 
@@ -54,7 +54,7 @@ Original TRACK identifies objects as contiguous clusters of grid points that pas
 
 `raw_size_km2` is calculated by summing grid-cell areas over the CCL-labeled object associated with each extremum. This provides the object-area quantity corresponding to TRACK's `ofill` processing. Intensity-weighted second spatial moments define an equivalent ellipse with `major_axis_km`, `minor_axis_km`, and `orientation_deg`. These fields are present in raw Hodges detections but are not propagated by the current linker to the final `Tracks` object. Tests cover global longitude seams and projected kilometre coordinates; direct property comparison with TRACK remains.
 
-______________________________________________________________________
+---
 
 ## 2. Trajectory Linking (MGE Optimization)
 
@@ -105,7 +105,7 @@ requires its two sections to contain the same number of points, and selects the
 first closest eligible candidate in source-file order. It therefore expects
 time-ordered tracks on a common cadence.
 
-______________________________________________________________________
+---
 
 ## 3. Adaptive Constraints
 
@@ -125,7 +125,7 @@ ______________________________________________________________________
 
 **Reasoning**: As displacement (speed) increases, the directional constraint must become stricter. `PyStormTracker` uses piecewise linear interpolation between the 4 provided threshold/value pairs, matching the logic found in `read_adptp.c`.
 
-______________________________________________________________________
+---
 
 ## 4. Orchestration & Performance
 
@@ -143,7 +143,7 @@ Tracks are managed as a **2D integer matrix** (`n_tracks` x `n_frames`), where e
 - **Coordinate-aware Xarray input**: `DataLoader` provides NetCDF, GRIB, and Zarr input and identifies geographic, projected, Gaussian, reduced-Gaussian, and HEALPix coordinates.
 - **Execution**: A standard argparse-based CLI replaces interactive prompts. Hodges tracking currently uses the serial backend; unsupported parallel selections fail explicitly.
 
-______________________________________________________________________
+---
 
 ## 5. Summary of Technical Differences
 
@@ -158,7 +158,7 @@ The following table records known implementation differences from TRACK:
 | **Parallelism**    | Domain/time splitting.                                               | Hodges parallel backends not implemented.                                                    | Serial only.                                                   |
 | **I/O**            | TRACK binary and ASCII formats.                                      | Xarray input; IMILAST, tdump, and JSON track output.                                         | Format behavior differs.                                       |
 
-______________________________________________________________________
+---
 
 ## 6. References
 

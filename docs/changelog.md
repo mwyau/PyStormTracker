@@ -33,7 +33,7 @@
 - Added minimum-dependency, Python 3.14 free-threaded, ARM64, schema, and dependency-review checks.
 - Corrected Linux ARM64 `ducc0` compilation in the Docker build.
 
-______________________________________________________________________
+---
 
 ## v0.6.0.dev0
 
@@ -69,7 +69,7 @@ ______________________________________________________________________
 - Added `--run-slow` for slow integration and historical regression cases.
 - Corrected the Docker Trivy image reference and included slow integration cases in the designated Linux CI run.
 
-______________________________________________________________________
+---
 
 ## v0.5.0 - 2026-04-08
 
@@ -101,7 +101,7 @@ ______________________________________________________________________
 - **Strict Typing**: Enabled strict `mypy` checks in core I/O modules and removed `Any` from the covered declarations.
 - **Dependency Refinement**: Introduced a dedicated `zarr` optional dependency group and updated the `all` extra.
 
-______________________________________________________________________
+---
 
 ## v0.4.2 - 2026-03-19
 
@@ -120,7 +120,7 @@ ______________________________________________________________________
 
 - Updated CI concurrency rules to cancel redundant builds.
 
-______________________________________________________________________
+---
 
 ## v0.4.1 - 2026-03-18
 
@@ -130,7 +130,7 @@ ______________________________________________________________________
 
 - Registered integration markers to resolve warnings in Conda-forge CI pipelines.
 
-______________________________________________________________________
+---
 
 ## v0.4.0 - 2026-03-14
 
@@ -150,7 +150,7 @@ ______________________________________________________________________
 - **Vectorized Linker**: Re-engineered the `SimpleLinker` using NumPy broadcasting for vectorized distance calculations.
 - **Memory Efficiency**: Implemented `slots=True` for dataclasses and flat-array extraction for centers.
 
-______________________________________________________________________
+---
 
 ## v0.3.3 - 2026-03-10
 
@@ -164,7 +164,7 @@ ______________________________________________________________________
 - Refined Docker image tagging and unified caching scopes.
 - Simplified CI test matrix for faster verification.
 
-______________________________________________________________________
+---
 
 ## v0.3.2 - 2026-03-09
 
@@ -178,7 +178,7 @@ ______________________________________________________________________
 
 - Updated project homepage and refined repository metadata.
 
-______________________________________________________________________
+---
 
 ## v0.3.1 - 2026-03-08
 
@@ -186,7 +186,7 @@ ______________________________________________________________________
 
 - Synchronized documentation versions and updated dependency lockfiles.
 
-______________________________________________________________________
+---
 
 ## v0.3.0 - 2026-03-08
 
@@ -205,7 +205,7 @@ ______________________________________________________________________
 - Added Read the Docs documentation scaffolding.
 - Implemented tiered integration testing (Short vs. Full variants).
 
-______________________________________________________________________
+---
 
 ## v0.2.2 - 2026-03-04
 
@@ -221,7 +221,7 @@ ______________________________________________________________________
 - Initial Read the Docs configuration.
 - Standardized PyPI installation instructions in README.
 
-______________________________________________________________________
+---
 
 ## v0.2.1 - 2026-03-04
 
@@ -229,7 +229,7 @@ ______________________________________________________________________
 
 - Metadata fixes and version synchronization.
 
-______________________________________________________________________
+---
 
 ## v0.2.0 - 2026-03-01
 
@@ -247,13 +247,13 @@ ______________________________________________________________________
 
 - Extracted core logic into `simple/` and `models/` modules for better maintainability.
 
-______________________________________________________________________
+---
 
 ## v0.0.2 - 2018-10-25
 
 - Added `minmaxmode` support for ERA-Interim Mean Sea Level Pressure (MSL) and Vorticity (VO) tracking.
 
-______________________________________________________________________
+---
 
 ## v0.0.1 - 2016-01-11
 
