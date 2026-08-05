@@ -30,6 +30,8 @@ from pystormtracker.models.tracks import (
 from pystormtracker.schemas.generate import generate_trackjson_schema
 from pystormtracker.time import CANONICAL_TIME_UNITS
 
+JSONObject = dict[str, object]
+
 
 def make_tracks(*, bounds: SpatialBounds | None = None) -> Tracks:
     builder = TracksBuilder(
@@ -62,12 +64,26 @@ def make_tracks(*, bounds: SpatialBounds | None = None) -> Tracks:
     return builder.finish()
 
 
-def read_payload(path: Path) -> dict[str, object]:
-    return cast(dict[str, object], json.loads(path.read_text(encoding="utf-8")))
+def read_payload(path: Path) -> JSONObject:
+    return cast(JSONObject, json.loads(path.read_text(encoding="utf-8")))
 
 
-def write_payload(path: Path, payload: dict[str, object]) -> None:
+def write_payload(path: Path, payload: JSONObject) -> None:
     path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+
+
+def object_member(payload: JSONObject, key: str) -> JSONObject:
+    value = payload[key]
+    if not isinstance(value, dict):
+        raise TypeError(f"{key} is not a JSON object")
+    return cast(JSONObject, value)
+
+
+def list_member(payload: JSONObject, key: str) -> list[object]:
+    value = payload[key]
+    if not isinstance(value, list):
+        raise TypeError(f"{key} is not a JSON array")
+    return cast(list[object], value)
 
 
 def test_default_writer_omits_stats_and_explicit_writer_adds_wire_stats(
@@ -83,7 +99,9 @@ def test_default_writer_omits_stats_and_explicit_writer_adds_wire_stats(
     stats_payload = read_payload(stats_path)
     assert "stats" not in default_payload
     assert "stats" in stats_payload
-    assert default_payload["metadata"]["processing"]  # type: ignore[index]
+    processing = object_member(default_payload, "metadata")["processing"]
+    assert isinstance(processing, list)
+    assert processing
 
 
 def test_round_trip_preserves_canonical_data_metadata_and_discards_stats(
@@ -152,7 +170,7 @@ def test_nan_variables_and_missing_peak_are_encoded_as_null() -> None:
 def test_typed_document_and_packaged_schema_validate() -> None:
     raw = encode_trackjson(make_tracks(), include_stats=True)
     document = msgspec.json.Decoder(TrackJSONDocument).decode(raw)
-    payload = cast(dict[str, object], json.loads(raw))
+    payload = cast(JSONObject, json.loads(raw))
     schema = generate_trackjson_schema()
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.Draft202012Validator(schema).validate(payload)
@@ -168,8 +186,8 @@ def test_empty_document_uses_complete_offset_buffer_and_omits_optional_members(
     write_trackjson(source, path)
     payload = read_payload(path)
     assert payload["index"] == {"ids": [], "offsets": [0]}
-    assert "bounds" not in cast(dict[str, object], payload["metadata"])
-    assert "processing" not in cast(dict[str, object], payload["metadata"])
+    assert "bounds" not in object_member(payload, "metadata")
+    assert "processing" not in object_member(payload, "metadata")
     assert "stats" not in payload
     assert read_trackjson(path).variables["msl"].size == 0
 
@@ -179,16 +197,31 @@ def test_empty_document_uses_complete_offset_buffer_and_omits_optional_members(
     [
         (lambda payload: payload.update(format="TrackJSON/0.1"), "Invalid TrackJSON"),
         (lambda payload: payload.update(tracks={}), "Invalid TrackJSON"),
-        (lambda payload: payload["index"].update(offsets=[0, 1]), "offsets"),
-        (lambda payload: payload["index"].update(ids=[10, 10]), "track IDs"),
-        (lambda payload: payload["data"].update(lats=[1.0]), "lats"),
-        (lambda payload: payload["metadata"].pop("time"), "Invalid TrackJSON"),
-        (lambda payload: payload["metadata"].update(bounds=None), "Invalid TrackJSON"),
+        (
+            lambda payload: object_member(payload, "index").update(offsets=[0, 1]),
+            "offsets",
+        ),
+        (
+            lambda payload: object_member(payload, "index").update(ids=[10, 10]),
+            "track IDs",
+        ),
+        (
+            lambda payload: object_member(payload, "data").update(lats=[1.0]),
+            "lats",
+        ),
+        (
+            lambda payload: object_member(payload, "metadata").pop("time"),
+            "Invalid TrackJSON",
+        ),
+        (
+            lambda payload: object_member(payload, "metadata").update(bounds=None),
+            "Invalid TrackJSON",
+        ),
     ],
 )
 def test_invalid_documents_report_the_relevant_invariant(
     tmp_path: Path,
-    mutation: Callable[[dict[str, object]], object],
+    mutation: Callable[[JSONObject], object],
     expected: str,
 ) -> None:
     source = tmp_path / "source.trackjson"
@@ -206,7 +239,8 @@ def test_ids_require_integer_json_values(tmp_path: Path, value: object) -> None:
     source = tmp_path / "source.trackjson"
     source.write_bytes(encode_trackjson(make_tracks()))
     payload = read_payload(source)
-    payload["index"]["ids"][0] = value  # type: ignore[index]
+    ids = list_member(object_member(payload, "index"), "ids")
+    ids[0] = value
     invalid = tmp_path / "invalid.trackjson"
     write_payload(invalid, payload)
     with pytest.raises(ValueError, match="ids"):
@@ -219,7 +253,11 @@ def test_stale_stats_are_ignored_by_default_and_rejected_when_verified(
     source = tmp_path / "source.trackjson"
     source.write_bytes(encode_trackjson(make_tracks(), include_stats=True))
     payload = read_payload(source)
-    payload["stats"]["path_length_km"][0] += 1.0  # type: ignore[index]
+    path_lengths = list_member(object_member(payload, "stats"), "path_length_km")
+    current = path_lengths[0]
+    assert isinstance(current, (int, float))
+    assert not isinstance(current, bool)
+    path_lengths[0] = float(current) + 1.0
     stale = tmp_path / "stale.trackjson"
     write_payload(stale, payload)
     assert read_trackjson(stale) == make_tracks()
@@ -233,7 +271,7 @@ def test_invalid_stats_lengths_fail_only_during_explicit_verification(
     source = tmp_path / "source.trackjson"
     source.write_bytes(encode_trackjson(make_tracks(), include_stats=True))
     payload = read_payload(source)
-    payload["stats"]["point_count"] = [3]  # type: ignore[index]
+    object_member(payload, "stats")["point_count"] = [3]
     stale = tmp_path / "invalid-length.trackjson"
     write_payload(stale, payload)
     assert read_trackjson(stale) == make_tracks()

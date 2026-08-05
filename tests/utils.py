@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-import pooch  # type: ignore[import-untyped]
+import pooch
 
 DATA_RELEASE_VERSION = "v0.1.4-data"
 RELEASE_URL = f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"

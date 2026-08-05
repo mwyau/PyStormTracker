@@ -23,7 +23,7 @@ from ..time import (
 )
 
 TRACKJSON_FORMAT: Final[str] = "TrackJSON/1.0"
-TRACKJSON_STATS_VERSION: Final[Literal[1]] = 1
+TRACKJSON_STATS_VERSION: Final = 1
 TRACKJSON_SCHEMA_RESOURCE: Final[str] = "trackjson.schema.json"
 
 __all__ = [

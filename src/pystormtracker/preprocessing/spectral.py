@@ -581,8 +581,11 @@ def apply_sht_filter(
     if is_reduced:
         spatial_dim = "values" if "values" in data.dims else str(data.dims[-1])
         grid_meta = loader.get_grid_metadata(variable_name)
-        # We know grid_meta keys match FilterKwargs keys for 1D maps
-        kwargs.update(grid_meta)  # type: ignore[typeddict-item]
+        # Extract reduced Gaussian grid colatitudes, azimuth counts, and ring offsets
+        kwargs["theta"] = grid_meta["theta"]
+        kwargs["nphi"] = grid_meta["nphi"]
+        kwargs["phi0"] = grid_meta["phi0"]
+        kwargs["ringstart"] = grid_meta["ringstart"]
     else:
         lat_dim = next(
             (c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None

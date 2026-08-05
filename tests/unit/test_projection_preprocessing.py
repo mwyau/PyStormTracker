@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from unittest.mock import patch
 
 import numpy as np
@@ -114,14 +115,14 @@ def test_regional_auto_filter_uses_dct(
 @pytest.mark.parametrize("map_proj", ["nh_stereo", "sh_stereo"])
 def test_polar_preprocessing_uses_requested_lmax(
     tracker: SimpleTracker | HodgesTracker,
-    map_proj: str,
+    map_proj: Literal["nh_stereo", "sh_stereo"],
     global_data: xr.DataArray,
 ) -> None:
     processed, _steps = tracker.preprocess_standard_track(
         global_data,
         lmin=0,
         lmax=7,
-        map_proj=map_proj,  # type: ignore[arg-type]
+        map_proj=map_proj,
         extent=(-100.0, 100.0, -100.0, 100.0),
         resolution=100.0,
     )

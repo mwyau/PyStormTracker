@@ -89,7 +89,7 @@ def test_numba_get_centers() -> None:
     extrema[2, 2] = 1.0
     extrema[8, 8] = 1.0
 
-    frame: NDArray[np.float64] = np.random.rand(10, 10)
+    frame: NDArray[np.float64] = np.random.default_rng().random((10, 10))
 
     r, c, vals = _numba_get_centers(extrema, frame)
     assert len(r) == 2

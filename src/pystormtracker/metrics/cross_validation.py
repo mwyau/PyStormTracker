@@ -6,11 +6,6 @@ from typing import Protocol, cast
 import numpy as np
 import xarray as xr
 
-try:
-    from xeofs.cross import CCA as XeofsCCA
-except ImportError:
-    XeofsCCA = None
-
 
 class CCAModel(Protocol):
     """Operations used from a fitted xeofs CCA model."""
@@ -24,12 +19,35 @@ class CCAModel(Protocol):
     ) -> object: ...
 
 
-def _require_cca() -> None:
+class CCAConstructor(Protocol):
+    """Constructor signature used from the optional xeofs CCA class."""
+
+    def __call__(
+        self,
+        *,
+        n_modes: int,
+        use_coslat: bool,
+        use_pca: bool,
+        n_pca_modes: float,
+    ) -> CCAModel: ...
+
+
+XeofsCCA: CCAConstructor | None
+try:
+    from xeofs.cross import CCA as _XeofsCCA
+except ImportError:
+    XeofsCCA = None
+else:
+    XeofsCCA = cast(CCAConstructor, _XeofsCCA)
+
+
+def _require_cca() -> CCAConstructor:
     if XeofsCCA is None:
         raise ImportError(
             "The 'xeofs' library is required for cross-validation. "
             "Install it with 'uv sync --extra eof'."
         )
+    return XeofsCCA
 
 
 def _align_cca_inputs(
@@ -63,7 +81,7 @@ def find_best_cca_truncation(
     Returns:
         xr.Dataset: Dataset containing 'acc' and 'fve' scores.
     """
-    _require_cca()
+    cca_class = _require_cca()
     if max_modes <= 0:
         raise ValueError("max_modes must be greater than zero")
     if leave_n_out <= 0:
@@ -103,9 +121,8 @@ def find_best_cca_truncation(
             Y_train = Y.isel(time=train_idx)
 
             # Initialize CCA model
-            assert XeofsCCA is not None
             mode_count = int(m)
-            model = XeofsCCA(
+            model = cca_class(
                 n_modes=mode_count,
                 use_coslat=True,
                 use_pca=pca,
@@ -117,7 +134,7 @@ def find_best_cca_truncation(
             predicted_scores = model.predict(X_test)
             Y_pred = model.inverse_transform(Y=predicted_scores)
             if not isinstance(Y_pred, xr.DataArray):
-                raise RuntimeError("xeofs CCA returned a non-DataArray prediction")
+                raise TypeError("xeofs CCA returned a non-DataArray prediction")
             all_preds.append(Y_pred)
 
         # Reconstruct full predicted field
@@ -131,7 +148,8 @@ def find_best_cca_truncation(
         # Calculate FVE (Fraction of Variance Explained)
         mse = ((Y_eval - full_pred) ** 2).mean(dim="time")
         var = Y_eval.var(dim="time")
-        fve = xr.where(var > 0.0, 1 - (mse / var), np.nan)
+        valid_var = var.where(var > 0.0)
+        fve = 1.0 - (mse / valid_var)
         fve_scores[idx] = float(fve.mean())
 
     ds = xr.Dataset(
@@ -166,7 +184,7 @@ def train_cca_model(
     Returns:
         The trained xeofs CCA model.
     """
-    _require_cca()
+    cca_class = _require_cca()
     if n_modes <= 0:
         raise ValueError("n_modes must be greater than zero")
 
@@ -176,8 +194,7 @@ def train_cca_model(
         raise ValueError("n_modes exceeds the available sample count")
 
     # Hardcoded pca=True as per the evaluation framework in Yau and Chang 2020
-    assert XeofsCCA is not None
-    model = XeofsCCA(
+    model = cca_class(
         n_modes=n_modes,
         use_coslat=True,
         use_pca=True,
@@ -185,7 +202,7 @@ def train_cca_model(
     )
     model.fit(X, Y, dim="time")
 
-    return cast(CCAModel, model)
+    return model
 
 
 def compute_cormax(
@@ -250,7 +267,7 @@ def compute_cormax(
                 r = xr.corr(impact_da, shifted, dim="time")
 
             # Preserve missing correlations while accumulating finite maxima.
-            cormax = xr.where(cormax.isnull() | (r > cormax), r, cormax)
+            cormax = r.where(cormax.isnull() | (r > cormax), cormax)
 
     cormax.name = "cormax"
     cormax.attrs = {

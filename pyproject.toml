@@ -1,13 +1,14 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.6.1.dev0"
+version = "0.6.1.dev1"
 description = "A High-Performance Cyclone Tracker in Python"
 readme = "README.md"
-license = {text = "BSD-3-Clause"}
+license = "BSD-3-Clause"
+license-files = [ "LICENSE" ]
 requires-python = ">=3.11"
 authors = [
     { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
@@ -15,7 +16,6 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -29,7 +29,7 @@ dependencies = [
     "ducc0>=0.39.0",
     "h5netcdf[h5py]>=1.8.0",
     "msgspec>=0.20.0",
-    "numba>=0.63.0",  # numba 0.63 added support for Python 3.14 wheels
+    "numba>=0.63.0",
     "numpy>=2.3.3",
     "scipy>=1.16.1",
     "xarray>=2024.9.0",
@@ -39,7 +39,7 @@ dependencies = [
 stormtracker = "pystormtracker.cli:main"
 
 [project.urls]
-Homepage = "https://pypi.org/project/PyStormTracker/"
+Homepage = "https://pystormtracker.readthedocs.io/"
 Repository = "https://github.com/mwyau/PyStormTracker.git"
 Issues = "https://github.com/mwyau/PyStormTracker/issues"
 
@@ -71,17 +71,25 @@ packages = ["src/pystormtracker"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-    "/benchmark",
-    "/notebooks",
-    "/tests/data",
+    "/benchmark/**",
+    "/tests/data/era5/**",
+]
+
+[tool.check-manifest]
+ignore = [
+    "benchmark/**",
+    "tests/data/**",
 ]
 
 [dependency-groups]
 dev = [
     { include-group = "docs" },
     { include-group = "test" },
+    "identify>=2.6.19",
     "mypy>=2.3.0",
+    "prek>=0.4.12",
     "ruff>=0.16.1",
+    "ty==0.0.66",
 ]
 docs = [
     "myst-parser>=5.1.0",
@@ -107,52 +115,58 @@ viz = [
 ]
 
 [tool.ruff]
-target-version = "py311"
-line-length = 88
-extend-exclude = [".venv", "benchmark", "notebooks", "worktrees"]
+force-exclude = true
+extend-exclude = [
+    "worktrees",
+]
 
 [tool.ruff.lint]
-select = [
-    "E", "W", "F", "I", "C4", "B", "UP", "PT", "SIM", "RUF", "ANN",
-]
-ignore = []
+extend-select = ["ANN","B","C4","E","F","I","NPY","PT","SIM","UP","W"]
+ignore = ["DTZ"]
 
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = [
+    "ducc0",
+    ]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_untyped_calls = false
-disallow_untyped_decorators = false
-exclude = [".venv", "notebooks", "benchmark", "docs", "worktrees"]
-mypy_path = "src:tests"
+files = ["src", "tests"]
+enable_error_code = ["ignore-without-code"]
 
 [[tool.mypy.overrides]]
 module = [
     "cftime",
     "ducc0",
-    "dask.*",
-    "mpi4py.*",
-    "numba.*",
-    "scipy.*",
-    "xeofs.*",
-    "zarr.*",
+    "matplotlib", "matplotlib.*",
+    "mpi4py", "mpi4py.*",
+    "pooch",
+    "scipy", "scipy.*",
+    "xeofs", "xeofs.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [ "dask", "dask.*" ]
+ignore_missing_imports = true
+implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr", "zarr.*"
 ]
 ignore_missing_imports = true
 follow_imports = "skip"
 
-[tool.pytest.ini_options]
-minversion = "8.0"
-addopts = "-ra -q --durations=0"
-testpaths = [
-    "tests",
+[tool.pytest]
+addopts = [ "-ra -q" ]
+testpaths = ["tests"]
+markers = [
+    "integration: tests requiring test data or optional backends",
 ]
 filterwarnings = [
     "ignore:numpy.ndarray size changed:RuntimeWarning",
@@ -160,22 +174,11 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["pystormtracker"]
-omit = ["tests/*", "**/__init__.py"]
-
-[tool.coverage.paths]
-source = [
-    "src/pystormtracker",
-    "**/site-packages/pystormtracker",
-]
+branch = true
 
 [tool.coverage.report]
 show_missing = true
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
+exclude_also = [
     "def __repr__",
     "if __name__ == .__main__.:",
 ]
-
-[tool.uv]
-link-mode = "copy"

@@ -10,22 +10,21 @@ import pytest
 from pystormtracker.compare import _load_tracks, main
 from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
+from pystormtracker.models.units import Mode
 
 
 def make_tracks(
     records: list[tuple[list[float], list[float], list[np.datetime64], list[float]]],
     *,
     variable: str = "intensity",
-    mode: str = "max",
+    mode: Mode = "max",
 ) -> Tracks:
     unit = {
         "msl": "Pa",
         "vo": "s^-1",
         "vort": "s^-1",
     }.get(variable, "1")
-    builder = TracksBuilder(
-        TracksMetadata(variable, mode, {variable: unit})  # type: ignore[arg-type]
-    )
+    builder = TracksBuilder(TracksMetadata(variable, mode, {variable: unit}))
     for track_id, (lats, lons, times, values) in enumerate(records, start=1):
         builder.add_track(track_id, times, lats, lons, {variable: values})
     return builder.finish()

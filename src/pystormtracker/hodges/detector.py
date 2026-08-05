@@ -12,6 +12,7 @@ from ..io.data_loader import DataLoader
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange
+from ..preprocessing.refinement import subgrid_refine as refine_center
 from ..time import TimeInput, select_time_range
 from .kernels import (
     _numba_ccl,
@@ -19,7 +20,6 @@ from .kernels import (
     _numba_object_extrema,
     _numba_object_properties,
 )
-from .kernels import subgrid_refine as refine_center
 
 
 class HodgesDetector:
@@ -279,7 +279,7 @@ class HodgesDetector:
                 global_spline = RectSphereBivariateSpline(
                     theta_sorted, phi_global, frame_sorted
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 global_spline = None
 
             for i in range(n_feats):
@@ -309,7 +309,7 @@ class HodgesDetector:
                                 0, 0
                             ]
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         bspline_vals[i] = rval
                 else:
                     bspline_vals[i] = rval

@@ -1,0 +1,44 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks  # Enables fast path
+  rev: v6.0.0
+  hooks:
+  - id: check-json
+  - id: check-merge-conflict
+  - id: check-toml
+  - id: check-yaml
+  - id: end-of-file-fixer
+  - id: fix-byte-order-marker
+  - id: mixed-line-ending
+  - id: trailing-whitespace
+
+- repo: https://github.com/astral-sh/uv-pre-commit
+  rev: 0.12.1
+  hooks:
+  - id: uv-lock
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.16.1
+  hooks:
+  - id: ruff-check
+    types_or: [ python, pyproject ]
+    args: [ --fix, "--extend-select=ANN,B,C4,E,F,I,NPY,PT,SIM,UP,W", "--ignore=DTZ" ]
+  - id: ruff-format
+    types_or: [ python ]
+
+- repo: https://github.com/astral-sh/ty-pre-commit
+  rev: v0.0.66
+  hooks:
+  - id: ty
+    args: [ --all-extras, --isolated ]
+
+- repo: https://github.com/hukkin/mdformat
+  rev: 1.0.0
+  hooks:
+  - id: mdformat
+    additional_dependencies:
+    - mdformat-beautysh
+    - mdformat-config
+    - mdformat-gfm
+    - mdformat-gfm-alerts
+    - mdformat-simple-breaks
+    - mdformat-web

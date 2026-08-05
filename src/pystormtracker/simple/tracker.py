@@ -9,7 +9,7 @@ import xarray as xr
 from ..io.data_loader import normalize_tracking_data
 from ..models import TimeRange, Tracks
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep
+from ..models.tracker import RawDetectionStep, get_int_option
 from ..models.tracks import ProcessingStep, TracksBuilder, TracksMetadata
 from ..models.units import (
     Mode,
@@ -142,7 +142,7 @@ class SimpleTracker:
         resolution: float = 100.0,
         extent: MapExtent | None = None,
         subgrid_refine: bool = False,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
         import timeit
 
@@ -176,7 +176,7 @@ class SimpleTracker:
 
         t0_detect = timeit.default_timer()
         detector = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
-        size = int(kwargs.get("size", 5))  # type: ignore[arg-type]
+        size = get_int_option(kwargs, "size", 5)
         raw_steps = _detect_and_link(
             detector,
             size=size,
@@ -189,9 +189,8 @@ class SimpleTracker:
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0_detect:.4f}s")
 
-        # 3. Linking Phase: Combine points into trajectories.
-        # This implementation uses fast nearest-neighbor search based on a
-        # simple distance threshold, with no recursive optimization.
+        # Linking Phase: Combine detected extrema centers into cyclone trajectories
+        # using nearest-neighbor matching with spatial priority.
         t2 = timeit.default_timer()
         tracks = _link_centers(
             raw_steps,
@@ -227,7 +226,7 @@ class SimpleTracker:
         taper_points: int = 0,
         nside: int | None = None,
         subgrid_refine: bool = False,
-        **kwargs: float | int | str | None,
+        **kwargs: float | str | None,
     ) -> Tracks:
         import timeit
 
@@ -238,7 +237,6 @@ class SimpleTracker:
         if start_time is not None or end_time is not None:
             st = coerce_time_input(start_time)
             et = coerce_time_input(end_time)
-
             time_range = TimeRange(start=st, end=et)
 
         if backend in ("mpi", "dask") and isinstance(

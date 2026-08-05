@@ -14,8 +14,9 @@ from pystormtracker.preprocessing.kinematics import (
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
-    u = np.random.rand(ny, nx)
-    v = np.random.rand(ny, nx)
+    rng = np.random.default_rng()
+    u = rng.random((ny, nx))
+    v = rng.random((ny, nx))
 
     div, vort = compute_vort_div(u, v)
 
@@ -29,8 +30,9 @@ def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_apply_vort_div(ny: int, nx: int) -> None:
+    rng = np.random.default_rng()
     u = xr.DataArray(
-        np.random.rand(ny, nx),
+        rng.random((ny, nx)),
         coords={
             "lat": np.linspace(90, -90, ny),
             "lon": np.linspace(0, 360, nx, endpoint=False),
@@ -38,7 +40,7 @@ def test_apply_vort_div(ny: int, nx: int) -> None:
         dims=["lat", "lon"],
     )
     v = xr.DataArray(
-        np.random.rand(ny, nx),
+        rng.random((ny, nx)),
         coords={
             "lat": np.linspace(90, -90, ny),
             "lon": np.linspace(0, 360, nx, endpoint=False),
@@ -59,7 +61,7 @@ def test_apply_vort_div(ny: int, nx: int) -> None:
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
     # Test latitude South to North (lat_reverse=False)
-    data: NDArray[np.float64] = np.random.rand(1, ny, nx)
+    data: NDArray[np.float64] = np.random.default_rng().random((1, ny, nx))
     u = xr.DataArray(
         data,
         dims=["time", "lat", "lon"],
@@ -83,8 +85,9 @@ def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
 def test_kinematics_class(ny: int, nx: int) -> None:
-    u_np = np.random.rand(ny, nx)
-    v_np = np.random.rand(ny, nx)
+    rng = np.random.default_rng()
+    u_np = rng.random((ny, nx))
+    v_np = rng.random((ny, nx))
 
     # Use lat_reverse=True because we will provide N->S coordinates for the DataArray
     calc = Kinematics(lat_reverse=True)

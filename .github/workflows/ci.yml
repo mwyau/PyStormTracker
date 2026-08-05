@@ -120,13 +120,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: uv run --no-sync python scripts/generate_trackjson_schema.py --check
 
+      - name: Ty
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync ty check
+
       - name: Mypy
         if: ${{ !cancelled() }}
-        run: uv run --no-sync mypy .
+        run: uv run --no-sync mypy
 
   unit-tests:
     name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', minimum dependencies' || '' }})
-    needs: select-test-matrix
+    needs: [select-test-matrix, code-quality]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
@@ -199,7 +203,7 @@ jobs:
 
   integration-tests:
     name: Integration tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    needs: select-test-matrix
+    needs: [select-test-matrix, code-quality]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 70
     strategy:
@@ -245,6 +249,7 @@ jobs:
 
   package-tests:
     name: Package tests
+    needs: code-quality
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:

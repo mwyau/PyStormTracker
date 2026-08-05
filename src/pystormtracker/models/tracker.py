@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, runtime_checkable
 
@@ -14,6 +15,8 @@ from .units import ModeOption
 if TYPE_CHECKING:
     from .geo import MapExtent
 
+TrackerOption: TypeAlias = float | int | str | None
+
 # Type alias for a single time step's raw detection arrays
 RawDetectionStep: TypeAlias = tuple[
     TimePoint,
@@ -21,6 +24,18 @@ RawDetectionStep: TypeAlias = tuple[
     NDArray[np.float64],
     NDArray[np.float64],
 ]
+
+
+def get_int_option(
+    options: Mapping[str, TrackerOption],
+    name: str,
+    default: int,
+) -> int:
+    """Return an integer tracker option after validating its runtime type."""
+    value = options.get(name, default)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+    return value
 
 
 @runtime_checkable
@@ -52,5 +67,5 @@ class Tracker(Protocol):
         taper_points: int = 0,
         nside: int | None = None,
         subgrid_refine: bool = False,
-        **kwargs: float | int | str | None,
+        **kwargs: TrackerOption,
     ) -> Tracks: ...
