@@ -1,6 +1,3 @@
-# Mark notebooks as documentation
-notebooks/*.ipynb linguist-documentation
-
 # Mark benchmarking code and data as documentation to focus on core logic
 benchmark/* linguist-documentation
 
