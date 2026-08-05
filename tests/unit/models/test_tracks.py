@@ -12,8 +12,8 @@ from pystormtracker.models.geo import SpatialBounds
 from pystormtracker.models.tracks import (
     ProcessingStep,
     Tracks,
-    TracksBuilder,
     TracksMetadata,
+    _TracksBuilder,
 )
 from pystormtracker.models.units import Mode
 
@@ -80,25 +80,25 @@ def test_empty_layout_and_singleton_track() -> None:
         metadata=_metadata(),
     )
     assert len(empty) == 0
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     builder.add_track(35, [1577836800000], [0.0], [0.0], {"msl": [1.0]})
     singleton = builder.finish()
     np.testing.assert_array_equal(singleton.offsets, [0, 1])
 
 
 def test_builder_rejects_created_empty_tracks() -> None:
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     builder.new_track(10)
     with pytest.raises(ValueError, match=r"created track IDs have no points: \[10\]"):
         builder.finish()
 
 
 def test_builder_rejects_duplicate_ids_and_empty_points() -> None:
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     builder.new_track(10)
     with pytest.raises(ValueError, match="duplicate track ID 10"):
         builder.new_track(10)
-    invalid = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    invalid = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     invalid.add_track(
         20,
         [1577836800000, 1577836800000],
@@ -111,7 +111,7 @@ def test_builder_rejects_duplicate_ids_and_empty_points() -> None:
 
 
 def test_builder_uses_integer_ids_and_direct_candidate_operations() -> None:
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     track_id = builder.new_track()
     assert isinstance(track_id, int)
     builder.append(track_id, 1577836800000, 1.0, 2.0, {"msl": 100000.0})
@@ -129,7 +129,7 @@ def test_builder_uses_integer_ids_and_direct_candidate_operations() -> None:
 
 
 def test_builder_and_wire_types_are_not_root_public_api() -> None:
-    assert not hasattr(pystormtracker, "TracksBuilder")
+    assert not hasattr(pystormtracker, "_TracksBuilder")
     assert not hasattr(pystormtracker, "TracksMetadata")
     assert not hasattr(pystormtracker, "TrackJSONDocument")
     assert not hasattr(pystormtracker, "ProcessingStep")

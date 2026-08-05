@@ -61,7 +61,6 @@ The production default relative-vorticity threshold is `1e-5 s^-1`. The `1e-4 s^
 | `-b`, `--backend`    | `serial`, `dask`, or `mpi`. If omitted, an MPI environment is detected first; otherwise specifying workers selects Dask; otherwise serial is used. |
 | `-w`, `--workers`    | Number of workers. For Dask, this also selects the Dask backend when `--backend` is omitted.                                                       |
 | `-c`, `--chunk-size` | Number of detection time steps per chunk.                                                                                                          |
-| `--overlap`          | Compatibility option retained from the former chunk-merging interface. Gather-then-Link does not require overlapping chunks.                       |
 | `-e`, `--engine`     | Xarray engine: `h5netcdf`, `netcdf4`, or `cfgrib`.                                                                                                 |
 
 Simple supports serial, threaded Dask detection, and MPI detection. Dask and MPI workers return raw detections, which are sorted by time and linked once. Hodges supports serial execution, including serial chunked detection followed by one MGE linking pass. HEALPix supports serial execution. Selecting Dask or MPI for Hodges or HEALPix raises `NotImplementedError`.
@@ -89,12 +88,12 @@ Samples a variable from an Xarray-readable dataset at existing track coordinates
 
 ```bash
 stormtracker sample \
-  -i tracks.trackjson \
-  -d precipitation.nc \
-  -v pr \
-  -o tracks_with_pr.trackjson \
-  -m mean \
-  -r 500
+    -i tracks.trackjson \
+    -d precipitation.nc \
+    -v pr \
+    -o tracks_with_pr.trackjson \
+    -m mean \
+    -r 500
 ```
 
 | Option           | Description                                                                                            |

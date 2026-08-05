@@ -36,7 +36,7 @@ begin
         var!1 = "longitude"
         var&latitude = lat
         var&longitude = lon
-        
+
         out_name = dir_out + "era5_" + prefix + "_" + date + "_" + grid_str + suffix + ".nc"
         system("rm -f " + out_name)
         f_o = addfile(out_name, "c")
@@ -49,24 +49,24 @@ begin
     do r=0, dimsizes(res_list)-1
         res = res_list(r)
         grid_str = res + "x" + res
-        
+
         file_msl = dir_in + "era5_msl_2025-2026_djf_" + grid_str + ".nc"
         file_uv = dir_in + "era5_uv850_2025-2026_djf_" + grid_str + ".nc"
         file_vo = dir_in + "era5_vo850_2025-2026_djf_" + grid_str + ".nc"
 
         ; 1. Load First Frames
         print("Processing " + grid_str + " for date " + date + "...")
-        
+
         f_msl_src = addfile(file_msl, "r")
         msl_raw = f_msl_src->msl(0,:,:)
-        
+
         f_uv_src = addfile(file_uv, "r")
         u_raw = f_uv_src->u(0,0,::-1,:)
         v_raw = f_uv_src->v(0,0,::-1,:)
-        
+
         f_vo_src = addfile(file_vo, "r")
         vo_raw = f_vo_src->vo(0,0,:,:)
-        
+
         ; Define standard coordinates (double)
         lat = todouble(f_msl_src->latitude)
         lon = todouble(f_msl_src->longitude)
@@ -79,7 +79,7 @@ begin
         lon@standard_name = "longitude"
 
         ; 2. Calculate VODV and SFVP
-        ; NOTE: NCL's uv2vrF and uv2dvF use an opposite sign convention 
+        ; NOTE: NCL's uv2vrF and uv2dvF use an opposite sign convention
         ; to ERA5/PST for North-to-South grids. We negate them here to match.
         vo_calc = uv2vrF_Wrap(u_raw, v_raw)
         dv_calc = uv2dvF_Wrap(u_raw, v_raw)
@@ -89,14 +89,14 @@ begin
 
         vo_latrev = vo_calc(::-1,:)
         dv_latrev = dv_calc(::-1,:)
-        
+
         ; 3. Spectral Filtering (T42)
         ; Determine nlon for synthesis
         dims = dimsizes(msl_raw)
         nlon = dims(1)
-        
+
         a = shaeC(msl_raw)
-        
+
         ; Low-pass (T0-42)
         a_t0 = a
         a_t0(:, (lmax_trunc+1):, :) = 0.0
@@ -108,7 +108,7 @@ begin
         msl_t0!1 = "longitude"
         msl_t0&latitude = lat
         msl_t0&longitude = lon
-        
+
         ; Band-pass (T5-42)
         a_t5 = a_t0
         a_t5(:, 0:4, :) = 0.0
@@ -122,9 +122,9 @@ begin
         msl_t5&longitude = lon
 
         ; 4. Save and Standardize Metadata
-        
+
         ; Helper to clean and save variables
-        ; Note: procedure is defined outside or redefined carefully. 
+        ; Note: procedure is defined outside or redefined carefully.
         ; In NCL, defining a procedure inside a loop is not allowed if it's already defined.
         ; I'll use the existing clean_save which I will move before the loop.
 
@@ -139,7 +139,7 @@ begin
         u_s!1 = "longitude"
         u_s&latitude = lat
         u_s&longitude = lon
-        
+
         delete_VarAtts(v_s, -1)
         v_s@long_name = "V component of wind"
         v_s@units = "m s**-1"
@@ -148,7 +148,7 @@ begin
         v_s!1 = "longitude"
         v_s&latitude = lat
         v_s&longitude = lon
-        
+
         f_uv_out = dir_out + "era5_uv850_" + date + "_" + grid_str + ".nc"
         system("rm -f " + f_uv_out)
         out_uv = addfile(f_uv_out, "c")
@@ -170,7 +170,7 @@ begin
         vo_c!1 = "longitude"
         vo_c&latitude = lat
         vo_c&longitude = lon
-        
+
         delete_VarAtts(dv_c, -1)
         dv_c@long_name = "Divergence"
         dv_c@units = "s**-1"
@@ -179,7 +179,7 @@ begin
         dv_c!1 = "longitude"
         dv_c&latitude = lat
         dv_c&longitude = lon
-        
+
         f_vodv_out = dir_out + "era5_vodv850_" + date + "_" + grid_str + "_ncl.nc"
         system("rm -f " + f_vodv_out)
         out_vodv = addfile(f_vodv_out, "c")
@@ -198,7 +198,7 @@ begin
         sf_c!1 = "longitude"
         sf_c&latitude = lat
         sf_c&longitude = lon
-        
+
         delete_VarAtts(vp_c, -1)
         vp_c@long_name = "Velocity potential"
         vp_c@units = "m**2 s**-1"
@@ -207,7 +207,7 @@ begin
         vp_c!1 = "longitude"
         vp_c&latitude = lat
         vp_c&longitude = lon
-        
+
         f_sfvp_out = dir_out + "era5_sfvp850_" + date + "_" + grid_str + "_ncl.nc"
         system("rm -f " + f_sfvp_out)
         out_sfvp = addfile(f_sfvp_out, "c")

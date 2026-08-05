@@ -10,8 +10,8 @@ from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD
 from ..models.geo import geod_dist_km
+from ..models.time import decode_time_values
 from ..models.tracks import Tracks
-from ..time import decode_time_values
 from .weighting import WeightType, calculate_spherical_weight
 
 

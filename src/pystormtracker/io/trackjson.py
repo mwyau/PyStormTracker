@@ -12,8 +12,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.geo import SpatialBounds, geod_dist_km, minimal_longitude_interval
-from ..models.tracks import ProcessingStep, Tracks, TracksMetadata
-from ..time import (
+from ..models.time import (
     CANONICAL_TIME_UNITS,
     INT64_MIN,
     MAX_SAFE_JSON_INTEGER,
@@ -21,6 +20,7 @@ from ..time import (
     Calendar,
     CanonicalTimeUnits,
 )
+from ..models.tracks import ProcessingStep, Tracks, TracksMetadata
 
 TRACKJSON_FORMAT: Final[str] = "TrackJSON/1.0"
 TRACKJSON_STATS_VERSION: Final = 1

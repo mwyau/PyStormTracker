@@ -9,16 +9,14 @@ from typing import Literal, cast
 
 import numpy as np
 
+from .healpix.tracker import HealpixTracker
 from .hodges import constants
 from .hodges.tracker import HodgesTracker
 from .io.format import SUPPORTED_FORMATS, SupportedFormat
-from .models import constants as model_constants
-from .models.tracks import Tracks
-from .models.units import ModeOption, resolve_mode
+from .models.tracker import Tracker
 from .preprocessing.tracking import resolve_filter_bounds
 from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
-from .time import TimeInput
 from .utils.cli import (
     finite_float,
     nonnegative_float,
@@ -78,206 +76,8 @@ def _validate_adapt_params(params: np.ndarray) -> np.ndarray:
 
 def is_mpi_env() -> bool:
     """Detects if the current process is running in an MPI environment."""
-    # Common MPI environment variables
     mpi_vars = ["OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "MV2_COMM_WORLD_SIZE"]
     return any(v in os.environ for v in mpi_vars)
-
-
-def run_tracker(
-    infile: str,
-    variable_name: str,
-    outfile: str,
-    start_time: TimeInput | None = None,
-    end_time: TimeInput | None = None,
-    mode: ModeOption | None = "auto",
-    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-    resolution: float = 100.0,
-    extent: tuple[float, float, float, float] | None = None,
-    backend: Backend | None = None,
-    n_workers: int | None = None,
-    max_chunk_size: int | None = None,
-    threshold: float | None = None,
-    engine: str | None = None,
-    algorithm: Algorithm = "simple",
-    output_format: str | None = "auto",
-    # Hodges-specific
-    min_points: int = constants.MIN_POINTS_DEFAULT,
-    w1: float | None = None,
-    w2: float | None = None,
-    dmax: float | None = None,
-    phimax: float | None = None,
-    n_iterations: int | None = None,
-    min_lifetime: int | None = None,
-    max_missing: int | None = None,
-    zones: np.ndarray | None = None,
-    adapt_params: np.ndarray | None = None,
-    lmin: int | None = None,
-    lmax: int | None = None,
-    taper_points: int = 0,
-    nside: int | None = None,
-    overlap: int = model_constants.OVERLAP_DEFAULT,
-    subgrid_refine: bool | None = None,
-) -> Tracks:
-    """Orchestrates the storm tracking process from the CLI."""
-    timer: dict[str, float] = {}
-    resolved_mode = resolve_mode(variable_name, mode)
-
-    # 1. Backend Auto-detection
-    detected_backend: Backend = "serial"
-    if backend:
-        detected_backend = backend
-    elif is_mpi_env():
-        detected_backend = "mpi"
-    elif n_workers is not None:
-        detected_backend = "dask"
-
-    use_mpi = detected_backend == "mpi"
-
-    rank = 0
-    if use_mpi:
-        import shutil
-
-        if not shutil.which("mpiexec"):
-            if backend == "mpi":
-                raise RuntimeError(
-                    "MPI backend requested but 'mpiexec' not found in PATH. "
-                    "Please install an MPI implementation (e.g., OpenMPI or MS-MPI)."
-                )
-            else:
-                # Auto-detected via env vars but binary missing
-                print("Warning: MPI environment detected but 'mpiexec' missing.")
-                detected_backend = "dask" if n_workers else "serial"
-                use_mpi = False
-
-    if use_mpi:
-        if not is_mpi_env():
-            print(
-                "Warning: MPI backend selected but no MPI environment detected "
-                "(e.g., OMPI_COMM_WORLD_SIZE not set)."
-            )
-            print("Ensure you are running with 'mpirun' or 'mpiexec'.")
-
-        try:
-            from mpi4py import MPI
-
-            rank = comm.Get_rank() if (comm := MPI.COMM_WORLD) else 0
-            if n_workers is None:
-                n_workers = MPI.COMM_WORLD.Get_size()
-        except ImportError:
-            if backend == "mpi":
-                raise ImportError(
-                    "mpi4py is required for MPI backend. "
-                    "Install it with 'pip install PyStormTracker[mpi]'."
-                ) from None
-            # If auto-detected but not installed, fallback to serial or dask
-            if is_mpi_env():
-                print(
-                    "Warning: MPI environment detected but mpi4py is not installed. "
-                    "Falling back."
-                )
-            detected_backend = "dask" if n_workers else "serial"
-            use_mpi = False
-
-    if rank == 0:
-        timer["total"] = timeit.default_timer()
-        print(f"Using backend: {detected_backend}")
-        if n_workers:
-            print(f"Workers: {n_workers}")
-
-    from .models.tracker import Tracker
-
-    tracker: Tracker
-    if map_proj == "healpix":
-        from .healpix.tracker import HealpixTracker
-
-        tracker = HealpixTracker(
-            w1=w1 if w1 is not None else constants.W1_DEFAULT,
-            w2=w2 if w2 is not None else constants.W2_DEFAULT,
-            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
-            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
-            n_iterations=n_iterations
-            if n_iterations is not None
-            else constants.ITERATIONS_DEFAULT,
-            min_lifetime=min_lifetime
-            if min_lifetime is not None
-            else constants.LIFETIME_DEFAULT,
-            max_missing=max_missing
-            if max_missing is not None
-            else constants.MISSING_DEFAULT,
-            zones=zones,
-            adapt_params=adapt_params,
-        )
-    elif algorithm == "simple":
-        tracker = SimpleTracker()
-    else:
-        # Initialize with standard defaults and override if provided
-        tracker = HodgesTracker(
-            w1=w1 if w1 is not None else constants.W1_DEFAULT,
-            w2=w2 if w2 is not None else constants.W2_DEFAULT,
-            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
-            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
-            n_iterations=n_iterations
-            if n_iterations is not None
-            else constants.ITERATIONS_DEFAULT,
-            min_lifetime=min_lifetime
-            if min_lifetime is not None
-            else constants.LIFETIME_DEFAULT,
-            max_missing=max_missing
-            if max_missing is not None
-            else constants.MISSING_DEFAULT,
-            zones=zones,
-            adapt_params=adapt_params,
-        )
-
-    effective_subgrid_refine = (
-        subgrid_refine
-        if subgrid_refine is not None
-        else algorithm != "simple" or map_proj == "healpix"
-    )
-    tracks = tracker.track(
-        infile=infile,
-        variable_name=variable_name,
-        start_time=start_time,
-        end_time=end_time,
-        mode=resolved_mode,
-        map_proj=map_proj,
-        resolution=resolution,
-        extent=extent,
-        backend=detected_backend,
-        n_workers=n_workers,
-        max_chunk_size=max_chunk_size,
-        threshold=threshold,
-        engine=engine,
-        min_points=min_points,
-        lmin=lmin,
-        lmax=lmax,
-        taper_points=taper_points,
-        nside=nside,
-        overlap=overlap,
-        subgrid_refine=effective_subgrid_refine,
-    )
-
-    # Export Phase
-    if rank == 0:
-        num_tracks = len(tracks)
-        print(f"Total number of tracks: {num_tracks}")
-
-        timer["export"] = timeit.default_timer()
-        selected_format = (
-            None
-            if output_format in (None, "auto")
-            else cast("SupportedFormat", output_format)
-        )
-        tracks.write(outfile, format=selected_format)
-        timer["export"] = timeit.default_timer() - timer["export"]
-
-        print(f"Export time: {timer['export']:.4f}s")
-        print(f"Results exported to {outfile}")
-
-        timer["total"] = timeit.default_timer() - timer["total"]
-        print(f"Total time: {timer['total']:.4f}s")
-
-    return tracks
 
 
 def setup_parser(
@@ -419,15 +219,6 @@ def setup_parser(
         help="Detection steps per chunk. Backend default when omitted.",
     )
     perf.add_argument(
-        "--overlap",
-        type=nonnegative_int,
-        default=model_constants.OVERLAP_DEFAULT,
-        help=(
-            "Compatibility option retained for older commands; Gather-then-Link "
-            "does not require overlapping chunks."
-        ),
-    )
-    perf.add_argument(
         "-e",
         "--engine",
         choices=["h5netcdf", "netcdf4", "cfgrib"],
@@ -513,26 +304,17 @@ def setup_parser(
         default=None,
         help="JSON string defining adaptive smoothness parameters (2x4 array).",
     )
-    parser.set_defaults(func=run_track_command)
+    parser.set_defaults(func=main)
 
 
 def main(args: Namespace) -> None:
     """
     Main entry point for the track command.
     """
-    run_track_command(args)
-
-
-def run_track_command(args: Namespace) -> Tracks:
-    """
-    Executes the tracking algorithm based on CLI arguments and returns
-    the generated Tracks object.
-    """
     start_time = None
     end_time = None
 
     if args.num is not None:
-        # Determine actual times for the first n steps
         from .hodges.detector import HodgesDetector
 
         detector_preview: SimpleDetector | HodgesDetector
@@ -556,7 +338,6 @@ def run_track_command(args: Namespace) -> Tracks:
 
     zones_arr = None
     if args.zone_file:
-        # Check if the file has a header line (single element)
         with open(args.zone_file) as f:
             first_line = f.readline().split()
             has_header = len(first_line) == 1
@@ -573,8 +354,6 @@ def run_track_command(args: Namespace) -> Tracks:
 
     adapt_params_arr = None
     if args.adapt_file:
-        # Standard adapt.dat in TRACK is 4 points with (thresh, value) per line (4x2)
-        # We need it as 2x4 (row 0: thresholds, row 1: values)
         arr = np.loadtxt(args.adapt_file)
         adapt_params_arr = _validate_adapt_params(arr.T if arr.shape == (4, 2) else arr)
     elif args.adapt_params:
@@ -585,38 +364,213 @@ def run_track_command(args: Namespace) -> Tracks:
         except json.JSONDecodeError as exc:
             raise ValueError(f"invalid adaptive-parameters JSON: {exc.msg}") from exc
 
-    return run_tracker(
+    # Auto-detect backend
+    detected_backend: Backend = "serial"
+    if args.backend:
+        detected_backend = args.backend
+    elif is_mpi_env():
+        detected_backend = "mpi"
+    elif args.workers is not None:
+        detected_backend = "dask"
+
+    use_mpi = detected_backend == "mpi"
+    rank = 0
+    n_workers = args.workers
+
+    if use_mpi:
+        import shutil
+
+        if not shutil.which("mpiexec"):
+            if args.backend == "mpi":
+                raise RuntimeError(
+                    "MPI backend requested but 'mpiexec' not found in PATH. "
+                    "Please install an MPI implementation (e.g., OpenMPI or MS-MPI)."
+                )
+            else:
+                print("Warning: MPI environment detected but 'mpiexec' missing.")
+                detected_backend = "dask" if n_workers else "serial"
+                use_mpi = False
+
+    if use_mpi:
+        if not is_mpi_env():
+            print(
+                "Warning: MPI backend selected but no MPI environment detected "
+                "(e.g., OMPI_COMM_WORLD_SIZE not set)."
+            )
+            print("Ensure you are running with 'mpirun' or 'mpiexec'.")
+
+        try:
+            from mpi4py import MPI
+
+            rank = comm.Get_rank() if (comm := MPI.COMM_WORLD) else 0
+            if n_workers is None:
+                n_workers = MPI.COMM_WORLD.Get_size()
+        except ImportError:
+            if args.backend == "mpi":
+                raise ImportError(
+                    "mpi4py is required for MPI backend. "
+                    "Install it with 'pip install PyStormTracker[mpi]'."
+                ) from None
+            if is_mpi_env():
+                print(
+                    "Warning: MPI environment detected but mpi4py is not installed. "
+                    "Falling back."
+                )
+            detected_backend = "dask" if n_workers else "serial"
+            use_mpi = False
+
+    timer: dict[str, float] = {}
+    if rank == 0:
+        timer["total"] = timeit.default_timer()
+        print(f"Using backend: {detected_backend}")
+        if n_workers:
+            print(f"Workers: {n_workers}")
+
+    # Validate options against selected tracker and instantiate tracker
+    tracker: Tracker
+    if args.map_proj == "healpix":
+        if detected_backend != "serial":
+            raise ValueError("HealpixTracker supports only the serial backend.")
+        if args.chunk_size is not None:
+            raise ValueError("HealpixTracker does not support chunking.")
+        if args.resolution != 100.0 or args.extent != (
+            -13000.0,
+            13000.0,
+            -13000.0,
+            13000.0,
+        ):
+            raise ValueError(
+                "Stereographic resolution and extent options are not supported with "
+                "HEALPix projection."
+            )
+
+        effective_subgrid = (
+            args.subgrid_refine if args.subgrid_refine is not None else True
+        )
+        tracker = HealpixTracker(
+            w1=args.w1 if args.w1 is not None else constants.W1_DEFAULT,
+            w2=args.w2 if args.w2 is not None else constants.W2_DEFAULT,
+            dmax=args.dmax if args.dmax is not None else constants.DMAX_DEFAULT,
+            phimax=args.phimax if args.phimax is not None else constants.PHIMAX_DEFAULT,
+            n_iterations=args.iterations
+            if args.iterations is not None
+            else constants.ITERATIONS_DEFAULT,
+            min_lifetime=args.min_lifetime
+            if args.min_lifetime is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing=args.max_missing
+            if args.max_missing is not None
+            else constants.MISSING_DEFAULT,
+            zones=zones_arr,
+            adapt_params=adapt_params_arr,
+            nside=args.nside,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=args.taper_points,
+            min_points=args.min_points,
+            subgrid_refine=effective_subgrid,
+        )
+    elif args.algorithm == "hodges":
+        if detected_backend != "serial":
+            raise ValueError("HodgesTracker supports only the serial backend.")
+        if args.nside is not None:
+            raise ValueError("nside is only supported with HEALPix projection.")
+
+        effective_subgrid = (
+            args.subgrid_refine if args.subgrid_refine is not None else True
+        )
+        tracker = HodgesTracker(
+            w1=args.w1 if args.w1 is not None else constants.W1_DEFAULT,
+            w2=args.w2 if args.w2 is not None else constants.W2_DEFAULT,
+            dmax=args.dmax if args.dmax is not None else constants.DMAX_DEFAULT,
+            phimax=args.phimax if args.phimax is not None else constants.PHIMAX_DEFAULT,
+            n_iterations=args.iterations
+            if args.iterations is not None
+            else constants.ITERATIONS_DEFAULT,
+            min_lifetime=args.min_lifetime
+            if args.min_lifetime is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing=args.max_missing
+            if args.max_missing is not None
+            else constants.MISSING_DEFAULT,
+            zones=zones_arr,
+            adapt_params=adapt_params_arr,
+            map_proj=args.map_proj,
+            resolution=args.resolution,
+            extent=args.extent,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=args.taper_points,
+            min_points=args.min_points,
+            subgrid_refine=effective_subgrid,
+            max_chunk_size=args.chunk_size,
+        )
+    else:  # simple tracker
+        if args.nside is not None:
+            raise ValueError("nside is only supported with HEALPix projection.")
+        has_hodges_option = (
+            args.min_points != 1
+            or args.w1 is not None
+            or args.w2 is not None
+            or args.dmax is not None
+            or args.phimax is not None
+            or args.iterations is not None
+            or args.min_lifetime is not None
+            or args.max_missing is not None
+            or args.zone_file is not None
+            or args.zones is not None
+            or args.adapt_file is not None
+            or args.adapt_params is not None
+        )
+        if has_hodges_option:
+            raise ValueError(
+                "Hodges options (w1, w2, dmax, phimax, iterations, min_lifetime, "
+                "max_missing, min_points, zones, adapt) are not supported "
+                "with SimpleTracker."
+            )
+
+        effective_subgrid = (
+            args.subgrid_refine if args.subgrid_refine is not None else False
+        )
+        tracker = SimpleTracker(
+            map_proj=args.map_proj,
+            resolution=args.resolution,
+            extent=args.extent,
+            lmin=lmin,
+            lmax=lmax,
+            taper_points=args.taper_points,
+            size=5,
+            subgrid_refine=effective_subgrid,
+            backend=detected_backend,
+            n_workers=n_workers,
+            max_chunk_size=args.chunk_size,
+        )
+
+    tracks = tracker.track(
         infile=args.input,
         variable_name=args.var,
-        outfile=args.output,
         start_time=start_time,
         end_time=end_time,
         mode=args.mode,
-        map_proj=args.map_proj,
-        resolution=args.resolution,
-        extent=args.extent,
-        backend=args.backend,
-        n_workers=args.workers,
-        max_chunk_size=args.chunk_size,
         threshold=args.threshold,
         engine=args.engine,
-        algorithm=args.algorithm,
-        output_format=args.format,
-        # Hodges-specific
-        min_points=args.min_points,
-        w1=args.w1,
-        w2=args.w2,
-        dmax=args.dmax,
-        phimax=args.phimax,
-        n_iterations=args.iterations,
-        min_lifetime=args.min_lifetime,
-        max_missing=args.max_missing,
-        zones=zones_arr,
-        adapt_params=adapt_params_arr,
-        lmin=lmin,
-        lmax=lmax,
-        taper_points=args.taper_points,
-        nside=args.nside,
-        overlap=args.overlap,
-        subgrid_refine=args.subgrid_refine,
     )
+
+    if rank == 0:
+        num_tracks = len(tracks)
+        print(f"Total number of tracks: {num_tracks}")
+
+        timer["export"] = timeit.default_timer()
+        selected_format = (
+            None
+            if args.format in (None, "auto")
+            else cast("SupportedFormat", args.format)
+        )
+        tracks.write(args.output, format=selected_format)
+        timer["export"] = timeit.default_timer() - timer["export"]
+
+        print(f"Export time: {timer['export']:.4f}s")
+        print(f"Results exported to {args.output}")
+
+        timer["total"] = timeit.default_timer() - timer["total"]
+        print(f"Total time: {timer['total']:.4f}s")

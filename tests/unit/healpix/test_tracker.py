@@ -7,18 +7,13 @@ import xarray as xr
 from pystormtracker.healpix.tracker import HealpixTracker
 
 
-def test_healpix_tracker_not_implemented_backend() -> None:
-    tracker = HealpixTracker()
-    with pytest.raises(NotImplementedError):
-        tracker.track("dummy.nc", "msl", backend="dask")
+def test_healpix_tracker_invalid_nside() -> None:
+    with pytest.raises(ValueError, match="nside must be a positive power of two"):
+        HealpixTracker(nside=3)
 
 
 def test_healpix_tracker_time_range() -> None:
     tracker = HealpixTracker()
-    # Basic check for parameter routing.
-    # Serial detection will fail on dummy.nc if it doesn't exist.
-    # We can mock detect if we want, but let's just test the init of time_range
-    # for now using valid dates to avoid datetime64 errors.
     with pytest.raises((FileNotFoundError, Exception)) as excinfo:
         tracker.track(
             "nonexistent.nc", "msl", start_time="2025-01-01", end_time="2025-01-31"

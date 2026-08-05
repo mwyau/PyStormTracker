@@ -39,6 +39,11 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> Tracks | N
             print(f"Stdout: {e.stdout}")
             print(f"Stderr: {e.stderr}")
             raise
+        out_idx = cmd_args.index("-o") + 1 if "-o" in cmd_args else -1
+        if out_idx > 0 and out_idx < len(cmd_args):
+            from pystormtracker.io.format import load_tracks
+
+            return load_tracks(cmd_args[out_idx])
         return None
 
     # Direct function call for Serial/Dask backends
@@ -53,11 +58,12 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> Tracks | N
     convert.setup_parser(subparsers)
     compare.setup_parser(subparsers)
 
-    from typing import cast
-
     args = parser.parse_args(cmd_args)
     if hasattr(args, "func"):
-        return cast(Tracks, args.func(args))
+        args.func(args)
+        from pystormtracker.io.format import load_tracks
+
+        return load_tracks(args.output)
     return None
 
 

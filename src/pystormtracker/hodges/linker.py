@@ -5,10 +5,10 @@ from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD
 from ..models.geo import SpatialBounds, geod_dist
+from ..models.time import encode_time_values
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import ProcessingStep, Tracks, TracksBuilder, TracksMetadata
+from ..models.tracks import ProcessingStep, Tracks, TracksMetadata, _TracksBuilder
 from ..models.units import Mode, canonical_unit_for
-from ..time import encode_time_values
 from . import constants
 from .kernels import (
     _break_track,
@@ -292,7 +292,7 @@ class HodgesLinker:
 
         # 5. Convert track_matrix back to PyStormTracker's Tracks model
         units = {primary_var: unit or canonical_unit_for(primary_var) or "1"}
-        builder = TracksBuilder(
+        builder = _TracksBuilder(
             TracksMetadata(primary_var, mode, units, bounds, processing)
         )
         times = [int(encode_time_values([d[0]])[0]) for d in detections]

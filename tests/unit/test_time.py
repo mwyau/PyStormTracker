@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 
 from pystormtracker.io.data_loader import DataLoader
-from pystormtracker.time import (
+from pystormtracker.models.time import (
     GREGORIAN_REFORM_DATE,
     INT64_MAX,
     MAX_SAFE_JSON_INTEGER,

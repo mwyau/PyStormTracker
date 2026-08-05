@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from pystormtracker.models.tracker import Backend
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.preprocessing.tracking import Projection
 from pystormtracker.simple.tracker import SimpleTracker
-from pystormtracker.track import Backend
 
 
 @pytest.mark.integration
@@ -34,44 +34,44 @@ def test_simple_stereographic_dask_matches_serial(
     data.to_dataset(name="msl").to_netcdf(input_path)
 
     def run(
-        tracker: SimpleTracker,
         input_path: Path,
         *,
         map_proj: Projection,
         backend: Backend,
         n_workers: int | None = None,
     ) -> Tracks:
+        tracker = SimpleTracker(
+            map_proj=map_proj,
+            resolution=300.0,
+            extent=(-3000.0, 3000.0, -3000.0, 3000.0),
+            subgrid_refine=True,
+            backend=backend,
+            n_workers=n_workers,
+        )
         return tracker.track(
             input_path,
             "msl",
-            backend=backend,
-            n_workers=n_workers,
             mode="min",
-            map_proj=map_proj,
-            extent=(-3000.0, 3000.0, -3000.0, 3000.0),
-            resolution=300.0,
-            subgrid_refine=True,
         )
 
-    tracker = SimpleTracker()
-
     serial = run(
-        tracker,
         input_path,
         map_proj=map_proj,
         backend="serial",
     )
     dask = run(
-        tracker,
         input_path,
         map_proj=map_proj,
         backend="dask",
         n_workers=2,
     )
 
-    assert serial == dask
-    if serial.lats.size:
-        if map_proj == "nh_stereo":
-            assert np.all(serial.lats > 0.0)
-        else:
-            assert np.all(serial.lats < 0.0)
+    assert serial.metadata == dask.metadata
+    np.testing.assert_array_equal(serial.ids, dask.ids)
+    np.testing.assert_array_equal(serial.offsets, dask.offsets)
+    np.testing.assert_array_equal(serial.times, dask.times)
+    np.testing.assert_allclose(serial.lats, dask.lats, atol=1e-6)
+    np.testing.assert_allclose(serial.lons, dask.lons, atol=1e-6)
+    np.testing.assert_allclose(
+        serial.variables["msl"], dask.variables["msl"], atol=1e-6
+    )

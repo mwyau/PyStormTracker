@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import compare, convert, sample, track
+from . import __version__, compare, convert, sample, track
 
 
 def main() -> None:
@@ -14,8 +14,18 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(
         prog="stormtracker",
-        description="PyStormTracker: A High-Performance Cyclone Tracker in Python",
+        description=(
+            "PyStormTracker: A High-Performance Cyclone Tracker in Python "
+            f"(v{__version__})"
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
 
     subparsers = parser.add_subparsers(

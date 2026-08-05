@@ -9,7 +9,7 @@ import pytest
 
 from pystormtracker.compare import _load_tracks, main
 from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
-from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
+from pystormtracker.models.tracks import Tracks, TracksMetadata, _TracksBuilder
 from pystormtracker.models.units import Mode
 
 
@@ -24,7 +24,7 @@ def make_tracks(
         "vo": "s^-1",
         "vort": "s^-1",
     }.get(variable, "1")
-    builder = TracksBuilder(TracksMetadata(variable, mode, {variable: unit}))
+    builder = _TracksBuilder(TracksMetadata(variable, mode, {variable: unit}))
     for track_id, (lats, lons, times, values) in enumerate(records, start=1):
         builder.add_track(track_id, times, lats, lons, {variable: values})
     return builder.finish()

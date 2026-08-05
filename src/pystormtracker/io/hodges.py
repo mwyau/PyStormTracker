@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 
 from ..models.geo import normalize_longitudes_360
-from ..models.tracks import Tracks, TracksBuilder, TracksMetadata
+from ..models.time import decode_time_values
+from ..models.tracks import Tracks, TracksMetadata, _TracksBuilder
 from ..models.units import ModeOption, canonical_unit_for, resolve_mode
-from ..time import decode_time_values
 
 
 def _parse_track_time(token: str) -> np.datetime64:
@@ -120,7 +120,7 @@ def read_hodges(
             f"{len(point_groups)}"
         )
     units = {primary_var: canonical_unit_for(primary_var) or "1"}
-    builder = TracksBuilder(
+    builder = _TracksBuilder(
         TracksMetadata(primary_var, resolve_mode(primary_var, mode), units)
     )
     for track_id, points in point_groups.items():

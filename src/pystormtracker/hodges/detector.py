@@ -10,10 +10,9 @@ from scipy.interpolate import RectSphereBivariateSpline
 
 from ..io.data_loader import DataLoader
 from ..models import constants as model_constants
+from ..models.time import TimeInput, TimeRange, select_time_range
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import TimeRange
 from ..preprocessing.refinement import subgrid_refine as refine_center
-from ..time import TimeInput, select_time_range
 from .kernels import (
     _numba_ccl,
     _numba_get_centers,
@@ -322,6 +321,8 @@ class HodgesDetector:
                 f_minor[i] = minors[obj_id]
                 f_orient[i] = orientations[obj_id]
 
-            raw_results.append((t, refined_lats, refined_lons, quad_vals))
+            raw_results.append(
+                RawDetectionStep(t, refined_lats, refined_lons, quad_vals)
+            )
 
         return raw_results

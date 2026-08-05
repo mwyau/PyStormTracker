@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -8,16 +7,19 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import normalize_tracking_data
-from ..models import constants as model_constants
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep, Tracker, get_int_option
+from ..models.time import TimeInput
+from ..models.tracker import RawDetectionStep, Tracker, TrackingInput
 from ..models.tracks import (
     ProcessingStep,
     Tracks,
 )
 from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
-from ..preprocessing.tracking import Projection, preprocess_tracking_data
-from ..time import TimeInput
+from ..preprocessing.tracking import (
+    Projection,
+    preprocess_tracking_data,
+    resolve_filter_bounds,
+)
 from . import constants
 from .detector import HodgesDetector
 from .linker import HodgesLinker
@@ -33,6 +35,7 @@ class HodgesTracker(Tracker):
 
     def __init__(
         self,
+        *,
         w1: float = constants.W1_DEFAULT,
         w2: float = constants.W2_DEFAULT,
         dmax: float = constants.DMAX_DEFAULT,
@@ -43,23 +46,46 @@ class HodgesTracker(Tracker):
         zones: NDArray[np.float64] | None = None,
         adapt_params: NDArray[np.float64] | None = None,
         use_standard_constraints: bool = True,
+        map_proj: Projection = "global",
+        resolution: float = 100.0,
+        extent: MapExtent | None = None,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        size: int = 5,
+        min_points: int = constants.MIN_POINTS_DEFAULT,
+        subgrid_refine: bool = True,
+        max_chunk_size: int | None = None,
     ) -> None:
         """
         Initialize the Hodges Tracker.
-
-        Args:
-            w1: Weight for direction in cost function.
-            w2: Weight for speed in cost function.
-            dmax: Default maximum displacement in degrees.
-            phimax: Penalty for phantom points (static cost).
-            n_iterations: Number of MGE iterations (forward + backward).
-            min_lifetime: Minimum number of steps for a valid track.
-            max_missing: Maximum consecutive missing frames allowed.
-            zones: Regional dmax zones [lon_min, lon_max, lat_min, lat_max, dmax].
-            adapt_params: Adaptive smoothness parameters (2x4 array).
-            use_standard_constraints: If True, use legacy standard zones/adaptive
-                values if None provided.
         """
+        if w1 < 0.0 or w2 < 0.0:
+            raise ValueError("w1 and w2 must be nonnegative")
+        if dmax <= 0.0:
+            raise ValueError("dmax must be positive")
+        if phimax < 0.0:
+            raise ValueError("phimax must be nonnegative")
+        if n_iterations <= 0:
+            raise ValueError("n_iterations must be positive")
+        if min_lifetime <= 0:
+            raise ValueError("min_lifetime must be positive")
+        if max_missing < 0:
+            raise ValueError("max_missing must be nonnegative")
+        if size <= 0:
+            raise ValueError("size must be positive")
+        if min_points <= 0:
+            raise ValueError("min_points must be positive")
+        if resolution <= 0.0:
+            raise ValueError("resolution must be positive")
+        if taper_points < 0:
+            raise ValueError("taper_points must be nonnegative")
+        if map_proj not in ("global", "nh_stereo", "sh_stereo", "healpix"):
+            raise ValueError(f"unsupported map_proj {map_proj!r}")
+        if max_chunk_size is not None and max_chunk_size <= 0:
+            raise ValueError("max_chunk_size must be positive")
+        resolve_filter_bounds(lmin, lmax)
+
         self.w1 = w1
         self.w2 = w2
         self.dmax = dmax
@@ -67,6 +93,16 @@ class HodgesTracker(Tracker):
         self.n_iterations = n_iterations
         self.min_lifetime = min_lifetime
         self.max_missing = max_missing
+        self.map_proj = map_proj
+        self.resolution = resolution
+        self.extent = extent
+        self.lmin = lmin
+        self.lmax = lmax
+        self.taper_points = taper_points
+        self.size = size
+        self.min_points = min_points
+        self.subgrid_refine = subgrid_refine
+        self.max_chunk_size = max_chunk_size
 
         if zones is None:
             if use_standard_constraints:
@@ -110,61 +146,18 @@ class HodgesTracker(Tracker):
 
     def track(
         self,
-        infile: str | Path | xr.DataArray | xr.Dataset,
+        infile: TrackingInput,
         variable_name: str,
+        *,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
-        mode: ModeOption | None = "auto",
-        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-        resolution: float = 100.0,
-        extent: MapExtent | None = None,
-        backend: Literal["serial", "mpi", "dask"] = "serial",
-        n_workers: int | None = None,
-        max_chunk_size: int | None = None,
+        mode: ModeOption = "auto",
         threshold: float | None = None,
         engine: str | None = None,
-        overlap: int = model_constants.OVERLAP_DEFAULT,
-        min_points: int = constants.MIN_POINTS_DEFAULT,
-        lmin: int | None = None,
-        lmax: int | None = None,
-        taper_points: int = 0,
-        nside: int | None = None,
-        subgrid_refine: bool = True,
-        **kwargs: float | str | None,
     ) -> Tracks:
-        """
-        Runs the Hodges tracking algorithm.
-        Supports chunked detection if max_chunk_size is provided. Detections are
-        gathered before a single linking pass so chunk boundaries do not affect
-        the result.
-
-        Args:
-            infile: Path to the input data file.
-            variable_name: Variable name to track.
-            start_time, end_time: Time range for tracking.
-            mode: Search for 'min' or 'max' extrema.
-            backend: Processing backend (serial, mpi, dask).
-            n_workers: Number of parallel workers.
-            max_chunk_size: Number of steps per time chunk.
-            threshold: Intensity threshold for detection.
-            engine: Data loading engine (netcdf4, h5netcdf, etc).
-            overlap: Retained for cross-tracker API compatibility. Hodges gathers
-                detections before linking and does not require overlap.
-            min_points: Minimum grid points per object.
-            lmin, lmax: Optional spectral filter bounds.
-            taper_points: Independent boundary tapering points.
-        """
         import timeit
 
         resolved_mode = resolve_mode(variable_name, mode)
-
-        if backend != "serial":
-            raise NotImplementedError(
-                "HodgesTracker currently supports only the serial backend."
-            )
-        if max_chunk_size is not None and max_chunk_size < 1:
-            raise ValueError("max_chunk_size must be positive")
-
         t_total_start = timeit.default_timer()
 
         # 1. Load and optionally filter data
@@ -183,22 +176,20 @@ class HodgesTracker(Tracker):
         )
 
         bounds = spatial_bounds_from_xarray(data_xr)
-        processing: tuple[ProcessingStep, ...] = ()
 
         data_xr, processing = self.preprocess_standard_track(
             data_xr,
-            lmin=lmin,
-            lmax=lmax,
-            taper_points=taper_points,
-            map_proj=map_proj,
-            nside=nside,
-            resolution=resolution,
-            extent=extent,
+            lmin=self.lmin,
+            lmax=self.lmax,
+            taper_points=self.taper_points,
+            map_proj=self.map_proj,
+            resolution=self.resolution,
+            extent=self.extent,
         )
         t1 = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")
 
-        if max_chunk_size is None:
+        if self.max_chunk_size is None:
             tracks = self._track_single_chunk_from_data(
                 data_xr,
                 primary_var=variable_name,
@@ -206,10 +197,7 @@ class HodgesTracker(Tracker):
                 bounds=bounds,
                 threshold=threshold,
                 unit=stored_unit,
-                min_points=min_points,
-                subgrid_refine=subgrid_refine,
                 processing=processing,
-                **kwargs,
             )
         else:
             # Detection can be partitioned, but linking must see the full series.
@@ -219,8 +207,8 @@ class HodgesTracker(Tracker):
             n_steps = data_xr.sizes[time_dim]
             detections: list[RawDetectionStep] = []
 
-            for start_idx in range(0, n_steps, max_chunk_size):
-                end_idx = min(start_idx + max_chunk_size, n_steps)
+            for start_idx in range(0, n_steps, self.max_chunk_size):
+                end_idx = min(start_idx + self.max_chunk_size, n_steps)
                 chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
                 detections.extend(
                     self._detect_single_chunk_from_data(
@@ -228,9 +216,6 @@ class HodgesTracker(Tracker):
                         primary_var=variable_name,
                         mode=resolved_mode,
                         threshold=threshold,
-                        min_points=min_points,
-                        subgrid_refine=subgrid_refine,
-                        **kwargs,
                     )
                 )
             tracks = self._link_detections(
@@ -256,18 +241,12 @@ class HodgesTracker(Tracker):
         unit: str | None,
         processing: tuple[ProcessingStep, ...],
         threshold: float | None = None,
-        min_points: int = constants.MIN_POINTS_DEFAULT,
-        subgrid_refine: bool = True,
-        **kwargs: float | str | None,
     ) -> Tracks:
         detections = self._detect_single_chunk_from_data(
             data,
             primary_var=primary_var,
             mode=mode,
             threshold=threshold,
-            min_points=min_points,
-            subgrid_refine=subgrid_refine,
-            **kwargs,
         )
         return self._link_detections(
             detections,
@@ -285,24 +264,18 @@ class HodgesTracker(Tracker):
         primary_var: str,
         mode: Mode,
         threshold: float | None = None,
-        min_points: int = constants.MIN_POINTS_DEFAULT,
-        subgrid_refine: bool = True,
-        **kwargs: float | str | None,
     ) -> list[RawDetectionStep]:
         import timeit
 
-        # 1. Detection
         t_detect_start = timeit.default_timer()
         detector = HodgesDetector.from_xarray(data, variable_name=primary_var)
 
-        size = get_int_option(kwargs, "size", 5)
-
         detections = detector.detect(
-            size=size,
+            size=self.size,
             threshold=threshold,
             minmaxmode=mode,
-            min_points=min_points,
-            subgrid_refine=subgrid_refine,
+            min_points=self.min_points,
+            subgrid_refine=self.subgrid_refine,
         )
 
         map_proj = data.attrs.get("map_proj", "global")
@@ -310,7 +283,7 @@ class HodgesTracker(Tracker):
             from ..models.geo import stereo_to_latlon
 
             hemi = 1 if map_proj == "nh_stereo" else -1
-            converted_detections = []
+            converted_detections: list[RawDetectionStep] = []
             for dt, lats, lons, values in detections:
                 new_lats = np.zeros_like(lats)
                 new_lons = np.zeros_like(lons)
@@ -319,7 +292,9 @@ class HodgesTracker(Tracker):
                     lat, lon = stereo_to_latlon(lons[i], lats[i], hemi)
                     new_lats[i] = lat
                     new_lons[i] = lon
-                converted_detections.append((dt, new_lats, new_lons, values))
+                converted_detections.append(
+                    RawDetectionStep(dt, new_lats, new_lons, values)
+                )
             detections = converted_detections
 
         t_detect_end = timeit.default_timer()
@@ -339,9 +314,6 @@ class HodgesTracker(Tracker):
     ) -> Tracks:
         import timeit
 
-        # Linking uses the MGE cost function with adaptive constraints.
-        # Cost = w1 * (1 - cos(theta)) + w2 * (1 - 2*sqrt(d1*d2)/(d1+d2))
-        # This penalizes both changes in direction and changes in speed.
         t_link_start = timeit.default_timer()
         linker = HodgesLinker(
             w1=self.w1,
@@ -365,7 +337,6 @@ class HodgesTracker(Tracker):
         t_link_end = timeit.default_timer()
         print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")
 
-        # Pruning
         valid_indices = np.asarray(
             [index for index, tr in enumerate(tracks) if len(tr) >= self.min_lifetime],
             dtype=np.int64,

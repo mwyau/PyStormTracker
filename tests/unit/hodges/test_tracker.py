@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Literal
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -43,19 +42,18 @@ def test_hodges_tracker_override_constraints() -> None:
     assert np.array_equal(tracker.adapt_params, custom_params)
 
 
-@pytest.mark.parametrize("backend", ["dask", "mpi"])
-def test_hodges_tracker_rejects_unsupported_backend(
-    backend: Literal["dask", "mpi"],
-) -> None:
-    tracker = HodgesTracker()
-    with pytest.raises(NotImplementedError, match="only the serial backend"):
-        tracker.track("unused.nc", "msl", backend=backend)
+def test_hodges_tracker_constructor_validation() -> None:
+    with pytest.raises(ValueError, match="w1 and w2 must be nonnegative"):
+        HodgesTracker(w1=-0.1)
+    with pytest.raises(ValueError, match="dmax must be positive"):
+        HodgesTracker(dmax=0.0)
+    with pytest.raises(ValueError, match="n_iterations must be positive"):
+        HodgesTracker(n_iterations=0)
 
 
 def test_hodges_tracker_rejects_nonpositive_chunks() -> None:
-    tracker = HodgesTracker()
     with pytest.raises(ValueError, match="must be positive"):
-        tracker.track("unused.nc", "msl", max_chunk_size=0)
+        HodgesTracker(max_chunk_size=0)
 
 
 @patch("pystormtracker.hodges.tracker.HodgesTracker._link_detections")
@@ -81,7 +79,7 @@ def test_hodges_tracker_gathers_chunks_before_linking(
     ]
     mock_link.return_value = Tracks.empty(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
-    HodgesTracker().track(data, "msl", max_chunk_size=2, overlap=99)
+    HodgesTracker(max_chunk_size=2).track(data, "msl")
 
     assert [call.args[0].sizes["time"] for call in mock_detect.call_args_list] == [
         2,
@@ -111,20 +109,19 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
         name="msl",
     )
 
-    def run(tracker: HodgesTracker, *, max_chunk_size: int | None = None) -> Tracks:
-        return tracker.track(
+    def run(*, max_chunk_size: int | None = None) -> Tracks:
+        t = HodgesTracker(
+            min_lifetime=2, subgrid_refine=False, max_chunk_size=max_chunk_size
+        )
+        return t.track(
             data,
             "msl",
             mode="min",
             threshold=0.0,
-            subgrid_refine=False,
-            max_chunk_size=max_chunk_size,
         )
 
-    tracker = HodgesTracker(min_lifetime=2)
-
-    unchunked = run(tracker, max_chunk_size=None)
-    chunked = run(tracker, max_chunk_size=2)
+    unchunked = run(max_chunk_size=None)
+    chunked = run(max_chunk_size=2)
 
     assert unchunked.metadata == chunked.metadata
     np.testing.assert_array_equal(unchunked.ids, chunked.ids)

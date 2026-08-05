@@ -9,10 +9,10 @@ if TYPE_CHECKING:
 
     from ..models.geo import MapExtent
 
-from ..models import TimeRange, Tracks
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep, get_int_option
-from ..models.tracks import ProcessingStep, TracksMetadata
+from ..models.time import TimeRange
+from ..models.tracker import RawDetectionStep
+from ..models.tracks import ProcessingStep, Tracks, TracksMetadata
 from ..models.units import normalize_variable_units
 from .detector import SimpleDetector
 from .tracker import _convert_stereo_steps, _detect_and_link, _link_centers
@@ -34,8 +34,8 @@ def run_simple_dask(
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: MapExtent | None = None,
+    size: int = 5,
     subgrid_refine: bool = False,
-    **kwargs: float | str | None,
 ) -> Tracks:
     """Dask Orchestrator: Maps detection tasks using threads."""
     import dask
@@ -94,7 +94,6 @@ def run_simple_dask(
         f"tasks (across {n_workers} threads)"
     )
 
-    size = get_int_option(kwargs, "size", 5)
     tasks = [
         dask.delayed(_detect_and_link)(d, size, threshold, mode, subgrid_refine)
         for d in detectors
@@ -140,15 +139,15 @@ def run_simple_mpi(
     map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
     resolution: float = 100.0,
     extent: MapExtent | None = None,
+    size: int = 5,
     subgrid_refine: bool = False,
-    **kwargs: float | str | None,
 ) -> Tracks:
     """MPI Orchestrator: Splits frames across ranks, gathers raw detections."""
     from mpi4py import MPI
 
     comm: MPI.Intracomm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-    size = comm.Get_size()
+    world_size = comm.Get_size()
     root = 0
 
     t0 = timeit.default_timer()
@@ -184,7 +183,7 @@ def run_simple_mpi(
         )
 
         detector_obj = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
-        detectors: list[SimpleDetector] | None = detector_obj.split(size)
+        detectors: list[SimpleDetector] | None = detector_obj.split(world_size)
     else:
         detectors = None
 
@@ -208,10 +207,9 @@ def run_simple_mpi(
         print(f"    [MPI] Prep & Scatter time: {t_scatter - t0:.4f}s")
 
     t1 = timeit.default_timer()
-    ext_size = get_int_option(kwargs, "size", 5)
     raw_chunk = _detect_and_link(
         detector,
-        size=ext_size,
+        size=size,
         threshold=threshold,
         mode=mode,
         subgrid_refine=subgrid_refine,

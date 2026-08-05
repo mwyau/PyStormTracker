@@ -10,10 +10,9 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import DataLoader
-from ..models import TimeRange
 from ..models import constants as model_constants
+from ..models.time import TimeRange, is_missing_time, select_time_range
 from ..models.tracker import RawDetectionStep
-from ..time import is_missing_time, select_time_range
 from .kernels import (
     _numba_get_healpix_centers,
     _numba_healpix_ccl,
@@ -231,7 +230,7 @@ class HealpixDetector:
                 refined_lons = self._lon[p_idx]
                 refined_vals = frame[p_idx]
 
-            raw_step = (
+            raw_step = RawDetectionStep(
                 current_time,
                 refined_lats,
                 refined_lons,

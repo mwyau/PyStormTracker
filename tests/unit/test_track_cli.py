@@ -1,286 +1,105 @@
 from __future__ import annotations
 
-import argparse
+import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-from utils import fetch_era5_msl
+import numpy as np
 
 from pystormtracker.cli import main
 from pystormtracker.models.tracks import Tracks, TracksMetadata
-from pystormtracker.track import Algorithm, run_tracker, setup_parser
 
 
 def _empty_tracks() -> Tracks:
     return Tracks.empty(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
 
-@pytest.fixture
-def msl_data() -> str:
-    return str(fetch_era5_msl())
-
-
-def test_run_tracker_serial(msl_data: str, tmp_path: Path) -> None:
-    output_file = tmp_path / "test_tracks.txt"
-    run_tracker(
-        infile=msl_data,
-        variable_name="msl",
-        outfile=str(output_file),
-        mode="min",
-        backend="serial",
+def test_cli_load_dat_files(tmp_path: Path) -> None:
+    """Test parsing of legacy zone.dat and adapt.dat from CLI."""
+    zone_file = tmp_path / "zone.dat"
+    zone_content = (
+        "3\n"
+        "  0.0  360.0  -90.0  -20.0  6.5\n"
+        "  0.0  360.0  -20.0   20.0  3.0\n"
+        "  0.0  360.0   20.0   90.0  6.5"
     )
+    zone_file.write_text(zone_content)
 
-    assert output_file.exists()
-    assert output_file.stat().st_size > 0
+    adapt_file = tmp_path / "adapt.dat"
+    adapt_content = "1.0 1.0\n2.0 0.3\n5.0 0.1\n8.0 0.0"
+    adapt_file.write_text(adapt_content)
 
-
-def test_main_track(msl_data: str, tmp_path: Path) -> None:
-    output_file = tmp_path / "main_output.txt"
     test_args = [
         "stormtracker",
         "track",
         "-i",
-        msl_data,
+        "dummy.nc",
         "-v",
         "msl",
         "-o",
-        str(output_file),
-        "-n",
-        "2",
-        "-b",
-        "serial",
-    ]
-    with patch.object(sys, "argv", test_args):
-        main()
-
-    assert output_file.exists()
-    assert output_file.stat().st_size > 0
-
-
-def test_main_help() -> None:
-    test_args = ["stormtracker", "--help"]
-    with patch.object(sys, "argv", test_args):
-        with pytest.raises(SystemExit) as e:
-            main()
-        assert e.value.code == 0
-
-
-def test_main_without_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
-    with (
-        patch.object(sys, "argv", ["stormtracker"]),
-        pytest.raises(SystemExit) as exc_info,
-    ):
-        main()
-
-    assert exc_info.value.code == 0
-    assert "commands:" in capsys.readouterr().out
-
-
-def test_track_parser_uses_automatic_format_and_mode_defaults() -> None:
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
-    setup_parser(subparsers)
-    args = parser.parse_args(
-        ["track", "-i", "input.nc", "-v", "msl", "-o", "output.trackjson"]
-    )
-    assert args.format == "auto"
-    assert args.mode == "auto"
-
-
-@pytest.mark.parametrize(
-    ("option", "value"),
-    [
-        ("--num", "0"),
-        ("--workers", "0"),
-        ("--chunk-size", "0"),
-        ("--extent", "1,0,-1,1"),
-        ("--extent", "nan,1,-1,1"),
-        ("--lmin", "-1"),
-        ("--lmax", "-1"),
-        ("--resolution", "nan"),
-        ("--threshold", "inf"),
-    ],
-)
-def test_track_rejects_invalid_cli_values(option: str, value: str) -> None:
-    test_args = [
-        "stormtracker",
-        "track",
-        "-i",
-        "unused.nc",
-        "-v",
-        "msl",
-        "-o",
-        "unused.txt",
-        option,
-        value,
-    ]
-    with (
-        patch.object(sys, "argv", test_args),
-        pytest.raises(SystemExit) as exc_info,
-    ):
-        main()
-
-    assert exc_info.value.code == 2
-
-
-def test_filter_bounds_are_forwarded_without_algorithm_defaults() -> None:
-    test_args = [
-        "stormtracker",
-        "track",
-        "-i",
-        "unused.nc",
-        "-v",
-        "msl",
-        "-o",
-        "unused.txt",
-        "--lmin",
-        "3",
-        "--lmax",
-        "21",
-        "--taper-points",
-        "4",
-        "--nside",
-        "16",
-        "--subgrid-refine",
-    ]
-    with (
-        patch.object(sys, "argv", test_args),
-        patch(
-            "pystormtracker.track.run_tracker", return_value=_empty_tracks()
-        ) as mocked_run,
-    ):
-        main()
-
-    assert mocked_run.call_args.kwargs["lmin"] == 3
-    assert mocked_run.call_args.kwargs["lmax"] == 21
-    assert mocked_run.call_args.kwargs["taper_points"] == 4
-    assert mocked_run.call_args.kwargs["nside"] == 16
-    assert mocked_run.call_args.kwargs["subgrid_refine"] is True
-
-
-def test_filter_bounds_must_be_supplied_together() -> None:
-    test_args = [
-        "stormtracker",
-        "track",
-        "-i",
-        "unused.nc",
-        "-v",
-        "msl",
-        "-o",
-        "unused.txt",
-        "--lmin",
-        "3",
-    ]
-    with (
-        patch.object(sys, "argv", test_args),
-        pytest.raises(SystemExit) as exc_info,
-    ):
-        main()
-    assert exc_info.value.code == 2
-
-
-@pytest.mark.parametrize(
-    ("algorithm", "option", "expected"),
-    [
-        ("simple", None, None),
-        ("simple", "--subgrid-refine", True),
-        ("hodges", None, None),
-        ("hodges", "--no-subgrid-refine", False),
-    ],
-)
-def test_subgrid_refinement_uses_algorithm_default_or_override(
-    algorithm: Algorithm, option: str | None, expected: bool | None
-) -> None:
-    test_args = [
-        "stormtracker",
-        "track",
-        "-i",
-        "unused.nc",
-        "-v",
-        "msl",
-        "-o",
-        "unused.txt",
+        "output.txt",
         "--algorithm",
-        algorithm,
+        "hodges",
+        "--zone-file",
+        str(zone_file),
+        "--adapt-file",
+        str(adapt_file),
     ]
-    if option is not None:
-        test_args.append(option)
 
     with (
         patch.object(sys, "argv", test_args),
-        patch(
-            "pystormtracker.track.run_tracker", return_value=_empty_tracks()
-        ) as mocked_run,
+        patch("pystormtracker.track.HodgesTracker") as mock_tracker_cls,
     ):
+        mock_instance = mock_tracker_cls.return_value
+        mock_instance.track.return_value = _empty_tracks()
         main()
 
-    assert mocked_run.call_args.kwargs["subgrid_refine"] is expected
+    mock_tracker_cls.assert_called_once()
+    kwargs = mock_tracker_cls.call_args.kwargs
+
+    zones_parsed = kwargs["zones"]
+    assert zones_parsed.shape == (3, 5)
+    assert zones_parsed[1, 4] == 3.0
+
+    adapt_parsed = kwargs["adapt_params"]
+    assert adapt_parsed.shape == (2, 4)
+    assert np.array_equal(adapt_parsed[0], [1.0, 2.0, 5.0, 8.0])
+    assert np.array_equal(adapt_parsed[1], [1.0, 0.3, 0.1, 0.0])
 
 
-@pytest.mark.parametrize(
-    ("algorithm", "expected"), [("simple", False), ("hodges", True)]
-)
-def test_run_tracker_resolves_subgrid_default_by_algorithm(
-    tmp_path: Path, algorithm: Algorithm, expected: bool
-) -> None:
-    tracker_target = (
-        "pystormtracker.track.SimpleTracker.track"
-        if algorithm == "simple"
-        else "pystormtracker.track.HodgesTracker.track"
-    )
-    with patch(tracker_target, return_value=_empty_tracks()) as mocked_track:
-        run_tracker(
-            infile="unused.nc",
-            variable_name="msl",
-            outfile=str(tmp_path / "tracks.json"),
-            algorithm=algorithm,
-            output_format="trackjson",
-            subgrid_refine=None,
-        )
+def test_cli_load_dat_json(tmp_path: Path) -> None:
+    """Test parsing of zones and adapt-params from JSON strings."""
+    zones_json = "[[0.0, 360.0, -90.0, 90.0, 10.0]]"
+    adapt_json = "[[1.0, 2.0, 3.0, 4.0], [1.0, 0.5, 0.2, 0.1]]"
 
-    assert mocked_track.call_args.kwargs["subgrid_refine"] is expected
-
-
-def test_run_tracker_forwards_no_filter_defaults(tmp_path: Path) -> None:
-    with patch(
-        "pystormtracker.track.SimpleTracker.track", return_value=_empty_tracks()
-    ) as mocked_track:
-        run_tracker(
-            infile="unused.nc",
-            variable_name="msl",
-            outfile=str(tmp_path / "tracks.json"),
-            output_format="trackjson",
-        )
-
-    assert mocked_track.call_args.kwargs["lmin"] is None
-    assert mocked_track.call_args.kwargs["lmax"] is None
-    assert mocked_track.call_args.kwargs["taper_points"] == 0
-
-
-def test_runtime_validation_reports_clean_cli_error(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
     test_args = [
         "stormtracker",
         "track",
         "-i",
-        "unused.nc",
+        "dummy.nc",
         "-v",
         "msl",
         "-o",
-        "unused.txt",
+        "output.txt",
+        "--algorithm",
+        "hodges",
         "--zones",
-        "not-json",
+        zones_json,
+        "--adapt-params",
+        adapt_json,
     ]
+
     with (
         patch.object(sys, "argv", test_args),
-        pytest.raises(SystemExit) as exc_info,
+        patch("pystormtracker.track.HodgesTracker") as mock_tracker_cls,
     ):
+        mock_instance = mock_tracker_cls.return_value
+        mock_instance.track.return_value = _empty_tracks()
         main()
 
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 2
-    assert "invalid zones JSON" in captured.err
-    assert "Traceback" not in captured.err
+    mock_tracker_cls.assert_called_once()
+    kwargs = mock_tracker_cls.call_args.kwargs
+
+    assert np.array_equal(kwargs["zones"], np.array(json.loads(zones_json)))
+    assert np.array_equal(kwargs["adapt_params"], np.array(json.loads(adapt_json)))

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import xarray as xr
 
 from ..io.data_loader import normalize_tracking_data
-from ..models import TimeRange, Tracks
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep, get_int_option
-from ..models.tracks import ProcessingStep, TracksBuilder, TracksMetadata
+from ..models.time import (
+    TimeInput,
+    TimeRange,
+    coerce_time_input,
+    encode_time_values,
+)
+from ..models.tracker import Backend, RawDetectionStep, Tracker, TrackingInput
+from ..models.tracks import ProcessingStep, Tracks, TracksMetadata, _TracksBuilder
 from ..models.units import (
     Mode,
     ModeOption,
@@ -18,11 +22,10 @@ from ..models.units import (
     normalize_variable_units,
     resolve_mode,
 )
-from ..preprocessing.tracking import Projection, preprocess_tracking_data
-from ..time import (
-    TimeInput,
-    coerce_time_input,
-    encode_time_values,
+from ..preprocessing.tracking import (
+    Projection,
+    preprocess_tracking_data,
+    resolve_filter_bounds,
 )
 from .detector import SimpleDetector
 from .linker import SimpleLinker
@@ -43,7 +46,7 @@ def _link_centers(
     """Sequentially links raw detection steps into a global Tracks object."""
     units = {primary_var: unit or canonical_unit_for(primary_var) or "1"}
     numeric_steps: list[RawDetectionStep] = [
-        (
+        RawDetectionStep(
             int(encode_time_values([step[0]])[0]),
             step[1],
             step[2],
@@ -51,7 +54,7 @@ def _link_centers(
         )
         for step in raw_steps
     ]
-    builder = TracksBuilder(
+    builder = _TracksBuilder(
         TracksMetadata(primary_var, mode, units, bounds, processing)
     )
     linker = SimpleLinker()
@@ -93,14 +96,57 @@ def _convert_stereo_steps(
         lons = np.empty_like(x)
         for i in range(len(y)):
             lats[i], lons[i] = stereo_to_latlon(x[i], y[i], hemisphere)
-        converted.append((time, lats, lons, values))
+        converted.append(RawDetectionStep(time, lats, lons, values))
     return converted
 
 
-class SimpleTracker:
+class SimpleTracker(Tracker):
     """
     A tracker implementing the PyStormTracker simple parallel algorithm.
     """
+
+    def __init__(
+        self,
+        *,
+        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
+        resolution: float = 100.0,
+        extent: MapExtent | None = None,
+        lmin: int | None = None,
+        lmax: int | None = None,
+        taper_points: int = 0,
+        size: int = 5,
+        subgrid_refine: bool = False,
+        backend: Backend = "serial",
+        n_workers: int | None = None,
+        max_chunk_size: int | None = None,
+    ) -> None:
+        if size <= 0:
+            raise ValueError("size must be positive")
+        if resolution <= 0.0:
+            raise ValueError("resolution must be positive")
+        if map_proj not in ("global", "nh_stereo", "sh_stereo", "healpix"):
+            raise ValueError(f"unsupported map_proj {map_proj!r}")
+        if backend not in ("serial", "mpi", "dask"):
+            raise ValueError(f"unsupported backend {backend!r}")
+        if n_workers is not None and n_workers <= 0:
+            raise ValueError("n_workers must be positive")
+        if max_chunk_size is not None and max_chunk_size <= 0:
+            raise ValueError("max_chunk_size must be positive")
+        resolve_filter_bounds(lmin, lmax)
+        if taper_points < 0:
+            raise ValueError("taper_points must be nonnegative")
+
+        self.map_proj = map_proj
+        self.resolution = resolution
+        self.extent = extent
+        self.lmin = lmin
+        self.lmax = lmax
+        self.taper_points = taper_points
+        self.size = size
+        self.subgrid_refine = subgrid_refine
+        self.backend = backend
+        self.n_workers = n_workers
+        self.max_chunk_size = max_chunk_size
 
     def preprocess_standard_track(
         self,
@@ -128,21 +174,12 @@ class SimpleTracker:
 
     def _detect_serial(
         self,
-        infile: str | Path | xr.DataArray | xr.Dataset,
+        infile: TrackingInput,
         variable_name: str,
         time_range: TimeRange | None,
         mode: Mode,
         threshold: float | None = None,
         engine: str | None = None,
-        lmin: int | None = None,
-        lmax: int | None = None,
-        taper_points: int = 0,
-        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-        nside: int | None = None,
-        resolution: float = 100.0,
-        extent: MapExtent | None = None,
-        subgrid_refine: bool = False,
-        **kwargs: float | str | None,
     ) -> Tracks:
         import timeit
 
@@ -163,34 +200,30 @@ class SimpleTracker:
 
         data_xr, processing = self.preprocess_standard_track(
             data_xr,
-            lmin=lmin,
-            lmax=lmax,
-            taper_points=taper_points,
-            map_proj=map_proj,
-            nside=nside,
-            resolution=resolution,
-            extent=extent,
+            lmin=self.lmin,
+            lmax=self.lmax,
+            taper_points=self.taper_points,
+            map_proj=self.map_proj,
+            resolution=self.resolution,
+            extent=self.extent,
         )
         t_pre = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t_pre - t0:.4f}s")
 
         t0_detect = timeit.default_timer()
         detector = SimpleDetector.from_xarray(data_xr, variable_name=variable_name)
-        size = get_int_option(kwargs, "size", 5)
         raw_steps = _detect_and_link(
             detector,
-            size=size,
+            size=self.size,
             threshold=threshold,
             mode=mode,
-            subgrid_refine=subgrid_refine,
+            subgrid_refine=self.subgrid_refine,
         )
-        raw_steps = _convert_stereo_steps(raw_steps, map_proj)
+        raw_steps = _convert_stereo_steps(raw_steps, self.map_proj)
 
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0_detect:.4f}s")
 
-        # Linking Phase: Combine detected extrema centers into cyclone trajectories
-        # using nearest-neighbor matching with spatial priority.
         t2 = timeit.default_timer()
         tracks = _link_centers(
             raw_steps,
@@ -206,27 +239,14 @@ class SimpleTracker:
 
     def track(
         self,
-        infile: str | Path | xr.DataArray | xr.Dataset,
+        infile: TrackingInput,
         variable_name: str,
+        *,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
-        mode: ModeOption | None = "auto",
-        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-        resolution: float = 100.0,
-        extent: MapExtent | None = None,
-        backend: Literal["serial", "mpi", "dask"] = "serial",
-        n_workers: int | None = None,
-        max_chunk_size: int | None = None,
+        mode: ModeOption = "auto",
         threshold: float | None = None,
         engine: str | None = None,
-        overlap: int = 3,
-        min_points: int = 1,
-        lmin: int | None = None,
-        lmax: int | None = None,
-        taper_points: int = 0,
-        nside: int | None = None,
-        subgrid_refine: bool = False,
-        **kwargs: float | str | None,
     ) -> Tracks:
         import timeit
 
@@ -239,7 +259,7 @@ class SimpleTracker:
             et = coerce_time_input(end_time)
             time_range = TimeRange(start=st, end=et)
 
-        if backend in ("mpi", "dask") and isinstance(
+        if self.backend in ("mpi", "dask") and isinstance(
             infile, (xr.DataArray, xr.Dataset)
         ):
             msg = (
@@ -247,7 +267,7 @@ class SimpleTracker:
                 "not an xarray object."
             )
             raise NotImplementedError(msg)
-        if backend == "mpi":
+        if self.backend == "mpi":
             from .concurrent import run_simple_mpi
 
             tracks = run_simple_mpi(
@@ -257,17 +277,16 @@ class SimpleTracker:
                 resolved_mode,
                 threshold=threshold,
                 engine=engine,
-                lmin=lmin,
-                lmax=lmax,
-                taper_points=taper_points,
-                nside=nside,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-                subgrid_refine=subgrid_refine,
-                **kwargs,
+                lmin=self.lmin,
+                lmax=self.lmax,
+                taper_points=self.taper_points,
+                map_proj=self.map_proj,
+                resolution=self.resolution,
+                extent=self.extent,
+                size=self.size,
+                subgrid_refine=self.subgrid_refine,
             )
-        elif backend == "dask":
+        elif self.backend == "dask":
             from .concurrent import run_simple_dask
 
             tracks = run_simple_dask(
@@ -275,19 +294,18 @@ class SimpleTracker:
                 variable_name,
                 time_range,
                 resolved_mode,
-                n_workers,
-                max_chunk_size=max_chunk_size,
+                self.n_workers,
+                max_chunk_size=self.max_chunk_size,
                 threshold=threshold,
                 engine=engine,
-                lmin=lmin,
-                lmax=lmax,
-                taper_points=taper_points,
-                nside=nside,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-                subgrid_refine=subgrid_refine,
-                **kwargs,
+                lmin=self.lmin,
+                lmax=self.lmax,
+                taper_points=self.taper_points,
+                map_proj=self.map_proj,
+                resolution=self.resolution,
+                extent=self.extent,
+                size=self.size,
+                subgrid_refine=self.subgrid_refine,
             )
         else:
             tracks = self._detect_serial(
@@ -297,20 +315,11 @@ class SimpleTracker:
                 resolved_mode,
                 threshold=threshold,
                 engine=engine,
-                lmin=lmin,
-                lmax=lmax,
-                taper_points=taper_points,
-                nside=nside,
-                map_proj=map_proj,
-                resolution=resolution,
-                extent=extent,
-                subgrid_refine=subgrid_refine,
-                **kwargs,
             )
 
         t_end = timeit.default_timer()
         rank = 0
-        if backend == "mpi":
+        if self.backend == "mpi":
             from mpi4py import MPI
 
             rank = MPI.COMM_WORLD.Get_rank()

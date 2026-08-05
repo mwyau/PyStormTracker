@@ -9,11 +9,10 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import DataLoader
-from ..models import TimeRange
 from ..models import constants as model_constants
+from ..models.time import TimeInput, TimeRange, is_missing_time, select_time_range
 from ..models.tracker import RawDetectionStep
 from ..preprocessing.refinement import subgrid_refine as refine_center
-from ..time import TimeInput, is_missing_time, select_time_range
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
@@ -342,7 +341,7 @@ class SimpleDetector:
                         periodic_x=periodic_x,
                     )
                 raw_results.append(
-                    (
+                    RawDetectionStep(
                         time_val,
                         refined_lats,
                         refined_lons,
@@ -350,6 +349,8 @@ class SimpleDetector:
                     )
                 )
             else:
-                raw_results.append((time_val, lat[r_idx], lon[c_idx], vals))
+                raw_results.append(
+                    RawDetectionStep(time_val, lat[r_idx], lon[c_idx], vals)
+                )
 
         return raw_results
