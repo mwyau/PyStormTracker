@@ -126,7 +126,7 @@ jobs:
 
       - name: Mypy
         if: ${{ !cancelled() }}
-        run: uv run --no-sync mypy .
+        run: uv run --no-sync mypy
 
   unit-tests:
     name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', minimum dependencies' || '' }})

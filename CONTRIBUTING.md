@@ -32,8 +32,8 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
    ```bash
    uv run ruff check . --fix
    uv run ruff format .
-   uv run mypy .
-   uv run pytest tests/unit
+   uv run mypy
+   uv run pytest --run-all
    ```
 1. **Submit the Pull Request**:
    - Provide a clear description of the changes.

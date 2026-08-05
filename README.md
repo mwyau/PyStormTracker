@@ -231,7 +231,7 @@ uv run ruff format .
 **Type Checking:**
 
 ```bash
-uv run mypy .
+uv run mypy
 ```
 
 ### Tiered Testing
