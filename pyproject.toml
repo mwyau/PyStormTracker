@@ -87,7 +87,7 @@ dev = [
     { include-group = "test" },
     "identify>=2.6.19",
     "mypy>=2.3.0",
-    "pre-commit>=4.6.1",
+    "prek>=0.4.12",
     "ruff>=0.16.1",
     "ty==0.0.66",
 ]
@@ -121,19 +121,8 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-extend-select = [
-    "ANN",
-    "C4",
-    "I",
-    "NPY",
-    "PT",
-    "RUF",
-    "SIM",
-    "W",
-]
-ignore = [
-    "DTZ"
-]
+extend-select = ["ANN","B","C4","E","F","I","NPY","PT","SIM","UP","W"]
+ignore = ["DTZ"]
 
 [tool.ty.src]
 include = ["src", "tests"]
