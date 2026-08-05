@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.1.dev1
+
+### Testing and CI
+
+- Added pre-commit hooks for uv lock validation, Ruff linting and formatting, ty type checking, Markdown formatting, and common file checks.
+- Tightened Ruff, mypy, and ty configuration and resolved the resulting diagnostics across the package and test suite.
+- Improved typing for tracker options, spectral grid metadata, optional xeofs CCA support, xarray operations, and immutable track metadata.
+- Updated development documentation and removed the obsolete interactive tracks notebook.
+
+---
+
 ## v0.6.1.dev0
 
 ### Tracks and formats
