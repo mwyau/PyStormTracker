@@ -189,6 +189,8 @@ class SimpleTracker:
         t1 = timeit.default_timer()
         print(f"    [Serial] Detection time: {t1 - t0_detect:.4f}s")
 
+        # Linking Phase: Combine detected extrema centers into cyclone trajectories
+        # using nearest-neighbor matching with spatial priority.
         t2 = timeit.default_timer()
         tracks = _link_centers(
             raw_steps,

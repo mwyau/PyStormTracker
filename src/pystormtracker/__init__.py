@@ -14,7 +14,7 @@ from .simple import SimpleDetector, SimpleLinker, SimpleTracker
 try:
     __version__ = version("pystormtracker")
 except PackageNotFoundError:
-    __version__ = "0.6.1.dev0"
+    __version__ = "0.6.1.dev1"
 
 
 __all__ = [

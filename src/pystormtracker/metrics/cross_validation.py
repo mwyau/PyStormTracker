@@ -148,7 +148,7 @@ def find_best_cca_truncation(
         # Calculate FVE (Fraction of Variance Explained)
         mse = ((Y_eval - full_pred) ** 2).mean(dim="time")
         var = Y_eval.var(dim="time")
-        valid_var = Y_eval.var(dim="time").where(var > 0.0)
+        valid_var = var.where(var > 0.0)
         fve = 1.0 - (mse / valid_var)
         fve_scores[idx] = float(fve.mean())
 

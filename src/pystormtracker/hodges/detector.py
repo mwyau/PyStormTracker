@@ -12,7 +12,7 @@ from ..io.data_loader import DataLoader
 from ..models import constants as model_constants
 from ..models.tracker import RawDetectionStep
 from ..models.tracks import TimeRange
-from ..preprocessing.refinement import subgrid_refine as subgrid_refine_func
+from ..preprocessing.refinement import subgrid_refine as refine_center
 from ..time import TimeInput, select_time_range
 from .kernels import (
     _numba_ccl,
@@ -284,7 +284,7 @@ class HodgesDetector:
 
             for i in range(n_feats):
                 if subgrid_refine:
-                    rlat, rlon, rval = subgrid_refine_func(
+                    rlat, rlon, rval = refine_center(
                         frame,
                         r_idx[i],
                         c_idx[i],

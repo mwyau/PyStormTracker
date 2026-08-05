@@ -229,16 +229,8 @@ def test_mpi_vs_serial(
     pytest.importorskip("mpi4py")
 
     # Check for mpiexec in PATH
-    if not shutil.which("mpiexec"):
-        # Double check with a run in case it's a shell alias or something similar
-        try:
-            res = subprocess.run(
-                "mpiexec -help", shell=True, capture_output=True, text=True, check=True
-            )
-            if res.returncode != 0:
-                pytest.skip("mpiexec not found or failed to run")
-        except OSError:
-            pytest.skip("mpiexec not found in path")
+    if shutil.which("mpiexec") is None:
+        pytest.skip("mpiexec not found in PATH")
 
     data_path, variable_name, mode, steps = config
     serial_path, _ = serial_reference

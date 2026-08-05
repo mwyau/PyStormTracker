@@ -581,6 +581,7 @@ def apply_sht_filter(
     if is_reduced:
         spatial_dim = "values" if "values" in data.dims else str(data.dims[-1])
         grid_meta = loader.get_grid_metadata(variable_name)
+        # Extract reduced Gaussian grid colatitudes, azimuth counts, and ring offsets
         kwargs["theta"] = grid_meta["theta"]
         kwargs["nphi"] = grid_meta["nphi"]
         kwargs["phi0"] = grid_meta["phi0"]

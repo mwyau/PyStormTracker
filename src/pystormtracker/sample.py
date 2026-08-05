@@ -60,6 +60,7 @@ def _nearest_sample(
     lat: float,
     lon: float,
 ) -> float:
+    # Nearest grid point search using shortest cyclic longitude arc
     lat_index = int(np.argmin(np.abs(lats - lat)))
     lon_delta = cyclic_longitude_delta(lons, lon)
     lon_index = int(np.argmin(np.abs(lon_delta)))
@@ -75,6 +76,7 @@ def _bilinear_sample(
     lat: float,
     lon: float,
 ) -> float:
+    # Transform longitudes to relative cyclic offsets for antimeridian interpolation
     relative_lon = cyclic_longitude_delta(lons, lon)
     temporary = data.assign_coords({lon_dim: relative_lon}).sortby(lon_dim)
     value = temporary.interp({lon_dim: 0.0, lat_dim: lat}, method="linear").values

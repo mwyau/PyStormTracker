@@ -55,11 +55,13 @@ class SimpleLinker:
             self._tail_ids.clear()
             return
 
+        # Deterministic spatial priority sorting for reproducible matching
         sort_idx = np.lexsort((new_lons, new_lats))
         new_lats = new_lats[sort_idx]
         new_lons = new_lons[sort_idx]
         values = values[sort_idx]
 
+        # Reset active track tails if time step exceeds expected interval
         if (
             self._last_time is not None
             and self._step is not None
@@ -82,6 +84,7 @@ class SimpleLinker:
             self._record_time(time_val)
             return
 
+        # Deterministic sorting of existing active track tails
         tail_ids = sorted(
             self._tail_ids,
             key=lambda track_id: self._last_point(builder, track_id),
@@ -98,6 +101,8 @@ class SimpleLinker:
             tail_lats, tail_lons, new_lats, new_lons
         )
         matched_indices = np.full(num_centers, -1, dtype=np.int64)
+
+        # Global greedy matching with mutual-closest constraint
         while True:
             has_match = False
             for center_index in range(num_centers):
