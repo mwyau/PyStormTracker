@@ -95,7 +95,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **TRACK references:** `src/spline_smooth.c`; Dierckx routines in `lib/src/`, including `sphery.f` and `smoopy.f`.
 
-**Progress:** A `RectSphereBivariateSpline` is fitted once for each periodic global Hodges frame. Center coordinates are obtained from the local $3\times3$ quadratic stationary-point fit. The spherical spline is evaluated at that quadratic coordinate and returned as `bspline_val` in the raw detection dictionary; it does not currently determine the center coordinate. The current Hodges linker retains only the primary tracked variable in the final `Tracks` object.
+**Progress:** A `RectSphereBivariateSpline` is fitted once for each periodic global Hodges frame. Center coordinates are obtained from the local $3\\times3$ quadratic stationary-point fit. The spherical spline is evaluated at that quadratic coordinate and returned as `bspline_val` in the raw detection dictionary; it does not currently determine the center coordinate. The current Hodges linker retains only the primary tracked variable in the final `Tracks` object.
 
 **Remaining work:** Implement direct optimization on the spherical B-spline surface and the corresponding TRACK smoothing behavior. Propagate selected refinement diagnostics through linking when they are intended as public trajectory variables.
 
@@ -107,7 +107,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **TRACK references:** `src/track.c`, `src/statspl.F`.
 
-**Relevant paper:** **Denis, B., J. Côté, and R. Laprise**, 2002: Spectral Decomposition of Two-Dimensional Atmospheric Fields on Limited-Area Domains Using the Discrete Cosine Transform (DCT). *Mon. Wea. Rev.*, **130**, 1812–1829, [doi:10.1175/1520-0493(2002)130<1812:SDOTDA>2.0.CO;2](https://doi.org/10.1175/1520-0493%282002%29130%3C1812%3ASDOTDA%3E2.0.CO%3B2).
+**Relevant paper:** **Denis, B., J. Côté, and R. Laprise**, 2002: Spectral Decomposition of Two-Dimensional Atmospheric Fields on Limited-Area Domains Using the Discrete Cosine Transform (DCT). *Mon. Wea. Rev.*, **130**, 1812–1829, [doi:10.1175/1520-0493(2002)130\<1812:SDOTDA>2.0.CO;2](https://doi.org/10.1175/1520-0493%282002%29130%3C1812%3ASDOTDA%3E2.0.CO%3B2).
 
 **Progress:** `DCTFilter` uses the `ducc0.fft.dct` type-II/type-III transform pair. It applies a radial effective-wave-number band and an $l(l+1)$ exponential coefficient taper. `TaperFilter` supplies a separate spatial boundary taper. Automatic selection distinguishes periodic global longitude from regional longitude.
 
@@ -117,7 +117,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Description:** Apply a wave-number taper to spherical harmonic coefficients to reduce spectral ringing and sidelobes at the truncation boundary.
 
-**Relevant paper:** **Sardeshmukh, P. D., and B. I. Hoskins**, 1984: Spatial Smoothing on the Sphere. *Mon. Wea. Rev.*, **112**, 2524–2529, [doi:10.1175/1520-0493(1984)112<2524:SSOTS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281984%29112%3C2524%3ASSOTS%3E2.0.CO%3B2).
+**Relevant paper:** **Sardeshmukh, P. D., and B. I. Hoskins**, 1984: Spatial Smoothing on the Sphere. *Mon. Wea. Rev.*, **112**, 2524–2529, [doi:10.1175/1520-0493(1984)112\<2524:SSOTS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281984%29112%3C2524%3ASSOTS%3E2.0.CO%3B2).
 
 **TRACK references:** `src/time_avg.c`, `src/spec_filt.c`.
 
@@ -147,7 +147,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 ### 5.6 CORMAX and CCA/PCA evaluation — ✅ Implemented
 
-**Description:** CORMAX is the maximum one-point correlation between a weather-impact field and a storm-track metric within a local search region, such as a $60^\circ\times20^\circ$ box. Canonical correlation analysis (CCA), optionally preceded by principal component analysis (PCA), is used to evaluate field relationships and truncation sensitivity.
+**Description:** CORMAX is the maximum one-point correlation between a weather-impact field and a storm-track metric within a local search region, such as a $60^\\circ\\times20^\\circ$ box. Canonical correlation analysis (CCA), optionally preceded by principal component analysis (PCA), is used to evaluate field relationships and truncation sensitivity.
 
 **Relevant paper:** [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1), cited in Section 5.4.
 
@@ -159,7 +159,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Description:** Apply spherical weighting functions to gridded cyclone and track statistics.
 
-**Relevant paper:** **Hodges, K. I.**, 1999: Extension of Spherical Nonparametric Estimators to Nonisotropic Kernels: An Oceanographic Application. *Mon. Wea. Rev.*, **127**, 214–227, [doi:10.1175/1520-0493(1999)127<0214:EOSNET>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C0214%3AEOSNET%3E2.0.CO%3B2).
+**Relevant paper:** **Hodges, K. I.**, 1999: Extension of Spherical Nonparametric Estimators to Nonisotropic Kernels: An Oceanographic Application. *Mon. Wea. Rev.*, **127**, 214–227, [doi:10.1175/1520-0493(1999)127\<0214:EOSNET>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C0214%3AEOSNET%3E2.0.CO%3B2).
 
 **Progress:** Numba kernels support constant-radius, Fisher exponential, Cressman rational, linear, and quadratic weights. The current implementation uses isotropic distance-based kernels.
 

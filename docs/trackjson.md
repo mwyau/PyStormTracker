@@ -97,29 +97,29 @@ declared; an undeclared custom unit is recorded as `"1"`.
 
 These are conventions of TrackJSON/1.0, not repeated per-document metadata:
 
-* Latitude is degrees north in `[-90, 90]`.
-* Longitude is degrees east, normalized to `[-180, 180)`; `180` is therefore
+- Latitude is degrees north in `[-90, 90]`.
+- Longitude is degrees east, normalized to `[-180, 180)`; `180` is therefore
   represented as `-180` in point data.
-* `metadata.time.units` is required and must be exactly
+- `metadata.time.units` is required and must be exactly
   `milliseconds since 1970-01-01 00:00:00`.
-* `metadata.time.calendar` is required. `data.times` and the time fields in
+- `metadata.time.calendar` is required. `data.times` and the time fields in
   `stats` are signed integer millisecond offsets under that calendar. They
   are not ISO strings, `yyyymmdd` values, or generic Unix timestamps.
-* TrackJSON uses only the canonical calendar `proleptic_gregorian`. Source
+- TrackJSON uses only the canonical calendar `proleptic_gregorian`. Source
   metadata values `standard`, `gregorian`, and `proleptic_gregorian` are
   canonicalized to it. Explicitly declared `standard` dates before
   `1582-10-15` are rejected because mixed Julian/Gregorian conversion is not
   implemented.
-* The packed time range is restricted to signed JavaScript safe integers:
+- The packed time range is restricted to signed JavaScript safe integers:
   `-9007199254740991 <= time <= 9007199254740991`. This preserves exact
   values when the standalone explorer parses JSON numbers as JavaScript
   `Number`.
-* Python `datetime` and NumPy `datetime64` input without source calendar
+- Python `datetime` and NumPy `datetime64` input without source calendar
   metadata uses `proleptic_gregorian`. CF/netCDF input uses its declared
   calendar and defaults to `proleptic_gregorian` when the attribute is absent.
   All finalized `Tracks` objects use the canonical calendar name.
-* Coordinates cannot be null, NaN, or infinite.
-* Variable NaN values are encoded as JSON `null`; unavailable peak fields are
+- Coordinates cannot be null, NaN, or infinite.
+- Variable NaN values are encoded as JSON `null`; unavailable peak fields are
   also encoded as `null`.
 
 TrackJSON v1 explicitly rejects `360_day`, `noleap`, `365_day`, `all_leap`,
@@ -145,13 +145,13 @@ that intersects the domain.
 
 `bounds` contains `south`, `north`, `west`, and `east`:
 
-* `-90 <= south <= north <= 90`.
-* `-180 <= west <= 180` and `-180 <= east <= 180`.
-* `west < east` is an ordinary interval.
-* `west > east` crosses the antimeridian and means
+- `-90 <= south <= north <= 90`.
+- `-180 <= west <= 180` and `-180 <= east <= 180`.
+- `west < east` is an ordinary interval.
+- `west > east` crosses the antimeridian and means
   `[west, 180] union [-180, east]`.
-* `west=-180, east=180` is the complete global longitude domain.
-* Other `west == east` pairs are ambiguous and invalid.
+- `west=-180, east=180` is the complete global longitude domain.
+- Other `west == east` pairs are ambiguous and invalid.
 
 The bounds do not contain an `antimeridian_wrap` member. That relationship is
 defined by `west > east`. Bounds are preserved by ordinary subsets and are
@@ -167,28 +167,28 @@ corresponds to `index.ids[i]`. Version 1 stores actual metrics only; it stores
 no threshold-result flags. Application thresholds such as 48 hours and
 1000 km remain configurable behavior.
 
-| Field | JSON type | Shape | Unit | Nullable | Definition |
-| --- | --- | --- | --- | --- | --- |
-| `version` | integer | scalar | — | no | Statistics format version, currently `1`. |
-| `point_count` | integer array | `(T,)` | points | no | `diff(index.offsets)` for each track. |
-| `start_time` | integer array | `(T,)` | CF ms under `metadata.time` | no | Time of the first point. |
-| `end_time` | integer array | `(T,)` | CF ms under `metadata.time` | no | Time of the final point. |
-| `duration_hours` | number array | `(T,)` | hours | no | `(end_time - start_time) / 3,600,000`. |
-| `start_lat` | number array | `(T,)` | degrees north | no | Latitude of the first point. |
-| `start_lon` | number array | `(T,)` | degrees east | no | Signed longitude of the first point. |
-| `end_lat` | number array | `(T,)` | degrees north | no | Latitude of the final point. |
-| `end_lon` | number array | `(T,)` | degrees east | no | Signed longitude of the final point. |
-| `south_lat` | number array | `(T,)` | degrees north | no | Minimum track latitude. |
-| `north_lat` | number array | `(T,)` | degrees north | no | Maximum track latitude. |
-| `west_lon` | number array | `(T,)` | degrees east | no | Start edge of the shortest longitude arc containing the track. |
-| `east_lon` | number array | `(T,)` | degrees east | no | End edge of the shortest longitude arc containing the track. |
-| `antimeridian_wrap` | boolean array | `(T,)` | — | no | Whether that shortest arc crosses the antimeridian. |
-| `peak_time` | integer array | `(T,)` | CF ms under `metadata.time` | yes | Time of the finite primary-variable extremum. |
-| `peak_lat` | number array | `(T,)` | degrees north | yes | Latitude at the primary-variable extremum. |
-| `peak_lon` | number array | `(T,)` | degrees east | yes | Signed longitude at the primary-variable extremum. |
-| `peak_value` | number array | `(T,)` | primary-variable unit | yes | Minimum or maximum value according to `metadata.mode`. |
-| `path_length_km` | number array | `(T,)` | km | no | Cumulative great-circle distance between consecutive points. |
-| `displacement_km` | number array | `(T,)` | km | no | Great-circle distance from the first to final point. |
+| Field               | JSON type     | Shape  | Unit                        | Nullable | Definition                                                     |
+| ------------------- | ------------- | ------ | --------------------------- | -------- | -------------------------------------------------------------- |
+| `version`           | integer       | scalar | —                           | no       | Statistics format version, currently `1`.                      |
+| `point_count`       | integer array | `(T,)` | points                      | no       | `diff(index.offsets)` for each track.                          |
+| `start_time`        | integer array | `(T,)` | CF ms under `metadata.time` | no       | Time of the first point.                                       |
+| `end_time`          | integer array | `(T,)` | CF ms under `metadata.time` | no       | Time of the final point.                                       |
+| `duration_hours`    | number array  | `(T,)` | hours                       | no       | `(end_time - start_time) / 3,600,000`.                         |
+| `start_lat`         | number array  | `(T,)` | degrees north               | no       | Latitude of the first point.                                   |
+| `start_lon`         | number array  | `(T,)` | degrees east                | no       | Signed longitude of the first point.                           |
+| `end_lat`           | number array  | `(T,)` | degrees north               | no       | Latitude of the final point.                                   |
+| `end_lon`           | number array  | `(T,)` | degrees east                | no       | Signed longitude of the final point.                           |
+| `south_lat`         | number array  | `(T,)` | degrees north               | no       | Minimum track latitude.                                        |
+| `north_lat`         | number array  | `(T,)` | degrees north               | no       | Maximum track latitude.                                        |
+| `west_lon`          | number array  | `(T,)` | degrees east                | no       | Start edge of the shortest longitude arc containing the track. |
+| `east_lon`          | number array  | `(T,)` | degrees east                | no       | End edge of the shortest longitude arc containing the track.   |
+| `antimeridian_wrap` | boolean array | `(T,)` | —                           | no       | Whether that shortest arc crosses the antimeridian.            |
+| `peak_time`         | integer array | `(T,)` | CF ms under `metadata.time` | yes      | Time of the finite primary-variable extremum.                  |
+| `peak_lat`          | number array  | `(T,)` | degrees north               | yes      | Latitude at the primary-variable extremum.                     |
+| `peak_lon`          | number array  | `(T,)` | degrees east                | yes      | Signed longitude at the primary-variable extremum.             |
+| `peak_value`        | number array  | `(T,)` | primary-variable unit       | yes      | Minimum or maximum value according to `metadata.mode`.         |
+| `path_length_km`    | number array  | `(T,)` | km                          | no       | Cumulative great-circle distance between consecutive points.   |
+| `displacement_km`   | number array  | `(T,)` | km                          | no       | Great-circle distance from the first to final point.           |
 
 Peak fields are either all present or all null for a row. Missing primary
 variable values are ignored; a track with no finite primary value has a

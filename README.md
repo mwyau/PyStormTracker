@@ -50,6 +50,7 @@ Full documentation, including API references and advanced usage examples, is ava
 ## Installation
 
 ### Prerequisites
+
 - **Python 3.11+**
 - **Message Passing Interface (MPI)**:
   - **Linux/macOS**: `OpenMPI` is recommended and included as a development dependency.
@@ -60,9 +61,11 @@ Full documentation, including API references and advanced usage examples, is ava
   - Python 3.14 free-threaded support is experimental. CI excludes `eof`, `grib`, and `zarr`: `xeofs` requires a `statsmodels` source build on 3.14t, while `eccodeslib` has no compatible free-threaded distribution for GRIB support.
 
 ### From PyPI
+
 You can install the latest stable version of PyStormTracker directly from PyPI:
 
 Using `pip`:
+
 ```bash
 # Standard installation
 pip install PyStormTracker
@@ -77,6 +80,7 @@ pip install "PyStormTracker[all]"     # Includes non-visualization optional comp
 ```
 
 Using `uv`:
+
 ```bash
 # For use as a CLI tool
 uv tool install "PyStormTracker[mpi]"
@@ -86,20 +90,25 @@ uv add "PyStormTracker[mpi]"
 ```
 
 ### From Conda-Forge
+
 You can also install PyStormTracker from `conda-forge`:
 
 Using `mamba`:
+
 ```bash
 mamba install -c conda-forge pystormtracker
 ```
 
 Using `conda`:
+
 ```bash
 conda install -c conda-forge pystormtracker
 ```
 
 ### From Source
+
 Install with `uv`:
+
 ```bash
 git clone https://github.com/mwyau/PyStormTracker.git
 cd PyStormTracker
@@ -113,27 +122,35 @@ uv sync
 Once installed, the `stormtracker` command provides separate subcommands for tracking, sampling, comparison, and conversion:
 
 #### 1. Track Features
+
 Run the core storm tracking algorithm (e.g., tracking cyclones in MSLP):
+
 ```bash
 stormtracker track -i data.nc -v msl -o tracks.trackjson -m min -a hodges -f trackjson
 ```
 
 #### 2. Sample Variables
+
 Extract external variables (e.g., precipitation) along existing tracks:
+
 ```bash
 # Calculate mean precipitation within a 500km radius of storm centers
 stormtracker sample -i tracks.trackjson -d precip.nc -v pr -o tracks_enriched.trackjson --method mean --radius 500
 ```
 
 #### 3. Match and Intercompare
+
 Compare tracks from different datasets or ensemble members:
+
 ```bash
 # Match tracks from two sources with a 200km mean distance threshold
 stormtracker compare --ref era5.trackjson --comp gfs.trackjson --max-dist 200 --json
 ```
 
 #### 4. Convert & Visualize
+
 Convert between formats; HTML output is currently a static compatibility placeholder:
+
 ```bash
 # Emit the temporary static HTML placeholder
 stormtracker convert -i tracks.trackjson -o explorer.html -f trackjson -F html
@@ -143,20 +160,20 @@ stormtracker convert -i tracks.trackjson -o explorer.html -f trackjson -F html
 
 Use `stormtracker <command> --help` for detailed argument lists. Key options for the `track` command include:
 
-| Argument | Short | Description |
-| :--- | :--- | :--- |
-| `--input` | `-i` | Path to the input NetCDF/GRIB file. |
-| `--var` | `-v` | Variable name to track (e.g., `msl`, `vo`). |
-| `--output` | `-o` | Path to the output track file. |
-| `--algorithm` | `-a` | `simple` (default) or `hodges`. |
-| `--format` | `-f` | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically. |
-| `--mode` | `-m` | `auto` (default), `min`, or `max`; known aliases resolve automatically. |
-| `--backend` | `-b` | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple. |
-| `--workers` | `-w` | Number of parallel workers. |
-| `--lmin`, `--lmax` | | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
-| `--taper-points` | | Independent spatial taper width; zero disables tapering. |
-| `--nside` | | Target HEALPix resolution; omitted values are derived from the source grid. |
-| `--subgrid-refine`, `--no-subgrid-refine` | | Override refinement defaults. Off for simple; on for Hodges and HEALPix. |
+| Argument                                  | Short | Description                                                                                                    |
+| :---------------------------------------- | :---- | :------------------------------------------------------------------------------------------------------------- |
+| `--input`                                 | `-i`  | Path to the input NetCDF/GRIB file.                                                                            |
+| `--var`                                   | `-v`  | Variable name to track (e.g., `msl`, `vo`).                                                                    |
+| `--output`                                | `-o`  | Path to the output track file.                                                                                 |
+| `--algorithm`                             | `-a`  | `simple` (default) or `hodges`.                                                                                |
+| `--format`                                | `-f`  | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically.  |
+| `--mode`                                  | `-m`  | `auto` (default), `min`, or `max`; known aliases resolve automatically.                                        |
+| `--backend`                               | `-b`  | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple.                              |
+| `--workers`                               | `-w`  | Number of parallel workers.                                                                                    |
+| `--lmin`, `--lmax`                        |       | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
+| `--taper-points`                          |       | Independent spatial taper width; zero disables tapering.                                                       |
+| `--nside`                                 |       | Target HEALPix resolution; omitted values are derived from the source grid.                                    |
+| `--subgrid-refine`, `--no-subgrid-refine` |       | Override refinement defaults. Off for simple; on for Hodges and HEALPix.                                       |
 
 ### Python API
 
@@ -171,6 +188,7 @@ tracks = tracker.track(infile="data.nc", variable_name="vo", mode="max")
 ```
 
 ### Analyze the results programmatically
+
 ```python
 for track in tracks:
     if len(track) >= 8:
@@ -178,6 +196,7 @@ for track in tracks:
 ```
 
 ### Export results
+
 ```python
 tracks.write("output.txt", format="imilast")
 ```
@@ -189,28 +208,35 @@ Sample datasets for testing and benchmarking are hosted in the [PyStormTracker-D
 ## Development
 
 ### Setup
+
 Using `uv` to set up your development environment:
+
 ```bash
 # Install dependencies and sync virtual environment
 uv sync --all-extras
 ```
 
 ### Quality Control
+
 Run automated checks using `uv run`:
 
 **Linting & Formatting:**
+
 ```bash
 uv run ruff check . --fix
 uv run ruff format .
 ```
 
 **Type Checking:**
+
 ```bash
 uv run mypy .
 ```
 
 ### Tiered Testing
+
 To keep development cycles fast, testing is tiered:
+
 - **Fast Tests**: Default local runs (skips integration tests).
 - **Integration Tests**: Integration and regression tests.
   - **Local**: Runs "short" variants (60 time steps) to ensure backend consistency quickly.
@@ -218,16 +244,19 @@ To keep development cycles fast, testing is tiered:
 - **Full Suite**: Everything.
 
 **Run fast unit tests only (Default):**
+
 ```bash
 uv run pytest
 ```
 
 **Run integration tests (Short variants locally):**
+
 ```bash
 uv run pytest --run-integration
 ```
 
 **Run everything:**
+
 ```bash
 uv run pytest --run-all
 ```
@@ -247,14 +276,15 @@ If you use this software in your research, please cite the following:
 - **Yau, A. M. W., K. Paul, and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. Zenodo, [doi:10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
 - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [doi:10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
+
   - IMILAST Intercomparison Protocol: [https://proclim.scnat.ch/en/activities/project_imilast/intercomparison](https://proclim.scnat.ch/en/activities/project_imilast/intercomparison)
   - IMILAST Data Download: [https://proclim.scnat.ch/en/activities/project_imilast/data_download](https://proclim.scnat.ch/en/activities/project_imilast/data_download)
 
-- **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [doi:10.1175/1520-0493(1999)127<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C1362%3AACFFT%3E2.0.CO%3B2).
+- **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [doi:10.1175/1520-0493(1999)127\<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C1362%3AACFFT%3E2.0.CO%3B2).
 
-- **Hodges, K. I.**, 1995: Feature Tracking on the Unit Sphere. *Mon. Wea. Rev.*, **123**, 3458–3465, [doi:10.1175/1520-0493(1995)123<3458:FTOTUS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281995%29123%3C3458%3AFTOTUS%3E2.0.CO%3B2).
+- **Hodges, K. I.**, 1995: Feature Tracking on the Unit Sphere. *Mon. Wea. Rev.*, **123**, 3458–3465, [doi:10.1175/1520-0493(1995)123\<3458:FTOTUS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281995%29123%3C3458%3AFTOTUS%3E2.0.CO%3B2).
 
-- **Hodges, K. I.**, 1994: A General Method for Tracking Analysis and Its Application to Meteorological Data. *Mon. Wea. Rev.*, **122**, 2573–2586, [doi:10.1175/1520-0493(1994)122<2573:AGMFTA>2.0.CO;2](https://doi.org/10.1175/1520-0493%281994%29122%3C2573%3AAGMFTA%3E2.0.CO%3B2).
+- **Hodges, K. I.**, 1994: A General Method for Tracking Analysis and Its Application to Meteorological Data. *Mon. Wea. Rev.*, **122**, 2573–2586, [doi:10.1175/1520-0493(1994)122\<2573:AGMFTA>2.0.CO;2](https://doi.org/10.1175/1520-0493%281994%29122%3C2573%3AAGMFTA%3E2.0.CO%3B2).
 
 ## License
 

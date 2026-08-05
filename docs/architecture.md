@@ -10,9 +10,9 @@ maintenance are maintained in the [TrackJSON v1.0 specification](trackjson.md).
 The architecture has four main features:
 
 1. **Unified API (`Tracker` protocol):** A structural interface allows the CLI and Python API to use `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` through common orchestration code.
-2. **Centralized constants:** Standard constants such as radius of earth, and detection thresholds, are defined in `models/constants.py` and shared by trackers.
-3. **Vectorization and Numba JIT:** Numerical operations use NumPy broadcasting and cached, GIL-free Numba kernels where suitable. Detection and linking kernels avoid Python loops where practical.
-4. **Gather-then-Link:** Simple Dask and MPI execution distribute detection, gather raw detections in time order, and run one linking pass.
+1. **Centralized constants:** Standard constants such as radius of earth, and detection thresholds, are defined in `models/constants.py` and shared by trackers.
+1. **Vectorization and Numba JIT:** Numerical operations use NumPy broadcasting and cached, GIL-free Numba kernels where suitable. Detection and linking kernels avoid Python loops where practical.
+1. **Gather-then-Link:** Simple Dask and MPI execution distribute detection, gather raw detections in time order, and run one linking pass.
 
 ## 2. Core Components
 
@@ -95,9 +95,9 @@ The detailed algorithmic requirements and TRACK comparison scope are documented 
 Simple parallel execution uses the following sequence:
 
 1. Assigned time chunks are distributed across Dask or MPI workers.
-2. Each worker runs frame-local detection kernels and returns raw coordinate arrays.
-3. The main process gathers detections in global time order.
-4. One sequential linking pass constructs the tracks.
+1. Each worker runs frame-local detection kernels and returns raw coordinate arrays.
+1. The main process gathers detections in global time order.
+1. One sequential linking pass constructs the tracks.
 
 Detection can be partitioned without making link decisions at chunk boundaries. Centralized linking avoids merging independently linked chunks. Repository integration tests compare complete serial, Dask, and MPI Simple outputs using versioned test data.
 
@@ -221,11 +221,11 @@ After the test manifest is created, CI calls the reusable `Docker Publish`
 workflow to promote it without rebuilding. The source commit's seven-character SHA
 identifies the test image. Publication applies the following tags:
 
-| Source | `mwyau/pystormtracker` | `xddd/pystormtracker` |
-| --- | --- | --- |
-| `main` | seven-character SHA, `<seven-character-SHA>` | `edge`, `<seven-character-SHA>` |
-| stable tag `v0.6.0` | seven-character SHA, `<seven-character-SHA>` | `0.6.0`, `0.6`, `latest`, `<seven-character-SHA>` |
-| manual private promotion | seven-character SHA, `<seven-character-SHA>` | none |
+| Source                   | `mwyau/pystormtracker`                       | `xddd/pystormtracker`                             |
+| ------------------------ | -------------------------------------------- | ------------------------------------------------- |
+| `main`                   | seven-character SHA, `<seven-character-SHA>` | `edge`, `<seven-character-SHA>`                   |
+| stable tag `v0.6.0`      | seven-character SHA, `<seven-character-SHA>` | `0.6.0`, `0.6`, `latest`, `<seven-character-SHA>` |
+| manual private promotion | seven-character SHA, `<seven-character-SHA>` | none                                              |
 
 The completed Docker Hub manifests are copied to the corresponding GHCR repositories without rebuilding. Public `edge` and release manifests are attested on Docker Hub only; GHCR copies are not separately attested.
 
@@ -261,7 +261,7 @@ Current planned work includes:
 
 - **Xarray generalized ufuncs:** Spectral filtering and kinematic derivatives use `xr.apply_ufunc(..., dask="parallelized")`; detection still uses explicit time partitioning.
 - **Lazy evaluation and thread topology:** Reduce eager frame loading and define `ducc0` and Numba thread counts when Dask threads or MPI processes distribute work.
-- **Spatial indexing:** Evaluate `scipy.spatial.cKDTree` or another spherical candidate index to reduce the $O(N \times M)$ candidate-search cost in dense Simple linking workloads.
+- **Spatial indexing:** Evaluate `scipy.spatial.cKDTree` or another spherical candidate index to reduce the $O(N \\times M)$ candidate-search cost in dense Simple linking workloads.
 - **Additional backends:** Hodges and HEALPix parallel tracking require Gather-then-Link implementations and serial-parallel equality tests.
 
 For planned features, see the [Roadmap](roadmap.md).
@@ -274,11 +274,11 @@ Detailed execution timings (breaking down Detection, Linking, Export, and I/O Ov
 
 ## Appendix: Evolution from Legacy Architecture
 
-| Feature | Legacy Architecture (v0.0.2) | Current Architecture (v0.4.0+) |
-| --- | --- | --- |
-| **Data storage** | Nested lists of `Center` and `Track` objects. | Immutable packed C-contiguous NumPy columns with IDs and offsets. |
-| **Parallelism** | Threaded tree reduction. | Parallel detection followed by centralized linking. |
-| **Linking strategy** | Tree reduction across chunks. | Ordered detection gathering and one linking pass with serial-equality tests. |
-| **Linker** | $O(N^2)$ nested Python loops. | Vectorized great-circle distance matrices and deterministic greedy matching. |
-| **Algorithms** | Simple only. | Simple, Hodges-based, and HEALPix trackers. |
-| **I/O** | Many small lazy-loaded chunks. | Xarray reads coordinated through `DataLoader`. |
+| Feature              | Legacy Architecture (v0.0.2)                  | Current Architecture (v0.4.0+)                                               |
+| -------------------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Data storage**     | Nested lists of `Center` and `Track` objects. | Immutable packed C-contiguous NumPy columns with IDs and offsets.            |
+| **Parallelism**      | Threaded tree reduction.                      | Parallel detection followed by centralized linking.                          |
+| **Linking strategy** | Tree reduction across chunks.                 | Ordered detection gathering and one linking pass with serial-equality tests. |
+| **Linker**           | $O(N^2)$ nested Python loops.                 | Vectorized great-circle distance matrices and deterministic greedy matching. |
+| **Algorithms**       | Simple only.                                  | Simple, Hodges-based, and HEALPix trackers.                                  |
+| **I/O**              | Many small lazy-loaded chunks.                | Xarray reads coordinated through `DataLoader`.                               |

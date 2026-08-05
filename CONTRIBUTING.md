@@ -5,35 +5,39 @@ Thank you for your interest in contributing to PyStormTracker! We welcome contri
 ## How to Contribute
 
 ### Reporting Bugs
+
 If you find a bug, please [open an issue](https://github.com/mwyau/PyStormTracker/issues) on GitHub. Include:
+
 - A clear description of the issue.
 - Steps to reproduce the bug.
 - Any relevant logs or error messages.
 - Information about your environment (OS, Python version, PyStormTracker version).
 
 ### Suggesting Enhancements
+
 We welcome ideas for new features or improvements. Please [open an issue](https://github.com/mwyau/PyStormTracker/issues) to discuss your proposal before starting implementation.
 
 ### Submitting Pull Requests
-1.  **Fork the repository** and create your branch from `main`.
-2.  **Install development dependencies**:
-    ```bash
-    uv sync
-    ```
-3.  **Make your changes**:
-    - Ensure your code follows the project's style (use `ruff` for formatting and linting).
-    - Add or update tests for your changes.
-    - Ensure all tests pass.
-4.  **Run Quality Control Checks**:
-    ```bash
-    uv run ruff check . --fix
-    uv run ruff format .
-    uv run mypy .
-    uv run pytest tests/unit
-    ```
-5.  **Submit the Pull Request**:
-    - Provide a clear description of the changes.
-    - Reference any related issues.
+
+1. **Fork the repository** and create your branch from `main`.
+1. **Install development dependencies**:
+   ```bash
+   uv sync
+   ```
+1. **Make your changes**:
+   - Ensure your code follows the project's style (use `ruff` for formatting and linting).
+   - Add or update tests for your changes.
+   - Ensure all tests pass.
+1. **Run Quality Control Checks**:
+   ```bash
+   uv run ruff check . --fix
+   uv run ruff format .
+   uv run mypy .
+   uv run pytest tests/unit
+   ```
+1. **Submit the Pull Request**:
+   - Provide a clear description of the changes.
+   - Reference any related issues.
 
 ## Development Standards
 
