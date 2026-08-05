@@ -7,6 +7,7 @@
 [![TestPyPI Version](https://img.shields.io/pypi/v/PyStormTracker?pypiBaseUrl=https://test.pypi.org&label=testpypi)](https://test.pypi.org/project/PyStormTracker/)
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/pystormtracker)](https://anaconda.org/channels/conda-forge/packages/pystormtracker/overview)
 [![GitHub License](https://img.shields.io/github/license/mwyau/PyStormTracker)](https://github.com/mwyau/PyStormTracker/blob/main/LICENSE)
+[![PyPI Python Version](https://img.shields.io/pypi/pyversions/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
 [![Docker](https://img.shields.io/badge/docker-xddd%2Fpystormtracker-blue?logo=docker)](https://hub.docker.com/r/xddd/pystormtracker)
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18764813-blue.svg)](https://doi.org/10.5281/zenodo.18764813)

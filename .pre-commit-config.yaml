@@ -15,7 +15,7 @@ repos:
   hooks:
   - id: ruff-check
     types_or: [ python, pyproject ]
-    args: [ --fix ]
+    args: [ --fix "--extend-select=ANN,B,C4,E,F,I,NPY,PT,SIM,UP,W", "--ignore=DTZ" ]
   - id: ruff-format
     types_or: [ python ]
 
