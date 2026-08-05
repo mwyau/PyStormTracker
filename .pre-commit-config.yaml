@@ -30,3 +30,15 @@ repos:
   hooks:
   - id: ty
     args: [ --all-extras, --isolated ]
+
+- repo: https://github.com/hukkin/mdformat
+  rev: 1.0.0
+  hooks:
+  - id: mdformat
+    additional_dependencies:
+    - mdformat-beautysh
+    - mdformat-config
+    - mdformat-gfm
+    - mdformat-gfm-alerts
+    - mdformat-simple-breaks
+    - mdformat-web
