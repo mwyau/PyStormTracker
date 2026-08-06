@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.6.1.dev2
+
+### Tracking and interfaces
+
+- Replaced the procedural tracking API with configured tracker classes and consolidated public models under `pystormtracker.models`.
+- Renamed tracker, preprocessing, and CLI arguments and replaced subgrid-refinement terminology with feature-point location methods.
+- Updated Hodges MGE directional scheduling and iteration-limit handling.
+
+### Testing and CI
+
+- Moved Python package publishing to a standalone workflow that runs after successful CI.
+
+---
+
 ## v0.6.1.dev1
 
 ### Testing and CI

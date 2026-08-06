@@ -9,7 +9,7 @@ from .simple.tracker import SimpleTracker
 try:
     __version__ = version("pystormtracker")
 except PackageNotFoundError:
-    __version__ = "0.6.1.dev1"
+    __version__ = "0.6.1.dev2"
 
 
 __all__ = [
