@@ -1,98 +1,68 @@
 name: Python Publish
 
 on:
-  workflow_call:
-    inputs:
-      artifact_name:
-        description: Name of the CI artifact containing tested distributions
-        required: true
-        type: string
-      repository:
-        description: Package repository to publish to
-        required: true
-        type: string
-      version:
-        description: Package version to publish
-        required: true
-        type: string
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
-      artifact_name:
-        description: Name of the CI artifact containing tested distributions
-        required: true
-        type: choice
-        options:
-          - release-dists
-      repository:
-        description: Package repository to publish to (testpypi only)
-        required: true
-        type: choice
-        options:
-          - testpypi
       version:
-        description: Package version to publish, such as 0.6.0.dev0
+        description: Development version, such as 0.6.1.dev1
         required: true
         type: string
       run_id:
-        description: CI run containing release artifact
+        description: Successful CI run containing release-dists
         required: true
         type: string
 
 concurrency:
-  group: python-publish-${{ inputs.repository }}-${{ inputs.version }}
+  group: >-
+    python-publish-${{
+      github.event_name == 'workflow_run'
+      && github.event.workflow_run.head_branch
+      || format('v{0}', inputs.version)
+    }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  pypi-publish:
-    name: Publish to PyPI
-    if: inputs.repository == 'pypi'
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        startsWith(github.event.workflow_run.head_branch, 'v')
+      )
     runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
     environment:
-      name: pypi
-      url: https://pypi.org/project/PyStormTracker/${{ inputs.version }}
-    steps:
-      - name: Retrieve tested distributions
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: ${{ inputs.artifact_name }}
-          path: dist/
-
-      - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v4.1.1
-        with:
-          subject-path: dist/*
-
-      - name: Publish distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.14.2
-        with:
-          packages-dir: dist/
-
-  test-pypi-publish:
-    name: Publish to TestPyPI
-    if: inputs.repository == 'testpypi' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-26.04
+      name: >-
+        ${{
+          github.event_name == 'workflow_run' &&
+          !contains(github.event.workflow_run.head_branch, '.dev')
+          && 'pypi' || 'testpypi'
+        }}
     permissions:
       actions: read
       contents: read
       id-token: write
       attestations: write
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/project/PyStormTracker/${{ inputs.version }}
+
     steps:
       - name: Retrieve tested distributions
         uses: actions/download-artifact@v8.0.1
         with:
-          name: ${{ inputs.artifact_name }}
+          name: release-dists
           path: dist/
-          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.run_id || github.run_id }}
+          run-id: >-
+            ${{
+              github.event_name == 'workflow_run'
+              && github.event.workflow_run.id
+              || inputs.run_id
+            }}
           github-token: ${{ github.token }}
 
       - name: Validate development version
@@ -106,8 +76,14 @@ jobs:
         with:
           subject-path: dist/*
 
-      - name: Publish distributions to TestPyPI
+      - name: Publish distributions
         uses: pypa/gh-action-pypi-publish@v1.14.2
         with:
-          repository-url: https://test.pypi.org/legacy/
           packages-dir: dist/
+          repository-url: >-
+            ${{
+              github.event_name == 'workflow_run' &&
+              !contains(github.event.workflow_run.head_branch, '.dev')
+              && 'https://upload.pypi.org/legacy/'
+              || 'https://test.pypi.org/legacy/'
+            }}

@@ -417,19 +417,3 @@ jobs:
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       GHCR_PAT: ${{ secrets.GHCR_PAT }}
-
-  publish-python:
-    name: Publish Python package
-    if: github.ref_type == 'tag'
-    needs:
-      [release_tag, code-quality, unit-tests, integration-tests, package-tests, docs]
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/python-publish.yml
-    with:
-      artifact_name: release-dists
-      repository: ${{ needs.release_tag.outputs.python_repository }}
-      version: ${{ needs.release_tag.outputs.version }}
