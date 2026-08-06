@@ -33,11 +33,11 @@ Unlike 2D meshes where neighbors are found via index offsets, HEALPix neighbors 
 The tracker groups adjacent pixels into objects with the Numba kernel `_numba_healpix_ccl`.
 
 - **Algorithm**: Iterative label propagation over the 1D graph until convergence.
-- **Constraints**: Supports `threshold` filtering and `min_points` object-size constraints.
+- **Constraints**: Supports `intensity_threshold` filtering and `min_grid_points` object-size constraints.
 
 ### 3.3. Spherical Subgrid Refinement
 
-Optional `subgrid_refine_healpix` applies these steps:
+Optional `refine_healpix_center` applies these steps:
 
 1. **Local Projection**: For each detected extremum at pixel $P$, it projects $P$ and its 8 neighbors onto a local **equirectangular plane** centered at $P$.
 1. **Numerical Stability**: Coordinate scaling/normalization is applied to the local projected coordinates to prevent matrix ill-conditioning when solving the least-squares system.

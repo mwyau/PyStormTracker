@@ -10,7 +10,7 @@ import pytest
 from pystormtracker.compare import _load_tracks, main
 from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.models.tracks import Tracks, TracksMetadata, _TracksBuilder
-from pystormtracker.models.units import Mode
+from pystormtracker.models.units import ResolvedDetectionMode as Mode
 
 
 def make_tracks(
@@ -195,8 +195,8 @@ def test_compare_json_stdout_is_machine_readable(
         candidate="candidate.trackjson",
         max_mean_separation=2.0,
         min_overlap=0.6,
-        var=None,
-        mode="max",
+        variable=None,
+        detection_mode="max",
         report=None,
         matched_candidate_output=None,
         json=True,

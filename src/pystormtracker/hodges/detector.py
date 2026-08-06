@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -11,8 +10,9 @@ from scipy.interpolate import RectSphereBivariateSpline
 from ..io.data_loader import DataLoader
 from ..models import constants as model_constants
 from ..models.time import TimeInput, TimeRange, select_time_range
-from ..models.tracker import RawDetectionStep
-from ..preprocessing.refinement import subgrid_refine as refine_center
+from ..models.tracker import FeaturePointMethod, RawDetectionStep
+from ..models.units import ResolvedDetectionMode
+from ..preprocessing.refinement import refine_center
 from .kernels import (
     _numba_ccl,
     _numba_get_centers,
@@ -175,27 +175,24 @@ class HodgesDetector:
 
     def detect(
         self,
-        size: int = 5,
-        threshold: float | None = None,
-        minmaxmode: Literal["min", "max"] = "min",
-        min_points: int = 1,
-        subgrid_refine: bool = True,
+        search_window_size: int = 5,
+        intensity_threshold: float | None = None,
+        detection_mode: ResolvedDetectionMode = "min",
+        min_grid_points: int = 1,
+        feature_point_method: FeaturePointMethod = "quadratic",
     ) -> list[RawDetectionStep]:
-        """
-        Runs the feature detection on the selected time steps.
+        if search_window_size <= 0 or search_window_size % 2 == 0:
+            raise ValueError("search_window_size must be a positive odd integer")
+        if min_grid_points <= 0:
+            raise ValueError("min_grid_points must be positive")
 
-        Args:
-            size: Diameter of local search window for extrema.
-            threshold: Intensity threshold for objects.
-            minmaxmode: Whether to search for local minima or maxima.
-            min_points: Minimum number of grid points in an object to be processed.
-            subgrid_refine: Whether to refine centers with a local quadratic fit.
-        """
-        if threshold is None:
+        use_quadratic = feature_point_method == "quadratic"
+
+        if intensity_threshold is None:
             if self.requested_variable_name == "vo":
-                threshold = model_constants.DEFAULT_VO_THRESHOLD
+                intensity_threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
-                threshold = model_constants.DEFAULT_MSL_THRESHOLD
+                intensity_threshold = model_constants.DEFAULT_MSL_THRESHOLD
 
         times = self.get_time()
         lat, lon = self.lat, self.lon
@@ -203,7 +200,7 @@ class HodgesDetector:
         projected_xy = lon_name == "x"
         periodic_x = not projected_xy and self._loader.is_global_longitude()
         full_var = self.get_var()
-        is_min = minmaxmode == "min"
+        is_min = detection_mode == "min"
         num_steps = len(times)
 
         raw_results: list[RawDetectionStep] = []
@@ -221,7 +218,9 @@ class HodgesDetector:
             # 1. Threshold and Segment using Connected Component Labeling (CCL).
             # This partitions the grid into discrete storm 'objects' based on intensity.
             binary_mask = (
-                (frame <= threshold) if is_min else (frame >= threshold)
+                (frame <= intensity_threshold)
+                if is_min
+                else (frame >= intensity_threshold)
             ).astype(np.float64)
             labeled_mask, num_objects = _numba_ccl(binary_mask, periodic_x=periodic_x)
 
@@ -231,9 +230,9 @@ class HodgesDetector:
                 frame,
                 labeled_mask,
                 num_objects,
-                size,
+                search_window_size,
                 is_min,
-                min_points,
+                min_grid_points,
                 periodic_x=periodic_x,
             )
 
@@ -245,7 +244,7 @@ class HodgesDetector:
                 num_objects,
                 lat,
                 lon,
-                threshold,
+                intensity_threshold,
                 is_min,
                 spherical_coords=not projected_xy,
             )
@@ -282,7 +281,7 @@ class HodgesDetector:
                 global_spline = None
 
             for i in range(n_feats):
-                if subgrid_refine:
+                if use_quadratic:
                     rlat, rlon, rval = refine_center(
                         frame,
                         r_idx[i],
@@ -300,7 +299,7 @@ class HodgesDetector:
                 quad_vals[i] = rval
 
                 # B-spline fit (Global Spherical Spline)
-                if subgrid_refine and global_spline is not None:
+                if use_quadratic and global_spline is not None:
                     try:
                         # evaluate at sub-grid center (convert to colatitude/rad)
                         bspline_vals[i] = float(

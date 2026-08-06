@@ -10,7 +10,7 @@ import numpy as np
 from ..models.geo import normalize_longitudes_360
 from ..models.time import decode_time_values
 from ..models.tracks import Tracks, TracksMetadata, _TracksBuilder
-from ..models.units import ModeOption, canonical_unit_for, resolve_mode
+from ..models.units import DetectionMode, canonical_unit_for, resolve_mode
 
 
 def _parse_track_time(token: str) -> np.datetime64:
@@ -35,7 +35,7 @@ def read_hodges(
     path: str | Path,
     *,
     primary_var: str = "Intensity1",
-    mode: ModeOption | None = "auto",
+    mode: DetectionMode | None = "auto",
 ) -> Tracks:
     """Read ``TRACK_NUM/TRACK_ID/POINT_NUM`` records into packed tracks.
 

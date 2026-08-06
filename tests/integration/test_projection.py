@@ -41,17 +41,17 @@ def test_simple_stereographic_dask_matches_serial(
         n_workers: int | None = None,
     ) -> Tracks:
         tracker = SimpleTracker(
-            map_proj=map_proj,
-            resolution=300.0,
+            projection=map_proj,
+            stereo_grid_spacing_km=300.0,
             extent=(-3000.0, 3000.0, -3000.0, 3000.0),
-            subgrid_refine=True,
+            feature_point_method="quadratic",
             backend=backend,
-            n_workers=n_workers,
+            workers=n_workers,
         )
         return tracker.track(
-            input_path,
-            "msl",
-            mode="min",
+            data=input_path,
+            variable="msl",
+            detection_mode="min",
         )
 
     serial = run(

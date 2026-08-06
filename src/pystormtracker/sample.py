@@ -124,8 +124,8 @@ def sample_tracks(
     out_name = output_variable_name or variable_name
     da, _unused_threshold, sampled_unit = normalize_variable_units(
         da,
-        variable_name=out_name,
-        threshold=None,
+        variable=out_name,
+        intensity_threshold=None,
     )
 
     sampled_values = np.full(len(tracks.times), np.nan, dtype=np.float64)
@@ -265,13 +265,11 @@ def setup_parser(
         "-d", "--data", required=True, help="Input NetCDF data file to sample from."
     )
     parser.add_argument(
-        "-v", "--var", required=True, help="Variable name in the NetCDF file."
+        "-v", "--variable", required=True, help="Variable name in the NetCDF file."
     )
     parser.add_argument(
         "-o",
-        "--out",
         "--output",
-        dest="output",
         required=True,
         help="Output track file (JSON).",
     )
@@ -325,14 +323,14 @@ def main(args: argparse.Namespace) -> None:
 
     ds = DataLoader(args.data, engine=args.engine).ensure_open()
 
-    print(f"Sampling '{args.var}' using method '{args.method}'...")
+    print(f"Sampling '{args.variable}' using method '{args.method}'...")
     if args.radius > 0:
         print(f"Radius: {args.radius} km")
 
     tracks = sample_tracks(
         tracks=tracks,
         ds=ds,
-        variable_name=args.var,
+        variable_name=args.variable,
         method=args.method,
         radius_km=args.radius,
         output_variable_name=args.name,

@@ -41,9 +41,9 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
         "output.txt",
         "--algorithm",
         "hodges",
-        "--zone-file",
+        "--dmax-zone-file",
         str(zone_file),
-        "--adapt-file",
+        "--adaptive-smoothness-file",
         str(adapt_file),
     ]
 
@@ -58,11 +58,11 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
     mock_tracker_cls.assert_called_once()
     kwargs = mock_tracker_cls.call_args.kwargs
 
-    zones_parsed = kwargs["zones"]
+    zones_parsed = kwargs["dmax_zones"]
     assert zones_parsed.shape == (3, 5)
     assert zones_parsed[1, 4] == 3.0
 
-    adapt_parsed = kwargs["adapt_params"]
+    adapt_parsed = kwargs["adaptive_smoothness"]
     assert adapt_parsed.shape == (2, 4)
     assert np.array_equal(adapt_parsed[0], [1.0, 2.0, 5.0, 8.0])
     assert np.array_equal(adapt_parsed[1], [1.0, 0.3, 0.1, 0.0])
@@ -84,9 +84,9 @@ def test_cli_load_dat_json(tmp_path: Path) -> None:
         "output.txt",
         "--algorithm",
         "hodges",
-        "--zones",
+        "--dmax-zones",
         zones_json,
-        "--adapt-params",
+        "--adaptive-smoothness",
         adapt_json,
     ]
 
@@ -101,5 +101,7 @@ def test_cli_load_dat_json(tmp_path: Path) -> None:
     mock_tracker_cls.assert_called_once()
     kwargs = mock_tracker_cls.call_args.kwargs
 
-    assert np.array_equal(kwargs["zones"], np.array(json.loads(zones_json)))
-    assert np.array_equal(kwargs["adapt_params"], np.array(json.loads(adapt_json)))
+    assert np.array_equal(kwargs["dmax_zones"], np.array(json.loads(zones_json)))
+    assert np.array_equal(
+        kwargs["adaptive_smoothness"], np.array(json.loads(adapt_json))
+    )

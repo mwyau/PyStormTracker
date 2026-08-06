@@ -15,7 +15,7 @@ from pystormtracker.models.tracks import (
     TracksMetadata,
     _TracksBuilder,
 )
-from pystormtracker.models.units import Mode
+from pystormtracker.models.units import ResolvedDetectionMode as Mode
 
 
 def _metadata(

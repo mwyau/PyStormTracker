@@ -16,7 +16,10 @@ def test_healpix_tracker_time_range() -> None:
     tracker = HealpixTracker()
     with pytest.raises((FileNotFoundError, Exception)) as excinfo:
         tracker.track(
-            "nonexistent.nc", "msl", start_time="2025-01-01", end_time="2025-01-31"
+            data="nonexistent.nc",
+            variable="msl",
+            start_time="2025-01-01",
+            end_time="2025-01-31",
         )
     assert "nonexistent.nc" in str(excinfo.value) or isinstance(
         excinfo.value, FileNotFoundError
@@ -35,7 +38,9 @@ def test_healpix_preprocessing_regrids_regular_data() -> None:
         name="msl",
     )
 
-    processed, steps = HealpixTracker().preprocess_standard_track(data, lmin=0, lmax=3)
+    processed, steps = HealpixTracker().preprocess_standard_track(
+        data, filter_lmin=0, filter_lmax=3
+    )
 
     assert processed.dims == ("time", "cell")
     assert processed.shape == (1, 192)

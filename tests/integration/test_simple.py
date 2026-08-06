@@ -337,7 +337,7 @@ def test_legacy_regression(
         "serial",
     ]
     if variable_name == "vo":
-        args.extend(["--threshold", "1e-4"])
+        args.extend(["--intensity-threshold", "1e-4"])
 
     tracks_comp = run_command_direct(args)
     assert tracks_comp is not None

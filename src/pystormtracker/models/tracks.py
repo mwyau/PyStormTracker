@@ -17,7 +17,7 @@ from numpy.typing import NDArray
 from .center import Center
 from .geo import SpatialBounds, normalize_longitudes_signed
 from .time import encode_time_values
-from .units import Mode, canonical_unit_for
+from .units import ResolvedDetectionMode, canonical_unit_for
 
 JSONScalar: TypeAlias = str | int | float | bool | None
 
@@ -54,7 +54,7 @@ class TracksMetadata:
     """Explicit metadata required to interpret a packed trajectory set."""
 
     primary_var: str
-    mode: Mode
+    mode: ResolvedDetectionMode
     units: Mapping[str, str]
     bounds: SpatialBounds | None = None
     processing: tuple[ProcessingStep, ...] = ()
@@ -435,7 +435,7 @@ class Tracks:
         return self.metadata.primary_var
 
     @property
-    def mode(self) -> Mode:
+    def mode(self) -> ResolvedDetectionMode:
         return self.metadata.mode
 
     @property

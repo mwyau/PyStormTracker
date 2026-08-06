@@ -10,7 +10,7 @@ import numpy as np
 
 from ..models.time import decode_time_values
 from ..models.tracks import Tracks, TracksMetadata, _TracksBuilder
-from ..models.units import ModeOption, canonical_unit_for, resolve_mode
+from ..models.units import DetectionMode, canonical_unit_for, resolve_mode
 
 
 def _parse_time(value: str) -> np.datetime64:
@@ -34,7 +34,7 @@ def read_imilast(
     filename: Path | str,
     *,
     primary_var: str | None = None,
-    mode: ModeOption | None = "auto",
+    mode: DetectionMode | None = "auto",
 ) -> Tracks:
     """Read the supported IMILAST subset into packed trajectories.
 

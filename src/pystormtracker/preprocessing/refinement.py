@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 
 @nb.njit(cache=True, nogil=True)
-def subgrid_refine(
+def refine_center(
     frame: NDArray[np.float64],
     r: int,
     c: int,

@@ -7,7 +7,7 @@ from pystormtracker.healpix.kernels import (
     _numba_get_healpix_centers,
     _numba_healpix_ccl,
     _numba_healpix_object_extrema,
-    subgrid_refine_healpix,
+    refine_healpix_center,
 )
 
 
@@ -55,7 +55,7 @@ def test_numba_healpix_object_extrema() -> None:
     assert np.sum(extrema) == 1.0
 
 
-def test_subgrid_refine_healpix() -> None:
+def test_refine_healpix_center() -> None:
     nside = 16
     npix = 12 * nside**2
     data = np.zeros(npix, dtype=np.float64)
@@ -84,7 +84,7 @@ def test_subgrid_refine_healpix() -> None:
         if dist_sq < 0.01:  # ~5 degrees
             data[i] = 100.0 - 1000.0 * dist_sq
 
-    ref_lat, ref_lon, ref_val = subgrid_refine_healpix(data, p0, nbors, lats, lons)
+    ref_lat, ref_lon, ref_val = refine_healpix_center(data, p0, nbors, lats, lons)
 
     # Should be very close to original since it's the exact peak
     assert abs(ref_lat - lats[p0]) < 0.1

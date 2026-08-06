@@ -45,9 +45,9 @@ def test_convert_uses_extension_defaults_for_json(tmp_path: Path) -> None:
             output=str(output),
             in_format="auto",
             out_format="auto",
-            var=None,
+            variable=None,
             unit=None,
-            mode="auto",
+            detection_mode="auto",
         )
     )
     assert read_trackjson(output) == dummy_tracks()

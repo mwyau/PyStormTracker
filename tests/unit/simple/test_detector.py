@@ -52,7 +52,7 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     mock_open.return_value = ds
 
     detector = SimpleDetector(pathname="test2.nc", variable_name="msl")
-    raw_results = detector.detect(size=5, threshold=0.0)
+    raw_results = detector.detect(search_window_size=5, intensity_threshold=0.0)
 
     assert len(raw_results) == 1
     _time_val, lats_out, lons_out, values = raw_results[0]
@@ -63,7 +63,7 @@ def test_simple_detector_detect_mock(mock_open: MagicMock) -> None:
     assert values[0] == 950.0
 
 
-def test_simple_detector_optional_subgrid_refinement() -> None:
+def test_simple_detector_optional_quadratic_refinement() -> None:
     y, x = np.meshgrid(np.arange(7.0), np.arange(7.0), indexing="ij")
     field = (y - 3.25) ** 2 + (x - 3.2) ** 2
     data = xr.DataArray(
@@ -78,8 +78,12 @@ def test_simple_detector_optional_subgrid_refinement() -> None:
     )
 
     detector = SimpleDetector.from_xarray(data)
-    raw = detector.detect(size=5, threshold=0.0, subgrid_refine=False)[0]
-    refined = detector.detect(size=5, threshold=0.0, subgrid_refine=True)[0]
+    raw = detector.detect(
+        search_window_size=5, intensity_threshold=0.0, feature_point_method="grid"
+    )[0]
+    refined = detector.detect(
+        search_window_size=5, intensity_threshold=0.0, feature_point_method="quadratic"
+    )[0]
 
     assert raw[1][0] == 3.0
     assert raw[2][0] == 3.0

@@ -1,6 +1,5 @@
 from .center import Center
 from .geo import SpatialBounds
-from .time import TimeRange
 from .tracker import Tracker
 from .tracks import (
     ProcessingStep,
@@ -13,7 +12,6 @@ __all__ = [
     "Center",
     "ProcessingStep",
     "SpatialBounds",
-    "TimeRange",
     "Track",
     "Tracker",
     "Tracks",

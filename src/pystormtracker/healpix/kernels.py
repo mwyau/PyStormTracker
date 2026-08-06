@@ -5,6 +5,17 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+def _build_healpix_neighbor_table(nside: int) -> NDArray[np.int64]:
+    """Build an (8, npix) array of neighbor pixel indices for a RING HEALPix grid."""
+    import ducc0.healpix  # type: ignore[import-not-found] # ty: ignore[unresolved-import]
+
+    hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
+    npix = 12 * nside * nside
+    pixels = np.arange(npix, dtype=np.int64)
+    nbors = hp_base.neighbors(pixels)
+    return np.asarray(nbors.T, dtype=np.int64)
+
+
 @nb.njit(nogil=True, cache=True)
 def _numba_healpix_ccl(
     data: NDArray[np.float64],
@@ -126,7 +137,7 @@ def _numba_healpix_object_extrema(
 
 
 @nb.njit(nogil=True, cache=True)
-def subgrid_refine_healpix(
+def refine_healpix_center(
     data: NDArray[np.float64],
     p_idx: int,
     neighbor_table: NDArray[np.int64],

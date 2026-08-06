@@ -10,7 +10,7 @@ from pystormtracker.hodges.kernels import (
     get_regional_dmax,
 )
 from pystormtracker.models.geo import geod_dist
-from pystormtracker.preprocessing.refinement import subgrid_refine
+from pystormtracker.preprocessing.refinement import refine_center
 
 
 def test_geod_dist() -> None:
@@ -72,20 +72,20 @@ def test_get_adaptive_phimax() -> None:
     assert np.allclose(get_adaptive_phimax(1.5, adapt_params, 0.5), 0.65)
 
 
-def test_subgrid_refine() -> None:
+def test_refine_center() -> None:
     # Create a 3x3 with a peak at center
     frame = np.array([[0.0, 0.5, 0.0], [0.5, 1.0, 0.5], [0.0, 0.5, 0.0]])
     lat = np.array([10.0, 11.0, 12.0])
     lon = np.array([100.0, 101.0, 102.0])
 
-    rlat, rlon, rval = subgrid_refine(frame, 1, 1, lat, lon)
+    rlat, rlon, rval = refine_center(frame, 1, 1, lat, lon)
     assert rlat == 11.0
     assert rlon == 101.0
     assert rval == 1.0
 
     # Peak shifted slightly
     frame = np.array([[0.0, 0.6, 0.0], [0.5, 1.0, 0.5], [0.0, 0.4, 0.0]])
-    rlat, rlon, rval = subgrid_refine(frame, 1, 1, lat, lon)
+    rlat, rlon, rval = refine_center(frame, 1, 1, lat, lon)
     assert rlat < 11.0  # Peak is between 10 and 11
     assert rlon == 101.0
 

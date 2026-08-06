@@ -9,10 +9,10 @@ import pystormtracker as pst
 
 # 1. Instantiate a configured tracker
 tracker = pst.HodgesTracker(
-    lmin=5,
-    lmax=42,
-    min_points=1,
-    subgrid_refine=True,
+    filter_lmin=5,
+    filter_lmax=42,
+    min_grid_points=1,
+    feature_point_method="quadratic",
 )
 
 # 2. Run tracking on input data
@@ -21,7 +21,7 @@ tracks = tracker.track(
     "vo",
     start_time="2000-01-01",
     end_time="2000-01-31",
-    mode="max",
+    detection_mode="max",
 )
 
 # 3. Write results
@@ -31,22 +31,8 @@ tracks.write("tracks.json")
 ### API Division
 
 - **Constructor**: Specifies algorithm parameters, spatial/spectral preprocessing filters, projections, and backend/concurrency settings.
-- **`track()`**: Specifies input data (`infile`, `variable_name`), time window (`start_time`, `end_time`), extremum mode (`mode`), threshold, and reader engine.
+- **`track()`**: Specifies input data (`data`, `variable`), time window (`start_time`, `end_time`), extremum mode (`detection_mode`), intensity threshold (`intensity_threshold`), and reader engine (`engine`).
 - **`Tracks.write()`**: Handles output serialization to supported formats (TrackJSON, IMILAST, NetCDF, TRACK ASCII, etc.).
-
-## Breaking Change Note
-
-The top-level `run_tracker()` procedural function and top-level `track()` function have been removed.
-
-```python
-# Removed procedural API
-# run_tracker("input.nc", "vo", outfile="tracks.json", lmin=5, lmax=42)
-
-# Object-oriented API
-tracker = pst.HodgesTracker(lmin=5, lmax=42)
-tracks = tracker.track("input.nc", "vo")
-tracks.write("tracks.json")
-```
 
 ## Core Exports
 
@@ -63,7 +49,6 @@ Domain value types remain available under `pystormtracker.models`:
 
 - `pystormtracker.models.Center`
 - `pystormtracker.models.SpatialBounds`
-- `pystormtracker.models.TimeRange`
 - `pystormtracker.models.ProcessingStep`
 - `pystormtracker.models.TracksMetadata`
 
@@ -98,6 +83,7 @@ Domain value types remain available under `pystormtracker.models`:
 ```{eval-rst}
 .. automodule:: pystormtracker.models.time
    :members: TimeRange
+   :show-inheritance:
 ```
 
 ### Storm Centers
@@ -117,7 +103,7 @@ Domain value types remain available under `pystormtracker.models`:
 
 ## Preprocessing
 
-Trackers accept preprocessing options in their constructors: `lmin` and `lmax` request an optional spectral filter when supplied together, while `taper_points` controls spatial tapering independently.
+Trackers accept preprocessing options in their constructors: `filter_lmin` and `filter_lmax` request an optional spectral filter when supplied together, while `taper_points` controls spatial tapering independently.
 
 ### Kinematics (vorticity and divergence)
 

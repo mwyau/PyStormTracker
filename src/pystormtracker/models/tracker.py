@@ -9,10 +9,11 @@ from numpy.typing import NDArray
 
 from .time import TimeInput, TimePoint
 from .tracks import Tracks
-from .units import ModeOption
+from .units import DetectionMode
 
 Backend: TypeAlias = Literal["serial", "mpi", "dask"]
 TrackingInput: TypeAlias = str | Path | xr.DataArray | xr.Dataset
+FeaturePointMethod: TypeAlias = Literal["grid", "quadratic"]
 
 
 class RawDetectionStep(NamedTuple):
@@ -29,12 +30,12 @@ class Tracker(Protocol):
 
     def track(
         self,
-        infile: TrackingInput,
-        variable_name: str,
+        data: TrackingInput,
+        variable: str,
         *,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
-        mode: ModeOption = "auto",
-        threshold: float | None = None,
+        detection_mode: DetectionMode = "auto",
+        intensity_threshold: float | None = None,
         engine: str | None = None,
     ) -> Tracks: ...

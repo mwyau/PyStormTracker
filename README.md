@@ -144,8 +144,8 @@ stormtracker sample -i tracks.trackjson -d precip.nc -v pr -o tracks_enriched.tr
 Compare tracks from different datasets or ensemble members:
 
 ```bash
-# Match tracks from two sources with a 200km mean distance threshold
-stormtracker compare --ref era5.trackjson --comp gfs.trackjson --max-dist 200 --json
+# Match tracks from two sources with a 2.0 degree mean distance threshold
+stormtracker compare -r era5.trackjson -c gfs.trackjson -s 2.0 -l 0.6 -v vo -m max --json
 ```
 
 #### 4. Convert & Visualize
@@ -161,20 +161,20 @@ stormtracker convert -i tracks.trackjson -o explorer.html -f trackjson -F html
 
 Use `stormtracker <command> --help` for detailed argument lists. Key options for the `track` command include:
 
-| Argument                                  | Short | Description                                                                                                    |
-| :---------------------------------------- | :---- | :------------------------------------------------------------------------------------------------------------- |
-| `--input`                                 | `-i`  | Path to the input NetCDF/GRIB file.                                                                            |
-| `--var`                                   | `-v`  | Variable name to track (e.g., `msl`, `vo`).                                                                    |
-| `--output`                                | `-o`  | Path to the output track file.                                                                                 |
-| `--algorithm`                             | `-a`  | `simple` (default) or `hodges`.                                                                                |
-| `--format`                                | `-f`  | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically.  |
-| `--mode`                                  | `-m`  | `auto` (default), `min`, or `max`; known aliases resolve automatically.                                        |
-| `--backend`                               | `-b`  | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple.                              |
-| `--workers`                               | `-w`  | Number of parallel workers.                                                                                    |
-| `--lmin`, `--lmax`                        |       | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
-| `--taper-points`                          |       | Independent spatial taper width; zero disables tapering.                                                       |
-| `--nside`                                 |       | Target HEALPix resolution; omitted values are derived from the source grid.                                    |
-| `--subgrid-refine`, `--no-subgrid-refine` |       | Override refinement defaults. Off for simple; on for Hodges and HEALPix.                                       |
+| Argument                         | Short | Description                                                                                                    |
+| :------------------------------- | :---- | :------------------------------------------------------------------------------------------------------------- |
+| `--input`                        | `-i`  | Path to the input NetCDF/GRIB file.                                                                            |
+| `--variable`                     | `-v`  | Variable name to track (e.g., `msl`, `vo`).                                                                    |
+| `--output`                       | `-o`  | Path to the output track file.                                                                                 |
+| `--algorithm`                    | `-a`  | `simple` (default) or `hodges`.                                                                                |
+| `--format`                       | `-f`  | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically.  |
+| `--detection-mode`               | `-m`  | `auto` (default), `min`, or `max`; known aliases resolve automatically.                                        |
+| `--backend`                      | `-b`  | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple.                              |
+| `--workers`                      | `-w`  | Number of parallel workers.                                                                                    |
+| `--filter-lmin`, `--filter-lmax` |       | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
+| `--taper-points`                 |       | Independent spatial taper width; zero disables tapering.                                                       |
+| `--nside`                        |       | Target HEALPix resolution; omitted values are derived from the source grid.                                    |
+| `--feature-point-method`         |       | Extrema feature point method: `grid` or `quadratic`. Off for simple (`grid`); on for Hodges (`quadratic`).     |
 
 ### Python API
 
@@ -185,7 +185,7 @@ import pystormtracker as pst
 
 tracker = pst.HodgesTracker()
 
-tracks = tracker.track(infile="data.nc", variable_name="vo", mode="max")
+tracks = tracker.track(data="data.nc", variable="vo", detection_mode="max")
 ```
 
 ### Analyze the results programmatically

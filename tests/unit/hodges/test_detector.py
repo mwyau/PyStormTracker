@@ -57,7 +57,9 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
 
     detector = HodgesDetector(pathname="test2.nc", variable_name="msl")
     # We want max because we built a peak
-    raw_results = detector.detect(size=5, threshold=0.0, minmaxmode="max")
+    raw_results = detector.detect(
+        search_window_size=5, intensity_threshold=0.0, detection_mode="max"
+    )
 
     assert len(raw_results) == 1
     _time_val, lats_out, lons_out, values = raw_results[0]
@@ -69,10 +71,10 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
     assert values[0] == 1000.0
 
     unrefined = detector.detect(
-        size=5,
-        threshold=0.0,
-        minmaxmode="max",
-        subgrid_refine=False,
+        search_window_size=5,
+        intensity_threshold=0.0,
+        detection_mode="max",
+        feature_point_method="grid",
     )[0]
     assert unrefined[2][0] == 3.0
     assert unrefined[3][0] == pytest.approx(data[0, 3, 3])
@@ -94,10 +96,10 @@ def test_hodges_detector_from_xarray_keeps_generic_detection_values() -> None:
 
     detector = HodgesDetector.from_xarray(data, variable_name="msl")
     result = detector.detect(
-        size=3,
-        threshold=0.0,
-        minmaxmode="min",
-        subgrid_refine=False,
+        search_window_size=3,
+        intensity_threshold=0.0,
+        detection_mode="min",
+        feature_point_method="grid",
     )[0]
 
     assert result[3].tolist() == [-1.0]

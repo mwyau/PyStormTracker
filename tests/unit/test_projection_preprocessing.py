@@ -35,7 +35,7 @@ def test_global_auto_filter_uses_longitude_for_sht_selection(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         sht_filter.return_value.filter.return_value = global_data
-        tracker.preprocess_standard_track(global_data, lmin=0, lmax=7)
+        tracker.preprocess_standard_track(global_data, filter_lmin=0, filter_lmax=7)
 
     sht_filter.assert_called_once_with(lmin=0, lmax=7)
     dct_filter.assert_not_called()
@@ -89,7 +89,7 @@ def test_coarse_global_auto_filter_uses_sht(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         sht_filter.return_value.filter.return_value = coarse_global
-        tracker.preprocess_standard_track(coarse_global, lmin=0, lmax=2)
+        tracker.preprocess_standard_track(coarse_global, filter_lmin=0, filter_lmax=2)
 
     sht_filter.assert_called_once_with(lmin=0, lmax=2)
     dct_filter.assert_not_called()
@@ -105,7 +105,7 @@ def test_regional_auto_filter_uses_dct(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         dct_filter.return_value.filter.return_value = regional
-        tracker.preprocess_standard_track(regional, lmin=0, lmax=7)
+        tracker.preprocess_standard_track(regional, filter_lmin=0, filter_lmax=7)
 
     dct_filter.assert_called_once_with(lmin=0, lmax=7)
     sht_filter.assert_not_called()
@@ -120,11 +120,11 @@ def test_polar_preprocessing_uses_requested_lmax(
 ) -> None:
     processed, _steps = tracker.preprocess_standard_track(
         global_data,
-        lmin=0,
-        lmax=7,
-        map_proj=map_proj,
+        filter_lmin=0,
+        filter_lmax=7,
+        projection=map_proj,
         extent=(-100.0, 100.0, -100.0, 100.0),
-        resolution=100.0,
+        stereo_grid_spacing_km=100.0,
     )
 
     assert processed.dims == ("time", "y", "x")
@@ -145,7 +145,7 @@ def test_healpix_regrid_without_filter_records_transform_only() -> None:
     )
 
     processed, steps = SimpleTracker().preprocess_standard_track(
-        data, map_proj="healpix", nside=4
+        data, projection="healpix", nside=4
     )
 
     assert processed.dims == ("time", "cell")

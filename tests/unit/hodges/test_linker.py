@@ -15,8 +15,8 @@ def test_hodges_linker_init() -> None:
 
 def test_hodges_linker_preserves_zero_and_one_frame_inputs() -> None:
     linker = HodgesLinker(
-        zones=np.zeros((0, 5), dtype=np.float64),
-        adapt_params=np.zeros((2, 0), dtype=np.float64),
+        dmax_zones=np.zeros((0, 5), dtype=np.float64),
+        adaptive_smoothness=np.zeros((2, 0), dtype=np.float64),
     )
     empty = linker.link([], primary_var="msl", mode="min")
     assert len(empty) == 0
@@ -41,8 +41,8 @@ def test_hodges_linker_preserves_zero_and_one_frame_inputs() -> None:
 
 def test_hodges_linker_link_straight() -> None:
     linker = HodgesLinker(
-        zones=np.zeros((0, 5), dtype=np.float64),
-        adapt_params=np.zeros((2, 0), dtype=np.float64),
+        dmax_zones=np.zeros((0, 5), dtype=np.float64),
+        adaptive_smoothness=np.zeros((2, 0), dtype=np.float64),
     )
 
     t0 = np.datetime64("2025-12-01T00:00:00")
@@ -89,8 +89,8 @@ def test_hodges_linker_link_straight() -> None:
 def test_hodges_linker_link_crossing() -> None:
     linker = HodgesLinker(
         dmax=15.0,
-        zones=np.zeros((0, 5), dtype=np.float64),
-        adapt_params=np.zeros((2, 0), dtype=np.float64),
+        dmax_zones=np.zeros((0, 5), dtype=np.float64),
+        adaptive_smoothness=np.zeros((2, 0), dtype=np.float64),
     )
 
     t0 = np.datetime64("2025-12-01T00:00:00")

@@ -38,7 +38,7 @@ def test_cli_version(
 def test_tracker_serial(msl_data: str, tmp_path: Path) -> None:
     output_file = tmp_path / "test_tracks.txt"
     tracker = SimpleTracker(backend="serial")
-    tracks = tracker.track(infile=msl_data, variable_name="msl", mode="min")
+    tracks = tracker.track(data=msl_data, variable="msl", detection_mode="min")
     tracks.write(output_file)
 
     assert output_file.exists()
@@ -95,7 +95,7 @@ def test_track_parser_uses_automatic_format_and_mode_defaults() -> None:
         ["track", "-i", "input.nc", "-v", "msl", "-o", "output.trackjson"]
     )
     assert args.format == "auto"
-    assert args.mode == "auto"
+    assert args.detection_mode == "auto"
 
 
 @pytest.mark.parametrize(
@@ -106,10 +106,10 @@ def test_track_parser_uses_automatic_format_and_mode_defaults() -> None:
         ("--chunk-size", "0"),
         ("--extent", "1,0,-1,1"),
         ("--extent", "nan,1,-1,1"),
-        ("--lmin", "-1"),
-        ("--lmax", "-1"),
-        ("--resolution", "nan"),
-        ("--threshold", "inf"),
+        ("--filter-lmin", "-1"),
+        ("--filter-lmax", "-1"),
+        ("--stereo-grid-spacing-km", "nan"),
+        ("--intensity-threshold", "inf"),
     ],
 )
 def test_track_rejects_invalid_cli_values(option: str, value: str) -> None:
@@ -144,17 +144,18 @@ def test_filter_bounds_are_forwarded_without_algorithm_defaults() -> None:
         "msl",
         "-o",
         "unused.txt",
-        "--map-proj",
+        "--projection",
         "healpix",
-        "--lmin",
+        "--filter-lmin",
         "3",
-        "--lmax",
+        "--filter-lmax",
         "21",
         "--taper-points",
         "4",
         "--nside",
         "16",
-        "--subgrid-refine",
+        "--feature-point-method",
+        "quadratic",
     ]
     with (
         patch.object(sys, "argv", test_args),
@@ -164,11 +165,11 @@ def test_filter_bounds_are_forwarded_without_algorithm_defaults() -> None:
         instance.track.return_value = _empty_tracks()
         main()
 
-    assert mock_healpix.call_args.kwargs["lmin"] == 3
-    assert mock_healpix.call_args.kwargs["lmax"] == 21
+    assert mock_healpix.call_args.kwargs["filter_lmin"] == 3
+    assert mock_healpix.call_args.kwargs["filter_lmax"] == 21
     assert mock_healpix.call_args.kwargs["taper_points"] == 4
     assert mock_healpix.call_args.kwargs["nside"] == 16
-    assert mock_healpix.call_args.kwargs["subgrid_refine"] is True
+    assert mock_healpix.call_args.kwargs["feature_point_method"] == "quadratic"
 
 
 def test_filter_bounds_must_be_supplied_together() -> None:
@@ -181,7 +182,7 @@ def test_filter_bounds_must_be_supplied_together() -> None:
         "msl",
         "-o",
         "unused.txt",
-        "--lmin",
+        "--filter-lmin",
         "3",
     ]
     with (
@@ -194,18 +195,18 @@ def test_filter_bounds_must_be_supplied_together() -> None:
 
 def test_simple_tracker_defaults() -> None:
     tracker = SimpleTracker()
-    assert tracker.lmin is None
-    assert tracker.lmax is None
+    assert tracker.filter_lmin is None
+    assert tracker.filter_lmax is None
     assert tracker.taper_points == 0
-    assert tracker.subgrid_refine is False
+    assert tracker.feature_point_method == "grid"
 
 
 def test_hodges_tracker_defaults() -> None:
     tracker = HodgesTracker()
-    assert tracker.lmin is None
-    assert tracker.lmax is None
+    assert tracker.filter_lmin is None
+    assert tracker.filter_lmax is None
     assert tracker.taper_points == 0
-    assert tracker.subgrid_refine is True
+    assert tracker.feature_point_method == "quadratic"
 
 
 def test_runtime_validation_reports_clean_cli_error(
@@ -222,7 +223,7 @@ def test_runtime_validation_reports_clean_cli_error(
         "unused.txt",
         "--algorithm",
         "hodges",
-        "--zones",
+        "--dmax-zones",
         "not-json",
     ]
     with (
@@ -233,5 +234,5 @@ def test_runtime_validation_reports_clean_cli_error(
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 2
-    assert "invalid zones JSON" in captured.err
+    assert "invalid dmax_zones JSON" in captured.err
     assert "Traceback" not in captured.err

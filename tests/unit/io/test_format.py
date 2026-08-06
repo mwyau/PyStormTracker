@@ -103,7 +103,7 @@ def test_convert_defaults_infer_json_and_no_suffix_outputs(tmp_path: Path) -> No
     )
     assert args.in_format == "auto"
     assert args.out_format == "auto"
-    assert args.mode == "auto"
+    assert args.detection_mode == "auto"
     convert.main(args)
     trackjson_output = tmp_path / "out.trackjson"
     assert read_trackjson(trackjson_output) == source

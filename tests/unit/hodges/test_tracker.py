@@ -11,18 +11,18 @@ from pystormtracker.models.tracks import Tracks, TracksMetadata
 
 
 def test_hodges_tracker_init() -> None:
-    tracker = HodgesTracker(w1=0.3, min_lifetime=5)
+    tracker = HodgesTracker(w1=0.3, min_lifetime_steps=5)
     assert tracker.w1 == 0.3
-    assert tracker.min_lifetime == 5
+    assert tracker.min_lifetime_steps == 5
 
 
 def test_hodges_tracker_standard_defaults() -> None:
     tracker = HodgesTracker()
     assert tracker.dmax == 6.5
-    assert tracker.zones is not None
-    assert len(tracker.zones) == 3
-    assert tracker.adapt_params is not None
-    assert tracker.adapt_params.shape == (2, 4)
+    assert tracker.dmax_zones is not None
+    assert len(tracker.dmax_zones) == 3
+    assert tracker.adaptive_smoothness is not None
+    assert tracker.adaptive_smoothness.shape == (2, 4)
 
 
 def test_hodges_tracker_override_constraints() -> None:
@@ -32,14 +32,13 @@ def test_hodges_tracker_override_constraints() -> None:
     )
 
     tracker = HodgesTracker(
-        zones=custom_zones,
-        adapt_params=custom_params,
-        use_standard_constraints=False,
+        dmax_zones=custom_zones,
+        adaptive_smoothness=custom_params,
     )
 
-    assert tracker.zones is not None
-    assert tracker.zones[0, 4] == 10.0
-    assert np.array_equal(tracker.adapt_params, custom_params)
+    assert tracker.dmax_zones is not None
+    assert tracker.dmax_zones[0, 4] == 10.0
+    assert np.array_equal(tracker.adaptive_smoothness, custom_params)
 
 
 def test_hodges_tracker_constructor_validation() -> None:
@@ -47,13 +46,11 @@ def test_hodges_tracker_constructor_validation() -> None:
         HodgesTracker(w1=-0.1)
     with pytest.raises(ValueError, match="dmax must be positive"):
         HodgesTracker(dmax=0.0)
-    with pytest.raises(ValueError, match="n_iterations must be positive"):
-        HodgesTracker(n_iterations=0)
 
 
 def test_hodges_tracker_rejects_nonpositive_chunks() -> None:
     with pytest.raises(ValueError, match="must be positive"):
-        HodgesTracker(max_chunk_size=0)
+        HodgesTracker(chunk_size=0)
 
 
 @patch("pystormtracker.hodges.tracker.HodgesTracker._link_detections")
@@ -79,7 +76,7 @@ def test_hodges_tracker_gathers_chunks_before_linking(
     ]
     mock_link.return_value = Tracks.empty(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
-    HodgesTracker(max_chunk_size=2).track(data, "msl")
+    HodgesTracker(chunk_size=2).track(data, "msl")
 
     assert [call.args[0].sizes["time"] for call in mock_detect.call_args_list] == [
         2,
@@ -109,19 +106,19 @@ def test_hodges_chunked_detection_matches_unchunked() -> None:
         name="msl",
     )
 
-    def run(*, max_chunk_size: int | None = None) -> Tracks:
+    def run(*, chunk_size: int | None = None) -> Tracks:
         t = HodgesTracker(
-            min_lifetime=2, subgrid_refine=False, max_chunk_size=max_chunk_size
+            min_lifetime_steps=2, feature_point_method="grid", chunk_size=chunk_size
         )
         return t.track(
             data,
             "msl",
-            mode="min",
-            threshold=0.0,
+            detection_mode="min",
+            intensity_threshold=0.0,
         )
 
-    unchunked = run(max_chunk_size=None)
-    chunked = run(max_chunk_size=2)
+    unchunked = run(chunk_size=None)
+    chunked = run(chunk_size=2)
 
     assert unchunked.metadata == chunked.metadata
     np.testing.assert_array_equal(unchunked.ids, chunked.ids)
@@ -148,7 +145,7 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
         coords={"time": [t0, t1], "lat": [0.0], "lon": [0.0]},
         name="msl",
     )
-    tracker = HodgesTracker(min_lifetime=2)
+    tracker = HodgesTracker(min_lifetime_steps=2)
     with patch(
         "pystormtracker.hodges.tracker.normalize_tracking_data", return_value=data
     ):
@@ -176,10 +173,10 @@ def test_hodges_tracker_preprocess_map_proj() -> None:
     )
 
     tracker = HodgesTracker()
-    processed, _steps = tracker.preprocess_standard_track(da, map_proj="nh_stereo")
+    processed, _steps = tracker.preprocess_standard_track(da, projection="nh_stereo")
     assert processed.dims == ("time", "y", "x")
     assert processed.attrs["map_proj"] == "nh_stereo"
 
-    processed_hp, _steps = tracker.preprocess_standard_track(da, map_proj="healpix")
+    processed_hp, _steps = tracker.preprocess_standard_track(da, projection="healpix")
     assert processed_hp.dims == ("time", "cell")
     assert processed_hp.attrs["map_proj"] == "healpix"
