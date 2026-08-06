@@ -49,7 +49,7 @@ class HodgesLinker:
             w1, w2: Weights for the cost function.
             dmax: Default maximum displacement (degrees).
             phimax: Penalty for phantom points in the cost function.
-            max_iterations: Maximum number of directional iteration rounds.
+            max_iterations: Maximum number of outer forward/backward rounds.
                 Must be positive. Reaching this limit is a normal termination
                 path, not an error.
             max_missing_steps: Maximum consecutive phantom points allowed.
@@ -247,69 +247,105 @@ class HodgesLinker:
         features_lon: NDArray[np.float64],
         n_frames: int,
     ) -> NDArray[np.int64]:
-        """Run directional MGE optimization with bounded alternating iterations.
+        """Run TRACK-style bounded forward/backward MGE optimization.
 
-        Implements the forward/backward active-state control flow from Hodges 1999:
-        both directions start active, and each successful exchange reactivates
-        the opposite direction. The loop terminates when both directions are
-        inactive or the iteration limit is reached.
+        Each active direction runs repeatedly until a complete sweep performs no
+        exchange. Successful exchanges reactivate the opposite direction.
 
-        Args:
-            track_matrix: Current track assignment matrix.
-            features_lat: Flat array of all feature latitudes.
-            features_lon: Flat array of all feature longitudes.
-            n_frames: Number of time frames.
+        ``max_iterations`` limits the number of outer directional rounds. The
+        final permitted round is forward-only, matching ``mge_tracks.c`` where
+        backward MGE runs only while ``tot_count < tot_term``.
 
-        Returns:
-            Updated track matrix after MGE optimization.
+        Reaching the outer iteration bound is a normal termination condition.
         """
         forward_active = True
         backward_active = True
-        iteration = 0
 
-        while (forward_active or backward_active) and iteration < self.max_iterations:
-            iteration += 1
+        for outer_iteration in range(self.max_iterations):
+            if not (forward_active or backward_active):
+                break
 
             if forward_active:
-                track_matrix, forward_changed = self._run_forward_mge_iteration(
+                track_matrix, forward_changed = self._run_mge_direction_until_stable(
                     track_matrix,
                     features_lat,
                     features_lon,
                     n_frames,
+                    direction="forward",
                 )
-                forward_active = forward_changed
+
+                # The forward direction has converged for the current state.
+                forward_active = False
+
+                # TRACK's fel_mge() reactivates backward processing when at least
+                # one forward exchange occurred.
                 if forward_changed:
                     backward_active = True
 
+            # TRACK skips bel_mge() during the final permitted outer round.
+            if outer_iteration == self.max_iterations - 1:
+                break
+
             if backward_active:
-                track_matrix, backward_changed = self._run_backward_mge_iteration(
+                track_matrix, backward_changed = self._run_mge_direction_until_stable(
                     track_matrix,
                     features_lat,
                     features_lon,
                     n_frames,
+                    direction="backward",
                 )
-                backward_active = backward_changed
+
+                # The backward direction has converged for the current state.
+                backward_active = False
+
+                # TRACK's bel_mge() reactivates forward processing when at least
+                # one backward exchange occurred.
                 if backward_changed:
                     forward_active = True
 
-        # Final directional pass/check following TRACK's documented behavior:
-        # When the iteration limit is reached, perform one final forward pass
-        # and apply forward track-failure checks.
-        if iteration >= self.max_iterations and not forward_active:
-            track_matrix, _ = self._run_forward_mge_iteration(
-                track_matrix,
-                features_lat,
-                features_lon,
-                n_frames,
-            )
-            track_matrix = self._apply_forward_track_failures(
-                track_matrix,
-                features_lat,
-                features_lon,
-                n_frames,
-            )
-
         return track_matrix
+
+    def _run_mge_direction_until_stable(
+        self,
+        tracks: NDArray[np.int64],
+        features_lat: NDArray[np.float64],
+        features_lon: NDArray[np.float64],
+        n_frames: int,
+        *,
+        direction: Direction,
+    ) -> tuple[NDArray[np.int64], bool]:
+        """Repeat one directional MGE sweep until it makes no exchange.
+
+        TRACK implements this repetition recursively in ``fel_mge.c`` and
+        ``bel_mge.c``. The Python implementation uses an iterative loop to avoid
+        recursive stack growth.
+
+        Returns:
+            The updated track matrix and whether this directional stage performed
+            at least one exchange.
+        """
+        changed_any = False
+
+        while True:
+            if direction == "forward":
+                tracks, sweep_changed = self._run_forward_mge_iteration(
+                    tracks,
+                    features_lat,
+                    features_lon,
+                    n_frames,
+                )
+            else:
+                tracks, sweep_changed = self._run_backward_mge_iteration(
+                    tracks,
+                    features_lat,
+                    features_lon,
+                    n_frames,
+                )
+
+            if not sweep_changed:
+                return tracks, changed_any
+
+            changed_any = True
 
     def _run_forward_mge_iteration(
         self,
@@ -448,78 +484,3 @@ class HodgesLinker:
                     )
 
         return tracks, changed
-
-    def _apply_forward_track_failures(
-        self,
-        tracks: NDArray[np.int64],
-        features_lat: NDArray[np.float64],
-        features_lon: NDArray[np.float64],
-        n_frames: int,
-    ) -> NDArray[np.int64]:
-        """Apply forward-direction track-failure checks.
-
-        Checks each track for displacement violations in the forward direction
-        (k to k+1) and breaks tracks that exceed the search radius constraint.
-
-        Args:
-            tracks: Track matrix [n_tracks, n_frames].
-            features_lat: Flat array of all feature latitudes.
-            features_lon: Flat array of all feature longitudes.
-            n_frames: Number of time frames.
-
-        Returns:
-            Updated track matrix with broken tracks.
-        """
-        n_tracks = tracks.shape[0]
-        for i in range(n_tracks):
-            for k in range(n_frames - 2):
-                tracks = _break_track(
-                    tracks,
-                    i,
-                    k,
-                    features_lat,
-                    features_lon,
-                    self.dmax_zones,
-                    self.dmax,
-                    True,
-                )
-                # Update n_tracks since _break_track may add a row
-                n_tracks = tracks.shape[0]
-        return tracks
-
-    def _apply_backward_track_failures(
-        self,
-        tracks: NDArray[np.int64],
-        features_lat: NDArray[np.float64],
-        features_lon: NDArray[np.float64],
-        n_frames: int,
-    ) -> NDArray[np.int64]:
-        """Apply backward-direction track-failure checks.
-
-        Checks each track for displacement violations in the backward direction
-        (k to k-1) and breaks tracks that exceed the search radius constraint.
-
-        Args:
-            tracks: Track matrix [n_tracks, n_frames].
-            features_lat: Flat array of all feature latitudes.
-            features_lon: Flat array of all feature longitudes.
-            n_frames: Number of time frames.
-
-        Returns:
-            Updated track matrix with broken tracks.
-        """
-        n_tracks = tracks.shape[0]
-        for i in range(n_tracks):
-            for k in range(1, n_frames - 1):
-                tracks = _break_track(
-                    tracks,
-                    i,
-                    k,
-                    features_lat,
-                    features_lon,
-                    self.dmax_zones,
-                    self.dmax,
-                    False,
-                )
-                n_tracks = tracks.shape[0]
-        return tracks
