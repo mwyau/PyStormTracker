@@ -29,21 +29,21 @@ def setup_parser(
     )
     parser.add_argument(
         "-r",
-        "--ref",
+        "--reference",
         dest="reference",
         required=True,
         help="Reference track file (JSON or IMILAST).",
     )
     parser.add_argument(
         "-c",
-        "--cand",
+        "--candidate",
         dest="candidate",
         required=True,
         help="Candidate track file (JSON or IMILAST).",
     )
     parser.add_argument(
         "-s",
-        "--max-sep",
+        "--max-mean-separation",
         dest="max_mean_separation",
         type=positive_float,
         default=2.0,
@@ -58,22 +58,27 @@ def setup_parser(
     )
     parser.add_argument(
         "-v",
-        "--var",
+        "--variable",
+        dest="variable",
         help="Common trajectory variable used for vorticity/intensity statistics.",
     )
     parser.add_argument(
         "-m",
-        "--mode",
+        "--detection-mode",
+        dest="detection_mode",
         choices=["auto", "min", "max"],
         default="auto",
         help="Extremum mode for peak intensity calculation ('auto', 'min', 'max').",
     )
     parser.add_argument(
-        "-o", "--out", dest="report", help="Write the full comparison report as JSON."
+        "-o",
+        "--output-report",
+        dest="report",
+        help="Write the full comparison report as JSON.",
     )
     parser.add_argument(
         "-M",
-        "--matched-out",
+        "--matched-output",
         dest="matched_candidate_output",
         help="Write candidate tracks selected by at least one reference as JSON.",
     )
@@ -131,8 +136,8 @@ def main(args: argparse.Namespace) -> None:
     config = TrackComparisonConfig(
         max_mean_separation_deg=args.max_mean_separation,
         min_overlap_fraction=args.min_overlap,
-        var=args.var,
-        mode=args.mode,
+        var=args.variable,
+        mode=args.detection_mode,
     )
     result = compare_tracks(reference, candidate, config=config)
     result_json = result.to_dict()

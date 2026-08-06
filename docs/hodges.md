@@ -38,13 +38,15 @@ Original TRACK identifies objects as contiguous clusters of grid points that pas
 
 **Validation Status**: Unit tests cover periodic and nonperiodic connectivity. Direct mask comparison with TRACK remains to be verified.
 
-### 1.4 Sub-grid Refinement (Peak Finding)
+### 1.4 Off-grid Feature-point Location (Peak Finding)
 
-**Implementation**: Center coordinates come from a local 2D quadratic fit. For periodic global grids, `RectSphereBivariateSpline` is fit once per frame and evaluated at the quadratic center.
+**Implementation**: Grid-point extrema are detected from thresholded objects. The `"quadratic"` feature-point method uses local quadratic feature-point interpolation to estimate an off-grid feature location. The spherical B-spline feature-point optimizer used by TRACK remains planned.
+
+For periodic global grids, `RectSphereBivariateSpline` is fit once per frame and evaluated at the quadratic center.
 
 - **References**: *Hodges 1995*, Section 3; `surfit.c`, `gdfp_optimize.c`, `spline_smooth.c`.
 
-**Validation Status**: Quadratic refinement has unit coverage for geographic and projected grids. Direct optimization of the spherical B-spline center and comparison with TRACK remain to be implemented. The detector returns `raw_val`, `quad_val`, and `bspline_val`; the current Hodges linker retains only the primary tracked variable in the final `Tracks` object.
+**Validation Status**: Quadratic feature-point interpolation has unit coverage for geographic and projected grids. Direct optimization of the spherical B-spline center and comparison with TRACK remain to be implemented. The detector returns `raw_val`, `quad_val`, and `bspline_val`; the current Hodges linker retains only the primary tracked variable in the final `Tracks` object.
 
 ### 1.5 Object Properties & Size
 
@@ -69,9 +71,11 @@ The $0.5$ factor applied to the directional weight $w_1$ normalizes the term (ra
 
 ### 2.2 Modified Greedy Exchange (MGE Optimization)
 
-**Implementation**: Linking uses alternating forward and backward passes with one selected swap per frame.
+**Implementation**: The MGE linker uses bounded alternating directional iterations. Forward and backward passes alternate based on whether exchanges occurred. Each successful exchange reactivates the opposite direction. The iteration bound (`max_iterations`, default 3) is part of TRACK's handling of conflicting forward/backward exchanges, not a generic safety timeout.
 
-- **References**: *Hodges 1999*, Appendix; `fel_mge.c`, `mge_tracks.c`, `initialize_mge.c`.
+Reaching `max_iterations` is a normal algorithm termination path, not an exceptional condition. When the limit is reached, TRACK-style finalization (one final forward pass and directional track-failure checks) is performed.
+
+- **References**: *Hodges 1999*, Appendix; `fel_mge.c`, `mge_tracks.c`, `initialize_mge.c`, `track_fail.c`.
 
 **Validation Status**: Unit tests cover linking, constraints, breaking, and missing points. End-to-end numerical comparison with TRACK remains to be verified.
 
@@ -119,7 +123,7 @@ time-ordered tracks on a common cadence.
 
 ### 3.2 Speed-Dependent Smoothness (Adaptive $\\psi\_{max}$)
 
-**Implementation**: Passed via `adapt_params` argument during tracker initialization.
+**Implementation**: Passed via `adaptive_smoothness` argument during tracker initialization.
 
 - **References**: *Hodges 1999*, Section 5, Table 1; `read_adptp.c`.
 
@@ -139,7 +143,7 @@ Tracks are managed as a **2D integer matrix** (`n_tracks` x `n_frames`), where e
 
 ### 4.3 Computational Efficiency
 
-- **Numba JIT**: MGE, CCL, object-property, subgrid-refinement, and great-circle kernels are cache-enabled and compiled with `nogil=True`.
+- **Numba JIT**: MGE, CCL, object-property, quadratic feature-point interpolation, and great-circle kernels are cache-enabled and compiled with `nogil=True`.
 - **Coordinate-aware Xarray input**: `DataLoader` provides NetCDF, GRIB, and Zarr input and identifies geographic, projected, Gaussian, reduced-Gaussian, and HEALPix coordinates.
 - **Execution**: A standard argparse-based CLI replaces interactive prompts. Hodges tracking currently uses the serial backend; unsupported parallel selections fail explicitly.
 

@@ -33,11 +33,11 @@ Unlike 2D meshes where neighbors are found via index offsets, HEALPix neighbors 
 The tracker groups adjacent pixels into objects with the Numba kernel `_numba_healpix_ccl`.
 
 - **Algorithm**: Iterative label propagation over the 1D graph until convergence.
-- **Constraints**: Supports `threshold` filtering and `min_points` object-size constraints.
+- **Constraints**: Supports `intensity_threshold` filtering and `min_grid_points` object-size constraints.
 
-### 3.3. Spherical Subgrid Refinement
+### 3.3. Quadratic Feature-point Interpolation
 
-Optional `subgrid_refine_healpix` applies these steps:
+Optional `interpolate_quadratic_healpix_feature_point` applies these steps:
 
 1. **Local Projection**: For each detected extremum at pixel $P$, it projects $P$ and its 8 neighbors onto a local **equirectangular plane** centered at $P$.
 1. **Numerical Stability**: Coordinate scaling/normalization is applied to the local projected coordinates to prevent matrix ill-conditioning when solving the least-squares system.
@@ -52,9 +52,9 @@ Optional `subgrid_refine_healpix` applies these steps:
 - **Defaults**: HEALPix tracking does not apply optional spectral filtering
   unless both `lmin` and `lmax` are supplied. `taper_points` is independent.
   Regridding derives a finite transform bandwidth from the source grid and
-  target `nside`; that bandwidth is not an optional filter. Subgrid refinement
-  remains enabled by default. The `min_lifetime` constructor value is currently
-  stored but not applied during HEALPix linking.
+  target `nside`; that bandwidth is not an optional filter. Quadratic
+  feature-point interpolation remains enabled by default. The `min_lifetime`
+  constructor value is currently stored but not applied during HEALPix linking.
 - **Tracker protocol and output**: `HealpixTracker` implements the common `Tracker` protocol and returns the array-backed `Tracks` model. Dask and MPI tracking are not implemented.
 
 ## 5. Usage Example
@@ -72,20 +72,17 @@ regridder = SpectralRegridder()
 da_hp = regridder.to_healpix(frame, nside=64)
 
 # Track the first eight time steps after automatic HEALPix conversion
-tracker = HealpixTracker()
+tracker = HealpixTracker(filter_lmin=5, filter_lmax=42)
 tracks = tracker.track(
-    infile=field.isel({field.dims[0]: slice(0, 8)}),
-    variable_name="msl",
-    mode="min",
-    threshold=1000.0,
-    lmin=5,
-    lmax=42,
+    data=field.isel({field.dims[0]: slice(0, 8)}),
+    variable="msl",
+    detection_mode="min",
 )
 ```
 
 The first part demonstrates one-frame regridding; the second passes a regular
 three-dimensional latitude-longitude field to `HealpixTracker.track()`, which
-requests T5-42 filtering and HEALPix conversion. If `lmin` and `lmax` are
-omitted, only the transform needed for HEALPix conversion is performed. For an
-already regridded time-by-cell field, preprocessing must be performed before
-tracking.
+requests T5-42 filtering and HEALPix conversion. If `filter_lmin` and
+`filter_lmax` are omitted, only the transform needed for HEALPix conversion is
+performed. For an already regridded time-by-cell field, preprocessing must be
+performed before tracking.

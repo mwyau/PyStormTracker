@@ -5,10 +5,10 @@ from typing import Literal, TypeAlias
 import numpy as np
 import xarray as xr
 
-Mode: TypeAlias = Literal["min", "max"]
-ModeOption: TypeAlias = Literal["auto", "min", "max"]
+ResolvedDetectionMode: TypeAlias = Literal["min", "max"]
+DetectionMode: TypeAlias = Literal["auto", "min", "max"]
 
-MODE_ALIASES: dict[str, Mode] = {
+MODE_ALIASES: dict[str, ResolvedDetectionMode] = {
     "msl": "min",
     "slp": "min",
     "pnm": "min",
@@ -36,18 +36,21 @@ def canonical_unit_for(name: str) -> str | None:
     return CANONICAL_UNITS.get(name.lower())
 
 
-def resolve_mode(variable_name: str, mode: ModeOption | None = "auto") -> Mode:
+def resolve_mode(
+    variable: str,
+    detection_mode: DetectionMode | None = "auto",
+) -> ResolvedDetectionMode:
     """Resolve an explicit or automatic extrema mode for a variable name."""
-    if mode in ("min", "max"):
-        return mode
-    if mode not in (None, "auto"):
-        raise ValueError("mode must be 'auto', 'min', or 'max'")
+    if detection_mode in ("min", "max"):
+        return detection_mode
+    if detection_mode not in (None, "auto"):
+        raise ValueError("detection_mode must be 'auto', 'min', or 'max'")
     try:
-        return MODE_ALIASES[variable_name.strip().lower()]
+        return MODE_ALIASES[variable.strip().lower()]
     except KeyError as exc:
         raise ValueError(
-            f"cannot resolve automatic mode for variable {variable_name!r}; "
-            "specify mode='min' or mode='max'"
+            f"cannot resolve automatic detection_mode for variable {variable!r}; "
+            "specify detection_mode='min' or detection_mode='max'"
         ) from exc
 
 
@@ -58,8 +61,8 @@ def _unit_text(value: object) -> str:
 def normalize_variable_units(
     data: xr.DataArray,
     *,
-    variable_name: str,
-    threshold: float | None,
+    variable: str,
+    intensity_threshold: float | None = None,
 ) -> tuple[xr.DataArray, float | None, str]:
     """Normalize recognized source values and thresholds to declared units.
 
@@ -67,10 +70,10 @@ def normalize_variable_units(
     in s^-1. Custom variables retain their declared unit, or use ``"1"`` when
     no unit is supplied.
     """
-    canonical = canonical_unit_for(variable_name)
+    canonical = canonical_unit_for(variable)
     source = _unit_text(data.attrs.get("units"))
     if canonical is None:
-        return data, threshold, source or "1"
+        return data, intensity_threshold, source or "1"
 
     if canonical == "Pa":
         factors = {
@@ -97,7 +100,7 @@ def normalize_variable_units(
         except KeyError as exc:
             raise ValueError(
                 f"unsupported units {data.attrs.get('units')!r} for "
-                f"recognized variable {variable_name!r}; expected {canonical!r} "
+                f"recognized variable {variable!r}; expected {canonical!r} "
                 "or a supported source unit"
             ) from exc
     if factor == 1.0 and source == canonical.lower():
@@ -107,7 +110,9 @@ def normalize_variable_units(
     attrs = dict(normalized.attrs)
     attrs["units"] = canonical
     normalized.attrs = attrs
-    normalized_threshold = None if threshold is None else float(threshold) * factor
+    normalized_threshold = (
+        None if intensity_threshold is None else float(intensity_threshold) * factor
+    )
     if normalized_threshold is not None and not np.isfinite(normalized_threshold):
         raise ValueError("normalized detection threshold must be finite")
     return normalized, normalized_threshold, canonical

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -8,16 +7,29 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import normalize_tracking_data
-from ..models import constants as model_constants
 from ..models.geo import SpatialBounds, spatial_bounds_from_xarray
-from ..models.tracker import RawDetectionStep, Tracker, get_int_option
+from ..models.time import TimeInput
+from ..models.tracker import (
+    FeaturePointMethod,
+    RawDetectionStep,
+    Tracker,
+    TrackingInput,
+)
 from ..models.tracks import (
     ProcessingStep,
     Tracks,
 )
-from ..models.units import Mode, ModeOption, normalize_variable_units, resolve_mode
-from ..preprocessing.tracking import Projection, preprocess_tracking_data
-from ..time import TimeInput
+from ..models.units import (
+    DetectionMode,
+    ResolvedDetectionMode,
+    normalize_variable_units,
+    resolve_mode,
+)
+from ..preprocessing.tracking import (
+    Projection,
+    preprocess_tracking_data,
+    resolve_filter_bounds,
+)
 from . import constants
 from .detector import HodgesDetector
 from .linker import HodgesLinker
@@ -33,209 +45,195 @@ class HodgesTracker(Tracker):
 
     def __init__(
         self,
+        *,
         w1: float = constants.W1_DEFAULT,
         w2: float = constants.W2_DEFAULT,
         dmax: float = constants.DMAX_DEFAULT,
         phimax: float = constants.PHIMAX_DEFAULT,
-        n_iterations: int = constants.ITERATIONS_DEFAULT,
-        min_lifetime: int = constants.LIFETIME_DEFAULT,
-        max_missing: int = constants.MISSING_DEFAULT,
-        zones: NDArray[np.float64] | None = None,
-        adapt_params: NDArray[np.float64] | None = None,
-        use_standard_constraints: bool = True,
+        max_iterations: int = constants.MAX_ITERATIONS_DEFAULT,
+        min_lifetime_steps: int = constants.LIFETIME_DEFAULT,
+        max_missing_steps: int = constants.MISSING_DEFAULT,
+        min_grid_points: int = constants.MIN_POINTS_DEFAULT,
+        dmax_zones: NDArray[np.float64] | None = None,
+        adaptive_smoothness: NDArray[np.float64] | None = None,
+        projection: Projection = "global",
+        stereo_grid_spacing_km: float = 100.0,
+        extent: MapExtent | None = None,
+        filter_lmin: int | None = None,
+        filter_lmax: int | None = None,
+        taper_points: int = 0,
+        search_window_size: int = 5,
+        feature_point_method: FeaturePointMethod = "quadratic",
+        chunk_size: int | None = None,
     ) -> None:
         """
         Initialize the Hodges Tracker.
-
-        Args:
-            w1: Weight for direction in cost function.
-            w2: Weight for speed in cost function.
-            dmax: Default maximum displacement in degrees.
-            phimax: Penalty for phantom points (static cost).
-            n_iterations: Number of MGE iterations (forward + backward).
-            min_lifetime: Minimum number of steps for a valid track.
-            max_missing: Maximum consecutive missing frames allowed.
-            zones: Regional dmax zones [lon_min, lon_max, lat_min, lat_max, dmax].
-            adapt_params: Adaptive smoothness parameters (2x4 array).
-            use_standard_constraints: If True, use legacy standard zones/adaptive
-                values if None provided.
         """
+        if w1 < 0.0 or w2 < 0.0:
+            raise ValueError("w1 and w2 must be nonnegative")
+        if dmax <= 0.0:
+            raise ValueError("dmax must be positive")
+        if phimax < 0.0:
+            raise ValueError("phimax must be nonnegative")
+        if max_iterations <= 0:
+            raise ValueError("max_iterations must be positive")
+        if min_lifetime_steps <= 0:
+            raise ValueError("min_lifetime_steps must be positive")
+        if max_missing_steps < 0:
+            raise ValueError("max_missing_steps must be nonnegative")
+        if search_window_size <= 0 or search_window_size % 2 == 0:
+            raise ValueError("search_window_size must be a positive odd integer")
+        if min_grid_points <= 0:
+            raise ValueError("min_grid_points must be positive")
+        if stereo_grid_spacing_km <= 0.0:
+            raise ValueError(
+                "stereo_grid_spacing_km must be positive stereographic grid spacing "
+                "in kilometres"
+            )
+        if taper_points < 0:
+            raise ValueError("taper_points must be nonnegative")
+        if projection not in ("global", "nh_stereo", "sh_stereo", "healpix"):
+            raise ValueError(f"unsupported projection {projection!r}")
+        if chunk_size is not None and chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if feature_point_method not in ("grid", "quadratic"):
+            raise ValueError(
+                f"unsupported feature_point_method {feature_point_method!r}; "
+                "expected 'grid' or 'quadratic'"
+            )
+        resolve_filter_bounds(filter_lmin, filter_lmax)
+
         self.w1 = w1
         self.w2 = w2
         self.dmax = dmax
         self.phimax = phimax
-        self.n_iterations = n_iterations
-        self.min_lifetime = min_lifetime
-        self.max_missing = max_missing
+        self.max_iterations = max_iterations
+        self.min_lifetime_steps = min_lifetime_steps
+        self.max_missing_steps = max_missing_steps
+        self.projection = projection
+        self.stereo_grid_spacing_km = stereo_grid_spacing_km
+        self.extent = extent
+        self.filter_lmin = filter_lmin
+        self.filter_lmax = filter_lmax
+        self.taper_points = taper_points
+        self.search_window_size = search_window_size
+        self.min_grid_points = min_grid_points
+        self.feature_point_method = feature_point_method
+        self.chunk_size = chunk_size
 
-        if zones is None:
-            if use_standard_constraints:
-                self.zones = constants.TRACK_ZONES
-            else:
-                self.zones = np.zeros((0, 5), dtype=np.float64)
+        if dmax_zones is None:
+            self.dmax_zones = constants.TRACK_ZONES
         else:
-            self.zones = zones
+            self.dmax_zones = dmax_zones
 
-        if adapt_params is None:
+        if adaptive_smoothness is None:
             if self.phimax > 0:
-                self.adapt_params = constants.ADAPT_PARAMS
+                self.adaptive_smoothness = constants.ADAPT_PARAMS
             else:
-                self.adapt_params = np.zeros((2, 0), dtype=np.float64)
+                self.adaptive_smoothness = np.zeros((2, 0), dtype=np.float64)
         else:
-            self.adapt_params = adapt_params
+            self.adaptive_smoothness = adaptive_smoothness
 
-    def preprocess_standard_track(
+    def _preprocess_standard_track(
         self,
         data: xr.DataArray,
-        lmin: int | None = None,
-        lmax: int | None = None,
+        filter_lmin: int | None = None,
+        filter_lmax: int | None = None,
         taper_points: int = 0,
-        map_proj: Projection = "global",
+        projection: Projection = "global",
         nside: int | None = None,
-        resolution: float | None = 100.0,
+        stereo_grid_spacing_km: float | None = 100.0,
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
     ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         return preprocess_tracking_data(
             data,
-            lmin=lmin,
-            lmax=lmax,
+            filter_lmin=filter_lmin,
+            filter_lmax=filter_lmax,
             taper_points=taper_points,
-            projection=map_proj,
+            projection=projection,
             nside=nside,
-            resolution=resolution,
+            stereo_grid_spacing_km=stereo_grid_spacing_km,
             extent=extent,
             filter_type=filter_type,
         )
 
     def track(
         self,
-        infile: str | Path | xr.DataArray | xr.Dataset,
-        variable_name: str,
+        data: TrackingInput,
+        variable: str,
+        *,
         start_time: TimeInput | None = None,
         end_time: TimeInput | None = None,
-        mode: ModeOption | None = "auto",
-        map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-        resolution: float = 100.0,
-        extent: MapExtent | None = None,
-        backend: Literal["serial", "mpi", "dask"] = "serial",
-        n_workers: int | None = None,
-        max_chunk_size: int | None = None,
-        threshold: float | None = None,
+        detection_mode: DetectionMode = "auto",
+        intensity_threshold: float | None = None,
         engine: str | None = None,
-        overlap: int = model_constants.OVERLAP_DEFAULT,
-        min_points: int = constants.MIN_POINTS_DEFAULT,
-        lmin: int | None = None,
-        lmax: int | None = None,
-        taper_points: int = 0,
-        nside: int | None = None,
-        subgrid_refine: bool = True,
-        **kwargs: float | str | None,
     ) -> Tracks:
-        """
-        Runs the Hodges tracking algorithm.
-        Supports chunked detection if max_chunk_size is provided. Detections are
-        gathered before a single linking pass so chunk boundaries do not affect
-        the result.
-
-        Args:
-            infile: Path to the input data file.
-            variable_name: Variable name to track.
-            start_time, end_time: Time range for tracking.
-            mode: Search for 'min' or 'max' extrema.
-            backend: Processing backend (serial, mpi, dask).
-            n_workers: Number of parallel workers.
-            max_chunk_size: Number of steps per time chunk.
-            threshold: Intensity threshold for detection.
-            engine: Data loading engine (netcdf4, h5netcdf, etc).
-            overlap: Retained for cross-tracker API compatibility. Hodges gathers
-                detections before linking and does not require overlap.
-            min_points: Minimum grid points per object.
-            lmin, lmax: Optional spectral filter bounds.
-            taper_points: Independent boundary tapering points.
-        """
         import timeit
 
-        resolved_mode = resolve_mode(variable_name, mode)
-
-        if backend != "serial":
-            raise NotImplementedError(
-                "HodgesTracker currently supports only the serial backend."
-            )
-        if max_chunk_size is not None and max_chunk_size < 1:
-            raise ValueError("max_chunk_size must be positive")
-
+        resolved_mode = resolve_mode(variable, detection_mode)
         t_total_start = timeit.default_timer()
 
         # 1. Load and optionally filter data
         t0 = timeit.default_timer()
         data_xr = normalize_tracking_data(
-            infile,
-            variable_name,
+            data,
+            variable,
             start_time=start_time,
             end_time=end_time,
             engine=engine,
         )
-        data_xr, threshold, stored_unit = normalize_variable_units(
+        data_xr, intensity_threshold, stored_unit = normalize_variable_units(
             data_xr,
-            variable_name=variable_name,
-            threshold=threshold,
+            variable=variable,
+            intensity_threshold=intensity_threshold,
         )
 
         bounds = spatial_bounds_from_xarray(data_xr)
-        processing: tuple[ProcessingStep, ...] = ()
 
-        data_xr, processing = self.preprocess_standard_track(
+        data_xr, processing = self._preprocess_standard_track(
             data_xr,
-            lmin=lmin,
-            lmax=lmax,
-            taper_points=taper_points,
-            map_proj=map_proj,
-            nside=nside,
-            resolution=resolution,
-            extent=extent,
+            filter_lmin=self.filter_lmin,
+            filter_lmax=self.filter_lmax,
+            taper_points=self.taper_points,
+            projection=self.projection,
+            stereo_grid_spacing_km=self.stereo_grid_spacing_km,
+            extent=self.extent,
         )
         t1 = timeit.default_timer()
         print(f"    [Serial] Preprocessing time: {t1 - t0:.4f}s")
 
-        if max_chunk_size is None:
+        if self.chunk_size is None:
             tracks = self._track_single_chunk_from_data(
                 data_xr,
-                primary_var=variable_name,
+                primary_var=variable,
                 mode=resolved_mode,
                 bounds=bounds,
-                threshold=threshold,
+                threshold=intensity_threshold,
                 unit=stored_unit,
-                min_points=min_points,
-                subgrid_refine=subgrid_refine,
                 processing=processing,
-                **kwargs,
             )
         else:
-            # Detection can be partitioned, but linking must see the full series.
             from ..io.data_loader import DataLoader
 
             time_dim = DataLoader(data_xr).get_coords()[0]
             n_steps = data_xr.sizes[time_dim]
             detections: list[RawDetectionStep] = []
 
-            for start_idx in range(0, n_steps, max_chunk_size):
-                end_idx = min(start_idx + max_chunk_size, n_steps)
+            for start_idx in range(0, n_steps, self.chunk_size):
+                end_idx = min(start_idx + self.chunk_size, n_steps)
                 chunk_data = data_xr.isel({time_dim: slice(start_idx, end_idx)})
                 detections.extend(
                     self._detect_single_chunk_from_data(
                         chunk_data,
-                        primary_var=variable_name,
+                        primary_var=variable,
                         mode=resolved_mode,
-                        threshold=threshold,
-                        min_points=min_points,
-                        subgrid_refine=subgrid_refine,
-                        **kwargs,
+                        threshold=intensity_threshold,
                     )
                 )
             tracks = self._link_detections(
                 detections,
-                primary_var=variable_name,
+                primary_var=variable,
                 mode=resolved_mode,
                 bounds=bounds,
                 unit=stored_unit,
@@ -251,23 +249,17 @@ class HodgesTracker(Tracker):
         data: xr.DataArray,
         *,
         primary_var: str,
-        mode: Mode,
+        mode: ResolvedDetectionMode,
         bounds: SpatialBounds | None,
         unit: str | None,
         processing: tuple[ProcessingStep, ...],
         threshold: float | None = None,
-        min_points: int = constants.MIN_POINTS_DEFAULT,
-        subgrid_refine: bool = True,
-        **kwargs: float | str | None,
     ) -> Tracks:
         detections = self._detect_single_chunk_from_data(
             data,
             primary_var=primary_var,
             mode=mode,
             threshold=threshold,
-            min_points=min_points,
-            subgrid_refine=subgrid_refine,
-            **kwargs,
         )
         return self._link_detections(
             detections,
@@ -283,43 +275,38 @@ class HodgesTracker(Tracker):
         data: xr.DataArray,
         *,
         primary_var: str,
-        mode: Mode,
+        mode: ResolvedDetectionMode,
         threshold: float | None = None,
-        min_points: int = constants.MIN_POINTS_DEFAULT,
-        subgrid_refine: bool = True,
-        **kwargs: float | str | None,
     ) -> list[RawDetectionStep]:
         import timeit
 
-        # 1. Detection
         t_detect_start = timeit.default_timer()
         detector = HodgesDetector.from_xarray(data, variable_name=primary_var)
 
-        size = get_int_option(kwargs, "size", 5)
-
         detections = detector.detect(
-            size=size,
-            threshold=threshold,
-            minmaxmode=mode,
-            min_points=min_points,
-            subgrid_refine=subgrid_refine,
+            search_window_size=self.search_window_size,
+            intensity_threshold=threshold,
+            detection_mode=mode,
+            min_grid_points=self.min_grid_points,
+            feature_point_method=self.feature_point_method,
         )
 
-        map_proj = data.attrs.get("map_proj", "global")
-        if map_proj in ("nh_stereo", "sh_stereo"):
+        projection = data.attrs.get("projection", "global")
+        if projection in ("nh_stereo", "sh_stereo"):
             from ..models.geo import stereo_to_latlon
 
-            hemi = 1 if map_proj == "nh_stereo" else -1
-            converted_detections = []
+            hemi = 1 if projection == "nh_stereo" else -1
+            converted_detections: list[RawDetectionStep] = []
             for dt, lats, lons, values in detections:
                 new_lats = np.zeros_like(lats)
                 new_lons = np.zeros_like(lons)
                 for i in range(len(lats)):
-                    # Note: lons[i] is x, lats[i] is y
                     lat, lon = stereo_to_latlon(lons[i], lats[i], hemi)
                     new_lats[i] = lat
                     new_lons[i] = lon
-                converted_detections.append((dt, new_lats, new_lons, values))
+                converted_detections.append(
+                    RawDetectionStep(dt, new_lats, new_lons, values)
+                )
             detections = converted_detections
 
         t_detect_end = timeit.default_timer()
@@ -332,26 +319,23 @@ class HodgesTracker(Tracker):
         detections: list[RawDetectionStep],
         *,
         primary_var: str,
-        mode: Mode,
+        mode: ResolvedDetectionMode,
         bounds: SpatialBounds | None = None,
         unit: str | None = None,
         processing: tuple[ProcessingStep, ...] = (),
     ) -> Tracks:
         import timeit
 
-        # Linking uses the MGE cost function with adaptive constraints.
-        # Cost = w1 * (1 - cos(theta)) + w2 * (1 - 2*sqrt(d1*d2)/(d1+d2))
-        # This penalizes both changes in direction and changes in speed.
         t_link_start = timeit.default_timer()
         linker = HodgesLinker(
             w1=self.w1,
             w2=self.w2,
             dmax=self.dmax,
             phimax=self.phimax,
-            n_iterations=self.n_iterations,
-            max_missing=self.max_missing,
-            zones=self.zones,
-            adapt_params=self.adapt_params,
+            max_iterations=self.max_iterations,
+            max_missing_steps=self.max_missing_steps,
+            dmax_zones=self.dmax_zones,
+            adaptive_smoothness=self.adaptive_smoothness,
         )
 
         tracks = linker.link(
@@ -365,9 +349,12 @@ class HodgesTracker(Tracker):
         t_link_end = timeit.default_timer()
         print(f"    [Serial] Linking time: {t_link_end - t_link_start:.4f}s")
 
-        # Pruning
         valid_indices = np.asarray(
-            [index for index, tr in enumerate(tracks) if len(tr) >= self.min_lifetime],
+            [
+                index
+                for index, tr in enumerate(tracks)
+                if len(tr) >= self.min_lifetime_steps
+            ],
             dtype=np.int64,
         )
         return tracks.subset(valid_indices)

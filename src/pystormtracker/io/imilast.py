@@ -8,9 +8,9 @@ from typing import cast
 
 import numpy as np
 
-from ..models.tracks import Tracks, TracksBuilder, TracksMetadata
-from ..models.units import ModeOption, canonical_unit_for, resolve_mode
-from ..time import decode_time_values
+from ..models.time import decode_time_values
+from ..models.tracks import Tracks, TracksMetadata, _TracksBuilder
+from ..models.units import DetectionMode, canonical_unit_for, resolve_mode
 
 
 def _parse_time(value: str) -> np.datetime64:
@@ -34,7 +34,7 @@ def read_imilast(
     filename: Path | str,
     *,
     primary_var: str | None = None,
-    mode: ModeOption | None = "auto",
+    mode: DetectionMode | None = "auto",
 ) -> Tracks:
     """Read the supported IMILAST subset into packed trajectories.
 
@@ -72,7 +72,7 @@ def read_imilast(
 
     effective_mode = resolve_mode(variable_name, mode)
     units = {variable_name: canonical_unit_for(variable_name) or "1"}
-    builder = TracksBuilder(TracksMetadata(variable_name, effective_mode, units))
+    builder = _TracksBuilder(TracksMetadata(variable_name, effective_mode, units))
     for track_id, points in track_points.items():
         builder.add_track(
             track_id,

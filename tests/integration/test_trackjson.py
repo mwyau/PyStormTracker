@@ -18,7 +18,7 @@ import pytest
 from pystormtracker.io.hodges import read_hodges
 from pystormtracker.io.imilast import read_imilast
 from pystormtracker.io.trackjson import TrackJSONDocument, read_trackjson
-from pystormtracker.time import CANONICAL_TIME_UNITS, PROLEPTIC_GREGORIAN
+from pystormtracker.models.time import CANONICAL_TIME_UNITS, PROLEPTIC_GREGORIAN
 
 TEST_DATA_DIR = Path(__file__).parents[1] / "data" / "tracks"
 IMILAST_TEST_DATA = TEST_DATA_DIR / "era5_msl_2025-2026_djf_2.5x2.5_hodges_imilast.txt"

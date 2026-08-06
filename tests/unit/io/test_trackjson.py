@@ -21,20 +21,20 @@ from pystormtracker.io.trackjson import (
     write_trackjson,
 )
 from pystormtracker.models.geo import SpatialBounds
+from pystormtracker.models.time import CANONICAL_TIME_UNITS
 from pystormtracker.models.tracks import (
     ProcessingStep,
     Tracks,
-    TracksBuilder,
     TracksMetadata,
+    _TracksBuilder,
 )
 from pystormtracker.schemas.generate import generate_trackjson_schema
-from pystormtracker.time import CANONICAL_TIME_UNITS
 
 JSONObject = dict[str, object]
 
 
 def make_tracks(*, bounds: SpatialBounds | None = None) -> Tracks:
-    builder = TracksBuilder(
+    builder = _TracksBuilder(
         TracksMetadata(
             "msl",
             "min",
@@ -148,7 +148,7 @@ def test_stats_field_classification_matches_wire_struct() -> None:
 
 
 def test_nan_variables_and_missing_peak_are_encoded_as_null() -> None:
-    builder = TracksBuilder(TracksMetadata("custom", "max", {"custom": "1"}))
+    builder = _TracksBuilder(TracksMetadata("custom", "max", {"custom": "1"}))
     builder.add_track(
         1,
         [1577836800000, 1577840400000],

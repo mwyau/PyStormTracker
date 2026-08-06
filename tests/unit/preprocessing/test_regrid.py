@@ -137,14 +137,17 @@ def test_regrid_to_polar_stereo() -> None:
 
     regridder = SpectralRegridder()
     regridded = regridder.to_polar_stereo(
-        da, hemisphere="nh", extent=(-1000.0, 1000.0, -1000.0, 1000.0), resolution=100.0
+        da,
+        hemisphere="nh",
+        extent=(-1000.0, 1000.0, -1000.0, 1000.0),
+        stereo_grid_spacing_km=100.0,
     )
 
     assert regridded.shape == (21, 21)
     assert regridded.dims == ("y", "x")
     assert regridded.name == "test_var"
     assert regridded.attrs["projection"] == "nh_stereo"
-    assert regridded.attrs["resolution_km"] == 100.0
+    assert regridded.attrs["stereo_grid_spacing_km"] == 100.0
     assert len(regridded.y) == 21
     assert len(regridded.x) == 21
 
@@ -163,7 +166,7 @@ def test_regrid_to_polar_stereo_lmax_override() -> None:
         da,
         transform_lmax=7,
         extent=(-100.0, 100.0, -100.0, 100.0),
-        resolution=100.0,
+        stereo_grid_spacing_km=100.0,
     )
 
     assert regridded.attrs["lmax"] == 7

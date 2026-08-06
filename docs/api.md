@@ -1,73 +1,92 @@
-# API Reference
+# Python API Reference
 
-This page lists the principal Python modules and public classes used by PyStormTracker. The command-line orchestration function is available as `pystormtracker.track.run_tracker`.
+PyStormTracker provides an object-oriented Python API. Tracker instances encapsulate algorithm, preprocessing, and execution configuration. The `.track()` method executes tracking on an input file or xarray dataset and returns an immutable `Tracks` container, which provides `.write()` for output serialization.
 
-## Tracking orchestration
+## Overview
 
-```{eval-rst}
-.. automodule:: pystormtracker.track
-   :members: run_tracker
+```python
+import pystormtracker as pst
+
+# 1. Instantiate a configured tracker
+tracker = pst.HodgesTracker(
+    filter_lmin=5,
+    filter_lmax=42,
+    min_grid_points=1,
+    feature_point_method="quadratic",
+)
+
+# 2. Run tracking on input data
+tracks = tracker.track(
+    "input.nc",
+    "vo",
+    start_time="2000-01-01",
+    end_time="2000-01-31",
+    detection_mode="max",
+)
+
+# 3. Write results
+tracks.write("tracks.json")
 ```
+
+### API Division
+
+- **Constructor**: Specifies algorithm parameters, spatial/spectral preprocessing filters, projections, and backend/concurrency settings.
+- **`track()`**: Specifies input data (`data`, `variable`), time window (`start_time`, `end_time`), extremum mode (`detection_mode`), intensity threshold (`intensity_threshold`), and reader engine (`engine`).
+- **`Tracks.write()`**: Handles output serialization to supported formats (TrackJSON, IMILAST, NetCDF, TRACK ASCII, etc.).
+
+## Core Exports
+
+The package root exports only the public tracker classes and trajectory container models:
+
+- `pst.Tracker` (Protocol)
+- `pst.SimpleTracker`
+- `pst.HodgesTracker`
+- `pst.HealpixTracker`
+- `pst.Track`
+- `pst.Tracks`
+
+Domain value types remain available under `pystormtracker.models`:
+
+- `pystormtracker.models.Center`
+- `pystormtracker.models.SpatialBounds`
+- `pystormtracker.models.ProcessingStep`
+- `pystormtracker.models.TracksMetadata`
 
 ## Trackers
 
 ```{eval-rst}
 .. automodule:: pystormtracker.simple.tracker
-   :members:
-   :undoc-members:
+   :members: SimpleTracker
    :show-inheritance:
 
 .. automodule:: pystormtracker.hodges.tracker
-   :members:
-   :undoc-members:
+   :members: HodgesTracker
    :show-inheritance:
 
 .. automodule:: pystormtracker.healpix.tracker
-   :members:
-   :undoc-members:
+   :members: HealpixTracker
    :show-inheritance:
 ```
 
-## Detectors
-
-```{eval-rst}
-.. automodule:: pystormtracker.simple.detector
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: pystormtracker.hodges.detector
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: pystormtracker.healpix.detector
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
-## Core models
+## Core Models
 
 ### Tracks
 
 ```{eval-rst}
 .. automodule:: pystormtracker.models.tracks
-   :members:
-   :undoc-members:
+   :members: Track, Tracks
    :show-inheritance:
 ```
 
-### Storm centers
+### Storm Centers
 
 ```{eval-rst}
 .. automodule:: pystormtracker.models.center
-   :members:
-   :undoc-members:
+   :members: Center
    :show-inheritance:
 ```
 
-## Data loader
+## Data Loader
 
 ```{eval-rst}
 .. automodule:: pystormtracker.io.data_loader
@@ -76,12 +95,7 @@ This page lists the principal Python modules and public classes used by PyStormT
 
 ## Preprocessing
 
-Trackers accept the same preprocessing arguments: `lmin` and `lmax` request an
-optional spectral filter when supplied together, while `taper_points` controls
-spatial tapering independently. Projection and HEALPix conversion may perform
-a finite transform at a bandwidth derived from the source and target grids;
-this is not an optional filter. Source longitudes are sampled cyclically, so
-signed and `0..360` coordinates are handled across the antimeridian.
+Trackers accept preprocessing options in their constructors: `filter_lmin` and `filter_lmax` request an optional spectral filter when supplied together, while `taper_points` controls spatial tapering independently.
 
 ### Kinematics (vorticity and divergence)
 
@@ -90,7 +104,7 @@ signed and `0..360` coordinates are handled across the antimeridian.
    :members:
 ```
 
-### Spectral filtering
+### Spectral Filtering
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.spectral
@@ -104,58 +118,58 @@ signed and `0..360` coordinates are handled across the antimeridian.
    :members:
 ```
 
-### Sub-grid refinement
+### Quadratic Feature-point Interpolation
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.refinement
    :members:
 ```
 
-### Spatial tapering
+### Spatial Tapering
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.taper
    :members:
 ```
 
-## Post-processing and analysis
+## Post-processing and Analysis
 
-### Secondary-variable sampling
+### Secondary-variable Sampling
 
 ```{eval-rst}
 .. automodule:: pystormtracker.sample
    :members: sample_tracks
 ```
 
-### Track matching
+### Track Matching
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.compare
    :members: compare_tracks, TrackComparisonConfig, TrackComparison, TrackMatch
 ```
 
-### Spherical weighting kernels
+### Spherical Weighting Kernels
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.weighting
    :members:
 ```
 
-### Eulerian track metrics
+### Eulerian Track Metrics
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.eulerian
    :members:
 ```
 
-### Lagrangian track metrics
+### Lagrangian Track Metrics
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.tracks
    :members: compute_track_metrics
 ```
 
-### CORMAX and CCA/PCA cross-validation
+### CORMAX and CCA/PCA Cross-validation
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.cross_validation

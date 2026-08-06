@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from numpy.typing import NDArray
 
 from ..models.constants import DEGTORAD
 from ..models.geo import SpatialBounds, geod_dist
+from ..models.time import encode_time_values
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import ProcessingStep, Tracks, TracksBuilder, TracksMetadata
-from ..models.units import Mode, canonical_unit_for
-from ..time import encode_time_values
+from ..models.tracks import ProcessingStep, Tracks, TracksMetadata, _TracksBuilder
+from ..models.units import ResolvedDetectionMode, canonical_unit_for
 from . import constants
 from .kernels import (
     _break_track,
@@ -16,6 +18,8 @@ from .kernels import (
     _mge_iteration,
     get_regional_dmax,
 )
+
+Direction = Literal["forward", "backward"]
 
 
 class HodgesLinker:
@@ -33,10 +37,10 @@ class HodgesLinker:
         w2: float = constants.W2_DEFAULT,
         dmax: float = constants.DMAX_DEFAULT,
         phimax: float = constants.PHIMAX_DEFAULT,
-        n_iterations: int = constants.ITERATIONS_DEFAULT,
-        max_missing: int = constants.MISSING_DEFAULT,
-        zones: NDArray[np.float64] = constants.TRACK_ZONES,
-        adapt_params: NDArray[np.float64] = constants.ADAPT_PARAMS,
+        max_iterations: int = constants.MAX_ITERATIONS_DEFAULT,
+        max_missing_steps: int = constants.MISSING_DEFAULT,
+        dmax_zones: NDArray[np.float64] = constants.TRACK_ZONES,
+        adaptive_smoothness: NDArray[np.float64] = constants.ADAPT_PARAMS,
     ) -> None:
         """
         Initialize the MGE linker.
@@ -45,26 +49,31 @@ class HodgesLinker:
             w1, w2: Weights for the cost function.
             dmax: Default maximum displacement (degrees).
             phimax: Penalty for phantom points in the cost function.
-            n_iterations: Maximum number of MGE passes.
-            max_missing: Maximum consecutive phantom points allowed.
-            zones: Regional dmax definitions.
-            adapt_params: Piecewise linear adaptive smoothness parameters (2xN).
+            max_iterations: Maximum number of outer forward/backward rounds.
+                Must be positive. Reaching this limit is a normal termination
+                path, not an error.
+            max_missing_steps: Maximum consecutive phantom points allowed.
+            dmax_zones: Regional dmax definitions.
+            adaptive_smoothness: Piecewise linear adaptive smoothness parameters (2xN).
         """
+        if max_iterations <= 0:
+            raise ValueError("max_iterations must be positive")
+
         self.w1 = w1
         self.w2 = w2
         self.dmax = dmax
         self.phimax = phimax
-        self.n_iterations = n_iterations
-        self.max_missing = max_missing
-        self.zones = zones
-        self.adapt_params = adapt_params
+        self.max_iterations = max_iterations
+        self.max_missing_steps = max_missing_steps
+        self.dmax_zones = dmax_zones
+        self.adaptive_smoothness = adaptive_smoothness
 
     def link(
         self,
         detections: list[RawDetectionStep],
         *,
         primary_var: str,
-        mode: Mode,
+        mode: ResolvedDetectionMode,
         bounds: SpatialBounds | None = None,
         unit: str | None = None,
         processing: tuple[ProcessingStep, ...] = (),
@@ -104,48 +113,52 @@ class HodgesLinker:
         features_lat = np.array(all_lats, dtype=np.float64)
         features_lon = np.array(all_lons, dtype=np.float64)
         features_val = np.array(all_vals, dtype=np.float64)
+        n_features = len(features_lat)
 
-        # 2. Initial Linking (Greedy Nearest Neighbor)
-        # Seed tracks with points from the first frame
-        n_init = step_offsets[1]
-        track_matrix = np.full((n_init, n_frames), -1, dtype=np.int64)
-        for i in range(n_init):
-            track_matrix[i, 0] = i
+        if n_features == 0:
+            return Tracks.empty(
+                TracksMetadata(
+                    primary_var,
+                    mode,
+                    {primary_var: unit or canonical_unit_for(primary_var) or "1"},
+                    bounds,
+                    processing,
+                )
+            )
 
-        current_n_tracks = n_init
+        # 2. Nearest-Neighbor Initialization Pass (Greedy Exchange setup)
+        first_frame_count = step_offsets[1]
+        track_matrix = np.full((first_frame_count, n_frames), -1, dtype=np.int64)
+        for f_idx in range(first_frame_count):
+            track_matrix[f_idx, 0] = f_idx
+
+        current_n_tracks = first_frame_count
 
         for k in range(n_frames - 1):
-            features_kp1 = np.arange(step_offsets[k + 1], step_offsets[k + 2])
+            f_start_kp1 = step_offsets[k + 1]
+            f_end_kp1 = step_offsets[k + 2]
+
+            features_kp1 = np.arange(f_start_kp1, f_end_kp1, dtype=np.int64)
             used_kp1 = np.zeros(len(features_kp1), dtype=bool)
 
-            # Match existing track tails to features in the next frame
             for t_idx in range(current_n_tracks):
                 idx_k = track_matrix[t_idx, k]
                 if idx_k == -1:
                     continue
 
-                best_dist = 1e30
+                dmax_eff = get_regional_dmax(
+                    features_lat[idx_k],
+                    features_lon[idx_k],
+                    self.dmax_zones,
+                    self.dmax,
+                )
+
+                best_dist = float("inf")
                 best_feat = -1
+
                 for f_idx, f_global in enumerate(features_kp1):
                     if used_kp1[f_idx]:
                         continue
-
-                    # Determine effective dmax based on zones
-                    dmax_eff = 0.5 * (
-                        get_regional_dmax(
-                            features_lat[idx_k],
-                            features_lon[idx_k],
-                            self.zones,
-                            self.dmax,
-                        )
-                        + get_regional_dmax(
-                            features_lat[f_global],
-                            features_lon[f_global],
-                            self.zones,
-                            self.dmax,
-                        )
-                    )
-
                     dist = geod_dist(
                         features_lat[idx_k],
                         features_lon[idx_k],
@@ -159,7 +172,6 @@ class HodgesLinker:
                     track_matrix[t_idx, k + 1] = features_kp1[best_feat]
                     used_kp1[best_feat] = True
 
-            # Unlinked features start new tracks
             unlinked_indices = []
             for i in range(len(features_kp1)):
                 if not used_kp1[i]:
@@ -175,7 +187,6 @@ class HodgesLinker:
                 current_n_tracks += len(unlinked_indices)
 
         # 3. Initial Smoothness Breaking Pass
-        # Breaks tracks that violate adaptive smoothness right after linking
         track_matrix = _initial_break_pass(
             track_matrix,
             features_lat,
@@ -183,157 +194,293 @@ class HodgesLinker:
             self.w1,
             self.w2,
             self.phimax,
-            self.adapt_params,
+            self.adaptive_smoothness,
         )
 
-        # 4. MGE Optimization (Iterate until convergence)
-        for _ in range(self.n_iterations):
-            changed = False
-            # Forward Pass: one best swap per frame
-            for k in range(1, n_frames - 1):
-                best_i, best_j = _mge_iteration(
-                    track_matrix,
-                    features_lat,
-                    features_lon,
-                    k,
-                    True,
-                    self.w1,
-                    self.w2,
-                    self.dmax,
-                    self.phimax,
-                    self.zones,
-                    self.adapt_params,
-                    self.max_missing,
-                )
-                if best_i != -1:
-                    # Apply swap
-                    p_i = track_matrix[best_i, k + 1]
-                    p_j = track_matrix[best_j, k + 1]
-                    track_matrix[best_i, k + 1] = p_j
-                    track_matrix[best_j, k + 1] = p_i
-                    changed = True
+        # 4. Directional MGE Optimization
+        # Forward and backward passes alternate based on whether exchanges
+        # occurred. This follows the directional control flow described by
+        # Hodges 1999 and represented in TRACK 1.5.2.
+        track_matrix = self._run_directional_mge(
+            track_matrix,
+            features_lat,
+            features_lon,
+            n_frames,
+        )
 
-                    # Track Fail Check (Post-swap displacement violation)
-                    # If swapping p_i/p_j at k+1 causes displacement violation
-                    # at k+1 to k+2, break track
-                    if k + 2 < n_frames:
-                        track_matrix = _break_track(
-                            track_matrix,
-                            best_i,
-                            k + 1,
-                            features_lat,
-                            features_lon,
-                            self.zones,
-                            self.dmax,
-                            True,
-                        )
-                        track_matrix = _break_track(
-                            track_matrix,
-                            best_j,
-                            k + 1,
-                            features_lat,
-                            features_lon,
-                            self.zones,
-                            self.dmax,
-                            True,
-                        )
-
-            # Backward Pass: one best swap per frame
-            for k in range(n_frames - 2, 0, -1):
-                best_i, best_j = _mge_iteration(
-                    track_matrix,
-                    features_lat,
-                    features_lon,
-                    k,
-                    False,
-                    self.w1,
-                    self.w2,
-                    self.dmax,
-                    self.phimax,
-                    self.zones,
-                    self.adapt_params,
-                    self.max_missing,
-                )
-                if best_i != -1:
-                    # Apply swap
-                    p_i = track_matrix[best_i, k - 1]
-                    p_j = track_matrix[best_j, k - 1]
-                    track_matrix[best_i, k - 1] = p_j
-                    track_matrix[best_j, k - 1] = p_i
-                    changed = True
-
-                    # Track Fail Check (Post-swap displacement violation)
-                    # If swapping at k-1 causes displacement violation at k-1 to k-2,
-                    # break track
-                    if k - 2 >= 0:
-                        track_matrix = _break_track(
-                            track_matrix,
-                            best_i,
-                            k - 1,
-                            features_lat,
-                            features_lon,
-                            self.zones,
-                            self.dmax,
-                            False,
-                        )
-                        track_matrix = _break_track(
-                            track_matrix,
-                            best_j,
-                            k - 1,
-                            features_lat,
-                            features_lon,
-                            self.zones,
-                            self.dmax,
-                            False,
-                        )
-
-            if not changed:
-                break
-
-        # 5. Convert track_matrix back to PyStormTracker's Tracks model
+        # 5. Build final Tracks output
         units = {primary_var: unit or canonical_unit_for(primary_var) or "1"}
-        builder = TracksBuilder(
+        builder = _TracksBuilder(
             TracksMetadata(primary_var, mode, units, bounds, processing)
         )
-        times = [int(encode_time_values([d[0]])[0]) for d in detections]
-        next_track_id = 1
-        for t_idx in range(track_matrix.shape[0]):
-            track_times: list[int] = []
-            track_lats: list[float] = []
-            track_lons: list[float] = []
-            track_values: list[float] = []
-            consecutive_missing = 0
-            for k in range(n_frames):
-                f_idx = track_matrix[t_idx, k]
-                if f_idx != -1:
-                    # Enforce max_missing if tracks were merged during MGE
-                    if consecutive_missing > self.max_missing and track_times:
-                        builder.add_track(
-                            next_track_id,
-                            track_times,
-                            track_lats,
-                            track_lons,
-                            {primary_var: track_values},
-                        )
-                        next_track_id += 1
-                        track_times = []
-                        track_lats = []
-                        track_lons = []
-                        track_values = []
-                    track_times.append(times[k])
-                    track_lats.append(float(features_lat[f_idx]))
-                    track_lons.append(float(features_lon[f_idx]))
-                    track_values.append(float(features_val[f_idx]))
-                    consecutive_missing = 0
-                else:
-                    consecutive_missing += 1
-            if track_times:
-                builder.add_track(
-                    next_track_id,
-                    track_times,
-                    track_lats,
-                    track_lons,
-                    {primary_var: track_values},
-                )
-                next_track_id += 1
+
+        times_packed = encode_time_values([step[0] for step in detections])
+
+        for row in range(track_matrix.shape[0]):
+            feature_indices = track_matrix[row, :]
+            valid_mask = feature_indices != -1
+
+            if not np.any(valid_mask):
+                continue
+
+            track_times = times_packed[valid_mask]
+            valid_feats = feature_indices[valid_mask]
+
+            track_lats = features_lat[valid_feats]
+            track_lons = features_lon[valid_feats]
+            track_vals = features_val[valid_feats]
+
+            builder.add_track(
+                row + 1,
+                track_times,
+                track_lats,
+                track_lons,
+                {primary_var: track_vals},
+            )
+
         return builder.finish()
+
+    def _run_directional_mge(
+        self,
+        track_matrix: NDArray[np.int64],
+        features_lat: NDArray[np.float64],
+        features_lon: NDArray[np.float64],
+        n_frames: int,
+    ) -> NDArray[np.int64]:
+        """Run TRACK-style bounded forward/backward MGE optimization.
+
+        Each active direction runs repeatedly until a complete sweep performs no
+        exchange. Successful exchanges reactivate the opposite direction.
+
+        ``max_iterations`` limits the number of outer directional rounds. The
+        final permitted round is forward-only, matching ``mge_tracks.c`` where
+        backward MGE runs only while ``tot_count < tot_term``.
+
+        Reaching the outer iteration bound is a normal termination condition.
+        """
+        forward_active = True
+        backward_active = True
+
+        for outer_iteration in range(self.max_iterations):
+            if not (forward_active or backward_active):
+                break
+
+            if forward_active:
+                track_matrix, forward_changed = self._run_mge_direction_until_stable(
+                    track_matrix,
+                    features_lat,
+                    features_lon,
+                    n_frames,
+                    direction="forward",
+                )
+
+                # The forward direction has converged for the current state.
+                forward_active = False
+
+                # TRACK's fel_mge() reactivates backward processing when at least
+                # one forward exchange occurred.
+                if forward_changed:
+                    backward_active = True
+
+            # TRACK skips bel_mge() during the final permitted outer round.
+            if outer_iteration == self.max_iterations - 1:
+                break
+
+            if backward_active:
+                track_matrix, backward_changed = self._run_mge_direction_until_stable(
+                    track_matrix,
+                    features_lat,
+                    features_lon,
+                    n_frames,
+                    direction="backward",
+                )
+
+                # The backward direction has converged for the current state.
+                backward_active = False
+
+                # TRACK's bel_mge() reactivates forward processing when at least
+                # one backward exchange occurred.
+                if backward_changed:
+                    forward_active = True
+
+        return track_matrix
+
+    def _run_mge_direction_until_stable(
+        self,
+        tracks: NDArray[np.int64],
+        features_lat: NDArray[np.float64],
+        features_lon: NDArray[np.float64],
+        n_frames: int,
+        *,
+        direction: Direction,
+    ) -> tuple[NDArray[np.int64], bool]:
+        """Repeat one directional MGE sweep until it makes no exchange.
+
+        TRACK implements this repetition recursively in ``fel_mge.c`` and
+        ``bel_mge.c``. The Python implementation uses an iterative loop to avoid
+        recursive stack growth.
+
+        Returns:
+            The updated track matrix and whether this directional stage performed
+            at least one exchange.
+        """
+        changed_any = False
+
+        while True:
+            if direction == "forward":
+                tracks, sweep_changed = self._run_forward_mge_iteration(
+                    tracks,
+                    features_lat,
+                    features_lon,
+                    n_frames,
+                )
+            else:
+                tracks, sweep_changed = self._run_backward_mge_iteration(
+                    tracks,
+                    features_lat,
+                    features_lon,
+                    n_frames,
+                )
+
+            if not sweep_changed:
+                return tracks, changed_any
+
+            changed_any = True
+
+    def _run_forward_mge_iteration(
+        self,
+        tracks: NDArray[np.int64],
+        features_lat: NDArray[np.float64],
+        features_lon: NDArray[np.float64],
+        n_frames: int,
+    ) -> tuple[NDArray[np.int64], bool]:
+        """Run a single forward-direction MGE iteration.
+
+        Iterates k from 1 to n_frames-2, attempting one best swap per frame
+        in the forward direction (optimizing point k+1).
+
+        Args:
+            tracks: Track matrix [n_tracks, n_frames].
+            features_lat: Flat array of all feature latitudes.
+            features_lon: Flat array of all feature longitudes.
+            n_frames: Number of time frames.
+
+        Returns:
+            Updated track matrix and whether any swap occurred.
+        """
+        changed = False
+
+        for k in range(1, n_frames - 1):
+            best_i, best_j = _mge_iteration(
+                tracks,
+                features_lat,
+                features_lon,
+                k,
+                True,
+                self.w1,
+                self.w2,
+                self.dmax,
+                self.phimax,
+                self.dmax_zones,
+                self.adaptive_smoothness,
+                self.max_missing_steps,
+            )
+            if best_i != -1:
+                p_i = tracks[best_i, k + 1]
+                p_j = tracks[best_j, k + 1]
+                tracks[best_i, k + 1] = p_j
+                tracks[best_j, k + 1] = p_i
+                changed = True
+
+                if k + 2 < n_frames:
+                    tracks = _break_track(
+                        tracks,
+                        best_i,
+                        k + 1,
+                        features_lat,
+                        features_lon,
+                        self.dmax_zones,
+                        self.dmax,
+                        True,
+                    )
+                    tracks = _break_track(
+                        tracks,
+                        best_j,
+                        k + 1,
+                        features_lat,
+                        features_lon,
+                        self.dmax_zones,
+                        self.dmax,
+                        True,
+                    )
+
+        return tracks, changed
+
+    def _run_backward_mge_iteration(
+        self,
+        tracks: NDArray[np.int64],
+        features_lat: NDArray[np.float64],
+        features_lon: NDArray[np.float64],
+        n_frames: int,
+    ) -> tuple[NDArray[np.int64], bool]:
+        """Run a single backward-direction MGE iteration.
+
+        Iterates k from n_frames-2 down to 1, attempting one best swap per
+        frame in the backward direction (optimizing point k-1).
+
+        Args:
+            tracks: Track matrix [n_tracks, n_frames].
+            features_lat: Flat array of all feature latitudes.
+            features_lon: Flat array of all feature longitudes.
+            n_frames: Number of time frames.
+
+        Returns:
+            Updated track matrix and whether any swap occurred.
+        """
+        changed = False
+
+        for k in range(n_frames - 2, 0, -1):
+            best_i, best_j = _mge_iteration(
+                tracks,
+                features_lat,
+                features_lon,
+                k,
+                False,
+                self.w1,
+                self.w2,
+                self.dmax,
+                self.phimax,
+                self.dmax_zones,
+                self.adaptive_smoothness,
+                self.max_missing_steps,
+            )
+            if best_i != -1:
+                p_i = tracks[best_i, k - 1]
+                p_j = tracks[best_j, k - 1]
+                tracks[best_i, k - 1] = p_j
+                tracks[best_j, k - 1] = p_i
+                changed = True
+
+                if k - 2 >= 0:
+                    tracks = _break_track(
+                        tracks,
+                        best_i,
+                        k - 1,
+                        features_lat,
+                        features_lon,
+                        self.dmax_zones,
+                        self.dmax,
+                        False,
+                    )
+                    tracks = _break_track(
+                        tracks,
+                        best_j,
+                        k - 1,
+                        features_lat,
+                        features_lon,
+                        self.dmax_zones,
+                        self.dmax,
+                        False,
+                    )
+
+        return tracks, changed

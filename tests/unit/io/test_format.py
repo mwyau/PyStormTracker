@@ -8,11 +8,11 @@ import pytest
 from pystormtracker import convert
 from pystormtracker.io.format import infer_format, load_tracks
 from pystormtracker.io.trackjson import read_trackjson, write_trackjson
-from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
+from pystormtracker.models.tracks import Tracks, TracksMetadata, _TracksBuilder
 
 
 def _source_tracks() -> Tracks:
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     builder.add_track(10, ["2020-01-01T00:00"], [1.0], [2.0], {"msl": [3.0]})
     return builder.finish()
 
@@ -103,7 +103,7 @@ def test_convert_defaults_infer_json_and_no_suffix_outputs(tmp_path: Path) -> No
     )
     assert args.in_format == "auto"
     assert args.out_format == "auto"
-    assert args.mode == "auto"
+    assert args.detection_mode == "auto"
     convert.main(args)
     trackjson_output = tmp_path / "out.trackjson"
     assert read_trackjson(trackjson_output) == source
@@ -123,7 +123,7 @@ def test_convert_defaults_infer_json_and_no_suffix_outputs(tmp_path: Path) -> No
 def test_convert_can_rename_intensity_variable_and_resolve_mode(
     tmp_path: Path,
 ) -> None:
-    builder = TracksBuilder(TracksMetadata("Intensity1", "max", {"Intensity1": "1"}))
+    builder = _TracksBuilder(TracksMetadata("Intensity1", "max", {"Intensity1": "1"}))
     builder.add_track(
         3,
         ["2020-01-01T00:00"],

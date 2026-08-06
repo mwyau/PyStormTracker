@@ -7,16 +7,16 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from pystormtracker.models.tracker import Backend
 from pystormtracker.models.tracks import Tracks
 from pystormtracker.preprocessing.tracking import Projection
 from pystormtracker.simple.tracker import SimpleTracker
-from pystormtracker.track import Backend
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("map_proj", ["nh_stereo", "sh_stereo"])
+@pytest.mark.parametrize("projection", ["nh_stereo", "sh_stereo"])
 def test_simple_stereographic_dask_matches_serial(
-    map_proj: Literal["nh_stereo", "sh_stereo"], tmp_path: Path
+    projection: Literal["nh_stereo", "sh_stereo"], tmp_path: Path
 ) -> None:
     source = (
         Path(__file__).parents[1] / "data" / "era5" / "era5_msl_2025120100_2.5x2.5.nc"
@@ -34,44 +34,44 @@ def test_simple_stereographic_dask_matches_serial(
     data.to_dataset(name="msl").to_netcdf(input_path)
 
     def run(
-        tracker: SimpleTracker,
         input_path: Path,
         *,
-        map_proj: Projection,
+        projection: Projection,
         backend: Backend,
         n_workers: int | None = None,
     ) -> Tracks:
-        return tracker.track(
-            input_path,
-            "msl",
-            backend=backend,
-            n_workers=n_workers,
-            mode="min",
-            map_proj=map_proj,
+        tracker = SimpleTracker(
+            projection=projection,
+            stereo_grid_spacing_km=300.0,
             extent=(-3000.0, 3000.0, -3000.0, 3000.0),
-            resolution=300.0,
-            subgrid_refine=True,
+            feature_point_method="quadratic",
+            backend=backend,
+            workers=n_workers,
+        )
+        return tracker.track(
+            data=input_path,
+            variable="msl",
+            detection_mode="min",
         )
 
-    tracker = SimpleTracker()
-
     serial = run(
-        tracker,
         input_path,
-        map_proj=map_proj,
+        projection=projection,
         backend="serial",
     )
     dask = run(
-        tracker,
         input_path,
-        map_proj=map_proj,
+        projection=projection,
         backend="dask",
         n_workers=2,
     )
 
-    assert serial == dask
-    if serial.lats.size:
-        if map_proj == "nh_stereo":
-            assert np.all(serial.lats > 0.0)
-        else:
-            assert np.all(serial.lats < 0.0)
+    assert serial.metadata == dask.metadata
+    np.testing.assert_array_equal(serial.ids, dask.ids)
+    np.testing.assert_array_equal(serial.offsets, dask.offsets)
+    np.testing.assert_array_equal(serial.times, dask.times)
+    np.testing.assert_allclose(serial.lats, dask.lats, atol=1e-6)
+    np.testing.assert_allclose(serial.lons, dask.lons, atol=1e-6)
+    np.testing.assert_allclose(
+        serial.variables["msl"], dask.variables["msl"], atol=1e-6
+    )

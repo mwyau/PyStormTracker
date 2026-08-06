@@ -34,21 +34,21 @@ _DEFAULT_POLAR_EXTENT: tuple[float, float, float, float] = (
 
 
 def resolve_filter_bounds(
-    lmin: int | None,
-    lmax: int | None,
+    filter_lmin: int | None,
+    filter_lmax: int | None,
 ) -> FilterBounds | None:
     """Validate and normalize the optional user-requested filter band."""
-    if (lmin is None) != (lmax is None):
-        raise ValueError("lmin and lmax must be supplied together")
-    if lmin is None or lmax is None:
+    if (filter_lmin is None) != (filter_lmax is None):
+        raise ValueError("filter_lmin and filter_lmax must be supplied together")
+    if filter_lmin is None or filter_lmax is None:
         return None
-    if isinstance(lmin, bool) or isinstance(lmax, bool):
-        raise TypeError("lmin and lmax must be integers")
-    if lmin < 0 or lmax < 0:
-        raise ValueError("lmin and lmax must be nonnegative")
-    if lmin > lmax:
-        raise ValueError("lmin must be less than or equal to lmax")
-    return int(lmin), int(lmax)
+    if isinstance(filter_lmin, bool) or isinstance(filter_lmax, bool):
+        raise TypeError("filter_lmin and filter_lmax must be integers")
+    if filter_lmin < 0 or filter_lmax < 0:
+        raise ValueError("filter_lmin and filter_lmax must be nonnegative")
+    if filter_lmin > filter_lmax:
+        raise ValueError("filter_lmin must be less than or equal to filter_lmax")
+    return int(filter_lmin), int(filter_lmax)
 
 
 def _validate_taper_points(taper_points: int) -> None:
@@ -169,20 +169,23 @@ def _apply_optional_filter(
 def preprocess_tracking_data(
     data: xr.DataArray,
     *,
-    lmin: int | None,
-    lmax: int | None,
-    taper_points: int,
-    projection: Projection,
+    filter_lmin: int | None = None,
+    filter_lmax: int | None = None,
+    taper_points: int = 0,
+    projection: Projection = "global",
     nside: int | None = None,
-    resolution: float | None = 100.0,
+    stereo_grid_spacing_km: float | None = 100.0,
     extent: MapExtent | None = None,
     filter_type: Literal["sht", "dct", "auto"] = "auto",
 ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
     """Apply one consistent preprocessing policy for all trackers."""
-    filter_bounds = resolve_filter_bounds(lmin, lmax)
+    filter_bounds = resolve_filter_bounds(filter_lmin, filter_lmax)
     _validate_taper_points(taper_points)
-    if resolution is not None and resolution <= 0.0:
-        raise ValueError("resolution must be positive")
+    if stereo_grid_spacing_km is not None and stereo_grid_spacing_km <= 0.0:
+        raise ValueError(
+            "stereo_grid_spacing_km must be positive stereographic grid spacing "
+            "in kilometres"
+        )
 
     loader = DataLoader(data)
     if filter_type == "auto":
@@ -252,8 +255,11 @@ def preprocess_tracking_data(
         regridder = SpectralRegridder(lmax=transform_lmax)
         hemisphere: Literal["nh", "sh"] = "nh" if projection == "nh_stereo" else "sh"
         polar_extent = extent if extent is not None else _DEFAULT_POLAR_EXTENT
-        if resolution is None:
-            raise ValueError("polar stereographic projection requires resolution")
+        if stereo_grid_spacing_km is None:
+            raise ValueError(
+                "stereo_grid_spacing_km must be positive stereographic grid spacing "
+                "in kilometres"
+            )
         for index in range(data.sizes[time_dim]):
             frames.append(
                 regridder.to_polar_stereo(
@@ -261,13 +267,13 @@ def preprocess_tracking_data(
                     hemisphere=hemisphere,
                     transform_lmax=transform_lmax,
                     lat_reverse=lat_reverse,
-                    resolution=resolution,
+                    stereo_grid_spacing_km=stereo_grid_spacing_km,
                     extent=polar_extent,
                 )
             )
         parameters = {
             "projection": projection,
-            "resolution": resolution,
+            "stereo_grid_spacing_km": stereo_grid_spacing_km,
             "transform_lmax": transform_lmax,
         }
         if extent is not None:
@@ -276,8 +282,10 @@ def preprocess_tracking_data(
     result = xr.concat(frames, dim=data[time_dim])
     result.name = data.name
     result.attrs = dict(data.attrs)
-    result.attrs["map_proj"] = projection
+    result.attrs["projection"] = projection
     if projection == "healpix":
-        result.attrs["nside"] = parameters["nside"]
+        result.attrs["grid_type"] = "healpix"
+        result.attrs["nside"] = target_nside
+
     steps.append(ProcessingStep(REGRID_OPERATION, True, parameters))
     return result, tuple(steps)

@@ -1,15 +1,19 @@
 from .center import Center
+from .geo import SpatialBounds
 from .tracker import Tracker
 from .tracks import (
-    TimeRange,
+    ProcessingStep,
     Track,
     Tracks,
+    TracksMetadata,
 )
 
 __all__ = [
     "Center",
-    "TimeRange",
+    "ProcessingStep",
+    "SpatialBounds",
     "Track",
     "Tracker",
     "Tracks",
+    "TracksMetadata",
 ]

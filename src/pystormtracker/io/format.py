@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal, TypeAlias
 
 from ..models.tracks import Tracks
-from ..models.units import ModeOption, resolve_mode
+from ..models.units import DetectionMode, resolve_mode
 from .hodges import read_hodges, write_hodges
 from .imilast import read_imilast, write_imilast
 from .trackjson import read_trackjson, write_trackjson
@@ -104,7 +104,7 @@ def load_tracks(
     format: str | None = None,
     *,
     primary_var: str | None = None,
-    mode: ModeOption | None = "auto",
+    mode: DetectionMode | None = "auto",
 ) -> Tracks:
     """Load one of the supported trajectory formats."""
     selected = _resolve_format(path, format, output=False)

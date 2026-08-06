@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 
 @nb.njit(cache=True, nogil=True)
-def subgrid_refine(
+def interpolate_quadratic_feature_point(
     frame: NDArray[np.float64],
     r: int,
     c: int,
@@ -14,7 +14,10 @@ def subgrid_refine(
     x: NDArray[np.float64],
     periodic_x: bool = True,
 ) -> tuple[float, float, float]:
-    """Refine an extremum with a quadratic fit over its 3x3 neighborhood."""
+    """Perform local quadratic surface interpolation around a grid-point extremum.
+
+    Returns the interpolated feature-point coordinates and value.
+    """
     ny, nx = frame.shape
 
     if r < 1 or r >= ny - 1 or (not periodic_x and (c < 1 or c >= nx - 1)):

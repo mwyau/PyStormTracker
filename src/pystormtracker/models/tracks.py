@@ -8,26 +8,16 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeAlias, overload
 
-import numpy as np
-from numpy.typing import NDArray
-
-from ..time import TimePoint, encode_time_values
-from .center import Center
-from .geo import SpatialBounds, normalize_longitudes_signed
-from .units import Mode, canonical_unit_for
-
 if TYPE_CHECKING:
     from ..io.format import SupportedFormat
 
+import numpy as np
+from numpy.typing import NDArray
 
-@dataclass(slots=True)
-class TimeRange:
-    """Metadata used by detector orchestration to select an input interval."""
-
-    start: TimePoint | None
-    end: TimePoint | None
-    step: np.timedelta64 | None = None
-
+from .center import Center
+from .geo import SpatialBounds, normalize_longitudes_signed
+from .time import encode_time_values
+from .units import ResolvedDetectionMode, canonical_unit_for
 
 JSONScalar: TypeAlias = str | int | float | bool | None
 
@@ -64,7 +54,7 @@ class TracksMetadata:
     """Explicit metadata required to interpret a packed trajectory set."""
 
     primary_var: str
-    mode: Mode
+    mode: ResolvedDetectionMode
     units: Mapping[str, str]
     bounds: SpatialBounds | None = None
     processing: tuple[ProcessingStep, ...] = ()
@@ -445,7 +435,7 @@ class Tracks:
         return self.metadata.primary_var
 
     @property
-    def mode(self) -> Mode:
+    def mode(self) -> ResolvedDetectionMode:
         return self.metadata.mode
 
     @property
@@ -624,7 +614,7 @@ class _TrackCandidate:
     variables: dict[str, list[float]]
 
 
-class TracksBuilder:
+class _TracksBuilder:
     """Mutable, list-backed construction helper for finalized packed tracks."""
 
     def __init__(self, metadata: TracksMetadata) -> None:

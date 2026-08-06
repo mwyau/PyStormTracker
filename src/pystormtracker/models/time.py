@@ -1,7 +1,7 @@
 """Canonical CF time handling for packed tracks.
 
 The packed model uses one representation: signed int64 milliseconds since the
-Unix epoch under the proleptic Gregorian calendar.  ``cftime`` performs all
+Unix epoch under the proleptic Gregorian calendar. ``cftime`` performs all
 source CF conversion; this module only applies the project's supported-calendar
 policy and validates the integer representation.
 """
@@ -9,6 +9,7 @@ policy and validates the integer representation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final, Literal, TypeAlias, cast
 
@@ -28,6 +29,16 @@ INT64_MAX: Final[int] = 2**63 - 1
 
 TimePoint: TypeAlias = datetime | cftime.datetime | np.datetime64 | int
 TimeInput: TypeAlias = TimePoint | str
+
+
+@dataclass(slots=True)
+class TimeRange:
+    """Metadata used by detector orchestration to select an input interval."""
+
+    start: TimePoint | None
+    end: TimePoint | None
+    step: np.timedelta64 | None = None
+
 
 _SUPPORTED_SOURCE_CALENDARS = {
     "proleptic_gregorian",

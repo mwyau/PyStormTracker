@@ -110,7 +110,7 @@ def test_reduced_gaussian_regridder(n320_msl_path: str) -> None:
 @pytest.mark.integration
 def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) -> None:
     """End-to-end test tracking on reduced Gaussian input."""
-    tracker = HodgesTracker(min_lifetime=3)
+    tracker = HodgesTracker(min_lifetime_steps=3)
 
     # We must regrid during tracking for reduced grids.
     # Currently, tracker.track expects 2D structured data or does its own filtering.
@@ -129,10 +129,10 @@ def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) 
 
     # 2. Track on the regridded data
     tracks = tracker.track(
-        infile=data_filtered,
-        variable_name="msl",
-        mode="min",
-        threshold=101000.0,  # Pa
+        data=data_filtered,
+        variable="msl",
+        detection_mode="min",
+        intensity_threshold=101000.0,  # Pa
     )
 
     assert len(tracks) > 0
@@ -186,18 +186,18 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
         regular_filtered[regular_time_dim].values,
     )
 
-    tracker = HodgesTracker(min_lifetime=3)
+    tracker = HodgesTracker(min_lifetime_steps=3)
     n320_tracks = tracker.track(
-        n320_filtered,
-        variable_name="vo",
-        mode="max",
-        threshold=1.0e-4,
+        data=n320_filtered,
+        variable="vo",
+        detection_mode="max",
+        intensity_threshold=1.0e-4,
     )
     regular_tracks = tracker.track(
-        regular_filtered,
-        variable_name="vo",
-        mode="max",
-        threshold=1.0e-4,
+        data=regular_filtered,
+        variable="vo",
+        detection_mode="max",
+        intensity_threshold=1.0e-4,
     )
     assert len(n320_tracks) > 0
     assert len(regular_tracks) > 0

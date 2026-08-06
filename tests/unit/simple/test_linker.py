@@ -5,7 +5,7 @@ import pytest
 from numpy.typing import NDArray
 
 from pystormtracker.models.tracker import RawDetectionStep
-from pystormtracker.models.tracks import TracksBuilder, TracksMetadata
+from pystormtracker.models.tracks import TracksMetadata, _TracksBuilder
 from pystormtracker.simple.linker import SimpleLinker, great_circle_distance_matrix
 
 
@@ -16,20 +16,20 @@ def test_simple_linker_init() -> None:
 
 def test_simple_linker_append() -> None:
     linker = SimpleLinker()
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
     t0 = np.datetime64("2025-12-01T00:00:00")
     lats_1: NDArray[np.float64] = np.array([0.0])
     lons_1: NDArray[np.float64] = np.array([0.0])
     vars_1 = np.array([1000.0], dtype=np.float64)
-    step_data_1 = (t0, lats_1, lons_1, vars_1)
+    step_data_1 = RawDetectionStep(t0, lats_1, lons_1, vars_1)
     linker.append(builder, step_data_1)
 
     t6 = np.datetime64("2025-12-01T06:00:00")
     lats_2: NDArray[np.float64] = np.array([1.0])
     lons_2: NDArray[np.float64] = np.array([1.0])
     vars_2 = np.array([990.0], dtype=np.float64)
-    step_data_2 = (t6, lats_2, lons_2, vars_2)
+    step_data_2 = RawDetectionStep(t6, lats_2, lons_2, vars_2)
     linker.append(builder, step_data_2)
     tracks = builder.finish()
 
@@ -43,7 +43,7 @@ def _step(
     lons: list[float],
     values: list[float],
 ) -> RawDetectionStep:
-    return (
+    return RawDetectionStep(
         np.datetime64(time),
         np.asarray(lats, dtype=np.float64),
         np.asarray(lons, dtype=np.float64),
@@ -51,8 +51,8 @@ def _step(
     )
 
 
-def _builder() -> TracksBuilder:
-    return TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+def _builder() -> _TracksBuilder:
+    return _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
 
 
 def _packed_time(value: str) -> int:

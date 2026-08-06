@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import DataLoader
-from ..models import TimeRange
 from ..models import constants as model_constants
-from ..models.tracker import RawDetectionStep
-from ..preprocessing.refinement import subgrid_refine as refine_center
-from ..time import TimeInput, is_missing_time, select_time_range
+from ..models.time import TimeInput, TimeRange, is_missing_time, select_time_range
+from ..models.tracker import FeaturePointMethod, RawDetectionStep
+from ..models.units import ResolvedDetectionMode
+from ..preprocessing.refinement import interpolate_quadratic_feature_point
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
@@ -271,20 +271,21 @@ class SimpleDetector:
 
     def detect(
         self,
-        size: int = 5,
-        threshold: float | None = None,
-        minmaxmode: Literal["min", "max"] = "min",
-        subgrid_refine: bool = False,
+        search_window_size: int = 5,
+        intensity_threshold: float | None = None,
+        detection_mode: ResolvedDetectionMode = "min",
+        feature_point_method: FeaturePointMethod = "quadratic",
     ) -> list[RawDetectionStep]:
-        if size % 2 != 1:
-            raise ValueError("size must be an odd number")
+        if search_window_size <= 0 or search_window_size % 2 == 0:
+            raise ValueError("search_window_size must be a positive odd integer")
 
-        # Set variable specific thresholds if not provided
-        if threshold is None:
+        use_quadratic = feature_point_method == "quadratic"
+
+        if intensity_threshold is None:
             if self.requested_variable_name == "vo":
-                threshold = model_constants.DEFAULT_VO_THRESHOLD
+                intensity_threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
-                threshold = model_constants.DEFAULT_MSL_THRESHOLD
+                intensity_threshold = model_constants.DEFAULT_MSL_THRESHOLD
 
         time_array = self.get_time()
         lat, lon = self.lat, self.lon
@@ -298,7 +299,7 @@ class SimpleDetector:
         assert full_var is not None
 
         raw_results: list[RawDetectionStep] = []
-        is_min = minmaxmode == "min"
+        is_min = detection_mode == "min"
 
         for it, t in enumerate(time_array):
             if (it + 1) % 10 == 0 or it == 0 or it == num_steps - 1:
@@ -315,7 +316,11 @@ class SimpleDetector:
             filled_frame = np.where(np.isnan(frame), fill, frame)
 
             extrema = _numba_extrema_filter(
-                filled_frame, size, threshold, is_min, periodic_x
+                filled_frame,
+                search_window_size,
+                intensity_threshold,
+                is_min,
+                periodic_x,
             )
 
             if np.isnan(frame).any():
@@ -328,12 +333,12 @@ class SimpleDetector:
             r_idx, c_idx, vals = _numba_get_centers(extrema, frame)
             time_val = t
 
-            if subgrid_refine:
+            if use_quadratic:
                 refined_lats = np.empty(len(r_idx), dtype=np.float64)
                 refined_lons = np.empty(len(r_idx), dtype=np.float64)
                 refined_vals = np.empty(len(r_idx), dtype=np.float64)
                 for i in range(len(r_idx)):
-                    refined_lats[i], refined_lons[i], refined_vals[i] = refine_center(
+                    result = interpolate_quadratic_feature_point(
                         frame,
                         r_idx[i],
                         c_idx[i],
@@ -341,8 +346,9 @@ class SimpleDetector:
                         lon,
                         periodic_x=periodic_x,
                     )
+                    refined_lats[i], refined_lons[i], refined_vals[i] = result
                 raw_results.append(
-                    (
+                    RawDetectionStep(
                         time_val,
                         refined_lats,
                         refined_lons,
@@ -350,6 +356,8 @@ class SimpleDetector:
                     )
                 )
             else:
-                raw_results.append((time_val, lat[r_idx], lon[c_idx], vals))
+                raw_results.append(
+                    RawDetectionStep(time_val, lat[r_idx], lon[c_idx], vals)
+                )
 
         return raw_results

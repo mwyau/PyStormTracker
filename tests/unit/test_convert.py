@@ -7,11 +7,11 @@ import pytest
 
 from pystormtracker.convert import generate_html, main
 from pystormtracker.io.trackjson import read_trackjson
-from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
+from pystormtracker.models.tracks import Tracks, TracksMetadata, _TracksBuilder
 
 
 def dummy_tracks() -> Tracks:
-    builder = TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
+    builder = _TracksBuilder(TracksMetadata("msl", "min", {"msl": "Pa"}))
     builder.add_track(
         1,
         [1577836800000, 1577840400000],
@@ -45,9 +45,9 @@ def test_convert_uses_extension_defaults_for_json(tmp_path: Path) -> None:
             output=str(output),
             in_format="auto",
             out_format="auto",
-            var=None,
+            variable=None,
             unit=None,
-            mode="auto",
+            detection_mode="auto",
         )
     )
     assert read_trackjson(output) == dummy_tracks()

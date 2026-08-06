@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 
 from ..models.constants import R_EARTH_KM
 from ..models.tracks import Tracks
-from ..models.units import Mode, ModeOption
+from ..models.units import DetectionMode, ResolvedDetectionMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +25,7 @@ class TrackComparisonConfig:
     max_mean_separation_deg: float = 2.0
     min_overlap_fraction: float = 0.6
     var: str | None = None
-    mode: ModeOption | None = None
+    mode: DetectionMode | None = None
 
     def __post_init__(self) -> None:
         if self.max_mean_separation_deg <= 0.0:
@@ -174,7 +174,7 @@ class _TrackData:
     lats: NDArray[np.float64]
     lons: NDArray[np.float64]
     intensity: NDArray[np.float64] | None
-    mode: Mode
+    mode: ResolvedDetectionMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,7 +288,9 @@ def _candidate_pair(
     )
 
 
-def _track_properties(track: _TrackData, intensity_mode: Mode) -> TrackProperties:
+def _track_properties(
+    track: _TrackData, intensity_mode: ResolvedDetectionMode
+) -> TrackProperties:
     """Calculate lifecycle, path, and optional intensity properties."""
     duration_hours = float((int(track.times[-1]) - int(track.times[0])) / 3_600_000.0)
     if track.times.size > 1:
@@ -417,12 +419,12 @@ def compare_tracks(
         )
         candidate_track = candidate_tracks[pair.candidate_index]
         separations = pair.separation_km
-        ref_mode: Mode = (
+        ref_mode: ResolvedDetectionMode = (
             effective_config.mode
             if effective_config.mode in ("min", "max")
             else reference_track.mode
         )
-        cand_mode: Mode = (
+        cand_mode: ResolvedDetectionMode = (
             effective_config.mode
             if effective_config.mode in ("min", "max")
             else candidate_track.mode

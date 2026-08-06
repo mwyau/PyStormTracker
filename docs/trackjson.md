@@ -15,19 +15,40 @@ and `data`. It may also contain `stats`.
   "metadata": {
     "primary_var": "msl",
     "mode": "min",
-    "units": {"msl": "Pa"},
+    "units": {
+      "msl": "Pa"
+    },
     "time": {
       "units": "milliseconds since 1970-01-01 00:00:00",
       "calendar": "proleptic_gregorian"
     },
-    "bounds": {"south": 0.0, "north": 90.0, "west": 120.0, "east": -100.0}
+    "bounds": {
+      "south": 0.0,
+      "north": 90.0,
+      "west": 120.0,
+      "east": -100.0
+    }
   },
-  "index": {"ids": [10, 20, 35], "offsets": [0, 4, 7, 12]},
+  "index": {
+    "ids": [
+      10,
+      20,
+      35
+    ],
+    "offsets": [
+      0,
+      4,
+      7,
+      12
+    ]
+  },
   "data": {
     "times": [],
     "lats": [],
     "lons": [],
-    "variables": {"msl": []}
+    "variables": {
+      "msl": []
+    }
   },
   "stats": {
     "version": 1,

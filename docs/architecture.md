@@ -86,7 +86,7 @@ The Simple tracker constructs great-circle distance matrices from clamped unit-v
 - **Modified Greedy Exchange (MGE):** Iterative exchange of points between tracks to reduce the total cost function.
 - **Spherical cost function:** Penalties for changes in tangent direction and displacement magnitude between consecutive track segments.
 - **Adaptive constraints:** Regional and displacement-dependent maximum-displacement and smoothness limits.
-- **Sub-grid refinement:** Local quadratic fitting around eligible extrema. A spherical spline value may also be evaluated on periodic global grids.
+- **Off-grid feature-point location:** Quadratic feature-point interpolation estimates an off-grid feature location around a detected grid-point extremum. A spherical spline value may also be evaluated on periodic global grids.
 
 The detailed algorithmic requirements and TRACK comparison scope are documented in [Hodges Tracking](hodges.md).
 
@@ -127,19 +127,23 @@ The `Tracker` protocol is defined in `src/pystormtracker/models/tracker.py` and 
 ```python
 import pystormtracker as pst
 
-tracker = pst.SimpleTracker()
+tracker = pst.SimpleTracker(
+    backend="dask",
+    workers=4,
+    feature_point_method="grid",
+)
 
 tracks = tracker.track(
-    infile="era5_msl.nc",
-    variable_name="msl",
+    data="era5_msl.nc",
+    variable="msl",
     start_time="2025-01-01",
-    backend="dask",
+    detection_mode="min",
 )
 
 tracks.write("output.trackjson")
 ```
 
-Tracker implementations retain algorithm-specific defaults while accepting shared orchestration arguments. The high-level API and CLI pass algorithm-specific options through `**kwargs` where required.
+Tracker configuration belongs in constructors. Per-input selection (data, variable, time window) belongs in `.track()`. Algorithm-specific options are constructor parameters.
 
 ## 5. Testing and Validation
 

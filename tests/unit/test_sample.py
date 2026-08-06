@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pystormtracker.models.tracks import Tracks, TracksBuilder, TracksMetadata
+from pystormtracker.models.tracks import Tracks, TracksMetadata, _TracksBuilder
 from pystormtracker.sample import main, sample_tracks
 
 
@@ -38,7 +38,7 @@ def dummy_tracks() -> Tracks:
     ]
     lats = [-10.0, 5.0]
     lons = [20.0, 15.0]
-    builder = TracksBuilder(TracksMetadata("intensity", "max", {"intensity": "1"}))
+    builder = _TracksBuilder(TracksMetadata("intensity", "max", {"intensity": "1"}))
     builder.add_track(1, times, lats, lons, {"intensity": [0.0, 0.0]})
     return builder.finish()
 
@@ -111,7 +111,7 @@ def test_spatial_aggregation_requires_positive_radius() -> None:
 
 
 def _single_point_tracks(lon: float) -> Tracks:
-    builder = TracksBuilder(TracksMetadata("intensity", "max", {"intensity": "1"}))
+    builder = _TracksBuilder(TracksMetadata("intensity", "max", {"intensity": "1"}))
     builder.add_track(
         1,
         [np.datetime64("2020-01-01T00:00")],

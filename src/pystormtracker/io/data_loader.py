@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from ..time import (
+from ..models.time import (
     TimeInput,
     encode_numeric_time_values,
     encode_time_values,

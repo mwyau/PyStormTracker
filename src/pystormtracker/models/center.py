@@ -3,9 +3,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from ..models.constants import DEGTORAD, R_EARTH_KM
-from ..models.geo import geod_dist_km
-from ..time import TimePoint
+from .constants import DEGTORAD, R_EARTH_KM
+from .geo import geod_dist_km
+from .time import TimePoint
 
 
 @dataclass(slots=True)

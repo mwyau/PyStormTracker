@@ -5,9 +5,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..models.geo import geod_dist_km
+from ..models.time import encode_time_values
 from ..models.tracker import RawDetectionStep
-from ..models.tracks import TracksBuilder
-from ..time import encode_time_values
+from ..models.tracks import _TracksBuilder
 
 
 @nb.njit(cache=True, nogil=True)
@@ -36,7 +36,7 @@ class SimpleLinker:
 
     def _new_track(
         self,
-        builder: TracksBuilder,
+        builder: _TracksBuilder,
         time: int,
         lat: float,
         lon: float,
@@ -46,7 +46,7 @@ class SimpleLinker:
         builder.append(track_id, time, lat, lon, variables)
         return track_id
 
-    def append(self, builder: TracksBuilder, step_data: RawDetectionStep) -> None:
+    def append(self, builder: _TracksBuilder, step_data: RawDetectionStep) -> None:
         """Link one time step into the builder without mutating finalized tracks."""
         raw_time, new_lats, new_lons, values = step_data
         time_val = int(encode_time_values([raw_time])[0])
@@ -144,7 +144,9 @@ class SimpleLinker:
         self._tail_ids = next_tail_ids
         self._record_time(time_val)
 
-    def _last_point(self, builder: TracksBuilder, track_id: int) -> tuple[float, float]:
+    def _last_point(
+        self, builder: _TracksBuilder, track_id: int
+    ) -> tuple[float, float]:
         return builder.last_point(track_id)
 
     def _record_time(self, time_val: int) -> None:

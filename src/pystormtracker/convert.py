@@ -75,9 +75,7 @@ def setup_parser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("-i", "--input", required=True, help="Input file path")
-    parser.add_argument(
-        "-o", "--out", "--output", dest="output", required=True, help="Output file path"
-    )
+    parser.add_argument("-o", "--output", required=True, help="Output file path")
     parser.add_argument(
         "-f",
         "--in-format",
@@ -92,12 +90,13 @@ def setup_parser(
         default="auto",
         help="Output format; inferred from the extension by default.",
     )
-    parser.add_argument("-v", "--var", help="Override the primary variable name")
+    parser.add_argument("-v", "--variable", help="Override the primary variable name")
     parser.add_argument(
         "--unit", help="Unit for a renamed or otherwise ambiguous variable"
     )
     parser.add_argument(
-        "--mode",
+        "-m",
+        "--detection-mode",
         choices=["auto", "min", "max"],
         default="auto",
         help="Extremum mode for the final primary variable.",
@@ -112,12 +111,12 @@ def main(args: argparse.Namespace) -> None:
     tracks = load_tracks(
         args.input,
         format=in_format,
-        primary_var=args.var,
-        mode=args.mode,
+        primary_var=args.variable,
+        mode=args.detection_mode,
     )
-    if args.var:
-        tracks = _rename_primary_variable(tracks, args.var, args.unit)
-    final_mode = resolve_mode(tracks.primary_var, args.mode)
+    if args.variable:
+        tracks = _rename_primary_variable(tracks, args.variable, args.unit)
+    final_mode = resolve_mode(tracks.primary_var, args.detection_mode)
     if final_mode != tracks.mode:
         tracks = tracks.with_metadata(replace(tracks.metadata, mode=final_mode))
     if out_format == "html" or (

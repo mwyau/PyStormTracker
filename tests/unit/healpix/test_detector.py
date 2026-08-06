@@ -21,8 +21,7 @@ def test_healpix_detector_init() -> None:
 
     detector = HealpixDetector.from_xarray(da)
     assert detector.variable_name == "msl"
-    assert detector._hp_base is not None
-    assert detector._hp_base.nside() == nside
+    assert detector._nside == nside
     assert detector._neighbor_table is not None
     assert detector._neighbor_table.shape == (8, npix)
 
@@ -65,7 +64,9 @@ def test_healpix_detector_detect() -> None:
 
     detector = HealpixDetector.from_xarray(da)
     # Threshold 1000.0
-    raw_results = detector.detect(threshold=1000.0, minmaxmode="min", min_points=1)
+    raw_results = detector.detect(
+        intensity_threshold=1000.0, detection_mode="min", min_grid_points=1
+    )
 
     assert len(raw_results) == 1
     _time_val, lats_out, _lons_out, values = raw_results[0]

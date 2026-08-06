@@ -9,16 +9,13 @@ from typing import Literal, cast
 
 import numpy as np
 
+from .healpix.tracker import HealpixTracker
 from .hodges import constants
 from .hodges.tracker import HodgesTracker
 from .io.format import SUPPORTED_FORMATS, SupportedFormat
-from .models import constants as model_constants
-from .models.tracks import Tracks
-from .models.units import ModeOption, resolve_mode
+from .models.tracker import Backend, Tracker
 from .preprocessing.tracking import resolve_filter_bounds
-from .simple.detector import SimpleDetector
 from .simple.tracker import SimpleTracker
-from .time import TimeInput
 from .utils.cli import (
     finite_float,
     nonnegative_float,
@@ -27,7 +24,6 @@ from .utils.cli import (
     positive_int,
 )
 
-Backend = Literal["serial", "mpi", "dask"]
 Algorithm = Literal["simple", "hodges"]
 
 
@@ -47,237 +43,41 @@ def _parse_extent(value: str) -> tuple[float, float, float, float]:
     return xmin, xmax, ymin, ymax
 
 
-def _validate_zones(zones: np.ndarray) -> np.ndarray:
+def _validate_dmax_zones(zones: np.ndarray) -> np.ndarray:
     """Validate TRACK regional constraints as rows of five values."""
     zones = np.atleast_2d(zones).astype(np.float64, copy=False)
     if not np.isfinite(zones).all():
-        raise ValueError("zone values must be finite")
+        raise ValueError("dmax_zones values must be finite")
     if zones.shape[1] != 5:
         raise ValueError(
-            "zones must contain rows of [lon_min, lon_max, lat_min, lat_max, dmax]"
+            "dmax_zones must contain rows of [lon_min, lon_max, lat_min, lat_max, dmax]"
         )
     if np.any(zones[:, 0] >= zones[:, 1]) or np.any(zones[:, 2] >= zones[:, 3]):
-        raise ValueError("zone minima must be less than zone maxima")
+        raise ValueError("dmax_zones minima must be less than maxima")
     if np.any(zones[:, 4] <= 0.0):
-        raise ValueError("zone dmax values must be greater than zero")
+        raise ValueError("dmax_zones dmax values must be greater than zero")
     return zones
 
 
-def _validate_adapt_params(params: np.ndarray) -> np.ndarray:
+def _validate_adaptive_smoothness(params: np.ndarray) -> np.ndarray:
     """Validate adaptive smoothness thresholds and values."""
     if params.shape != (2, 4):
-        raise ValueError("adaptive parameters must have shape (2, 4)")
+        raise ValueError("adaptive_smoothness parameters must have shape (2, 4)")
     if not np.isfinite(params).all():
-        raise ValueError("adaptive parameters must be finite")
+        raise ValueError("adaptive_smoothness parameters must be finite")
     if np.any(np.diff(params[0]) < 0.0):
-        raise ValueError("adaptive distance thresholds must be nondecreasing")
+        raise ValueError(
+            "adaptive_smoothness distance thresholds must be nondecreasing"
+        )
     if np.any(params[1] < 0.0):
-        raise ValueError("adaptive smoothness values must be nonnegative")
+        raise ValueError("adaptive_smoothness values must be nonnegative")
     return params.astype(np.float64, copy=False)
 
 
 def is_mpi_env() -> bool:
     """Detects if the current process is running in an MPI environment."""
-    # Common MPI environment variables
     mpi_vars = ["OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "MV2_COMM_WORLD_SIZE"]
     return any(v in os.environ for v in mpi_vars)
-
-
-def run_tracker(
-    infile: str,
-    variable_name: str,
-    outfile: str,
-    start_time: TimeInput | None = None,
-    end_time: TimeInput | None = None,
-    mode: ModeOption | None = "auto",
-    map_proj: Literal["global", "nh_stereo", "sh_stereo", "healpix"] = "global",
-    resolution: float = 100.0,
-    extent: tuple[float, float, float, float] | None = None,
-    backend: Backend | None = None,
-    n_workers: int | None = None,
-    max_chunk_size: int | None = None,
-    threshold: float | None = None,
-    engine: str | None = None,
-    algorithm: Algorithm = "simple",
-    output_format: str | None = "auto",
-    # Hodges-specific
-    min_points: int = constants.MIN_POINTS_DEFAULT,
-    w1: float | None = None,
-    w2: float | None = None,
-    dmax: float | None = None,
-    phimax: float | None = None,
-    n_iterations: int | None = None,
-    min_lifetime: int | None = None,
-    max_missing: int | None = None,
-    zones: np.ndarray | None = None,
-    adapt_params: np.ndarray | None = None,
-    lmin: int | None = None,
-    lmax: int | None = None,
-    taper_points: int = 0,
-    nside: int | None = None,
-    overlap: int = model_constants.OVERLAP_DEFAULT,
-    subgrid_refine: bool | None = None,
-) -> Tracks:
-    """Orchestrates the storm tracking process from the CLI."""
-    timer: dict[str, float] = {}
-    resolved_mode = resolve_mode(variable_name, mode)
-
-    # 1. Backend Auto-detection
-    detected_backend: Backend = "serial"
-    if backend:
-        detected_backend = backend
-    elif is_mpi_env():
-        detected_backend = "mpi"
-    elif n_workers is not None:
-        detected_backend = "dask"
-
-    use_mpi = detected_backend == "mpi"
-
-    rank = 0
-    if use_mpi:
-        import shutil
-
-        if not shutil.which("mpiexec"):
-            if backend == "mpi":
-                raise RuntimeError(
-                    "MPI backend requested but 'mpiexec' not found in PATH. "
-                    "Please install an MPI implementation (e.g., OpenMPI or MS-MPI)."
-                )
-            else:
-                # Auto-detected via env vars but binary missing
-                print("Warning: MPI environment detected but 'mpiexec' missing.")
-                detected_backend = "dask" if n_workers else "serial"
-                use_mpi = False
-
-    if use_mpi:
-        if not is_mpi_env():
-            print(
-                "Warning: MPI backend selected but no MPI environment detected "
-                "(e.g., OMPI_COMM_WORLD_SIZE not set)."
-            )
-            print("Ensure you are running with 'mpirun' or 'mpiexec'.")
-
-        try:
-            from mpi4py import MPI
-
-            rank = comm.Get_rank() if (comm := MPI.COMM_WORLD) else 0
-            if n_workers is None:
-                n_workers = MPI.COMM_WORLD.Get_size()
-        except ImportError:
-            if backend == "mpi":
-                raise ImportError(
-                    "mpi4py is required for MPI backend. "
-                    "Install it with 'pip install PyStormTracker[mpi]'."
-                ) from None
-            # If auto-detected but not installed, fallback to serial or dask
-            if is_mpi_env():
-                print(
-                    "Warning: MPI environment detected but mpi4py is not installed. "
-                    "Falling back."
-                )
-            detected_backend = "dask" if n_workers else "serial"
-            use_mpi = False
-
-    if rank == 0:
-        timer["total"] = timeit.default_timer()
-        print(f"Using backend: {detected_backend}")
-        if n_workers:
-            print(f"Workers: {n_workers}")
-
-    from .models.tracker import Tracker
-
-    tracker: Tracker
-    if map_proj == "healpix":
-        from .healpix.tracker import HealpixTracker
-
-        tracker = HealpixTracker(
-            w1=w1 if w1 is not None else constants.W1_DEFAULT,
-            w2=w2 if w2 is not None else constants.W2_DEFAULT,
-            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
-            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
-            n_iterations=n_iterations
-            if n_iterations is not None
-            else constants.ITERATIONS_DEFAULT,
-            min_lifetime=min_lifetime
-            if min_lifetime is not None
-            else constants.LIFETIME_DEFAULT,
-            max_missing=max_missing
-            if max_missing is not None
-            else constants.MISSING_DEFAULT,
-            zones=zones,
-            adapt_params=adapt_params,
-        )
-    elif algorithm == "simple":
-        tracker = SimpleTracker()
-    else:
-        # Initialize with standard defaults and override if provided
-        tracker = HodgesTracker(
-            w1=w1 if w1 is not None else constants.W1_DEFAULT,
-            w2=w2 if w2 is not None else constants.W2_DEFAULT,
-            dmax=dmax if dmax is not None else constants.DMAX_DEFAULT,
-            phimax=phimax if phimax is not None else constants.PHIMAX_DEFAULT,
-            n_iterations=n_iterations
-            if n_iterations is not None
-            else constants.ITERATIONS_DEFAULT,
-            min_lifetime=min_lifetime
-            if min_lifetime is not None
-            else constants.LIFETIME_DEFAULT,
-            max_missing=max_missing
-            if max_missing is not None
-            else constants.MISSING_DEFAULT,
-            zones=zones,
-            adapt_params=adapt_params,
-        )
-
-    effective_subgrid_refine = (
-        subgrid_refine
-        if subgrid_refine is not None
-        else algorithm != "simple" or map_proj == "healpix"
-    )
-    tracks = tracker.track(
-        infile=infile,
-        variable_name=variable_name,
-        start_time=start_time,
-        end_time=end_time,
-        mode=resolved_mode,
-        map_proj=map_proj,
-        resolution=resolution,
-        extent=extent,
-        backend=detected_backend,
-        n_workers=n_workers,
-        max_chunk_size=max_chunk_size,
-        threshold=threshold,
-        engine=engine,
-        min_points=min_points,
-        lmin=lmin,
-        lmax=lmax,
-        taper_points=taper_points,
-        nside=nside,
-        overlap=overlap,
-        subgrid_refine=effective_subgrid_refine,
-    )
-
-    # Export Phase
-    if rank == 0:
-        num_tracks = len(tracks)
-        print(f"Total number of tracks: {num_tracks}")
-
-        timer["export"] = timeit.default_timer()
-        selected_format = (
-            None
-            if output_format in (None, "auto")
-            else cast("SupportedFormat", output_format)
-        )
-        tracks.write(outfile, format=selected_format)
-        timer["export"] = timeit.default_timer() - timer["export"]
-
-        print(f"Export time: {timer['export']:.4f}s")
-        print(f"Results exported to {outfile}")
-
-        timer["total"] = timeit.default_timer() - timer["total"]
-        print(f"Total time: {timer['total']:.4f}s")
-
-    return tracks
 
 
 def setup_parser(
@@ -292,15 +92,16 @@ def setup_parser(
 
     # 1. Required Arguments
     required = parser.add_argument_group("Required Arguments")
-    required.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
+    required.add_argument("-i", "--input", required=True, help="Input dataset path.")
     required.add_argument(
-        "-v", "--var", required=True, help="Variable to track (e.g., 'vo', 'msl')."
+        "-v",
+        "--variable",
+        required=True,
+        help="Variable to track (e.g., 'vo', 'msl').",
     )
     required.add_argument(
         "-o",
-        "--out",
         "--output",
-        dest="output",
         required=True,
         help="Output track file.",
     )
@@ -323,111 +124,57 @@ def setup_parser(
     )
     general.add_argument(
         "-m",
-        "--mode",
+        "--detection-mode",
         choices=["auto", "min", "max"],
         default="auto",
         help="Detection mode; inferred from known variable aliases.",
     )
     general.add_argument(
-        "--map-proj",
+        "-p",
+        "--projection",
         choices=["global", "nh_stereo", "sh_stereo", "healpix"],
         default="global",
         help="Map projection for detection. Default 'global'.",
     )
     general.add_argument(
-        "--resolution",
+        "-r",
+        "--stereo-grid-spacing-km",
         type=positive_float,
         default=100.0,
-        help="Grid resolution in km for stereographic projections. Default 100.0.",
-    )
-    general.add_argument(
-        "--extent",
-        type=_parse_extent,
-        default=(-13000.0, 13000.0, -13000.0, 13000.0),
-        help="Bounding box in km (xmin,xmax,ymin,ymax) for stereographic projections.",
+        help="Grid spacing in km for stereographic projections. Default 100.0.",
     )
     general.add_argument(
         "-t",
-        "--threshold",
+        "--intensity-threshold",
         type=finite_float,
         default=None,
         help="Intensity threshold for features.",
     )
-
-    general.add_argument(
-        "--lmin",
-        type=nonnegative_int,
-        default=None,
-        help="Optional lower spectral filter bound; supply with --lmax.",
-    )
-    general.add_argument(
-        "--lmax",
-        type=nonnegative_int,
-        default=None,
-        help="Optional upper spectral filter bound; supply with --lmin.",
-    )
-    general.add_argument(
-        "--taper-points",
-        type=nonnegative_int,
-        default=0,
-        help="Independent spatial taper width; zero disables tapering.",
-    )
-    general.add_argument(
-        "--nside",
-        type=positive_int,
-        default=None,
-        help=(
-            "Target HEALPix resolution; omitted values are derived from the "
-            "source grid."
-        ),
-    )
-
     general.add_argument(
         "-n", "--num", type=positive_int, help="Number of time steps to process."
     )
     general.add_argument(
-        "--subgrid-refine",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help=(
-            "Control quadratic subgrid refinement. Disabled by default for "
-            "simple tracking and enabled by default for Hodges and HEALPix."
-        ),
-    )
-
-    # 3. Performance & Parallelism
-    perf = parser.add_argument_group("Performance & Parallelism")
-    perf.add_argument(
         "-b",
         "--backend",
         choices=["serial", "mpi", "dask"],
         default=None,
         help="Parallel backend. Auto-detected by default.",
     )
-    perf.add_argument(
+    general.add_argument(
         "-w",
         "--workers",
         type=positive_int,
         default=None,
         help="Number of workers. Auto-detected for MPI. Sets Dask if not MPI.",
     )
-    perf.add_argument(
+    general.add_argument(
         "-c",
         "--chunk-size",
         type=positive_int,
         default=None,
         help="Detection steps per chunk. Backend default when omitted.",
     )
-    perf.add_argument(
-        "--overlap",
-        type=nonnegative_int,
-        default=model_constants.OVERLAP_DEFAULT,
-        help=(
-            "Compatibility option retained for older commands; Gather-then-Link "
-            "does not require overlapping chunks."
-        ),
-    )
-    perf.add_argument(
+    general.add_argument(
         "-e",
         "--engine",
         choices=["h5netcdf", "netcdf4", "cfgrib"],
@@ -435,188 +182,394 @@ def setup_parser(
         help="Xarray engine for reading input.",
     )
 
-    # 4. Hodges (TRACK) Specific Options
-    hodges = parser.add_argument_group("Hodges (TRACK) Algorithm Options")
-    hodges.add_argument(
-        "--min-points",
-        type=positive_int,
-        default=1,
-        help="Min grid points per object (noise filter).",
+    # 3. Scientific and Algorithm-Specific Options (Long-only)
+    science = parser.add_argument_group("Scientific & Algorithm Options")
+    science.add_argument(
+        "--feature-point-method",
+        choices=["grid", "quadratic"],
+        default=None,
+        help=(
+            "Feature-point location method. 'grid' uses the detected "
+            "grid-point extremum; 'quadratic' uses local quadratic "
+            "feature-point interpolation."
+        ),
     )
-    hodges.add_argument(
+    science.add_argument(
+        "--search-window-size",
+        type=positive_int,
+        default=5,
+        help="Search window size for local extrema (must be positive odd integer).",
+    )
+    science.add_argument(
+        "--filter-lmin",
+        type=nonnegative_int,
+        default=None,
+        help="Optional lower spectral filter bound; supply with --filter-lmax.",
+    )
+    science.add_argument(
+        "--filter-lmax",
+        type=nonnegative_int,
+        default=None,
+        help="Optional upper spectral filter bound; supply with --filter-lmin.",
+    )
+    science.add_argument(
+        "--taper-points",
+        type=nonnegative_int,
+        default=0,
+        help="Independent spatial taper width; zero disables tapering.",
+    )
+    science.add_argument(
+        "--extent",
+        type=_parse_extent,
+        default=(-13000.0, 13000.0, -13000.0, 13000.0),
+        help="Bounding box in km (xmin,xmax,ymin,ymax) for stereographic projections.",
+    )
+    science.add_argument(
+        "--nside",
+        type=positive_int,
+        default=None,
+        help="Target HEALPix resolution; derived from source grid when omitted.",
+    )
+    science.add_argument(
+        "--min-grid-points",
+        type=positive_int,
+        default=None,
+        help="Minimum grid points in an object before feature-point extraction.",
+    )
+    science.add_argument(
         "--w1",
         type=nonnegative_float,
         default=None,
         help="Cost weight for direction. Default 0.2.",
     )
-    hodges.add_argument(
+    science.add_argument(
         "--w2",
         type=nonnegative_float,
         default=None,
         help="Cost weight for speed. Default 0.8.",
     )
-    hodges.add_argument(
+    science.add_argument(
         "--dmax",
         type=positive_float,
         default=None,
         help="Max search radius in degrees. Default 6.5.",
     )
-    hodges.add_argument(
+    science.add_argument(
         "--phimax",
         type=nonnegative_float,
         default=None,
         help="Smoothness penalty (static). Default 0.5.",
     )
-    hodges.add_argument(
-        "--iterations",
+    science.add_argument(
+        "--min-lifetime-steps",
         type=positive_int,
         default=None,
-        help="Max MGE optimization passes. Default 3.",
+        help="Min time steps for a valid track. Default 3.",
     )
-    hodges.add_argument(
-        "--min-lifetime",
-        type=positive_int,
-        default=None,
-        help="Min steps for a valid track. Default 3.",
-    )
-    hodges.add_argument(
-        "--max-missing",
+    science.add_argument(
+        "--max-missing-steps",
         type=nonnegative_int,
         default=None,
         help="Max consecutive missing frames. Default 0.",
     )
+    science.add_argument(
+        "--max-iterations",
+        type=positive_int,
+        default=None,
+        help="Maximum MGE iteration rounds. Default 3.",
+    )
 
-    zone_group = hodges.add_mutually_exclusive_group()
+    zone_group = science.add_mutually_exclusive_group()
     zone_group.add_argument(
-        "--zone-file",
+        "--dmax-zone-file",
         type=str,
         default=None,
         help="Path to legacy zone.dat file for regional DMAX.",
     )
     zone_group.add_argument(
-        "--zones",
+        "--dmax-zones",
         type=str,
         default=None,
         help="JSON string defining regional DMAX zones.",
     )
 
-    adapt_group = hodges.add_mutually_exclusive_group()
+    adapt_group = science.add_mutually_exclusive_group()
     adapt_group.add_argument(
-        "--adapt-file",
+        "--adaptive-smoothness-file",
         type=str,
         default=None,
         help="Path to legacy adapt.dat file for adaptive smoothness.",
     )
     adapt_group.add_argument(
-        "--adapt-params",
+        "--adaptive-smoothness",
         type=str,
         default=None,
         help="JSON string defining adaptive smoothness parameters (2x4 array).",
     )
-    parser.set_defaults(func=run_track_command)
+    parser.set_defaults(func=main)
 
 
 def main(args: Namespace) -> None:
     """
     Main entry point for the track command.
     """
-    run_track_command(args)
-
-
-def run_track_command(args: Namespace) -> Tracks:
-    """
-    Executes the tracking algorithm based on CLI arguments and returns
-    the generated Tracks object.
-    """
     start_time = None
     end_time = None
 
     if args.num is not None:
-        # Determine actual times for the first n steps
-        from .hodges.detector import HodgesDetector
+        from .io.data_loader import DataLoader
 
-        detector_preview: SimpleDetector | HodgesDetector
-        if args.algorithm == "simple":
-            detector_preview = SimpleDetector(
-                pathname=args.input, variable_name=args.var, engine=args.engine
-            )
-        else:
-            detector_preview = HodgesDetector(
-                pathname=args.input, variable_name=args.var, engine=args.engine
-            )
+        loader = DataLoader(args.input, engine=args.engine)
+        ds = loader.ensure_open()
+        time_dim, _lat, _lon = loader.get_coords()
+        if time_dim in ds.coords:
+            times = np.asarray(ds[time_dim].values)
+            if len(times) > 0:
+                num = min(args.num, len(times))
+                start_time = times[0]
+                end_time = times[num - 1]
 
-        times = detector_preview.get_time()
-        assert times is not None
-        num = min(args.num, len(times))
-        start_time = times[0]
-        end_time = times[num - 1]
+    resolve_filter_bounds(args.filter_lmin, args.filter_lmax)
 
-    lmin, lmax = args.lmin, args.lmax
-    resolve_filter_bounds(lmin, lmax)
-
-    zones_arr = None
-    if args.zone_file:
-        # Check if the file has a header line (single element)
-        with open(args.zone_file) as f:
+    dmax_zones_arr = None
+    if args.dmax_zone_file:
+        with open(args.dmax_zone_file) as f:
             first_line = f.readline().split()
             has_header = len(first_line) == 1
-        zones_arr = _validate_zones(
-            np.loadtxt(args.zone_file, skiprows=1 if has_header else 0)
+        dmax_zones_arr = _validate_dmax_zones(
+            np.loadtxt(args.dmax_zone_file, skiprows=1 if has_header else 0)
         )
-    elif args.zones:
+    elif args.dmax_zones:
         try:
-            zones_arr = _validate_zones(
-                np.array(json.loads(args.zones), dtype=np.float64)
+            dmax_zones_arr = _validate_dmax_zones(
+                np.array(json.loads(args.dmax_zones), dtype=np.float64)
             )
         except json.JSONDecodeError as exc:
-            raise ValueError(f"invalid zones JSON: {exc.msg}") from exc
+            raise ValueError(f"invalid dmax_zones JSON: {exc.msg}") from exc
 
-    adapt_params_arr = None
-    if args.adapt_file:
-        # Standard adapt.dat in TRACK is 4 points with (thresh, value) per line (4x2)
-        # We need it as 2x4 (row 0: thresholds, row 1: values)
-        arr = np.loadtxt(args.adapt_file)
-        adapt_params_arr = _validate_adapt_params(arr.T if arr.shape == (4, 2) else arr)
-    elif args.adapt_params:
+    adaptive_smoothness_arr = None
+    if args.adaptive_smoothness_file:
+        arr = np.loadtxt(args.adaptive_smoothness_file)
+        adaptive_smoothness_arr = _validate_adaptive_smoothness(
+            arr.T if arr.shape == (4, 2) else arr
+        )
+    elif args.adaptive_smoothness:
         try:
-            adapt_params_arr = _validate_adapt_params(
-                np.array(json.loads(args.adapt_params), dtype=np.float64)
+            adaptive_smoothness_arr = _validate_adaptive_smoothness(
+                np.array(json.loads(args.adaptive_smoothness), dtype=np.float64)
             )
         except json.JSONDecodeError as exc:
-            raise ValueError(f"invalid adaptive-parameters JSON: {exc.msg}") from exc
+            raise ValueError(f"invalid adaptive_smoothness JSON: {exc.msg}") from exc
 
-    return run_tracker(
-        infile=args.input,
-        variable_name=args.var,
-        outfile=args.output,
+    # Auto-detect backend
+    detected_backend: Backend = "serial"
+    if args.backend:
+        detected_backend = args.backend
+    elif is_mpi_env():
+        detected_backend = "mpi"
+    elif args.workers is not None:
+        detected_backend = "dask"
+
+    use_mpi = detected_backend == "mpi"
+    rank = 0
+    n_workers = args.workers
+
+    if use_mpi:
+        import shutil
+
+        if not shutil.which("mpiexec"):
+            if args.backend == "mpi":
+                raise RuntimeError(
+                    "MPI backend requested but 'mpiexec' not found in PATH. "
+                    "Please install an MPI implementation (e.g., OpenMPI or MS-MPI)."
+                )
+            else:
+                print("Warning: MPI environment detected but 'mpiexec' missing.")
+                detected_backend = "dask" if n_workers else "serial"
+                use_mpi = False
+
+    if use_mpi:
+        if not is_mpi_env():
+            print(
+                "Warning: MPI backend selected but no MPI environment detected "
+                "(e.g., OMPI_COMM_WORLD_SIZE not set)."
+            )
+            print("Ensure you are running with 'mpirun' or 'mpiexec'.")
+
+        try:
+            from mpi4py import MPI
+
+            rank = comm.Get_rank() if (comm := MPI.COMM_WORLD) else 0
+            if n_workers is None:
+                n_workers = MPI.COMM_WORLD.Get_size()
+        except ImportError:
+            if args.backend == "mpi":
+                raise ImportError(
+                    "mpi4py is required for MPI backend. "
+                    "Install it with 'pip install PyStormTracker[mpi]'."
+                ) from None
+            if is_mpi_env():
+                print(
+                    "Warning: MPI environment detected but mpi4py is not installed. "
+                    "Falling back."
+                )
+            detected_backend = "dask" if n_workers else "serial"
+            use_mpi = False
+
+    timer: dict[str, float] = {}
+    if rank == 0:
+        timer["total"] = timeit.default_timer()
+        print(f"Using backend: {detected_backend}")
+        if n_workers:
+            print(f"Workers: {n_workers}")
+
+    # Validate options against selected tracker and instantiate tracker
+    tracker: Tracker
+    if args.projection == "healpix":
+        if detected_backend != "serial":
+            raise ValueError("HealpixTracker supports only the serial backend.")
+        if args.chunk_size is not None:
+            raise ValueError("HealpixTracker does not support chunking.")
+        if args.stereo_grid_spacing_km != 100.0 or args.extent != (
+            -13000.0,
+            13000.0,
+            -13000.0,
+            13000.0,
+        ):
+            raise ValueError(
+                "Stereographic grid spacing in kilometres and extent options are "
+                "not supported with HEALPix projection."
+            )
+
+        tracker = HealpixTracker(
+            w1=args.w1 if args.w1 is not None else constants.W1_DEFAULT,
+            w2=args.w2 if args.w2 is not None else constants.W2_DEFAULT,
+            dmax=args.dmax if args.dmax is not None else constants.DMAX_DEFAULT,
+            phimax=args.phimax if args.phimax is not None else constants.PHIMAX_DEFAULT,
+            max_iterations=args.max_iterations
+            if args.max_iterations is not None
+            else constants.MAX_ITERATIONS_DEFAULT,
+            min_lifetime_steps=args.min_lifetime_steps
+            if args.min_lifetime_steps is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing_steps=args.max_missing_steps
+            if args.max_missing_steps is not None
+            else constants.MISSING_DEFAULT,
+            min_grid_points=args.min_grid_points
+            if args.min_grid_points is not None
+            else constants.MIN_POINTS_DEFAULT,
+            dmax_zones=dmax_zones_arr,
+            adaptive_smoothness=adaptive_smoothness_arr,
+            nside=args.nside,
+            filter_lmin=args.filter_lmin,
+            filter_lmax=args.filter_lmax,
+            taper_points=args.taper_points,
+            feature_point_method=args.feature_point_method
+            if args.feature_point_method is not None
+            else "quadratic",
+        )
+    elif args.algorithm == "hodges":
+        if detected_backend != "serial":
+            raise ValueError("HodgesTracker supports only the serial backend.")
+        if args.nside is not None:
+            raise ValueError("nside is only supported with HEALPix projection.")
+
+        tracker = HodgesTracker(
+            w1=args.w1 if args.w1 is not None else constants.W1_DEFAULT,
+            w2=args.w2 if args.w2 is not None else constants.W2_DEFAULT,
+            dmax=args.dmax if args.dmax is not None else constants.DMAX_DEFAULT,
+            phimax=args.phimax if args.phimax is not None else constants.PHIMAX_DEFAULT,
+            max_iterations=args.max_iterations
+            if args.max_iterations is not None
+            else constants.MAX_ITERATIONS_DEFAULT,
+            min_lifetime_steps=args.min_lifetime_steps
+            if args.min_lifetime_steps is not None
+            else constants.LIFETIME_DEFAULT,
+            max_missing_steps=args.max_missing_steps
+            if args.max_missing_steps is not None
+            else constants.MISSING_DEFAULT,
+            min_grid_points=args.min_grid_points
+            if args.min_grid_points is not None
+            else constants.MIN_POINTS_DEFAULT,
+            dmax_zones=dmax_zones_arr,
+            adaptive_smoothness=adaptive_smoothness_arr,
+            projection=args.projection,
+            stereo_grid_spacing_km=args.stereo_grid_spacing_km,
+            extent=args.extent,
+            filter_lmin=args.filter_lmin,
+            filter_lmax=args.filter_lmax,
+            taper_points=args.taper_points,
+            search_window_size=args.search_window_size,
+            feature_point_method=args.feature_point_method
+            if args.feature_point_method is not None
+            else "quadratic",
+            chunk_size=args.chunk_size,
+        )
+    else:  # simple tracker
+        if args.nside is not None:
+            raise ValueError("nside is only supported with HEALPix projection.")
+        has_hodges_option = (
+            args.max_iterations is not None
+            or args.min_grid_points is not None
+            or args.w1 is not None
+            or args.w2 is not None
+            or args.dmax is not None
+            or args.phimax is not None
+            or args.min_lifetime_steps is not None
+            or args.max_missing_steps is not None
+            or args.dmax_zone_file is not None
+            or args.dmax_zones is not None
+            or args.adaptive_smoothness_file is not None
+            or args.adaptive_smoothness is not None
+        )
+        if has_hodges_option:
+            raise ValueError(
+                "Hodges options (w1, w2, dmax, phimax, max_iterations, "
+                "min_lifetime_steps, max_missing_steps, min_grid_points, "
+                "dmax_zones, adaptive_smoothness) are not supported with SimpleTracker."
+            )
+
+        tracker = SimpleTracker(
+            projection=args.projection,
+            stereo_grid_spacing_km=args.stereo_grid_spacing_km,
+            extent=args.extent,
+            filter_lmin=args.filter_lmin,
+            filter_lmax=args.filter_lmax,
+            taper_points=args.taper_points,
+            search_window_size=args.search_window_size,
+            feature_point_method=args.feature_point_method
+            if args.feature_point_method is not None
+            else "grid",
+            backend=detected_backend,
+            workers=n_workers,
+            chunk_size=args.chunk_size,
+        )
+
+    tracks = tracker.track(
+        data=args.input,
+        variable=args.variable,
         start_time=start_time,
         end_time=end_time,
-        mode=args.mode,
-        map_proj=args.map_proj,
-        resolution=args.resolution,
-        extent=args.extent,
-        backend=args.backend,
-        n_workers=args.workers,
-        max_chunk_size=args.chunk_size,
-        threshold=args.threshold,
+        detection_mode=args.detection_mode,
+        intensity_threshold=args.intensity_threshold,
         engine=args.engine,
-        algorithm=args.algorithm,
-        output_format=args.format,
-        # Hodges-specific
-        min_points=args.min_points,
-        w1=args.w1,
-        w2=args.w2,
-        dmax=args.dmax,
-        phimax=args.phimax,
-        n_iterations=args.iterations,
-        min_lifetime=args.min_lifetime,
-        max_missing=args.max_missing,
-        zones=zones_arr,
-        adapt_params=adapt_params_arr,
-        lmin=lmin,
-        lmax=lmax,
-        taper_points=args.taper_points,
-        nside=args.nside,
-        overlap=args.overlap,
-        subgrid_refine=args.subgrid_refine,
     )
+
+    if rank == 0:
+        num_tracks = len(tracks)
+        print(f"Total number of tracks: {num_tracks}")
+
+        timer["export"] = timeit.default_timer()
+        selected_format = (
+            None
+            if args.format in (None, "auto")
+            else cast("SupportedFormat", args.format)
+        )
+        tracks.write(args.output, format=selected_format)
+        timer["export"] = timeit.default_timer() - timer["export"]
+
+        print(f"Export time: {timer['export']:.4f}s")
+        print(f"Results exported to {args.output}")
+
+        timer["total"] = timeit.default_timer() - timer["total"]
+        print(f"Total time: {timer['total']:.4f}s")

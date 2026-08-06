@@ -1,62 +1,75 @@
 from __future__ import annotations
 
-import threading
-from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, cast
 
-import ducc0
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
 from ..io.data_loader import DataLoader
-from ..models import TimeRange
 from ..models import constants as model_constants
-from ..models.tracker import RawDetectionStep
-from ..time import is_missing_time, select_time_range
+from ..models.time import TimeInput, TimeRange, is_missing_time, select_time_range
+from ..models.tracker import FeaturePointMethod, RawDetectionStep
+from ..models.units import ResolvedDetectionMode
 from .kernels import (
+    _build_healpix_neighbor_table,
     _numba_get_healpix_centers,
     _numba_healpix_ccl,
     _numba_healpix_object_extrema,
-    subgrid_refine_healpix,
+    interpolate_quadratic_healpix_feature_point,
 )
 
 
 class HealpixDetector:
     """
-    A meteorological feature detector that treats fields as 1D HEALPix maps.
-    Uses xarray for lazy-loading and ducc0 for HEALPix grid math.
+    Feature detector for 1D un-nested HEALPix arrays.
+    Calculates spatial neighbors on-the-fly or uses pre-built tables.
     """
-
-    _ds_cache: ClassVar[dict[Path, xr.Dataset]] = {}
-    _ds_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
         self,
-        pathname: str | Path,
+        pathname: str | None,
         variable_name: str,
         time_range: TimeRange | None = None,
-        global_start_idx: int = 0,
-        global_total_steps: int | None = None,
         engine: str | None = None,
     ) -> None:
-        self.pathname = Path(pathname)
+        self.pathname = pathname
         self.requested_variable_name = variable_name
         self.time_range = time_range
-        self.global_start_idx = global_start_idx
-        self.global_total_steps = global_total_steps
 
-        self._loader = DataLoader(self.pathname, engine=engine)
+        self._loader = DataLoader(pathname, engine=engine) if pathname else None
         self._data: xr.DataArray | None = None
         self.variable_name = variable_name
-        self._hp_base: ducc0.healpix.Healpix_Base | None = None
+
+        self._nside: int | None = None
         self._neighbor_table: NDArray[np.int64] | None = None
-        self._lat_lon_map: tuple[NDArray[np.float64], NDArray[np.float64]] | None = None
+        self._lat: NDArray[np.float64] | None = None
+        self._lon: NDArray[np.float64] | None = None
+
+    @classmethod
+    def from_xarray(
+        cls, data: xr.DataArray, variable_name: str | None = None
+    ) -> HealpixDetector:
+        obj = cls.__new__(cls)
+        obj.requested_variable_name = variable_name or (
+            str(data.name) if data.name else "var"
+        )
+        obj.variable_name = obj.requested_variable_name
+        obj._data = data
+        obj._loader = DataLoader(data)
+        obj.pathname = None
+        obj.time_range = None
+        obj._nside = None
+        obj._neighbor_table = None
+        obj._lat = None
+        obj._lon = None
+        obj._ensure_open()
+        return obj
 
     def _ensure_open(self) -> None:
-        if self._data is None:
+        if self._data is None and self.pathname is not None:
+            self._loader = DataLoader(self.pathname)
             ds = self._loader.ensure_open()
-
             actual_var = None
             possible_names = DataLoader.VAR_MAPPING.get(
                 self.requested_variable_name, [self.requested_variable_name]
@@ -65,95 +78,109 @@ class HealpixDetector:
                 if name in ds.data_vars:
                     actual_var = name
                     break
-
             if actual_var is None:
-                actual_var = self.requested_variable_name
+                raise KeyError(f"Variable {self.requested_variable_name!r} not found.")
 
             self.variable_name = actual_var
-            self._data = ds[self.variable_name]
+            self._data = ds[actual_var]
 
-        if self._hp_base is None:
-            # Enforce 1D spatial dimension (time, cell)
-            # Find the spatial dimension name (not time)
-            time_dim, _, _ = self._loader.get_coords()
-            spatial_dims = [d for d in self._data.dims if d != time_dim]
-            if len(spatial_dims) != 1:
-                raise ValueError(
-                    "HealpixDetector requires exactly 1 spatial dimension, "
-                    f"got: {spatial_dims}"
-                )
+        if self._nside is None and self._data is not None:
+            meta: dict[str, Any] = (
+                dict(self._loader.get_grid_metadata(self.variable_name))
+                if self._loader
+                else {}
+            )
+            nside_meta = meta.get("nside")
+            cell_dim = str(meta.get("cell_dim", "cell"))
 
-            self._cell_dim = spatial_dims[0]
-            npix = self._data.sizes[self._cell_dim]
-
-            # Calculate nside
-            nside = int(np.sqrt(npix / 12))
-            if 12 * nside * nside != npix:
-                raise ValueError(
-                    f"Number of pixels {npix} is not a valid HEALPix size (12*Nside^2)."
-                )
-
-            self._hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
-
-            # Precompute neighbor table (shape: 8, npix)
-            all_pix = np.arange(npix, dtype=np.int64)
-            nbors = self._hp_base.neighbors(all_pix)  # Shape should be (N, 8)
-            self._neighbor_table = np.ascontiguousarray(nbors.T)  # Shape (8, N)
-
-            # Precompute lat/lon
-            ang = self._hp_base.pix2ang(all_pix)  # Shape (N, 2)
-            colat = ang[:, 0]
-            lon_rad = ang[:, 1]
-            self._lat = 90.0 - np.degrees(colat)
-            self._lon = np.degrees(lon_rad)
-
-    def get_var(
-        self, frame: int | tuple[int, int] | None = None
-    ) -> NDArray[np.float64] | None:
-        self._ensure_open()
-        assert self._data is not None
-
-        time_dim, _, _ = self._loader.get_coords()
-
-        if self.time_range:
-            start, end = self.time_range.start, self.time_range.end
-            if not is_missing_time(start) and not is_missing_time(end):
-                data_range = self._data.sel({time_dim: slice(start, end)})
-            elif not is_missing_time(start):
-                data_range = self._data.sel({time_dim: slice(start, None)})
-            elif not is_missing_time(end):
-                data_range = self._data.sel({time_dim: slice(None, end)})
+            if nside_meta is not None:
+                self._nside = int(str(nside_meta))
             else:
-                data_range = self._data
-        else:
-            data_range = self._data
+                cell_count = self._data.sizes.get("cell", self._data.shape[-1])
+                self._nside = int(np.sqrt(cell_count / 12))
 
-        match frame:
-            case int(idx):
-                data = data_range.isel({time_dim: idx})
-                return np.asarray(data.values)
-            case (int(s_off), int(e_off)):
-                data = data_range.isel({time_dim: slice(s_off, e_off)})
-                return np.asarray(data.values)
-            case None:
-                return np.asarray(data_range.values)
-            case _:
-                raise TypeError("frame must be an int, tuple[int, int], or None")
+            if "lat" in self._data.coords and "lon" in self._data.coords:
+                self._lat = np.asarray(
+                    self._data.coords["lat"].values, dtype=np.float64
+                )
+                self._lon = np.asarray(
+                    self._data.coords["lon"].values, dtype=np.float64
+                )
+            elif cell_dim in self._data.coords and hasattr(self._data[cell_dim], "lat"):
+                self._lat = np.asarray(
+                    self._data[cell_dim].lat.values, dtype=np.float64
+                )
+                self._lon = np.asarray(
+                    self._data[cell_dim].lon.values, dtype=np.float64
+                )
+            else:
+                import ducc0.healpix  # type: ignore[import-not-found] # ty: ignore[unresolved-import]
 
-    def get_time(self) -> np.ndarray | None:
+                hp_base = ducc0.healpix.Healpix_Base(self._nside, "RING")
+                all_pix = np.arange(12 * self._nside * self._nside, dtype=np.int64)
+                ang = hp_base.pix2ang(all_pix)
+                self._lat = 90.0 - np.degrees(ang[:, 0])
+                self._lon = np.degrees(ang[:, 1])
+
+            self._neighbor_table = _build_healpix_neighbor_table(self._nside)
+
+    def get_var(self, time_index: int | None = None) -> xr.DataArray | None:
         self._ensure_open()
-        ds = self._loader.ensure_open()
-        time_dim, _, _ = self._loader.get_coords()
+        if self._data is None:
+            return None
 
-        if self.time_range:
-            start, end = self.time_range.start, self.time_range.end
+        if time_index is not None:
+            return self._data.isel(time=time_index)
+
+        start_time = self.time_range.start if self.time_range else None
+        end_time = self.time_range.end if self.time_range else None
+        if not is_missing_time(start_time) or not is_missing_time(end_time):
+            return cast(
+                xr.DataArray,
+                select_time_range(self._data, start_time=start_time, end_time=end_time),
+            )
+
+        return self._data
+
+    def get_time(
+        self, start: TimeInput | None = None, end: TimeInput | None = None
+    ) -> NDArray[np.datetime64] | None:
+        self._ensure_open()
+        if self._data is None:
+            return None
+
+        time_dim = DataLoader(self._data).get_coords()[0]
+        if time_dim not in self._data.coords:
+            return None
+
+        ds = self._data.to_dataset()
+        effective_start = (
+            start
+            if start is not None
+            else self.time_range.start
+            if self.time_range is not None
+            else None
+        )
+        effective_end = (
+            end
+            if end is not None
+            else self.time_range.end
+            if self.time_range is not None
+            else None
+        )
+
+        if not is_missing_time(effective_start) or not is_missing_time(effective_end):
             time_coord = ds[time_dim]
-            if not is_missing_time(start) and not is_missing_time(end):
-                times = time_coord.sel({time_dim: slice(start, end)})
-            elif not is_missing_time(start):
-                times = time_coord.sel({time_dim: slice(start, None)})
-            elif not is_missing_time(end):
-                times = time_coord.sel({time_dim: slice(None, end)})
+            if not is_missing_time(effective_start) and not is_missing_time(
+                effective_end
+            ):
+                times = time_coord.sel(
+                    {time_dim: slice(effective_start, effective_end)}
+                )
+            elif not is_missing_time(effective_start):
+                times = time_coord.sel({time_dim: slice(effective_start, None)})
+            elif not is_missing_time(effective_end):
+                times = time_coord.sel({time_dim: slice(None, effective_end)})
             else:
                 times = time_coord
         else:
@@ -163,25 +190,29 @@ class HealpixDetector:
 
     def detect(
         self,
-        threshold: float | None = None,
-        minmaxmode: Literal["min", "max"] = "min",
-        min_points: int = 1,
-        subgrid_refine: bool = True,
+        intensity_threshold: float | None = None,
+        detection_mode: ResolvedDetectionMode = "min",
+        min_grid_points: int = 1,
+        feature_point_method: FeaturePointMethod = "quadratic",
     ) -> list[RawDetectionStep]:
+        if min_grid_points <= 0:
+            raise ValueError("min_grid_points must be positive")
+
+        use_quadratic = feature_point_method == "quadratic"
+
         self._ensure_open()
         times = self.get_time()
         if times is None:
             return []
 
-        # Set variable specific thresholds if not provided
-        if threshold is None:
+        if intensity_threshold is None:
             if self.requested_variable_name == "vo":
-                threshold = model_constants.DEFAULT_VO_THRESHOLD
+                intensity_threshold = model_constants.DEFAULT_VO_THRESHOLD
             else:
-                threshold = model_constants.DEFAULT_MSL_THRESHOLD
+                intensity_threshold = model_constants.DEFAULT_MSL_THRESHOLD
 
         raw_steps: list[RawDetectionStep] = []
-        is_min = minmaxmode == "min"
+        is_min = detection_mode == "min"
 
         for i in range(len(times)):
             current_time = times[i]
@@ -189,49 +220,48 @@ class HealpixDetector:
             if frame is None:
                 continue
 
-            # 1. Connected Component Labeling
             assert self._neighbor_table is not None
             labels, num_objects = _numba_healpix_ccl(
-                frame, self._neighbor_table, threshold, is_min
+                frame.values, self._neighbor_table, intensity_threshold, is_min
             )
 
-            # 2. Find Extrema within objects
             extrema = _numba_healpix_object_extrema(
-                frame,
+                frame.values,
                 self._neighbor_table,
                 labels,
                 num_objects,
                 is_min,
-                min_points,
+                min_grid_points,
             )
 
-            # 3. Extract and Refine
-            p_idx, _ = _numba_get_healpix_centers(extrema, frame)
+            p_idx, _ = _numba_get_healpix_centers(extrema, frame.values)
 
             assert self._lat is not None
             assert self._lon is not None
-            if subgrid_refine:
-                refined_lats = np.zeros(len(p_idx))
-                refined_lons = np.zeros(len(p_idx))
-                refined_vals = np.zeros(len(p_idx))
+            assert self._nside is not None
 
-                for j in range(len(p_idx)):
-                    ref_lat, ref_lon, ref_val = subgrid_refine_healpix(
-                        frame,
-                        int(p_idx[j]),
+            if use_quadratic and len(p_idx) > 0:
+                refined_lats = np.empty(len(p_idx), dtype=np.float64)
+                refined_lons = np.empty(len(p_idx), dtype=np.float64)
+                refined_vals = np.empty(len(p_idx), dtype=np.float64)
+                for idx_i, cell in enumerate(p_idx):
+                    (
+                        refined_lats[idx_i],
+                        refined_lons[idx_i],
+                        refined_vals[idx_i],
+                    ) = interpolate_quadratic_healpix_feature_point(
+                        frame.values,
+                        cell,
                         self._neighbor_table,
                         self._lat,
                         self._lon,
                     )
-                    refined_lats[j] = ref_lat
-                    refined_lons[j] = ref_lon
-                    refined_vals[j] = ref_val
             else:
                 refined_lats = self._lat[p_idx]
                 refined_lons = self._lon[p_idx]
-                refined_vals = frame[p_idx]
+                refined_vals = frame.values[p_idx]
 
-            raw_step = (
+            raw_step = RawDetectionStep(
                 current_time,
                 refined_lats,
                 refined_lons,
@@ -240,85 +270,3 @@ class HealpixDetector:
             raw_steps.append(raw_step)
 
         return raw_steps
-
-    @classmethod
-    def from_xarray(
-        cls,
-        data: xr.DataArray,
-        variable_name: str | None = None,
-        time_range: TimeRange | None = None,
-        global_start_idx: int = 0,
-        global_total_steps: int | None = None,
-    ) -> HealpixDetector:
-        import uuid
-
-        dummy_path = Path(f"/tmp/dummy_{uuid.uuid4().hex}.nc")
-        detector = cls(
-            pathname=dummy_path,
-            variable_name=variable_name
-            or (str(data.name) if data.name is not None else "var"),
-            time_range=time_range,
-            global_start_idx=global_start_idx,
-            global_total_steps=global_total_steps,
-        )
-
-        detector._data = data
-        ds = xr.Dataset({str(data.name) if data.name is not None else "var": data})
-        detector._loader._ds = ds
-
-        # Force init of hp_base and neighbor table
-        detector._ensure_open()
-
-        return detector
-
-    def get_xarray(self) -> xr.DataArray:
-        self._ensure_open()
-        assert self._data is not None
-        start_time = self.time_range.start if self.time_range is not None else None
-        end_time = self.time_range.end if self.time_range is not None else None
-        selected = select_time_range(
-            self._data,
-            start_time=start_time,
-            end_time=end_time,
-        )
-        assert isinstance(selected, xr.DataArray)
-        return selected
-
-    def split(self, n: int) -> list[HealpixDetector]:
-        """Splits the detector into n smaller detectors with disjoint time ranges."""
-        self._ensure_open()
-        times = self.get_time()
-        if times is None:
-            return [self]
-
-        indices = np.array_split(np.arange(len(times)), n)
-        detectors = []
-
-        for chunk_indices in indices:
-            if len(chunk_indices) == 0:
-                continue
-
-            start_idx = chunk_indices[0]
-            end_idx = chunk_indices[-1]
-
-            # Use TimeRange for splitting
-            st = times[start_idx]
-            et = times[end_idx]
-            chunk_time_range = TimeRange(start=st, end=et)
-
-            # Create a shallow copy with the new time range and global index tracking
-            detector = HealpixDetector(
-                pathname=self.pathname,
-                variable_name=self.requested_variable_name,
-                time_range=chunk_time_range,
-                global_start_idx=self.global_start_idx + start_idx,
-                global_total_steps=self.global_total_steps or len(times),
-            )
-            # Link to the already-open dataset to avoid re-opening
-            detector._data = self._data
-            detector._loader._ds = self._loader._ds
-            detector._ensure_open()
-
-            detectors.append(detector)
-
-        return detectors
