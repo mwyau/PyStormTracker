@@ -12,8 +12,6 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18764813-blue.svg)](https://doi.org/10.5281/zenodo.18764813)
 
-<p align="center"> <strong> <a href="https://pystormtracker.readthedocs.io/en/latest/interactive.html"> Storm Track Explorer </a> </strong> <br> <em>Temporarily disabled while the explorer is being redesigned.</em></p>
-
 **PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba implementation of the Simple Tracker described by **Yau and Chang (2020)** and TRACK algorithms described by **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
 
 ## Features
@@ -30,10 +28,6 @@
   - **Hodges and HEALPix**: Serial only; unsupported backend selections raise an error.
 - **Typed Implementation**: Built for **Python 3.11+** with strict type safety and `mypy` compliance.
 - **Formats and analysis**: Reads IMILAST and TrackJSON track data; writes IMILAST, TRACK tdump, and TrackJSON. Analysis functions include secondary-variable sampling, track matching, gridded cyclone and track metrics, Eulerian variance and wind indices, CORMAX, and CCA/PCA truncation cross-validation.
-
-![v0.4.0 benchmark timing breakdown](docs/_static/benchmark_0_25x0_25_breakdown.png)
-
-*Measured v0.3.3 and v0.4.0 timings for the 0.25° ERA5 benchmark described in the [benchmark documentation](docs/benchmark.md).*
 
 ## Technical Methodology
 

@@ -78,10 +78,6 @@ Domain value types remain available under `pystormtracker.models`:
    :show-inheritance:
 ```
 
-### Time Support
-
-`TimeRange` is an internal detector/orchestration state type. It is not exported as public API.
-
 ### Storm Centers
 
 ```{eval-rst}

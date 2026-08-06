@@ -143,7 +143,7 @@ tracks = tracker.track(
 tracks.write("output.trackjson")
 ```
 
-Tracker configuration belongs in constructors. Per-input selection (data, variable, time window) belongs in `.track()`. Algorithm-specific options are constructor parameters, not passed through `**kwargs`.
+Tracker configuration belongs in constructors. Per-input selection (data, variable, time window) belongs in `.track()`. Algorithm-specific options are constructor parameters.
 
 ## 5. Testing and Validation
 
