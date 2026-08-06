@@ -31,7 +31,7 @@ Tracks, coordinates, times, identifiers, and variables are stored in flat NumPy 
 
 ### 1.5 Numba kernels — ✅ Implemented
 
-Core local-extrema, Laplacian, connected-component labeling (CCL), geometric, subgrid-refinement, object-property, and Modified Greedy Exchange (MGE) operations are implemented as cached Numba kernels where applicable.
+Core local-extrema, Laplacian, connected-component labeling (CCL), geometric, quadratic feature-point interpolation, object-property, and Modified Greedy Exchange (MGE) operations are implemented as cached Numba kernels where applicable.
 
 ### 1.6 GPU preprocessing and detection
 

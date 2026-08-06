@@ -57,7 +57,7 @@ def run_simple_dask(
 
     from .tracker import SimpleTracker
 
-    data_xr, processing = SimpleTracker().preprocess_standard_track(
+    data_xr, processing = SimpleTracker()._preprocess_standard_track(
         data_xr,
         filter_lmin=filter_lmin,
         filter_lmax=filter_lmax,
@@ -167,7 +167,7 @@ def run_simple_mpi(
 
         from .tracker import SimpleTracker
 
-        data_xr, processing = SimpleTracker().preprocess_standard_track(
+        data_xr, processing = SimpleTracker()._preprocess_standard_track(
             data_xr,
             filter_lmin=filter_lmin,
             filter_lmax=filter_lmax,

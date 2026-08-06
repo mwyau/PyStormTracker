@@ -157,7 +157,7 @@ def test_hodges_tracker_track_single_chunk(mock_detect: MagicMock) -> None:
     assert tracks[0][1].lat == 1.0
 
 
-def test_hodges_tracker_preprocess_map_proj() -> None:
+def test_hodges_tracker_preprocess_projection() -> None:
     ny, nx = 73, 144
     time = np.array([np.datetime64("2025-12-01T00:00:00")], dtype="datetime64[ns]")
     data = np.random.default_rng().random((1, ny, nx))
@@ -173,10 +173,10 @@ def test_hodges_tracker_preprocess_map_proj() -> None:
     )
 
     tracker = HodgesTracker()
-    processed, _steps = tracker.preprocess_standard_track(da, projection="nh_stereo")
+    processed, _steps = tracker._preprocess_standard_track(da, projection="nh_stereo")
     assert processed.dims == ("time", "y", "x")
-    assert processed.attrs["map_proj"] == "nh_stereo"
+    assert processed.attrs["projection"] == "nh_stereo"
 
-    processed_hp, _steps = tracker.preprocess_standard_track(da, projection="healpix")
+    processed_hp, _steps = tracker._preprocess_standard_track(da, projection="healpix")
     assert processed_hp.dims == ("time", "cell")
-    assert processed_hp.attrs["map_proj"] == "healpix"
+    assert processed_hp.attrs["projection"] == "healpix"

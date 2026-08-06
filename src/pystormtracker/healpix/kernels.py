@@ -137,16 +137,18 @@ def _numba_healpix_object_extrema(
 
 
 @nb.njit(nogil=True, cache=True)
-def refine_healpix_center(
+def interpolate_quadratic_healpix_feature_point(
     data: NDArray[np.float64],
     p_idx: int,
     neighbor_table: NDArray[np.int64],
     pixel_lats: NDArray[np.float64],
     pixel_lons: NDArray[np.float64],
 ) -> tuple[float, float, float]:
-    """
-    Refines an extremum position on HEALPix using local quadratic surface fitting.
+    """Perform local quadratic surface interpolation on a HEALPix neighbor graph.
+
     Uses a local tangent plane projection centered at pixel p_idx.
+
+    Returns the interpolated feature-point coordinates and value.
     """
     # 1. Gather neighbors (max 9 points: center + 8 neighbors)
     neighbor_indices = np.zeros(9, dtype=np.int64)

@@ -92,7 +92,7 @@ def setup_parser(
 
     # 1. Required Arguments
     required = parser.add_argument_group("Required Arguments")
-    required.add_argument("-i", "--input", required=True, help="Input NetCDF file.")
+    required.add_argument("-i", "--input", required=True, help="Input dataset path.")
     required.add_argument(
         "-v",
         "--variable",
@@ -188,7 +188,11 @@ def setup_parser(
         "--feature-point-method",
         choices=["grid", "quadratic"],
         default=None,
-        help="Feature point extraction method ('grid' or 'quadratic').",
+        help=(
+            "Feature-point location method. 'grid' uses the detected "
+            "grid-point extremum; 'quadratic' uses local quadratic "
+            "feature-point interpolation."
+        ),
     )
     science.add_argument(
         "--search-window-size",
@@ -267,6 +271,12 @@ def setup_parser(
         type=nonnegative_int,
         default=None,
         help="Max consecutive missing frames. Default 0.",
+    )
+    science.add_argument(
+        "--max-iterations",
+        type=positive_int,
+        default=None,
+        help="Maximum MGE iteration rounds. Default 3.",
     )
 
     zone_group = science.add_mutually_exclusive_group()
@@ -436,6 +446,9 @@ def main(args: Namespace) -> None:
             w2=args.w2 if args.w2 is not None else constants.W2_DEFAULT,
             dmax=args.dmax if args.dmax is not None else constants.DMAX_DEFAULT,
             phimax=args.phimax if args.phimax is not None else constants.PHIMAX_DEFAULT,
+            max_iterations=args.max_iterations
+            if args.max_iterations is not None
+            else constants.MAX_ITERATIONS_DEFAULT,
             min_lifetime_steps=args.min_lifetime_steps
             if args.min_lifetime_steps is not None
             else constants.LIFETIME_DEFAULT,
@@ -466,6 +479,9 @@ def main(args: Namespace) -> None:
             w2=args.w2 if args.w2 is not None else constants.W2_DEFAULT,
             dmax=args.dmax if args.dmax is not None else constants.DMAX_DEFAULT,
             phimax=args.phimax if args.phimax is not None else constants.PHIMAX_DEFAULT,
+            max_iterations=args.max_iterations
+            if args.max_iterations is not None
+            else constants.MAX_ITERATIONS_DEFAULT,
             min_lifetime_steps=args.min_lifetime_steps
             if args.min_lifetime_steps is not None
             else constants.LIFETIME_DEFAULT,
@@ -493,7 +509,8 @@ def main(args: Namespace) -> None:
         if args.nside is not None:
             raise ValueError("nside is only supported with HEALPix projection.")
         has_hodges_option = (
-            args.min_grid_points is not None
+            args.max_iterations is not None
+            or args.min_grid_points is not None
             or args.w1 is not None
             or args.w2 is not None
             or args.dmax is not None
@@ -507,9 +524,9 @@ def main(args: Namespace) -> None:
         )
         if has_hodges_option:
             raise ValueError(
-                "Hodges options (w1, w2, dmax, phimax, min_lifetime_steps, "
-                "max_missing_steps, min_grid_points, dmax_zones, adaptive_smoothness) "
-                "are not supported with SimpleTracker."
+                "Hodges options (w1, w2, dmax, phimax, max_iterations, "
+                "min_lifetime_steps, max_missing_steps, min_grid_points, "
+                "dmax_zones, adaptive_smoothness) are not supported with SimpleTracker."
             )
 
         tracker = SimpleTracker(

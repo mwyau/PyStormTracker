@@ -10,7 +10,7 @@ from pystormtracker.hodges.kernels import (
     get_regional_dmax,
 )
 from pystormtracker.models.geo import geod_dist
-from pystormtracker.preprocessing.refinement import refine_center
+from pystormtracker.preprocessing.refinement import interpolate_quadratic_feature_point
 
 
 def test_geod_dist() -> None:
@@ -59,33 +59,33 @@ def test_get_regional_dmax() -> None:
 
 
 def test_get_adaptive_phimax() -> None:
-    adapt_params = np.array([[1.0, 2.0, 5.0, 8.0], [1.0, 0.3, 0.1, 0.0]])
+    adaptive_smoothness = np.array([[1.0, 2.0, 5.0, 8.0], [1.0, 0.3, 0.1, 0.0]])
 
     # Below min
-    assert get_adaptive_phimax(0.5, adapt_params, 0.5) == 1.0
+    assert get_adaptive_phimax(0.5, adaptive_smoothness, 0.5) == 1.0
     # Above max
-    assert get_adaptive_phimax(10.0, adapt_params, 0.5) == 0.0
+    assert get_adaptive_phimax(10.0, adaptive_smoothness, 0.5) == 0.0
     # On threshold
-    assert get_adaptive_phimax(2.0, adapt_params, 0.5) == 0.3
+    assert get_adaptive_phimax(2.0, adaptive_smoothness, 0.5) == 0.3
     # Interpolated
     # Between 1.0 and 2.0, mean is 1.5 -> (1.0 + 0.3)/2 = 0.65
-    assert np.allclose(get_adaptive_phimax(1.5, adapt_params, 0.5), 0.65)
+    assert np.allclose(get_adaptive_phimax(1.5, adaptive_smoothness, 0.5), 0.65)
 
 
-def test_refine_center() -> None:
+def test_interpolate_quadratic_feature_point() -> None:
     # Create a 3x3 with a peak at center
     frame = np.array([[0.0, 0.5, 0.0], [0.5, 1.0, 0.5], [0.0, 0.5, 0.0]])
     lat = np.array([10.0, 11.0, 12.0])
     lon = np.array([100.0, 101.0, 102.0])
 
-    rlat, rlon, rval = refine_center(frame, 1, 1, lat, lon)
+    rlat, rlon, rval = interpolate_quadratic_feature_point(frame, 1, 1, lat, lon)
     assert rlat == 11.0
     assert rlon == 101.0
     assert rval == 1.0
 
     # Peak shifted slightly
     frame = np.array([[0.0, 0.6, 0.0], [0.5, 1.0, 0.5], [0.0, 0.4, 0.0]])
-    rlat, rlon, rval = refine_center(frame, 1, 1, lat, lon)
+    rlat, rlon, rval = interpolate_quadratic_feature_point(frame, 1, 1, lat, lon)
     assert rlat < 11.0  # Peak is between 10 and 11
     assert rlon == 101.0
 

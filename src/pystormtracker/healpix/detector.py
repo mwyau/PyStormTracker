@@ -16,7 +16,7 @@ from .kernels import (
     _numba_get_healpix_centers,
     _numba_healpix_ccl,
     _numba_healpix_object_extrema,
-    refine_healpix_center,
+    interpolate_quadratic_healpix_feature_point,
 )
 
 
@@ -249,7 +249,7 @@ class HealpixDetector:
                         refined_lats[idx_i],
                         refined_lons[idx_i],
                         refined_vals[idx_i],
-                    ) = refine_healpix_center(
+                    ) = interpolate_quadratic_healpix_feature_point(
                         frame.values,
                         cell,
                         self._neighbor_table,

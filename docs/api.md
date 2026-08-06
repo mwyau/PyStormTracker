@@ -80,11 +80,7 @@ Domain value types remain available under `pystormtracker.models`:
 
 ### Time Support
 
-```{eval-rst}
-.. automodule:: pystormtracker.models.time
-   :members: TimeRange
-   :show-inheritance:
-```
+`TimeRange` is an internal detector/orchestration state type. It is not exported as public API.
 
 ### Storm Centers
 
@@ -126,7 +122,7 @@ Trackers accept preprocessing options in their constructors: `filter_lmin` and `
    :members:
 ```
 
-### Sub-grid Refinement
+### Quadratic Feature-point Interpolation
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.refinement

@@ -38,7 +38,7 @@ def test_hodges_detector_init(mock_open: MagicMock) -> None:
 def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
     # Create real xarray data for reliable behavior
     data: NDArray[np.float64] = np.ones((1, 7, 7)) * 1000
-    # Create a nice quadratic peak for sub-grid refinement
+    # Create a nice quadratic peak for feature-point interpolation
     # f(y,x) = 1000 - (y-3)^2 - (x-3.2)^2
     # Grid peak will be at (3,3), refined should be at (3, 3.2)
     for i in range(7):

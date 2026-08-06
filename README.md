@@ -19,7 +19,7 @@
 ## Features
 
 - **Vectorized, array-backed data model**: Stores track coordinates, times, identifiers, and variables in contiguous NumPy arrays. `Track` objects are views over this storage rather than independent collections of center objects.
-- **Numba JIT-compiled kernels**: Detection, Laplacian intensity, great-circle geometry, connected-component labeling (CCL), subgrid refinement, and Modified Greedy Exchange (MGE) kernels use cached, GIL-free Numba functions.
+- **Numba JIT-compiled kernels**: Detection, Laplacian intensity, great-circle geometry, connected-component labeling (CCL), quadratic feature-point interpolation, and Modified Greedy Exchange (MGE) kernels use cached, GIL-free Numba functions.
 - **Multiple Algorithms**:
   - **Simple**: Fast, local-extrema detection and deterministic nearest-neighbor linking.
   - **Hodges (TRACK)**: Thresholded object detection with connected-component labeling (CCL), spherical cost functions, adaptive constraints, and iterative Modified Greedy Exchange (MGE) linking based on TRACK. See the [Hodges implementation documentation](docs/hodges.md) and [spectral filtering accuracy](docs/spectral_accuracy.md).
@@ -41,7 +41,7 @@ The trackers apply the following stages:
 
 - **Preprocessing**: Optional spherical harmonic transform (SHT) filtering on global grids, discrete cosine transform (DCT) filtering on regional grids, Sardeshmukh-Hoskins spectral tapering, and regridding to polar stereographic or HEALPix coordinates. Full and reduced Gaussian grids are handled through `ducc0` geometry metadata.
 - **Detection**: The Simple tracker applies a sliding-window local-extrema filter and uses the discrete Laplacian magnitude to select among adjacent extrema. Hodges and HEALPix use thresholding, connected-component labeling, object filtering, and local-extrema detection.
-- **Subgrid Refinement**: Optional local quadratic surface fitting estimates a stationary point below the grid spacing. It is off by default for Simple and on by default for Hodges and HEALPix. On periodic global Hodges grids, a `RectSphereBivariateSpline` value is also evaluated at the quadratic center.
+- **Feature-point location**: Quadratic feature-point interpolation optionally estimates an off-grid feature location around a detected grid-point extremum. `SimpleTracker` uses `"grid"` by default; `HodgesTracker` and `HealpixTracker` use `"quadratic"` by default. On periodic global Hodges grids, a `RectSphereBivariateSpline` value is also evaluated at the quadratic center.
 - **Linking**: Simple uses deterministic nearest-neighbor linking with a vectorized great-circle distance matrix. Hodges and HEALPix use Modified Greedy Exchange with spherical displacement and smoothness constraints.
 
 ## Documentation
@@ -161,20 +161,20 @@ stormtracker convert -i tracks.trackjson -o explorer.html -f trackjson -F html
 
 Use `stormtracker <command> --help` for detailed argument lists. Key options for the `track` command include:
 
-| Argument                         | Short | Description                                                                                                    |
-| :------------------------------- | :---- | :------------------------------------------------------------------------------------------------------------- |
-| `--input`                        | `-i`  | Path to the input NetCDF/GRIB file.                                                                            |
-| `--variable`                     | `-v`  | Variable name to track (e.g., `msl`, `vo`).                                                                    |
-| `--output`                       | `-o`  | Path to the output track file.                                                                                 |
-| `--algorithm`                    | `-a`  | `simple` (default) or `hodges`.                                                                                |
-| `--format`                       | `-f`  | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically.  |
-| `--detection-mode`               | `-m`  | `auto` (default), `min`, or `max`; known aliases resolve automatically.                                        |
-| `--backend`                      | `-b`  | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple.                              |
-| `--workers`                      | `-w`  | Number of parallel workers.                                                                                    |
-| `--filter-lmin`, `--filter-lmax` |       | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged. |
-| `--taper-points`                 |       | Independent spatial taper width; zero disables tapering.                                                       |
-| `--nside`                        |       | Target HEALPix resolution; omitted values are derived from the source grid.                                    |
-| `--feature-point-method`         |       | Extrema feature point method: `grid` or `quadratic`. Off for simple (`grid`); on for Hodges (`quadratic`).     |
+| Argument                         | Short | Description                                                                                                                                                                                           |
+| :------------------------------- | :---- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input`                        | `-i`  | Path to the input NetCDF/GRIB file.                                                                                                                                                                   |
+| `--variable`                     | `-v`  | Variable name to track (e.g., `msl`, `vo`).                                                                                                                                                           |
+| `--output`                       | `-o`  | Path to the output track file.                                                                                                                                                                        |
+| `--algorithm`                    | `-a`  | `simple` (default) or `hodges`.                                                                                                                                                                       |
+| `--format`                       | `-f`  | Output format: `auto`, `imilast`, `hodges`, or `trackjson`; recognized extensions are inferred automatically.                                                                                         |
+| `--detection-mode`               | `-m`  | `auto` (default), `min`, or `max`; known aliases resolve automatically.                                                                                                                               |
+| `--backend`                      | `-b`  | `serial`, `dask`, or `mpi`. Dask and MPI tracking currently apply only to Simple.                                                                                                                     |
+| `--workers`                      | `-w`  | Number of parallel workers.                                                                                                                                                                           |
+| `--filter-lmin`, `--filter-lmax` |       | Optional spectral filter bounds. Supply both to apply a filter; omit both to leave the native field unchanged.                                                                                        |
+| `--taper-points`                 |       | Independent spatial taper width; zero disables tapering.                                                                                                                                              |
+| `--nside`                        |       | Target HEALPix resolution; omitted values are derived from the source grid.                                                                                                                           |
+| `--feature-point-method`         |       | Feature-point location method. `grid` uses the detected grid-point extremum; `quadratic` uses local quadratic feature-point interpolation. Default `grid` for Simple, `quadratic` for Hodges/HEALPix. |
 
 ### Python API
 

@@ -13,7 +13,7 @@ from ..models import constants as model_constants
 from ..models.time import TimeInput, TimeRange, is_missing_time, select_time_range
 from ..models.tracker import FeaturePointMethod, RawDetectionStep
 from ..models.units import ResolvedDetectionMode
-from ..preprocessing.refinement import refine_center
+from ..preprocessing.refinement import interpolate_quadratic_feature_point
 from .kernels import (
     _numba_extrema_filter,
     _numba_get_centers,
@@ -338,7 +338,7 @@ class SimpleDetector:
                 refined_lons = np.empty(len(r_idx), dtype=np.float64)
                 refined_vals = np.empty(len(r_idx), dtype=np.float64)
                 for i in range(len(r_idx)):
-                    refined_lats[i], refined_lons[i], refined_vals[i] = refine_center(
+                    result = interpolate_quadratic_feature_point(
                         frame,
                         r_idx[i],
                         c_idx[i],
@@ -346,6 +346,7 @@ class SimpleDetector:
                         lon,
                         periodic_x=periodic_x,
                     )
+                    refined_lats[i], refined_lons[i], refined_vals[i] = result
                 raw_results.append(
                     RawDetectionStep(
                         time_val,

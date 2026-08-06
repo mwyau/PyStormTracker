@@ -267,13 +267,13 @@ def preprocess_tracking_data(
                     hemisphere=hemisphere,
                     transform_lmax=transform_lmax,
                     lat_reverse=lat_reverse,
-                    resolution=stereo_grid_spacing_km,
+                    stereo_grid_spacing_km=stereo_grid_spacing_km,
                     extent=polar_extent,
                 )
             )
         parameters = {
             "projection": projection,
-            "resolution": stereo_grid_spacing_km,
+            "stereo_grid_spacing_km": stereo_grid_spacing_km,
             "transform_lmax": transform_lmax,
         }
         if extent is not None:
@@ -282,7 +282,7 @@ def preprocess_tracking_data(
     result = xr.concat(frames, dim=data[time_dim])
     result.name = data.name
     result.attrs = dict(data.attrs)
-    result.attrs["map_proj"] = projection
+    result.attrs["projection"] = projection
     if projection == "healpix":
         result.attrs["grid_type"] = "healpix"
         result.attrs["nside"] = target_nside

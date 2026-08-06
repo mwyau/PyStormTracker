@@ -50,6 +50,7 @@ class HodgesTracker(Tracker):
         w2: float = constants.W2_DEFAULT,
         dmax: float = constants.DMAX_DEFAULT,
         phimax: float = constants.PHIMAX_DEFAULT,
+        max_iterations: int = constants.MAX_ITERATIONS_DEFAULT,
         min_lifetime_steps: int = constants.LIFETIME_DEFAULT,
         max_missing_steps: int = constants.MISSING_DEFAULT,
         min_grid_points: int = constants.MIN_POINTS_DEFAULT,
@@ -74,6 +75,8 @@ class HodgesTracker(Tracker):
             raise ValueError("dmax must be positive")
         if phimax < 0.0:
             raise ValueError("phimax must be nonnegative")
+        if max_iterations <= 0:
+            raise ValueError("max_iterations must be positive")
         if min_lifetime_steps <= 0:
             raise ValueError("min_lifetime_steps must be positive")
         if max_missing_steps < 0:
@@ -104,6 +107,7 @@ class HodgesTracker(Tracker):
         self.w2 = w2
         self.dmax = dmax
         self.phimax = phimax
+        self.max_iterations = max_iterations
         self.min_lifetime_steps = min_lifetime_steps
         self.max_missing_steps = max_missing_steps
         self.projection = projection
@@ -130,7 +134,7 @@ class HodgesTracker(Tracker):
         else:
             self.adaptive_smoothness = adaptive_smoothness
 
-    def preprocess_standard_track(
+    def _preprocess_standard_track(
         self,
         data: xr.DataArray,
         filter_lmin: int | None = None,
@@ -187,7 +191,7 @@ class HodgesTracker(Tracker):
 
         bounds = spatial_bounds_from_xarray(data_xr)
 
-        data_xr, processing = self.preprocess_standard_track(
+        data_xr, processing = self._preprocess_standard_track(
             data_xr,
             filter_lmin=self.filter_lmin,
             filter_lmax=self.filter_lmax,
@@ -287,11 +291,11 @@ class HodgesTracker(Tracker):
             feature_point_method=self.feature_point_method,
         )
 
-        map_proj = data.attrs.get("map_proj", "global")
-        if map_proj in ("nh_stereo", "sh_stereo"):
+        projection = data.attrs.get("projection", "global")
+        if projection in ("nh_stereo", "sh_stereo"):
             from ..models.geo import stereo_to_latlon
 
-            hemi = 1 if map_proj == "nh_stereo" else -1
+            hemi = 1 if projection == "nh_stereo" else -1
             converted_detections: list[RawDetectionStep] = []
             for dt, lats, lons, values in detections:
                 new_lats = np.zeros_like(lats)
@@ -328,6 +332,7 @@ class HodgesTracker(Tracker):
             w2=self.w2,
             dmax=self.dmax,
             phimax=self.phimax,
+            max_iterations=self.max_iterations,
             max_missing_steps=self.max_missing_steps,
             dmax_zones=self.dmax_zones,
             adaptive_smoothness=self.adaptive_smoothness,

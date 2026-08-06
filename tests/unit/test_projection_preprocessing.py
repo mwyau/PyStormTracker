@@ -35,7 +35,7 @@ def test_global_auto_filter_uses_longitude_for_sht_selection(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         sht_filter.return_value.filter.return_value = global_data
-        tracker.preprocess_standard_track(global_data, filter_lmin=0, filter_lmax=7)
+        tracker._preprocess_standard_track(global_data, filter_lmin=0, filter_lmax=7)
 
     sht_filter.assert_called_once_with(lmin=0, lmax=7)
     dct_filter.assert_not_called()
@@ -49,7 +49,7 @@ def test_omitted_filter_bounds_leave_native_data_unchanged(
         patch("pystormtracker.preprocessing.tracking.SHTFilter") as sht_filter,
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
-        processed, steps = tracker.preprocess_standard_track(global_data)
+        processed, steps = tracker._preprocess_standard_track(global_data)
 
     assert processed.identical(global_data)
     assert steps == ()
@@ -89,7 +89,7 @@ def test_coarse_global_auto_filter_uses_sht(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         sht_filter.return_value.filter.return_value = coarse_global
-        tracker.preprocess_standard_track(coarse_global, filter_lmin=0, filter_lmax=2)
+        tracker._preprocess_standard_track(coarse_global, filter_lmin=0, filter_lmax=2)
 
     sht_filter.assert_called_once_with(lmin=0, lmax=2)
     dct_filter.assert_not_called()
@@ -105,30 +105,30 @@ def test_regional_auto_filter_uses_dct(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         dct_filter.return_value.filter.return_value = regional
-        tracker.preprocess_standard_track(regional, filter_lmin=0, filter_lmax=7)
+        tracker._preprocess_standard_track(regional, filter_lmin=0, filter_lmax=7)
 
     dct_filter.assert_called_once_with(lmin=0, lmax=7)
     sht_filter.assert_not_called()
 
 
 @pytest.mark.parametrize("tracker", [SimpleTracker(), HodgesTracker()])
-@pytest.mark.parametrize("map_proj", ["nh_stereo", "sh_stereo"])
+@pytest.mark.parametrize("projection", ["nh_stereo", "sh_stereo"])
 def test_polar_preprocessing_uses_requested_lmax(
     tracker: SimpleTracker | HodgesTracker,
-    map_proj: Literal["nh_stereo", "sh_stereo"],
+    projection: Literal["nh_stereo", "sh_stereo"],
     global_data: xr.DataArray,
 ) -> None:
-    processed, _steps = tracker.preprocess_standard_track(
+    processed, _steps = tracker._preprocess_standard_track(
         global_data,
         filter_lmin=0,
         filter_lmax=7,
-        projection=map_proj,
+        projection=projection,
         extent=(-100.0, 100.0, -100.0, 100.0),
         stereo_grid_spacing_km=100.0,
     )
 
     assert processed.dims == ("time", "y", "x")
-    assert processed.attrs["map_proj"] == map_proj
+    assert processed.attrs["projection"] == projection
     assert _steps[-1].parameters["transform_lmax"] == 7
 
 
@@ -144,7 +144,7 @@ def test_healpix_regrid_without_filter_records_transform_only() -> None:
         name="msl",
     )
 
-    processed, steps = SimpleTracker().preprocess_standard_track(
+    processed, steps = SimpleTracker()._preprocess_standard_track(
         data, projection="healpix", nside=4
     )
 

@@ -162,7 +162,7 @@ class SimpleTracker(Tracker):
         self.workers = workers
         self.chunk_size = chunk_size
 
-    def preprocess_standard_track(
+    def _preprocess_standard_track(
         self,
         data: xr.DataArray,
         filter_lmin: int | None = None,
@@ -212,7 +212,7 @@ class SimpleTracker(Tracker):
         )
         bounds = spatial_bounds_from_xarray(data_xr)
 
-        data_xr, processing = self.preprocess_standard_track(
+        data_xr, processing = self._preprocess_standard_track(
             data_xr,
             filter_lmin=self.filter_lmin,
             filter_lmax=self.filter_lmax,

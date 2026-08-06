@@ -14,9 +14,9 @@ from pystormtracker.simple.tracker import SimpleTracker
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("map_proj", ["nh_stereo", "sh_stereo"])
+@pytest.mark.parametrize("projection", ["nh_stereo", "sh_stereo"])
 def test_simple_stereographic_dask_matches_serial(
-    map_proj: Literal["nh_stereo", "sh_stereo"], tmp_path: Path
+    projection: Literal["nh_stereo", "sh_stereo"], tmp_path: Path
 ) -> None:
     source = (
         Path(__file__).parents[1] / "data" / "era5" / "era5_msl_2025120100_2.5x2.5.nc"
@@ -36,12 +36,12 @@ def test_simple_stereographic_dask_matches_serial(
     def run(
         input_path: Path,
         *,
-        map_proj: Projection,
+        projection: Projection,
         backend: Backend,
         n_workers: int | None = None,
     ) -> Tracks:
         tracker = SimpleTracker(
-            projection=map_proj,
+            projection=projection,
             stereo_grid_spacing_km=300.0,
             extent=(-3000.0, 3000.0, -3000.0, 3000.0),
             feature_point_method="quadratic",
@@ -56,12 +56,12 @@ def test_simple_stereographic_dask_matches_serial(
 
     serial = run(
         input_path,
-        map_proj=map_proj,
+        projection=projection,
         backend="serial",
     )
     dask = run(
         input_path,
-        map_proj=map_proj,
+        projection=projection,
         backend="dask",
         n_workers=2,
     )

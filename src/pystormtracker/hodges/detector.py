@@ -12,7 +12,7 @@ from ..models import constants as model_constants
 from ..models.time import TimeInput, TimeRange, select_time_range
 from ..models.tracker import FeaturePointMethod, RawDetectionStep
 from ..models.units import ResolvedDetectionMode
-from ..preprocessing.refinement import refine_center
+from ..preprocessing.refinement import interpolate_quadratic_feature_point
 from .kernels import (
     _numba_ccl,
     _numba_get_centers,
@@ -250,7 +250,7 @@ class HodgesDetector:
             )
             raw_areas, fitted_areas, majors, minors, orientations = props
 
-            # 4. Extract centers and perform sub-grid refinement.
+            # 4. Extract centers and perform quadratic feature-point interpolation.
             r_idx, c_idx, raw_vals = _numba_get_centers(extrema, frame)
 
             n_feats = len(r_idx)
@@ -282,7 +282,7 @@ class HodgesDetector:
 
             for i in range(n_feats):
                 if use_quadratic:
-                    rlat, rlon, rval = refine_center(
+                    rlat, rlon, rval = interpolate_quadratic_feature_point(
                         frame,
                         r_idx[i],
                         c_idx[i],
@@ -301,7 +301,7 @@ class HodgesDetector:
                 # B-spline fit (Global Spherical Spline)
                 if use_quadratic and global_spline is not None:
                     try:
-                        # evaluate at sub-grid center (convert to colatitude/rad)
+                        # evaluate at quadratic feature-point center
                         bspline_vals[i] = float(
                             global_spline(np.deg2rad(90.0 - rlat), np.deg2rad(rlon))[
                                 0, 0

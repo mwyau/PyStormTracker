@@ -38,12 +38,12 @@ def test_healpix_preprocessing_regrids_regular_data() -> None:
         name="msl",
     )
 
-    processed, steps = HealpixTracker().preprocess_standard_track(
+    processed, steps = HealpixTracker()._preprocess_standard_track(
         data, filter_lmin=0, filter_lmax=3
     )
 
     assert processed.dims == ("time", "cell")
     assert processed.shape == (1, 192)
-    assert processed.attrs["map_proj"] == "healpix"
+    assert processed.attrs["projection"] == "healpix"
     assert any(step.operation == "regrid" for step in steps)
     assert processed.attrs["nside"] == 4

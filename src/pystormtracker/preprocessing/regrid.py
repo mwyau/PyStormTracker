@@ -245,7 +245,7 @@ class SpectralRegridder:
         data: xr.DataArray,
         hemisphere: Literal["nh", "sh"] = "nh",
         extent: MapExtent = (-13000.0, 13000.0, -13000.0, 13000.0),
-        resolution: float = 100.0,
+        stereo_grid_spacing_km: float = 100.0,
         lon_0: float = 0.0,
         transform_lmax: int | None = None,
         in_geometry: Literal["CC", "GL"] = "CC",
@@ -289,8 +289,8 @@ class SpectralRegridder:
         # We need the number of points. To match extent precisely, use linspace
         # or calculate n_points based on extent and resolution.
         # Let's use linspace for robustness if extent does not perfectly divide.
-        nx = int(np.round((xmax - xmin) / resolution)) + 1
-        ny = int(np.round((ymax - ymin) / resolution)) + 1
+        nx = int(np.round((xmax - xmin) / stereo_grid_spacing_km)) + 1
+        ny = int(np.round((ymax - ymin) / stereo_grid_spacing_km)) + 1
 
         x = np.linspace(xmin, xmax, nx)
         y = np.linspace(ymin, ymax, ny)
@@ -333,7 +333,7 @@ class SpectralRegridder:
             name=data.name,
             attrs={
                 "projection": f"{hemisphere}_stereo",
-                "resolution_km": resolution,
+                "stereo_grid_spacing_km": stereo_grid_spacing_km,
                 "lmax": lmax,
             },
         )
