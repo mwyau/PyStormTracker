@@ -147,7 +147,7 @@ jobs:
 
       - name: Attest edge on Docker Hub
         if: inputs.target == 'edge'
-        uses: actions/attest@v4.2.1
+        uses: actions/attest@v4.2.2
         with:
           subject-name: ${{ env.PUBLIC_DOCKER_IMAGE }}
           subject-digest: ${{ steps.edge-digest.outputs.digest }}
@@ -160,7 +160,7 @@ jobs:
 
       - name: Attest release on Docker Hub
         if: inputs.target == 'release'
-        uses: actions/attest@v4.2.1
+        uses: actions/attest@v4.2.2
         with:
           subject-name: ${{ env.PUBLIC_DOCKER_IMAGE }}
           subject-digest: ${{ steps.release-digest.outputs.digest }}
