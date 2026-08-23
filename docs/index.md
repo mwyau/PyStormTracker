@@ -16,16 +16,8 @@ API Reference <api>
 Architecture <architecture>
 TrackJSON v1.0 <trackjson>
 Hodges (TRACK) Implementation <hodges>
-Spectral Accuracy <spectral_accuracy>
 HEALPix Support <healpix>
 Benchmark <benchmark>
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Visualization
-
-Interactive Map <interactive>
 ```
 
 ```{toctree}
@@ -34,6 +26,8 @@ Interactive Map <interactive>
 
 Changelog <changelog>
 Roadmap <roadmap>
+Testing Guide <development/testing>
+TRACK 1.5.4 Source Map <development/track-1.5.4-source-map>
 ```
 
 ## Resources

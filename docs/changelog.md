@@ -7,6 +7,9 @@
 - Replaced the procedural tracking API with configured tracker classes and consolidated public models under `pystormtracker.models`.
 - Renamed tracker, preprocessing, and CLI arguments and replaced subgrid-refinement terminology with feature-point location methods.
 - Updated Hodges MGE directional scheduling and iteration-limit handling.
+- Split Hodges execution into explicit `frame_workers`, `sht_threads`, and
+  `mge_workers` controls with staged Dask frame detection and MGE linking;
+  the former Hodges `workers` parameter and CLI option are removed.
 
 ### Testing and CI
 
@@ -67,7 +70,7 @@
 - Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure. The tracking command is implemented by `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is exported.
 - Added algorithm-dependent tri-state filtering and subgrid-refinement controls. Omitted values use the direct tracker defaults: disabled for Simple and enabled for Hodges and HEALPix.
 - Added shared local quadratic subgrid refinement for regular and projected grids and local quadratic refinement on the HEALPix neighbor graph.
-- Added one spherical `RectSphereBivariateSpline` fit per periodic global Hodges frame and a `bspline_val` diagnostic in raw detections at each quadratic center. The spline does not currently optimize the center coordinate, and the current linker does not propagate the diagnostic to final tracks.
+- Added `track_bspline` as the default Hodges feature-point method for eligible periodic global latitude-longitude frames. It fits one spherical `RectSphereBivariateSpline` per frame and refines centers with a source-mapped derivative search; quadratic and grid-point methods remain explicit alternatives. The current linker does not propagate refinement diagnostics to final tracks.
 - Added polar stereographic and HEALPix preprocessing with explicit `lmax` propagation, configurable projected extent and resolution, and corrected band-pass handling.
 - Added DCT filtering for regional grids, full-Gaussian geometry handling, and reduced-Gaussian metadata, pseudo-analysis, filtering, and regridding paths.
 - Corrected periodic-global and nonperiodic regional or projected boundary handling.

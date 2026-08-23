@@ -240,18 +240,10 @@ uv run python scripts/generate_trackjson_schema.py --check
 The writer constructs typed wire objects directly and uses
 `encode_trackjson()`. There is one reusable module-level encoder and decoder.
 
-## Committed integration test data
+## Integration test data
 
-The full-size integration test dataset is preserved at
-`tests/data/tracks/era5_msl_2025-2026_djf_2.5x2.5_hodges.trackjson`. To
-regenerate it from the IMILAST test data, run this command locally;
-CI does not regenerate it:
-
-```bash
-uv run --no-sync python -c 'from pathlib import Path; from pystormtracker.io.imilast import read_imilast; from pystormtracker.io.trackjson import write_trackjson; d=Path("tests/data/tracks"); write_trackjson(read_imilast(d/"era5_msl_2025-2026_djf_2.5x2.5_hodges_imilast.txt"), d/"era5_msl_2025-2026_djf_2.5x2.5_hodges.trackjson", include_stats=True)'
-```
-
-The encoder writes one compact JSON line with no trailing newline. The
-integration test independently decodes the committed bytes with `msgspec`,
-validates the packaged schema, performs semantic validation and
-`verify_stats=True`, and compares canonical arrays with the IMILAST source.
+Integration data are maintained separately from the software checkout. The
+current checkout intentionally retains one December 2025, 2.5-degree ERA5 MSL
+input at `tests/data/era5/era5_msl_2025-12_2.5x2.5.nc`; it does not retain a
+trajectory sample. TrackJSON unit tests construct small synthetic `Tracks`
+values and exercise the wire contract without external data.

@@ -4,7 +4,18 @@ This document describes spectral regridding to HEALPix and object detection on a
 
 ## 1. Overview
 
-HEALPix represents a global field as equal-area, iso-latitude pixels with a neighbor graph. The one-dimensional topology avoids the pole singularity and latitude-dependent cell areas of a regular latitude-longitude mesh. PyStormTracker can regrid a regular or reduced-Gaussian field to HEALPix and run object detection on that graph.
+HEALPix represents a global field as equal-area, iso-latitude pixels with a
+neighbor graph. The underlying grid is described by Górski et al. (2005),
+“HEALPix: A Framework for High-Resolution Discretization and Fast Analysis of
+Data Distributed on the Sphere,” *The Astrophysical Journal*, 622(2),
+759--771, https://doi.org/10.1086/427976. The one-dimensional topology avoids
+the pole singularity and latitude-dependent cell areas of a regular
+latitude-longitude mesh.
+
+PyStormTracker's threshold -> connected-object -> local-feature -> refinement
+pipeline is a separate adaptation of Hodges-style detection to HEALPix
+topology. The HEALPix paper establishes the grid, not this detector or its
+TRACK compatibility behavior.
 
 ## 2. Spectral Regridding (`SpectralRegridder`)
 
@@ -19,7 +30,9 @@ HEALPix represents a global field as equal-area, iso-latitude pixels with a neig
 
 ## 3. HEALPix Tracking Algorithm (`HealpixTracker`)
 
-`HealpixTracker` implements the `Tracker` protocol for HEALPix pixel arrays. Tracking currently supports the serial backend.
+`HealpixTracker` implements the `Tracker` protocol for HEALPix pixel arrays.
+Serial, threaded Dask, and MPI backends are supported; Dask distributes frame
+detection and segment MGE tasks before deterministic segment splicing.
 
 ### 3.1. 1D Graph Topology
 
@@ -30,39 +43,61 @@ Unlike 2D meshes where neighbors are found via index offsets, HEALPix neighbors 
 
 ### 3.2. Connected Component Labeling (CCL)
 
-The tracker groups adjacent pixels into objects with the Numba kernel `_numba_healpix_ccl`.
+The tracker groups adjacent pixels into objects with the Numba kernel `_label_healpix_connected_components`.
 
 - **Algorithm**: Iterative label propagation over the 1D graph until convergence.
-- **Constraints**: Supports `intensity_threshold` filtering and `min_grid_points` object-size constraints.
+- **Constraints**: Supports `object_threshold` filtering and
+  `min_object_grid_points` object-size constraints. The default MSL object
+  threshold is `0.0` and the default relative-vorticity threshold is
+  `1e-5`; these defaults are owned by the HEALPix package.
 
-### 3.3. Quadratic Feature-point Interpolation
+### 3.3. Quadratic Feature-point Refinement
 
-Optional `interpolate_quadratic_healpix_feature_point` applies these steps:
+HEALPix quadratic refinement uses the candidate pixel's neighbor ring as a
+fixed, candidate-local domain and shares the intrinsic spherical-quadratic
+refinement core with the regular-grid path:
 
-1. **Local Projection**: For each detected extremum at pixel $P$, it projects $P$ and its 8 neighbors onto a local **equirectangular plane** centered at $P$.
-1. **Numerical Stability**: Coordinate scaling/normalization is applied to the local projected coordinates to prevent matrix ill-conditioning when solving the least-squares system.
-1. **Surface Fitting**: An unconstrained least-squares fit is performed to find the coefficients of a local quadratic surface: $z = Ax^2 + By^2 + Cxy + Dx + Ey + F$.
-1. **Analytical Stationary Point**: The candidate offset $(dx, dy)$ is found by solving the system where partial derivatives $\\frac{\\partial z}{\\partial x} = 0$ and $\\frac{\\partial z}{\\partial y} = 0$.
-1. **Inverse Projection**: The refined coordinates are projected back to standard Latitude and Longitude.
+1. It maps valid neighbor centers to the tangent plane at the detected center
+   with the exact spherical logarithm map. Missing topology slots are ignored,
+   while fewer than five valid finite samples fail explicitly.
+1. It fits a center-anchored five-parameter quadratic in normalized tangent
+   coordinates with SVD least squares, checks rank/conditioning, and requires
+   the curvature sign appropriate to the detected minimum or maximum.
+1. It accepts only stationary points inside the fixed local tangent box derived
+   from the candidate's neighbor ring, maps accepted points back with the exact
+   sphere exponential map, and returns the detected center on failure.
+
+The refinement records explicit internal failure statuses for invalid
+neighborhoods, singular or ill-conditioned fits, wrong curvature, and
+outside-locality solutions. Longitude wrapping and signed versus unsigned
+coordinate representations therefore do not change the physical result. The
+intrinsic spherical quadratic combination is a PyStormTracker extension built
+from established sphere log/exp maps and local least-squares fitting; it is not
+a TRACK algorithm.
 
 ## 4. Engineering Standards
 
 - **Dependencies**: HEALPix operations use the existing `ducc0` dependency; `healpy` is not required.
-- **Numba JIT**: Graph traversal and local quadratic fitting kernels are compiled with `cache=True` and `nogil=True`.
+- **Numba JIT**: Graph traversal and connected-component kernels are compiled
+  with `cache=True` and `nogil=True`; intrinsic quadratic fitting is vectorized
+  through the shared spherical refinement core.
 - **Defaults**: HEALPix tracking does not apply optional spectral filtering
   unless both `lmin` and `lmax` are supplied. `taper_points` is independent.
   Regridding derives a finite transform bandwidth from the source grid and
   target `nside`; that bandwidth is not an optional filter. Quadratic
-  feature-point interpolation remains enabled by default. The `min_lifetime`
-  constructor value is currently stored but not applied during HEALPix linking.
-- **Tracker protocol and output**: `HealpixTracker` implements the common `Tracker` protocol and returns the array-backed `Tracks` model. Dask and MPI tracking are not implemented.
+  feature-point interpolation remains enabled by default. The
+  `min_track_points` constructor value is applied after linking.
+- **Tracker protocol and output**: `HealpixTracker` implements the common
+  `Tracker` protocol and returns the array-backed `Tracks` model. Its spectral
+  taper default is `0.1`; this differs from the Hodges tracker default of `1.0`.
 
 ## 5. Usage Example
 
 ```python
 import xarray as xr
 
-from pystormtracker import HealpixTracker, SpectralRegridder
+from pystormtracker import HealpixTracker
+from pystormtracker.preprocessing import SpectralRegridder
 
 # Regrid one ERA5 frame (CC) to HEALPix (Nside=64)
 ds = xr.open_dataset("data.nc")
@@ -72,7 +107,7 @@ regridder = SpectralRegridder()
 da_hp = regridder.to_healpix(frame, nside=64)
 
 # Track the first eight time steps after automatic HEALPix conversion
-tracker = HealpixTracker(filter_lmin=5, filter_lmax=42)
+tracker = HealpixTracker(lmin=5, lmax=42)
 tracks = tracker.track(
     data=field.isel({field.dims[0]: slice(0, 8)}),
     variable="msl",
@@ -82,7 +117,7 @@ tracks = tracker.track(
 
 The first part demonstrates one-frame regridding; the second passes a regular
 three-dimensional latitude-longitude field to `HealpixTracker.track()`, which
-requests T5-42 filtering and HEALPix conversion. If `filter_lmin` and
-`filter_lmax` are omitted, only the transform needed for HEALPix conversion is
+requests T5-42 filtering and HEALPix conversion. If `lmin` and `lmax` are
+omitted, only the transform needed for HEALPix conversion is
 performed. For an already regridded time-by-cell field, preprocessing must be
 performed before tracking.

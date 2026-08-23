@@ -23,7 +23,9 @@ Status terms are used as follows:
 
 ### 1.3 Manage memory pressure by chunking — 🚧 In progress
 
-Simple Dask and MPI partition detection work and gather detections before one linking pass. Hodges can partition detection into serial time chunks and also performs one linking pass after gathering. Several preprocessing paths still load complete selected arrays into memory.
+Simple, Hodges, and HEALPix partition detection work and gather or splice
+results before deterministic linking. Several preprocessing paths still load
+complete selected arrays into memory.
 
 ### 1.4 Array-backed data model — ✅ Implemented
 
@@ -41,15 +43,18 @@ No JAX or other GPU execution backend is present in the current package dependen
 
 ### 2.1 Performance regression testing
 
-Historical benchmark results are documented, but CI does not enforce performance limits. A suitable CI benchmark requires a deterministic test dataset, repeated measurements, and criteria that account for timing variability.
+The generic benchmark runner is available, but CI does not enforce performance
+limits. A suitable CI benchmark requires a deterministic test dataset, repeated
+measurements, and criteria that account for timing variability.
 
-### 2.2 SHTns comparison benchmark
+### 2.2 External reference-data comparisons
 
-**Description:** Restore a standalone spherical harmonic transform benchmark for reproducible accuracy and timing comparisons between SHTns and `ducc0`. SHTns is not a production transform backend or package dependency.
-
-**Progress:** Historical comparison results remain in `docs/spectral_accuracy.md`. The executable comparison harness has not been restored.
-
-**Verification:** Both implementations should be run on the same versioned scalar-filter and kinematic-derivative fields. The result must record grid geometry, spectral truncation, normalization, compiler and library versions, thread count, hardware, error metrics, and timings.
+Broader NCL/Spherepack field comparisons and trajectory comparisons require the
+exact versioned inputs and outputs owned by `PyStormTracker-Data`; they remain
+external-data cases until the pinned Data tag and assets are available. The main checkout does retain four
+small, one-frame NCL spectral outputs for the committed December MSL frame.
+Those bounded numerical-parity cases do not substitute December data for an
+external trajectory contract.
 
 ### 2.3 Dependency audit
 
@@ -57,7 +62,10 @@ Add a scheduled CI job using `uv sync --resolution lowest-direct` and the releva
 
 ### 2.4 Tiered testing — ✅ Implemented
 
-Unit tests run by default. Integration tests require `--run-integration`; slow regression and full-duration backend-parity cases additionally require `--run-slow`. `--run-all` disables these collection filters.
+Unit tests run by default from `tests/unit`. Integration and parity tests are
+selected explicitly by directory; `slow` selects runtime cost and
+`data` selects external contracts. Full-duration cases are
+marked `slow` and are not part of the normal development suite.
 
 ## 3. Architecture
 
@@ -67,7 +75,11 @@ Spectral filtering and kinematic calculations use `xarray.apply_ufunc` in applic
 
 ### 3.2 Distributed backends — 🚧 In progress
 
-Simple supports serial, Dask, and MPI detection with Gather-then-Link orchestration. Hodges and HEALPix are serial-only and reject unsupported backend selections. Hodges applies `min_lifetime` after linking. HEALPix currently stores the same constructor value without applying lifetime pruning.
+Simple, Hodges, and HEALPix support serial, threaded Dask, and MPI execution
+paths. Simple gathers frame detections before one linking pass; Hodges and
+HEALPix distribute frame detection and MGE segment tasks, then splice
+deterministic segment results. Hodges and HEALPix apply `min_track_points`
+after linking. Broader large-case parallel equality coverage remains planned.
 
 ### 3.3 CLI and tracker protocol — ✅ Implemented
 
@@ -89,23 +101,39 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 ## 5. Scientific and technical feature roadmap
 
-### 5.1 B-spline detection and smoothing — 🚧 In progress
+### 5.1 B-spline detection and smoothing — ✅ Implemented for the supported configuration
 
-**Description:** Off-grid detection using a global spherical B-spline and steepest-descent optimization can provide smoother center coordinates, particularly on lower-resolution grids such as CMIP output.
+**Description:** Off-grid detection using a global spherical B-spline and
+derivative-based local optimization can provide smoother center coordinates,
+particularly on lower-resolution grids such as CMIP output.
 
 **TRACK references:** `src/spline_smooth.c`; Dierckx routines in `lib/src/`, including `sphery.f` and `smoopy.f`.
 
-**Progress:** A `RectSphereBivariateSpline` is fitted once for each periodic global Hodges frame. Center coordinates are obtained from the local $3\\times3$ quadratic stationary-point fit. The spherical spline is evaluated at that quadratic coordinate and returned as `bspline_val` in the raw detection dictionary; it does not currently determine the center coordinate. The current Hodges linker retains only the primary tracked variable in the final `Tracks` object.
+**Progress:** `feature_refinement="spherical_bspline"` now fits one periodic
+global `RectSphereBivariateSpline` per Hodges frame and uses its analytical
+first derivatives to determine the center coordinate. `feature_refinement="bspline"`
+implements Dierckx SMOOPY `RectBivariateSpline` with native TRACK GDFP optimization, boundary
+restarts, and duplicate suppression. The `bspline_feature_points`
+source reference case covers synthetic extrema, including seam and high-latitude
+cases, against TRACK's direct `sphery`/GDFP path. The Hodges linker preserves
+the primary variable, raw grid value, and documented numeric object diagnostics
+in final `Tracks`; refinement status remains detector-level diagnostics.
 
-**Remaining work:** Implement direct optimization on the spherical B-spline surface and the corresponding TRACK smoothing behavior. Propagate selected refinement diagnostics through linking when they are intended as public trajectory variables.
+**Known differences:** TRACK's smoothing and polar-continuity choices are
+interactive; PyStormTracker explicitly supports interpolating (`0`) smoothing
+without added polar constraints. Numeric object diagnostics are preserved in
+final tracks, while string refinement status remains detector-level
+diagnostics rather than a trajectory variable.
 
-**Verification:** Compare optimized coordinates, values, and resulting trajectories with TRACK after center optimization is implemented.
+**Verification:** The direct source reference case compares optimized coordinates
+and values. Real-frame and trajectory probes are deferred with the exact
+external input contract; neither is a field-level spectral-filter comparison.
 
 ### 5.2 Regional model support with the discrete cosine transform — 🚧 In progress
 
 **Description:** Support tracking on limited-area model fields, including WRF output, with discrete cosine transform (DCT) spectral filtering and nonperiodic domain boundaries.
 
-**TRACK references:** `src/track.c`, `src/statspl.F`.
+**TRACK references:** `src/track.c`, `src/dfct.c` (discrete cosine transform), `src/limited_area_filter.c`.
 
 **Relevant paper:** **Denis, B., J. Côté, and R. Laprise**, 2002: Spectral Decomposition of Two-Dimensional Atmospheric Fields on Limited-Area Domains Using the Discrete Cosine Transform (DCT). *Mon. Wea. Rev.*, **130**, 1812–1829, [doi:10.1175/1520-0493(2002)130\<1812:SDOTDA>2.0.CO;2](https://doi.org/10.1175/1520-0493%282002%29130%3C1812%3ASDOTDA%3E2.0.CO%3B2).
 
@@ -119,7 +147,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Relevant paper:** **Sardeshmukh, P. D., and B. I. Hoskins**, 1984: Spatial Smoothing on the Sphere. *Mon. Wea. Rev.*, **112**, 2524–2529, [doi:10.1175/1520-0493(1984)112\<2524:SSOTS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281984%29112%3C2524%3ASSOTS%3E2.0.CO%3B2).
 
-**TRACK references:** `src/time_avg.c`, `src/spec_filt.c`.
+**TRACK references:** `src/spectral_filter.c` (filter kernel with Hoskins taper), and `src/spec_filt.c` (interactive wrapper).
 
 **Progress:** Spherical harmonic and DCT coefficients use a configurable high-wave-number exponential taper. `TaperFilter` is a separate spatial boundary taper.
 
@@ -127,19 +155,19 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 ### 5.4 Postprocessing track metrics — ✅ Implemented
 
-**Description:** Compute cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA) on a two-dimensional latitude-longitude grid.
+**Description:** Compute established cyclone amplitude, cyclone frequency, and track frequency statistics, ACA following Guo et al. (2017), and ATA introduced by Yau and Chang (2020) on a two-dimensional latitude-longitude grid. ATA now resamples each packed track to hourly values by default using local coordinate-linear latitude, shortest-wrapped longitude, and linear amplitude interpolation. The explicit `linear_pchip` PyStormTracker extension uses the same position interpolation with shape-preserving PCHIP amplitude interpolation.
 
-**Relevant paper:** **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
+**Relevant papers:** **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1), for ATA and the evaluation framework; Guo, Shinoda, Lin, and Chang (2017), “Variations of Northern Hemisphere Storm Track and Extratropical Cyclone Activity Associated with the Madden--Julian Oscillation,” *Journal of Climate*, 30(13), 4799--4818, https://doi.org/10.1175/JCLI-D-16-0513.1, for the ACA lineage.
 
-**Progress:** `metrics.tracks.compute_track_metrics` supports monthly or aggregate output and constant, Fisher, Cressman, linear, and quadratic spatial weighting.
+**Progress:** `metrics.lagrangian.compute_track_metrics` supports monthly or aggregate output, constant, Fisher, Cressman, linear, and quadratic spatial weighting, and the two ATA interpolation modes `linear` and `linear_pchip`. The published paper specifies linear temporal interpolation of track positions but does not specify its coordinate geometry; the default is documented as the closest literal/simple implementation rather than as the uniquely implied geometry. PCHIP uses SciPy's `PchipInterpolator` implementation and is not attributed to Yau and Chang.
 
-**Verification:** Lagrangian metric and weighting unit tests cover the implemented estimators.
+**Verification:** Lagrangian metric and weighting unit tests cover the implemented estimators and ATA interpolation cadence, knot preservation, fast-track encounter regression, antimeridian invariance, identical position interpolation between modes, and PCHIP shape preservation. A continuous cap/segment ATA formulation remains separate future work and is not part of the current implementation.
 
 ### 5.5 Eulerian metrics and weather-impact indices — ✅ Implemented
 
 **Description:** Compute Eulerian variance measures using a 24-hour difference filter, Eddy Kinetic Energy (EKE), and high-wind percentile indices for comparison with Lagrangian track statistics.
 
-**Relevant paper:** [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1), cited in Section 5.4.
+**Relevant papers:** [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1) for the weather-impact evaluation configuration; Wallace, Lim, and Blackmon (1988), “Relationship between Cyclone Tracks, Anticyclone Tracks and Baroclinic Waveguides,” *Journal of the Atmospheric Sciences*, 45(3), 439--462, https://doi.org/10.1175/1520-0469(1988)045\<0439:RBCTAT>2.0.CO;2, for the simple 24-hour difference-filter lineage.
 
 **Progress:** `metrics/eulerian.py` implements the 24-hour difference variance, EKE, and wind-speed percentile calculations.
 
@@ -159,7 +187,7 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Description:** Apply spherical weighting functions to gridded cyclone and track statistics.
 
-**Relevant paper:** **Hodges, K. I.**, 1999: Extension of Spherical Nonparametric Estimators to Nonisotropic Kernels: An Oceanographic Application. *Mon. Wea. Rev.*, **127**, 214–227, [doi:10.1175/1520-0493(1999)127\<0214:EOSNET>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C0214%3AEOSNET%3E2.0.CO%3B2).
+**Relevant papers:** Hodges (1996), “Spherical Nonparametric Estimators Applied to the UGAMP Model Integration for AMIP,” *Monthly Weather Review*, 124(12), 2914--2932, https://doi.org/10.1175/1520-0493(1996)124\<2914:SNEATT>2.0.CO;2, provides relevant meteorological spherical nonparametric-estimation lineage. The Fisher choice is Fisher/von Mises--Fisher-style weighting, not a Hodges invention; Cressman weighting follows Cressman (1959), “An Operational Objective Analysis System,” *Monthly Weather Review*, 87(10), 367--374, https://doi.org/10.1175/1520-0493(1959)087\<0367:AOOAS>2.0.CO;2. Linear and quadratic compact kernels are PyStormTracker generalizations.
 
 **Progress:** Numba kernels support constant-radius, Fisher exponential, Cressman rational, linear, and quadratic weights. The current implementation uses isotropic distance-based kernels.
 
@@ -179,9 +207,14 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **TRACK references:** `src/boundary_find.c`, including the `ofill` logic; `src/shape_setup.c`.
 
-**Progress:** The Hodges detector accumulates grid-cell area over each CCL-labeled object and computes fitted area, major axis, minor axis, and orientation. Longitude is unwrapped within global objects; projected grids use planar kilometre coordinates. These diagnostics are present in raw detections but are not propagated by the current Hodges linker to the final `Tracks` object.
+**Progress:** The Hodges detector accumulates grid-cell area over each CCL-labeled object and computes intensity-weighted second-moment fitted area, major axis, minor axis, and orientation. Longitude is unwrapped within global objects; projected grids use planar kilometre coordinates. The linker propagates these aligned diagnostics to final `Tracks` as `object_gridcell_area_km2` and `object_moment_*` variables.
 
-**Remaining work and verification:** Propagate selected object diagnostics through linking, then compare object masks and properties directly with TRACK. Existing tests cover spherical, projected, boundary, and longitude-seam cases.
+**Remaining work and verification:** The moment-based values are intentional
+PyStormTracker extensions, not TRACK's optional feature-centred anisotropy and
+area workflow. Compare object masks and properties directly with a configured
+TRACK anisotropy/area case before making any TRACK-equivalence claim. Existing
+tests cover propagation plus spherical, projected, boundary, and
+longitude-seam extension behavior.
 
 ### 5.10 Sampling secondary variables — ✅ Implemented
 
@@ -199,7 +232,10 @@ PyStormTracker is distributed through `conda-forge` in addition to PyPI.
 
 **Progress:** The tracking CLI accepts existing relative-vorticity fields. `preprocessing.kinematics` computes vorticity and divergence through the Python API. A CLI subcommand that derives these fields from wind has not been implemented.
 
-**Verification:** Python kinematic calculations have NCL-reference integration tests. The derivation CLI requires separate tests after implementation.
+**Verification:** Python kinematic calculations have constructed-input unit
+coverage. The main repository retains compact, bundled NCL/Spherepack spectral
+parity cases for the committed December frame. Broader field comparisons that
+require external inputs remain deferred with the external data contract.
 
 ### 5.12 Ensemble and dataset utilities — 🚧 In progress
 
@@ -216,8 +252,8 @@ candidate, matching the source utility's directed selection. A general
 track-file combination operation has not been implemented.
 
 **Verification:** Unit and CLI tests cover eligibility, selection, and reported
-lifecycle and intensity statistics. A paired N320/0.25-degree Hodges integration
-comparison covers the reduced-Gaussian vorticity workflow.
+lifecycle and intensity statistics. Paired N320/regular-grid comparison is
+deferred with the external data contract.
 
 ### 5.13 Storm lifecycle compositing
 
@@ -247,13 +283,12 @@ comparison covers the reduced-Gaussian vorticity workflow.
 
 **Description:** Process one-dimensional reduced Gaussian fields, such as ERA5 N320 data, using the number of longitude points on each latitude ring.
 
-**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Integration tests download versioned N320 mean sea level pressure and relative-vorticity GRIB test datasets, then cover loading, filtering, regridding, and tracking.
+**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Real N320 and paired regular-grid integration remain deferred until the external data contract is repaired.
 
-**Verification:** Repository integration tests exercise end-to-end loading,
-filtering, regridding, detection, and Hodges tracking on versioned N320
-test datasets. The vorticity coverage compares N320 trajectories with the paired
-0.25-degree input after common-grid preprocessing; it is not a TRACK-parity or
-external-validation claim.
+**Verification:** The deferred integration module retains end-to-end loading,
+filtering, regridding, detection, and Hodges tracking assertions for the
+repaired external data contract. It is not a TRACK-parity or external-validation
+claim until those exact inputs are available.
 
 ### 5.17 Four-dimensional feature tracking (STACKER)
 

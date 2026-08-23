@@ -1,288 +1,298 @@
 # PyStormTracker Architecture
 
-This document describes the data model, tracker interfaces, preprocessing, execution paths, testing, and release workflows in PyStormTracker.
+This page describes the current runtime architecture of PyStormTracker, with a
+focus on data flow, tracker composition, Dask execution, and the main
+performance boundaries between stages. Scientific details and TRACK source
+provenance for the Hodges method are documented in
+[Hodges tracking and TRACK correspondence](hodges.md), HEALPix-specific behavior
+in [HEALPix tracking](healpix.md), and serialization semantics in
+[TrackJSON](trackjson.md).
 
-TrackJSON-specific wire structure, bounds semantics, statistics, and schema
-maintenance are maintained in the [TrackJSON v1.0 specification](trackjson.md).
+## Runtime data flow
 
-## 1. Architecture Principles
+```mermaid
+flowchart TB
+    IN[/File · Dataset · DataArray/]
+    IN --> DL([DataLoader])
+    DL --> PRE[Preprocessing]
+    PRE --> TR{Tracker}
 
-The architecture has four main features:
+    TR --> S([SimpleTracker])
+    TR --> H([HodgesTracker])
+    TR --> P([HealpixTracker])
 
-1. **Unified API (`Tracker` protocol):** A structural interface allows the CLI and Python API to use `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` through common orchestration code.
-1. **Centralized constants:** Standard constants such as radius of earth, and detection thresholds, are defined in `models/constants.py` and shared by trackers.
-1. **Vectorization and Numba JIT:** Numerical operations use NumPy broadcasting and cached, GIL-free Numba kernels where suitable. Detection and linking kernels avoid Python loops where practical.
-1. **Gather-then-Link:** Simple Dask and MPI execution distribute detection, gather raw detections in time order, and run one linking pass.
+    S --> SL[[SimpleLinker]]
+    H --> HL[[HodgesLinker · MGE]]
+    P --> HL
 
-## 2. Core Components
+    SL --> T[(Tracks)]
+    HL --> T
 
-### 2.1 Array-Backed Data Models (`Tracks`, `Track`, `Center`)
-
-The data models use contiguous array-backed storage:
-
-- **`Tracks`:** The immutable central container holding per-track `ids` and
-  half-open `offsets`, plus aligned one-dimensional `times`, `lats`, `lons`,
-  and meteorological variable arrays. For example, `ids=[10, 20, 35]` and
-  `offsets=[0, 4, 7, 12]` represent points `[0:4]`, `[4:7]`, and `[7:12]`.
-- **`Track`:** A lightweight view storing its parent and packed track position;
-  its `point_slice` is derived directly from adjacent offsets.
-- **`Center`:** A dataclass used during cyclone-center detection.
-
-Mutation occurs in `TracksBuilder`. Finalized arrays are native-endian,
-C-contiguous, and read-only. Point columns are aligned by position; a
-point-level ID array is available only through the explicit
-`Tracks.point_track_ids()` derived operation.
-
-This layout avoids one persistent Python object per center, reduces allocation overhead, and supports NumPy selection, broadcasting, and serialization between workers.
-
-All finalized `Tracks` use signed `int64` milliseconds since
-`1970-01-01 00:00:00` under the proleptic Gregorian calendar. Source CF time
-decoding is delegated to `cftime` in `pystormtracker.time`; tracking, linking,
-ordering, filtering, and statistics operate on the canonical integers. The
-source policy accepts proleptic Gregorian dates and modern `standard` or
-`gregorian` dates; other CF calendars are rejected pending future support. The
-complete wire specification is maintained in
-[TrackJSON v1.0](trackjson.md).
-
-`TracksBuilder` and its private mutable candidates are construction details;
-finalized `Tracks` is immutable packed output. `Tracks` contains canonical
-trajectory data and metadata only. `TrackJSONStats` is a wire-only optional
-derived cache, computed explicitly during serialization and discarded after
-reads or verification. Source variable identity is preserved; algorithm
-classification is separate from the public name, generic detection values are
-passed to linkers, and preprocessing is recorded in `metadata.processing`.
-
-### 2.2 Shared `DataLoader`
-
-Data loading is encapsulated in `DataLoader` (`io/data_loader.py`). It handles:
-
-- **Formats:** NetCDF through `h5netcdf` or `netCDF4`, GRIB through `cfgrib`, and Zarr through `zarr`.
-- **Remote data:** Zarr stores over HTTP, S3, and Google Cloud Storage through `fsspec` when the optional Zarr dependencies are installed.
-- **Variable and coordinate mapping:** Common field aliases such as `msl` and `slp`, and latitude, longitude, and time coordinate aliases.
-- **Grid metadata:** Regular latitude-longitude, full Gaussian, reduced Gaussian, projected `x/y`, and HEALPix coordinates, including metadata required by spherical harmonic transforms and map projections.
-
-Tracker preprocessing is centralized in `preprocessing.tracking`. The shared
-boundary validates `lmin`, `lmax`, and `taper_points`, applies optional
-filtering, and performs projection-specific regridding. A requested spectral
-filter is distinct from the finite transform bandwidth needed to project a
-field: the latter is derived from source and target grid capacity and is
-recorded only as regridding metadata. The same values are routed through file,
-in-memory, serial, Dask, and MPI Simple paths.
-
-Sampling treats longitude as cyclic. Its coordinate axis is validated once per
-sampling call, then nearest, radius, and bilinear operations use the shared
-cyclic longitude difference. Signed and `0..360` source coordinates, including
-descending axes, are therefore sampled with the same antimeridian behavior.
-
-### 2.3 Heuristic Tracking (`SimpleTracker`)
-
-The Simple tracker constructs great-circle distance matrices from clamped unit-vector dot products using NumPy broadcasting. Candidate centers are sorted lexicographically before deterministic greedy nearest-neighbor matching between consecutive time steps.
-
-### 2.4 Optimization-Based Tracking (`HodgesTracker`)
-
-`HodgesTracker` implements methods based on TRACK (Hodges 1994, 1995, 1999):
-
-- **Object-based detection:** Thresholding, connected-component labeling, object filtering, and local-extrema detection.
-- **Modified Greedy Exchange (MGE):** Iterative exchange of points between tracks to reduce the total cost function.
-- **Spherical cost function:** Penalties for changes in tangent direction and displacement magnitude between consecutive track segments.
-- **Adaptive constraints:** Regional and displacement-dependent maximum-displacement and smoothness limits.
-- **Off-grid feature-point location:** Quadratic feature-point interpolation estimates an off-grid feature location around a detected grid-point extremum. A spherical spline value may also be evaluated on periodic global grids.
-
-The detailed algorithmic requirements and TRACK comparison scope are documented in [Hodges Tracking](hodges.md).
-
-### 2.5 Parallel Pipeline (Gather-then-Link)
-
-Simple parallel execution uses the following sequence:
-
-1. Assigned time chunks are distributed across Dask or MPI workers.
-1. Each worker runs frame-local detection kernels and returns raw coordinate arrays.
-1. The main process gathers detections in global time order.
-1. One sequential linking pass constructs the tracks.
-
-Detection can be partitioned without making link decisions at chunk boundaries. Centralized linking avoids merging independently linked chunks. Repository integration tests compare complete serial, Dask, and MPI Simple outputs using versioned test data.
-
-Hodges supports serial chunked detection followed by one linking pass. Hodges and HEALPix do not currently provide Dask or MPI tracking.
-
-## 3. Command-Line Interface Architecture
-
-PyStormTracker uses `argparse` subcommands.
-
-### 3.1 Modular Router Pattern
-
-`cli.py` is a thin entry point. It delegates argument definition and execution to focused modules:
-
-- **`track.py`:** Detection and trajectory construction.
-- **`sample.py`:** Sampling secondary variables, such as precipitation, along tracks.
-- **`compare.py`:** Intercomparison and matching of track datasets.
-- **`convert.py`:** Output conversion and supported visualization generation.
-
-### 3.2 Decoupled Analysis Commands
-
-Tracking, secondary-variable sampling, track comparison, and format conversion are separate commands. A track file can be reused for sampling or comparison without rerunning detection and trajectory linking on the original field.
-
-## 4. The `Tracker` Protocol
-
-The `Tracker` protocol is defined in `src/pystormtracker/models/tracker.py` and provides a common interface for tracking algorithms:
-
-```python
-import pystormtracker as pst
-
-tracker = pst.SimpleTracker(
-    backend="dask",
-    workers=4,
-    feature_point_method="grid",
-)
-
-tracks = tracker.track(
-    data="era5_msl.nc",
-    variable="msl",
-    start_time="2025-01-01",
-    detection_mode="min",
-)
-
-tracks.write("output.trackjson")
+    T --> OUT([I/O · comparison · metrics · sampling])
 ```
 
-Tracker configuration belongs in constructors. Per-input selection (data, variable, time window) belongs in `.track()`. Algorithm-specific options are constructor parameters.
+Input data are loaded and preprocessed before tracker-specific detection and
+trajectory construction. All tracker implementations return `Tracks`.
 
-## 5. Testing and Validation
+## Module ownership
 
-The test suite has several levels:
+| Area                     | Primary ownership                                   | Responsibility                                                                     |
+| ------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Tracker interface        | `models/tracker.py`                                 | `Tracker` protocol, `TrackingInput`, frame result type, backend exports            |
+| Final trajectory model   | `models/tracks.py`                                  | immutable packed `Tracks`, lightweight `Track` views, metadata, internal builder   |
+| Input/grid discovery     | `io/data_loader.py`                                 | file/xarray opening, coordinate aliases, grid metadata, global-longitude detection |
+| Preprocessing            | `preprocessing/tracking.py`                         | taper, optional filter, projection/regridding, processing provenance               |
+| Numerical preprocessing  | `preprocessing/`                                    | SHT/DCT filtering, kinematics, regridding, tapering                                |
+| Feature refinement       | `refinement/`                                       | quadratic and B-spline refinement primitives                                       |
+| Execution infrastructure | `backends.py`                                       | Dask worker resolution, owned thread pool, lazy frame blocks                       |
+| Simple tracker           | `simple/`                                           | extrema detection, center refinement, nearest-neighbor trajectory linking          |
+| Hodges tracker           | `hodges/`                                           | object detection, feature-point refinement, MGE, segmentation and splicing         |
+| HEALPix tracker          | `healpix/`                                          | HEALPix topology and detection with Hodges MGE linking                             |
+| Public operations        | `track.py`, `sample.py`, `compare.py`, `convert.py` | command/API orchestration around package components                                |
+| Analysis                 | `metrics/`                                          | trajectory comparison and Eulerian/Lagrangian diagnostics                          |
 
-- **Unit tests:** Models, numerical kernels, geometry, parsing, and isolated behavior.
-- **Integration tests:** Data loading, complete tracker paths, optional dependencies, parallel backends, and output formats.
-- **Slow integration tests:** Larger scientific comparisons and more expensive end-to-end cases.
-- **Package smoke tests:** Wheel and source-distribution builds installed with standard `pip` in clean environments.
-- **Container smoke tests:** CLI startup, package import, `cfgrib` self-check, and vulnerability scanning of the built image.
+## Tracks data model
 
-`uv` manages development and CI environments. Package smoke tests use `pip` because they test the installed distribution as users receive it.
+`Tracks` is the common in-memory result for every tracker. Trajectory points are
+stored in aligned one-dimensional arrays rather than as persistent Python
+objects per point.
 
-The minimum-direct-dependency test resolves with `uv sync --resolution lowest-direct` and runs with `uv run --no-sync` so the environment is not replaced by the normal lockfile resolution.
+- `ids` identifies trajectories.
+- `offsets` delimits each trajectory in the shared point columns.
+- `times`, `lats`, `lons`, and variable columns store point data.
+- Longitudes use `[-180, 180)` and times use the package millisecond time
+  representation.
+- Final arrays are C-contiguous and read-only.
+- `Track` is a lightweight view over the parent arrays.
+- `Center` objects are materialized only when point access requires them.
 
-Parallel results must be deterministic for the tested scope. Serial, Dask, and MPI Simple outputs are compared as complete track results rather than only by counts or summary statistics.
+This representation is also the boundary used by TrackJSON, comparison, and
+metric code.
 
-## 6. Continuous Integration and Publishing
+## Input and preprocessing
 
-### 6.1 CI Triggers and Duplicate Runs
+`DataLoader` accepts file paths and xarray objects and resolves the dimensions
+and coordinates required by the trackers. Tracker code therefore operates on a
+normalized `xarray.DataArray` rather than maintaining separate NetCDF, GRIB,
+or Zarr tracking implementations.
 
-The `CI` workflow runs for:
+`preprocess_tracking_data()` handles:
 
-- pull requests, including each new commit pushed to an open pull request;
-- pushes to `main`;
-- version tags matching the broad `v*` trigger;
-- manual workflow dispatch.
+1. optional `lmin`/`lmax` spectral filtering;
+1. optional spatial boundary tapering;
+1. SHT or DCT filtering when requested;
+1. native-grid, polar-stereographic, or HEALPix geometry; and
+1. `ProcessingStep` metadata for operations that actually occurred.
 
-Ordinary feature-branch pushes do not run CI independently. This prevents a branch push and its pull request from running the same CI suite twice. Concurrency cancellation stops superseded pull-request and `main` runs. Tag runs are not cancelled.
+Optional filtering and transform bandwidth are distinct. Regridding may require
+a finite transform bandwidth even when no scientific spectral filter was
+requested.
 
-### 6.2 Pull-Request and Full Test Suites
+For Dask execution, preprocessing remains in the xarray/Dask graph.
+`extract_dask_frame_delayed_blocks()` produces one complete spatial block per
+time step. Small coordinate and time arrays are materialized eagerly; the full
+preprocessed time series is not converted to NumPy before frame tasks are
+constructed.
 
-Pull requests execute a representative suite:
+## Dask execution
 
-- code-quality and type checks;
-- Python 3.14 tests on Ubuntu and macOS, Python 3.13
-  tests on Windows, Python 3.11 minimum-direct-dependency unit tests, and
-  Ubuntu AMD64 integration tests without the slow marker;
-- wheel installation, documentation, and dependency review;
-- a local AMD64 Docker build, smoke test, and vulnerability scan after the
-  non-Docker suite succeeds.
+Dask parallelism is organized around independent source time steps. Detection
+and refinement are sequential within one frame because refinement consumes the
+detected candidates, while different frames can execute concurrently.
 
-Pushes to `main`, version tags, and manual CI runs execute the full suite:
+### SimpleTracker
 
-- supported Python versions, including minimum-direct-dependency and free-threaded tests;
-- Ubuntu AMD64 and ARM64, Ubuntu 24.04 and 26.04 compatibility, Windows AMD64, and macOS ARM64 integration tests. Windows 2025 uses Python 3.13 because `eccodes` is not available with Python 3.14;
-- slow integration tests;
-- wheel and source-distribution installation tests;
-- native AMD64 and ARM64 test-image builds, except that manual CI runs omit
-  Docker work.
+```mermaid
+flowchart TB
+    PRE[/Preprocessed time series/]
 
-Pull-request Docker jobs do not receive registry credentials or push images.
-CI-originated native test images are built only after the full non-Docker suite
-succeeds.
+    PRE --> D0[Feature detection<br/>frame i]
+    PRE --> D1[Feature detection<br/>frame i+1]
+    PRE --> D2[Feature detection<br/>frame i+2]
+    PRE --> D3[Feature detection<br/>frame i+3]
+    PRE --> D4[Feature detection<br/>frame i+4]
+    PRE --> D5[Feature detection<br/>frame i+5]
 
-### 6.3 Tested Docker Images
+    D0 --> R0[Center refinement<br/>frame i]
+    D1 --> R1[Center refinement<br/>frame i+1]
+    D2 --> R2[Center refinement<br/>frame i+2]
+    D3 --> R3[Center refinement<br/>frame i+3]
+    D4 --> R4[Center refinement<br/>frame i+4]
+    D5 --> R5[Center refinement<br/>frame i+5]
 
-The reusable `Docker Build` workflow runs local AMD64 validation for CI pull
-requests after their non-Docker suite succeeds. For `main` and version-tag CI
-runs, it instead builds native test images on:
+    R0 --> LINK[[Nearest-neighbor linking]]
+    R1 --> LINK
+    R2 --> LINK
+    R3 --> LINK
+    R4 --> LINK
+    R5 --> LINK
 
-- `ubuntu-26.04` for `linux/amd64`;
-- `ubuntu-26.04-arm` for `linux/arm64`.
+    LINK --> T[(Tracks)]
+```
 
-Each platform image is pushed to the private repository
-`docker.io/mwyau/pystormtracker` under a `<seven-character-commit>-<architecture>`
-tag. CI pulls and tests the exact pushed digest. After both platform jobs succeed,
-CI creates one private multi-platform test manifest tagged
-`<seven-character-commit>`.
+Detection and center refinement are independent across time steps. The diagram
+separates the two scientific stages, but each detection-refinement chain is one
+frame-level Dask task. The resulting centers are ordered by time and passed to
+one `SimpleLinker` operation.
 
-Pull-request Docker builds are local and do not receive registry credentials.
-The `Docker Build` workflow also supports manual dispatch for a selected ref; it
-builds, tests, and pushes the same private multi-platform test manifest. Manual
-CI dispatch runs the non-Docker full suite only.
+Detection kernels are Numba-compiled and operate on two-dimensional NumPy
+frames. `SimpleLinker` performs deterministic mutual-nearest matching between
+active track tails and new centers. For each transition it constructs the
+`n_active_tails x n_centers` great-circle-distance matrix, so linking cost grows
+with the number of detected centers and remains the main serial boundary of the
+Simple Dask path.
 
-### 6.4 Docker Publishing
+### HodgesTracker
 
-After the test manifest is created, CI calls the reusable `Docker Publish`
-workflow to promote it without rebuilding. The source commit's seven-character SHA
-identifies the test image. Publication applies the following tags:
+```mermaid
+flowchart TB
+    PRE[Data/read + SHT<br/>each SHT call uses sht_threads]
+    PRE --> FRAME[Frame tasks<br/>frame_workers]
+    FRAME --> DET[HodgesCenterFrame[]]
+    DET --> MGE[MGE segment tasks<br/>mge_workers]
+    MGE --> SPLICE[Ordered merge/splice]
+    SPLICE --> T[(Tracks)]
+```
 
-| Source                   | `mwyau/pystormtracker`                       | `xddd/pystormtracker`                             |
-| ------------------------ | -------------------------------------------- | ------------------------------------------------- |
-| `main`                   | seven-character SHA, `<seven-character-SHA>` | `edge`, `<seven-character-SHA>`                   |
-| stable tag `v0.6.0`      | seven-character SHA, `<seven-character-SHA>` | `0.6.0`, `0.6`, `latest`, `<seven-character-SHA>` |
-| manual private promotion | seven-character SHA, `<seven-character-SHA>` | none                                              |
+Each frame task includes its lazy source read, any required preprocessing/SHT,
+object and candidate detection, and feature-point refinement. Frame tasks are
+independent across time steps and produce small immutable
+`HodgesCenterFrame` objects. Each SHT call uses `sht_threads` DUCC0 native
+threads per active task.
 
-The completed Docker Hub manifests are copied to the corresponding GHCR repositories without rebuilding. Public `edge` and release manifests are attested on Docker Hub only; GHCR copies are not separately attested.
+The detection objects are computed before MGE segment tasks are built. Overlap
+lists reference the same detection objects; full filtered frame arrays are not
+passed to MGE and the frame graph is released before segment linking. This
+staged design keeps the filtered time series lazy through frame execution while
+avoiding retention of the full-resolution fields merely to support MGE.
 
-Manual dispatch can promote an existing tested image tag through the `private`, `edge`, or `release` channel.
+Adjacent production segments overlap by two time steps and are spliced in
+temporal order. The default scientific segment length is 62 frames.
+`segment_frames` controls this MGE partition and is not a scheduler or I/O
+chunk-size setting. MGE tasks can execute concurrently after their frame
+dependencies complete; within one segment, Modified Greedy Exchange retains its
+ordered pair-exchange algorithm. Its hot geometry, cost, and sweep kernels are
+Numba-compiled and `nogil`, but one MGE segment is not internally divided into
+parallel pair-exchange tasks.
 
-The publisher contains no recovery build path. If a private test image has been
-deleted, manually dispatch `Docker Build` for the corresponding ref to rebuild and
-retest it before publication. This keeps image construction and testing in the
-Docker build workflow and keeps the publishing workflow limited to validation,
-tagging, copying, and attestation.
+When omitted, Dask `frame_workers` and `mge_workers` resolve independently to
+available process CPU concurrency. `sht_threads=None` resolves to one DUCC0
+thread per active transform for Dask and MPI, and to DUCC0's hardware-thread
+default (`nthreads=0`) for serial execution. Explicit frame and MGE worker
+controls apply only to Dask; explicit `sht_threads` is also meaningful for
+serial and MPI rank-local transforms.
 
-Release tags are validated with an explicit stable-version expression equivalent to `vX.Y.Z`. The broad workflow trigger is not treated as version validation.
+`HealpixTracker` follows the same frame-task and MGE-segment organization. Its
+frame-level detection uses HEALPix pixel topology before passing refined feature
+points to the same Hodges linking and segment-splice machinery.
 
-### 6.5 Python Publishing and Dependency Updates
+### Dask critical paths
 
-CI validates that a version tag points to a commit reachable from `main` and that
-the package version matches the tag without its leading `v`. It then calls the
-reusable Python publishing workflow with the distributions built and package-tested
-in the same CI run. The reusable workflow has no manual-dispatch trigger.
+| Stage                    | SimpleTracker                        | HodgesTracker                                 | HealpixTracker                                |
+| ------------------------ | ------------------------------------ | --------------------------------------------- | --------------------------------------------- |
+| Preprocessing            | lazy xarray/Dask graph               | lazy xarray/Dask graph                        | lazy graph plus optional HEALPix regrid       |
+| Detection and refinement | independent by frame                 | independent by frame                          | independent by frame                          |
+| Frame result reuse       | one result consumed by global linker | one result reused by overlapping MGE segments | one result reused by overlapping MGE segments |
+| Linking                  | one ordered `SimpleLinker` pass      | concurrent MGE segment tasks                  | concurrent MGE segment tasks                  |
+| Final combination        | direct `Tracks` result               | ordered segment splice                        | ordered segment splice                        |
 
-Stable tags matching `vX.Y.Z` publish to PyPI after the protected `pypi`
-environment approves the job. Development tags matching `vX.Y.Z.devN` publish to
-TestPyPI after the protected `testpypi` environment approves the job. Development
-tags do not publish Docker images. Docker `edge` follows the newest successful
-`main` CI run, and Docker `latest` changes only during a successful stable-tag
-release. Docker republishing does not republish the Python package.
+## SimpleTracker legacy comparison
 
-Dependabot checks `uv`, GitHub Actions, and Docker dependencies daily. Minor and patch Python updates and GitHub Actions updates may be grouped to reduce pull-request volume. Major Python updates and Docker image updates remain separate for diagnosis.
+The legacy column refers specifically to the `v0.0.2` Simple implementation.
 
-## 7. Planned Architecture Work
+| Aspect        | `v0.0.2` Simple                                                 | Current SimpleTracker                                                              |
+| ------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Architecture  | script-level `RectGrid` and mutable `Tracks`                    | tracker class with package input, preprocessing, detection, and linking components |
+| Parallel path | grid-partitioned process execution with mutable track reduction | Dask frame detection/refinement followed by one ordered global link                |
+| Result model  | lists of `Center` objects serialized with pickle                | packed immutable `Tracks` with format-specific I/O outside the linker              |
 
-Current planned work includes:
+The current implementation retains the local-extrema and nearest-neighbor
+tracking concept, but not the legacy execution or storage architecture.
 
-- **Xarray generalized ufuncs:** Spectral filtering and kinematic derivatives use `xr.apply_ufunc(..., dask="parallelized")`; detection still uses explicit time partitioning.
-- **Lazy evaluation and thread topology:** Reduce eager frame loading and define `ducc0` and Numba thread counts when Dask threads or MPI processes distribute work.
-- **Spatial indexing:** Evaluate `scipy.spatial.cKDTree` or another spherical candidate index to reduce the $O(N \\times M)$ candidate-search cost in dense Simple linking workloads.
-- **Additional backends:** Hodges and HEALPix parallel tracking require Gather-then-Link implementations and serial-parallel equality tests.
+## Hodges MGE data architecture
 
-For planned features, see the [Roadmap](roadmap.md).
+`HodgesLinker` preserves the TRACK-compatible trajectory-state semantics needed
+by MGE without making TRACK's transient object structures the public data
+model. The linking representation uses contiguous feature arrays and an integer
+assignment matrix whose cells contain feature indices or `-1` for phantom
+entries.
 
-## 8. Performance Benchmarks
+The linking sequence is:
 
-The benchmark page records Simple tracker timings for versions `v0.3.3` and `v0.4.0`.
+1. normalize per-frame detection results;
+1. apply the TRACK-style feature-population prefilter;
+1. flatten retained features and construct frame offsets;
+1. initialize paired real/all-phantom MGE workspace rows;
+1. run bounded forward/backward Modified Greedy Exchange;
+1. split real sections around final phantom gaps; and
+1. materialize real trajectories into packed `Tracks`.
 
-Detailed execution timings (breaking down Detection, Linking, Export, and I/O Overhead) across Serial, Dask, and MPI backends for both standard and high-resolution ERA5 datasets are available in the [Benchmark Report](benchmark.md).
+HEALPix has its own object-detection topology but uses `HodgesLinker`, the same
+segment planning, and the same segment-splice implementation.
 
-## Appendix: Evolution from Legacy Architecture
+## PyStormTracker Hodges vs TRACK 1.5.4
 
-| Feature              | Legacy Architecture (v0.0.2)                  | Current Architecture (v0.4.0+)                                               |
-| -------------------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
-| **Data storage**     | Nested lists of `Center` and `Track` objects. | Immutable packed C-contiguous NumPy columns with IDs and offsets.            |
-| **Parallelism**      | Threaded tree reduction.                      | Parallel detection followed by centralized linking.                          |
-| **Linking strategy** | Tree reduction across chunks.                 | Ordered detection gathering and one linking pass with serial-equality tests. |
-| **Linker**           | $O(N^2)$ nested Python loops.                 | Vectorized great-circle distance matrices and deterministic greedy matching. |
-| **Algorithms**       | Simple only.                                  | Simple, Hodges-based, and HEALPix trackers.                                  |
-| **I/O**              | Many small lazy-loaded chunks.                | Xarray reads coordinated through `DataLoader`.                               |
+TRACK 1.5.4 is an implementation/parity reference for the supported Hodges
+workflow. PyStormTracker reproduces selected TRACK source semantics inside a
+different array-oriented execution architecture. Scientific behavior and
+function-level TRACK provenance are documented in
+[Hodges tracking and TRACK correspondence](hodges.md).
+
+| Concern                   | TRACK 1.5.4                                               | PyStormTracker Hodges                                                                                   | Architecture/performance consequence                                                         |
+| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Orchestration             | procedural C workflow with interactive/file-driven stages | `HodgesTracker` with package input and preprocessing components                                         | scientific stages are separated from execution policy                                        |
+| Object segmentation       | hierarchical/quad-tree implementation                     | Numba iterative label propagation with TRACK-compatible connectivity semantics                          | contiguous array kernels replace source structure traversal                                  |
+| Rectangular B-spline path | Dierckx SMOOPY surface and coordinate-space GDFP          | SciPy/FITPACK surface construction, extracted spline arrays, Numba evaluation and TRACK-compatible GDFP | established spline fitting is retained while repeated evaluation avoids Python callbacks     |
+| MGE workspace             | real/phantom trajectory workspace                         | contiguous feature arrays and `int64` assignment matrix                                                 | source semantics are isolated from the public trajectory representation                      |
+| MGE hot path              | ordered forward/backward exchange logic                   | source-shaped exchange logic in Numba `nogil` kernels                                                   | lower Python overhead; one segment retains the ordered pairwise dependency structure         |
+| Parallel execution        | source workflow has no Dask task graph                    | frame-level Dask tasks plus MGE segment tasks                                                           | concurrency is added around independent frames and segments without changing MGE mathematics |
+| Temporal partitioning     | source workflow and splice behavior                       | explicit 62-frame default segment plan with overlap-aware merge                                         | scientific partitioning remains separate from scheduler execution                            |
+| Final data                | TRACK structures and text/reference output                | immutable packed `Tracks` plus serializers                                                              | one in-memory model serves TrackJSON, comparison, metrics, and sampling                      |
+| Extensions                | TRACK source methods                                      | spherical quadratic and spherical B-spline/Riemannian alternatives                                      | extensions remain explicit and separate from the TRACK-compatible rectangular path           |
+
+This table describes implementation architecture rather than universal speed.
+Measured performance depends on grid size, feature population, preprocessing,
+refinement method, segment count, and available CPU and memory bandwidth. See
+[Benchmarking](benchmark.md) for benchmark methodology.
+
+## CLI and library boundary
+
+The CLI is an adapter over library components rather than a second tracking
+implementation. `track` resolves tracker configuration and delegates to
+`SimpleTracker`, `HodgesTracker`, or `HealpixTracker`; `sample`, `compare`, and
+`convert` similarly call their library APIs. Package modules create ordinary
+module loggers, while CLI configuration owns log presentation and interactive
+progress.
+
+## Diagram legend
+
+Parallel execution is shown by independent graph branches; it does not use a
+separate node type.
+
+```mermaid
+flowchart TB
+    subgraph R1[" "]
+        direction LR
+        I[/External data/]
+        A([Class / interface])
+        O[Processing step]
+        D{Decision}
+    end
+
+    subgraph R2[" "]
+        direction LR
+        K[[Algorithm]]
+        S[(Stored data)]
+        X((Data item))
+    end
+```
+
+| Shape            | Meaning           |
+| ---------------- | ----------------- |
+| Parallelogram    | External data     |
+| Stadium          | Class / interface |
+| Rectangle        | Processing step   |
+| Diamond          | Decision          |
+| Double rectangle | Algorithm         |
+| Cylinder         | Stored data       |
+| Circle           | Data item         |
