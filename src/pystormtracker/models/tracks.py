@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, TypeAlias, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 if TYPE_CHECKING:
     from ..io.format import SupportedFormat
@@ -17,13 +17,11 @@ from numpy.typing import NDArray
 from .center import Center
 from .geo import SpatialBounds, normalize_longitudes_signed
 from .time import encode_time_values
-from .units import ResolvedDetectionMode, canonical_unit_for
+from .units import canonical_unit_for
 
-JSONScalar: TypeAlias = str | int | float | bool | None
-
-SPECTRAL_FILTER_OPERATION = "spectral_filter"
-SPATIAL_TAPER_OPERATION = "spatial_taper"
-REGRID_OPERATION = "regrid"
+type JSONScalar = str | int | float | bool | None
+type ResolvedDetectionMode = Literal["min", "max"]
+type DetectionMode = Literal["auto", "min", "max"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,15 +51,15 @@ class ProcessingStep:
 class TracksMetadata:
     """Explicit metadata required to interpret a packed trajectory set."""
 
-    primary_var: str
+    primary_variable: str
     mode: ResolvedDetectionMode
     units: Mapping[str, str]
     bounds: SpatialBounds | None = None
     processing: tuple[ProcessingStep, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.primary_var.strip():
-            raise ValueError("primary_var must be nonempty")
+        if not self.primary_variable.strip():
+            raise ValueError("primary_variable must be nonempty")
         if self.mode not in ("min", "max"):
             raise ValueError("mode must be 'min' or 'max'")
         normalized: dict[str, str] = {}
@@ -69,9 +67,10 @@ class TracksMetadata:
             if not name or not unit:
                 raise ValueError("variable names and units must be nonempty")
             normalized[name] = unit
-        if self.primary_var not in normalized:
+        if self.primary_variable not in normalized:
             raise ValueError(
-                f"primary_var {self.primary_var!r} requires a corresponding unit"
+                f"primary_variable {self.primary_variable!r} requires a "
+                "corresponding unit"
             )
         object.__setattr__(self, "units", MappingProxyType(normalized))
         object.__setattr__(self, "processing", tuple(self.processing))
@@ -382,8 +381,8 @@ class Tracks:
                 f"missing units={missing}, "
                 f"extra units={extra}"
             )
-        if metadata.primary_var not in variables:
-            raise ValueError("primary_var must exist in variables")
+        if metadata.primary_variable not in variables:
+            raise ValueError("primary_variable must exist in variables")
         for name, values in variables.items():
             if len(values) != n_points:
                 raise ValueError(f"variable {name!r} must have length N")
@@ -431,8 +430,8 @@ class Tracks:
         return self._metadata
 
     @property
-    def primary_var(self) -> str:
-        return self.metadata.primary_var
+    def primary_variable(self) -> str:
+        return self.metadata.primary_variable
 
     @property
     def mode(self) -> ResolvedDetectionMode:

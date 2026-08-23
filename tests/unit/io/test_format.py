@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from pystormtracker import convert
@@ -18,18 +19,18 @@ def _source_tracks() -> Tracks:
 
 
 def test_extension_inference_and_text_header_detection(tmp_path: Path) -> None:
-    assert infer_format("tracks.json") == "trackjson"
-    assert infer_format("tracks.trackjson") == "trackjson"
-    assert infer_format("tracks.hodges") == "hodges"
-    assert infer_format("tracks.track") == "hodges"
-    assert infer_format("tracks.tdump") == "hodges"
+    assert infer_format("tracks.json") == "json"
+    assert infer_format("tracks.trackjson") == "json"
+    assert infer_format("tracks.hodges") == "track"
+    assert infer_format("tracks.track") == "track"
+    assert infer_format("tracks.tdump") == "track"
     assert infer_format("tracks.txt", output=True) == "imilast"
     assert infer_format("tracks.dat", output=True) == "imilast"
-    assert infer_format("tracks", output=True) == "trackjson"
+    assert infer_format("tracks", output=True) == "json"
 
     hodges = tmp_path / "input.txt"
     hodges.write_text("TRACK_NUM 0 ADD_FLD 0 0 &\n", encoding="utf-8")
-    assert infer_format(hodges) == "hodges"
+    assert infer_format(hodges) == "track"
     imilast = tmp_path / "imilast.txt"
     imilast.write_text("99 00,CycloneNo,StepNo\n", encoding="utf-8")
     assert infer_format(imilast) == "imilast"
@@ -51,7 +52,7 @@ def test_text_header_detection_reads_imilast_before_extension_fallback(
         encoding="utf-8",
     )
     tracks = load_tracks(source)
-    assert tracks.primary_var == "MSL"
+    assert tracks.primary_variable == "MSL"
     assert tracks.mode == "min"
     assert tracks.units == {"MSL": "Pa"}
     assert tracks.variables["MSL"].tolist() == [100000.0, 99000.0]
@@ -70,7 +71,7 @@ def test_hodges_input_and_json_output_are_inferred_from_extensions(
         encoding="utf-8",
     )
     tracks = load_tracks(source)
-    assert tracks.primary_var == "Intensity1"
+    assert tracks.primary_variable == "Intensity1"
     assert tracks.mode == "max"
     output = tmp_path / "result.json"
     tracks.write(output)
@@ -78,15 +79,32 @@ def test_hodges_input_and_json_output_are_inferred_from_extensions(
     assert loaded == tracks
 
 
+def test_load_tracks_maps_explicit_hodges_frame_indices(tmp_path: Path) -> None:
+    source = tmp_path / "source.track"
+    source.write_text(
+        "TRACK_NUM 1\nTRACK_ID 1\nPOINT_NUM 2\n1 10.0 20.0 4.0\n2 11.0 21.0 5.0\n",
+        encoding="utf-8",
+    )
+
+    tracks = load_tracks(
+        source,
+        track_numeric_time="frame_index",
+        track_frame_times=np.array(
+            [np.datetime64("2024-01-01T00"), np.datetime64("2024-01-01T06")]
+        ),
+    )
+
+    assert tracks.times.tolist() == [1704067200000, 1704088800000]
+
+
 def test_unknown_suffixes_require_explicit_format(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="cannot infer input track format"):
         infer_format(tmp_path / "input.unknown")
     with pytest.raises(ValueError, match="cannot infer output track format"):
         infer_format(tmp_path / "output.unknown", output=True)
-    assert infer_format(tmp_path / "input.unknown", format="trackjson") == "trackjson"
+    assert infer_format(tmp_path / "input.unknown", format="json") == "json"
     assert (
-        infer_format(tmp_path / "output.unknown", format="trackjson", output=True)
-        == "trackjson"
+        infer_format(tmp_path / "output.unknown", format="json", output=True) == "json"
     )
 
 
@@ -145,14 +163,14 @@ def test_convert_can_rename_intensity_variable_and_resolve_mode(
             str(source),
             "-o",
             str(output),
-            "--var",
+            "--variable",
             "msl",
         ]
     )
     convert.main(args)
 
     renamed = read_trackjson(output)
-    assert renamed.primary_var == "msl"
+    assert renamed.primary_variable == "msl"
     assert renamed.mode == "min"
     assert renamed.units == {"msl": "Pa"}
     assert set(renamed.variables) == {"msl"}

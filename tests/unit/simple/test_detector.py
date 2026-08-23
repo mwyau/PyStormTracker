@@ -9,7 +9,13 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from pystormtracker.io.data_loader import DataLoader
-from pystormtracker.simple.detector import SimpleDetector
+from pystormtracker.simple.detector import (
+    SimpleDetector,
+    _compute_masked_laplacian,
+    _extract_centers,
+    _filter_extrema,
+    _remove_duplicate_extrema,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +37,7 @@ def test_simple_detector_init(mock_open: MagicMock) -> None:
     detector._ensure_open()
 
     mock_open.assert_called_once_with(
-        Path("test.nc"), engine=None, chunks={}, decode_times=False
+        Path("test.nc"), engine="h5netcdf", decode_times=False
     )
 
 
@@ -79,10 +85,10 @@ def test_simple_detector_optional_quadratic_refinement() -> None:
 
     detector = SimpleDetector.from_xarray(data)
     raw = detector.detect(
-        search_window_size=5, intensity_threshold=0.0, feature_point_method="grid"
+        search_window_size=5, intensity_threshold=0.0, feature_refinement="grid"
     )[0]
     refined = detector.detect(
-        search_window_size=5, intensity_threshold=0.0, feature_point_method="quadratic"
+        search_window_size=5, intensity_threshold=0.0, feature_refinement="quadratic"
     )[0]
 
     assert raw[1][0] == 3.0
@@ -90,3 +96,88 @@ def test_simple_detector_optional_quadratic_refinement() -> None:
     assert refined[1][0] == pytest.approx(3.25)
     assert refined[2][0] == pytest.approx(3.2)
     assert refined[3][0] < raw[3][0]
+
+
+def test_filter_extrema() -> None:
+    # Create a 10x10 data with a clear minimum
+    data: NDArray[np.float64] = np.ones((10, 10), dtype=np.float64) * 100.0
+    data[5, 5] = 90.0
+
+    # Test for local minimum with size 3, threshold 5
+    out = _filter_extrema(data, size=3, threshold=5.0, is_min=True)
+    assert out[5, 5] == 1.0
+    assert np.sum(out) == 1.0
+
+    # Test for local maximum (should be empty as data[5,5] is a minimum)
+    out_max = _filter_extrema(data, size=3, threshold=5.0, is_min=False)
+    assert np.sum(out_max) == 0.0
+
+
+def test_filter_extrema_plateau() -> None:
+    # Plateaus should be handled (rank filtering)
+    data: NDArray[np.float64] = np.ones((10, 10), dtype=np.float64) * 100.0
+    data[5, 5] = 90.0
+    data[5, 6] = 90.0  # Plateau
+
+    out = _filter_extrema(data, size=3, threshold=5.0, is_min=True)
+    assert np.sum(out) == 2.0
+    assert out[5, 5] == 1.0
+    assert out[5, 6] == 1.0
+
+
+def test_filter_extrema_does_not_wrap_projected_x() -> None:
+    data = np.full((7, 7), 100.0, dtype=np.float64)
+    data[3, 0] = 90.0
+
+    global_result = _filter_extrema(
+        data, size=3, threshold=5.0, is_min=True, periodic_x=True
+    )
+    projected_result = _filter_extrema(
+        data, size=3, threshold=5.0, is_min=True, periodic_x=False
+    )
+
+    assert global_result[3, 0] == 1.0
+    assert projected_result.sum() == 0.0
+
+
+def test_compute_masked_laplacian() -> None:
+    data: NDArray[np.float64] = np.zeros((5, 5), dtype=np.float64)
+    data[2, 2] = -1.0  # Minimum
+
+    mask: NDArray[np.float64] = np.zeros((5, 5), dtype=np.float64)
+    mask[2, 2] = 1.0
+
+    # Laplace: up + down + left + right - 4*center
+    # neighbors are 0, center is -1 -> 0 + 0 + 0 + 0 - 4*(-1) = 4
+    out = _compute_masked_laplacian(data, mask, is_min=True)
+    assert out[2, 2] == 4.0
+    assert np.sum(out) == 4.0
+
+
+def test_remove_duplicate_extrema_tie_breaking() -> None:
+    # Create two duplicate intensity points
+    laplacian: NDArray[np.float64] = np.zeros((10, 10), dtype=np.float64)
+    laplacian[5, 5] = 10.0
+    laplacian[5, 6] = 10.0
+
+    # Lower index wins: (5,5) should win over (5,6)
+    out = _remove_duplicate_extrema(laplacian, size=3)
+    assert out[5, 5] == 1.0
+    assert out[5, 6] == 0.0
+    assert np.sum(out) == 1.0
+
+
+def test_extract_centers() -> None:
+    extrema: NDArray[np.float64] = np.zeros((10, 10), dtype=np.float64)
+    extrema[2, 2] = 1.0
+    extrema[8, 8] = 1.0
+
+    frame: NDArray[np.float64] = np.random.default_rng().random((10, 10))
+
+    r, c, vals = _extract_centers(extrema, frame)
+    assert len(r) == 2
+    assert r[0] == 2
+    assert c[0] == 2
+    assert r[1] == 8
+    assert c[1] == 8
+    assert vals[0] == frame[2, 2]

@@ -4,14 +4,18 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from pystormtracker.models.tracker import RawDetectionStep
+from pystormtracker.models.tracker import CenterFrame
 from pystormtracker.models.tracks import TracksMetadata, _TracksBuilder
-from pystormtracker.simple.linker import SimpleLinker, great_circle_distance_matrix
+from pystormtracker.simple.linker import (
+    SimpleLinker,
+    _great_circle_distance_matrix,
+    _match_nearest_neighbors,
+)
 
 
 def test_simple_linker_init() -> None:
-    linker = SimpleLinker(threshold=1000.0)
-    assert linker.threshold == 1000.0
+    linker = SimpleLinker()
+    assert linker.threshold == 500.0
 
 
 def test_simple_linker_append() -> None:
@@ -22,14 +26,14 @@ def test_simple_linker_append() -> None:
     lats_1: NDArray[np.float64] = np.array([0.0])
     lons_1: NDArray[np.float64] = np.array([0.0])
     vars_1 = np.array([1000.0], dtype=np.float64)
-    step_data_1 = RawDetectionStep(t0, lats_1, lons_1, vars_1)
+    step_data_1 = CenterFrame(t0, lats_1, lons_1, vars_1)
     linker.append(builder, step_data_1)
 
     t6 = np.datetime64("2025-12-01T06:00:00")
     lats_2: NDArray[np.float64] = np.array([1.0])
     lons_2: NDArray[np.float64] = np.array([1.0])
     vars_2 = np.array([990.0], dtype=np.float64)
-    step_data_2 = RawDetectionStep(t6, lats_2, lons_2, vars_2)
+    step_data_2 = CenterFrame(t6, lats_2, lons_2, vars_2)
     linker.append(builder, step_data_2)
     tracks = builder.finish()
 
@@ -42,8 +46,8 @@ def _step(
     lats: list[float],
     lons: list[float],
     values: list[float],
-) -> RawDetectionStep:
-    return RawDetectionStep(
+) -> CenterFrame:
+    return CenterFrame(
         np.datetime64(time),
         np.asarray(lats, dtype=np.float64),
         np.asarray(lons, dtype=np.float64),
@@ -179,7 +183,7 @@ def test_consecutive_frames_keep_matching_and_deterministic_ids() -> None:
 
 
 def test_great_circle_distance_crosses_dateline() -> None:
-    distances = great_circle_distance_matrix(
+    distances = _great_circle_distance_matrix(
         np.array([0.0]),
         np.array([179.0]),
         np.array([0.0]),
@@ -191,7 +195,7 @@ def test_great_circle_distance_crosses_dateline() -> None:
 
 
 def test_great_circle_distance_clamps_identical_points() -> None:
-    distances = great_circle_distance_matrix(
+    distances = _great_circle_distance_matrix(
         np.array([90.0]),
         np.array([0.0]),
         np.array([90.0]),
@@ -200,3 +204,16 @@ def test_great_circle_distance_clamps_identical_points() -> None:
 
     assert np.isfinite(distances).all()
     assert distances[0, 0] == pytest.approx(0.0, abs=1e-5)
+
+
+def test_match_nearest_neighbors() -> None:
+    tail_lats = np.array([10.0, 20.0], dtype=np.float64)
+    tail_lons = np.array([30.0, 40.0], dtype=np.float64)
+    new_lats = np.array([10.1, 50.0], dtype=np.float64)
+    new_lons = np.array([30.1, 60.0], dtype=np.float64)
+
+    matched = _match_nearest_neighbors(
+        tail_lats, tail_lons, new_lats, new_lons, threshold=500.0
+    )
+    assert matched[0] == 0  # center 0 matches tail 0
+    assert matched[1] == -1  # center 1 is too far away

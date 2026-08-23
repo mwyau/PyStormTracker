@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pystormtracker.models.center import Center
-from pystormtracker.models.constants import DEGTORAD, R_EARTH_KM
+from pystormtracker.models.geo import DEG_TO_RAD, R_EARTH_KM
 
 
 def test_center_init() -> None:
@@ -25,7 +25,7 @@ def test_abs_dist() -> None:
     c1 = Center(time=np.datetime64(0, "s"), lat=0, lon=0, vars={"msl": 0})
     c2 = Center(time=np.datetime64(0, "s"), lat=0, lon=1, vars={"msl": 0})
     # Haversine distance for 1 degree of longitude at the equator (approx 111.12 km)
-    expected = R_EARTH_KM * DEGTORAD
+    expected = R_EARTH_KM * DEG_TO_RAD
     assert c1.abs_dist(c2) == pytest.approx(expected, rel=1e-5)
 
 
@@ -33,7 +33,7 @@ def test_lat_dist() -> None:
     c1 = Center(time=np.datetime64(0, "s"), lat=0, lon=0, vars={"msl": 0})
     c2 = Center(time=np.datetime64(0, "s"), lat=1, lon=0, vars={"msl": 0})
     # Latitudinal distance for 1 degree (approx 111.12 km)
-    expected = R_EARTH_KM * DEGTORAD
+    expected = R_EARTH_KM * DEG_TO_RAD
     assert c1.lat_dist(c2) == pytest.approx(expected, rel=1e-5)
 
 
@@ -41,11 +41,11 @@ def test_lon_dist() -> None:
     c1 = Center(time=np.datetime64(0, "s"), lat=0, lon=0, vars={"msl": 0})
     c2 = Center(time=np.datetime64(0, "s"), lat=0, lon=1, vars={"msl": 0})
     # Longitudinal distance for 1 degree at the equator (approx 111.12 km)
-    expected = R_EARTH_KM * DEGTORAD
+    expected = R_EARTH_KM * DEG_TO_RAD
     assert c1.lon_dist(c2) == pytest.approx(expected, rel=1e-5)
 
     # At 60 degrees latitude, 1 degree lon is half the distance (cos(60) = 0.5)
     c3 = Center(time=np.datetime64(0, "s"), lat=60, lon=0, vars={"msl": 0})
     c4 = Center(time=np.datetime64(0, "s"), lat=60, lon=1, vars={"msl": 0})
-    expected_60 = R_EARTH_KM * DEGTORAD * 0.5
+    expected_60 = R_EARTH_KM * DEG_TO_RAD * 0.5
     assert c3.lon_dist(c4) == pytest.approx(expected_60, rel=1e-5)

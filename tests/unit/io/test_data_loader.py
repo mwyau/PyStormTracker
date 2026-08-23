@@ -35,7 +35,7 @@ def test_ensure_open_netcdf(mock_open: MagicMock) -> None:
     ds = loader.ensure_open()
     assert ds == mock_ds
     mock_open.assert_called_once_with(
-        Path("test.nc"), engine=None, chunks={}, decode_times=False
+        Path("test.nc"), engine="h5netcdf", decode_times=False
     )
 
 
@@ -49,7 +49,7 @@ def test_ensure_open_grib(mock_open: MagicMock) -> None:
     ds = loader.ensure_open()
     assert ds == mock_ds
     mock_open.assert_called_once_with(
-        Path("test.grib"), engine="cfgrib", chunks={}, decode_times=False
+        Path("test.grib"), engine="cfgrib", decode_times=False
     )
 
 
@@ -63,7 +63,10 @@ def test_ensure_open_zarr(mock_open: MagicMock) -> None:
     ds = loader.ensure_open()
     assert ds == mock_ds
     mock_open.assert_called_once_with(
-        Path("test.zarr"), engine="zarr", chunks={}, decode_times=False
+        Path("test.zarr"),
+        engine="zarr",
+        decode_times=False,
+        backend_kwargs={"consolidated": False},
     )
 
 
@@ -80,7 +83,10 @@ def test_ensure_open_zarr_dir(mock_open: MagicMock, tmp_path: Path) -> None:
     ds = loader.ensure_open()
     assert ds == mock_ds
     mock_open.assert_called_once_with(
-        zarr_dir, engine="zarr", chunks={}, decode_times=False
+        zarr_dir,
+        engine="zarr",
+        decode_times=False,
+        backend_kwargs={"consolidated": False},
     )
 
 

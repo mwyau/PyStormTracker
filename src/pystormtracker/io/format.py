@@ -2,25 +2,28 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Final, Literal
 
-from ..models.tracks import Tracks
-from ..models.units import DetectionMode, resolve_mode
-from .hodges import read_hodges, write_hodges
+from ..models.tracks import DetectionMode, Tracks
+from ..models.units import resolve_mode
 from .imilast import read_imilast, write_imilast
+from .track import TrackNumericTime, read_track, write_track
 from .trackjson import read_trackjson, write_trackjson
 
-SupportedFormat: TypeAlias = Literal["trackjson", "imilast", "hodges"]
-SUPPORTED_FORMATS: tuple[SupportedFormat, ...] = ("trackjson", "imilast", "hodges")
+type SupportedFormat = Literal["json", "track", "imilast"]
+SUPPORTED_FORMATS: Final = ("json", "track", "imilast")
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _extension_format(path: str | Path) -> SupportedFormat | None:
     suffix = Path(path).suffix.lower()
     if suffix in (".trackjson", ".json"):
-        return "trackjson"
-    if suffix in (".hodges", ".track", ".tdump"):
-        return "hodges"
+        return "json"
+    if suffix in (".track", ".tdump", ".hodges"):
+        return "track"
     return None
 
 
@@ -35,7 +38,7 @@ def _detect_text_format(path: Path) -> SupportedFormat | None:
                 if not stripped:
                     continue
                 if stripped.startswith("TRACK_NUM"):
-                    return "hodges"
+                    return "track"
                 if stripped.startswith("99 00") or "CycloneNo" in stripped:
                     return "imilast"
                 if stripped[0].isdigit() and stripped.split()[0] in ("0", "0.0"):
@@ -61,7 +64,11 @@ def _resolve_format(
         normalized = format_name.lower()
         if normalized not in SUPPORTED_FORMATS:
             raise _unsupported_format(format_name)
-        return normalized
+        if normalized == "json":
+            return "json"
+        if normalized == "track":
+            return "track"
+        return "imilast"
     path_obj = Path(path)
     extension = _extension_format(path_obj)
     if extension is not None:
@@ -77,7 +84,7 @@ def _resolve_format(
             f"cannot identify text track format from {path}; specify an explicit format"
         )
     if output and not suffix:
-        return "trackjson"
+        return "json"
     if output:
         raise ValueError(
             f"cannot infer output track format from suffix {suffix!r}; "
@@ -103,19 +110,29 @@ def load_tracks(
     path: str | Path,
     format: str | None = None,
     *,
-    primary_var: str | None = None,
+    primary_variable: str | None = None,
     mode: DetectionMode | None = "auto",
+    track_numeric_time: TrackNumericTime = "reject",
+    track_frame_times: object | None = None,
 ) -> Tracks:
-    """Load one of the supported trajectory formats."""
+    """Load one of the supported trajectory formats.
+
+    Numeric point times in TRACK ASCII files are ambiguous by design. For a
+    TRACK source output, select ``track_numeric_time='frame_index'`` and pass
+    the exact source time coordinate as ``track_frame_times``. The default
+    rejects numeric TRACK time tokens rather than guessing an epoch.
+    """
     selected = _resolve_format(path, format, output=False)
     if selected == "imilast":
-        return read_imilast(primary_var=primary_var, mode=mode, filename=path)
-    if selected == "hodges":
-        selected_var = primary_var or "Intensity1"
-        return read_hodges(
+        return read_imilast(filename=path, primary_variable=primary_variable, mode=mode)
+    if selected == "track":
+        selected_var = primary_variable or "Intensity1"
+        return read_track(
             path,
-            primary_var=selected_var,
+            primary_variable=selected_var,
             mode=resolve_mode(selected_var, mode),
+            track_numeric_time=track_numeric_time,
+            track_frame_times=track_frame_times,
         )
     return read_trackjson(path)
 
@@ -125,9 +142,25 @@ def save_tracks(
 ) -> None:
     """Save one of the supported trajectory formats."""
     selected = _resolve_format(path, format, output=True)
+    LOGGER.info(
+        "Writing tracks: path=%s format=%s tracks=%d points=%d",
+        path,
+        selected,
+        len(tracks),
+        int(tracks.times.size),
+    )
     if selected == "imilast":
         write_imilast(tracks, path)
-    elif selected == "hodges":
-        write_hodges(tracks, path)
+    elif selected == "track":
+        write_track(tracks, path)
     else:
         write_trackjson(tracks, path)
+
+
+__all__ = [
+    "SUPPORTED_FORMATS",
+    "SupportedFormat",
+    "infer_format",
+    "load_tracks",
+    "save_tracks",
+]

@@ -1,19 +1,31 @@
+"""Geographic coordinate transformations, bounds, and spherical geometry."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Final, Literal
 
 import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
-from ..models.constants import DEGTORAD, R_EARTH_KM
-
 if TYPE_CHECKING:
     import xarray as xr
 
+# Canonical Earth geometry constants
+R_EARTH_M: Final[float] = 6371220.0  # Standard Spherepack/NCL radius
+R_EARTH_KM: Final[float] = R_EARTH_M / 1000.0
+DEG_TO_RAD: Final[float] = np.pi / 180.0
+KM_PER_DEG: Final[float] = R_EARTH_KM * DEG_TO_RAD
+
+type Projection = Literal[
+    "global",
+    "nh_stereo",
+    "sh_stereo",
+]
+
 # Type alias for a map bounding box (xmin, xmax, ymin, ymax) in km
-MapExtent: TypeAlias = tuple[float, float, float, float]
+type MapExtent = tuple[float, float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,10 +179,10 @@ def cyclic_longitude_delta(
 @nb.njit(cache=True, nogil=True)
 def geod_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculates the great circle distance (angular separation) in radians."""
-    phi1 = lat1 * DEGTORAD
-    phi2 = lat2 * DEGTORAD
-    lam1 = lon1 * DEGTORAD
-    lam2 = lon2 * DEGTORAD
+    phi1 = lat1 * DEG_TO_RAD
+    phi2 = lat2 * DEG_TO_RAD
+    lam1 = lon1 * DEG_TO_RAD
+    lam2 = lon2 * DEG_TO_RAD
 
     # Dot product of unit vectors
     dot = np.sin(phi1) * np.sin(phi2) + np.cos(phi1) * np.cos(phi2) * np.cos(

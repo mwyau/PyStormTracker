@@ -3,8 +3,11 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from pystormtracker.models.constants import R_EARTH_KM
-from pystormtracker.models.geo import spatial_bounds_from_xarray, stereo_to_latlon
+from pystormtracker.models.geo import (
+    R_EARTH_KM,
+    spatial_bounds_from_xarray,
+    stereo_to_latlon,
+)
 
 
 def test_stereo_to_latlon_nh() -> None:
