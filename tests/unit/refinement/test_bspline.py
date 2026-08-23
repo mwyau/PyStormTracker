@@ -4,11 +4,17 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from pystormtracker.hodges.detector import _detect_track_rectangular_candidates
 from pystormtracker.refinement import (
     build_bspline_surface,
     build_spherical_bspline_surface,
     refine_bspline_feature_point,
     refine_spherical_bspline_feature_point,
+)
+from pystormtracker.refinement.bspline import (
+    _eval_bspline_2d,
+    build_bspline_surface_reference,
+    prepare_rectangular_grid,
 )
 
 
@@ -103,6 +109,308 @@ def test_rectangular_spline_refines_a_rectangular_off_grid_minimum() -> None:
     assert refined.status == "success"
     assert refined.latitude == pytest.approx(target_latitude, abs=1.0e-3)
     assert refined.longitude == pytest.approx(target_longitude, abs=1.0e-3)
+
+
+def test_cached_rectangular_grid_preparation_is_exact() -> None:
+    from scipy.interpolate import RectBivariateSpline
+
+    latitudes = np.linspace(-60.0, 60.0, 17, dtype=np.float64)
+    unsigned_longitudes = np.linspace(0.0, 360.0, 36, endpoint=False)
+    order = np.argsort((unsigned_longitudes + 180.0) % 360.0 - 180.0)
+    longitudes = (unsigned_longitudes[order] + 180.0) % 360.0 - 180.0
+    frame = np.sin(np.radians(latitudes[:, None])) + np.cos(
+        np.radians(longitudes[None, :])
+    )
+    grid = prepare_rectangular_grid(latitudes, longitudes, periodic_x=True)
+    reference = build_bspline_surface_reference(
+        frame, latitudes, longitudes, periodic_x=True
+    )
+    cached = build_bspline_surface(
+        frame,
+        latitudes,
+        longitudes,
+        periodic_x=True,
+        grid=grid,
+    )
+    assert reference.status == cached.status == "success"
+    assert reference.surface is not None
+    assert cached.surface is not None
+    np.testing.assert_array_equal(cached.surface.x_knots, reference.surface.x_knots)
+    np.testing.assert_array_equal(cached.surface.y_knots, reference.surface.y_knots)
+    np.testing.assert_allclose(
+        cached.surface.coeffs,
+        reference.surface.coeffs,
+        rtol=5.0e-14,
+        atol=5.0e-14,
+    )
+    assert cached.surface.x_lower == reference.surface.x_lower
+    assert cached.surface.x_upper == reference.surface.x_upper
+    assert cached.surface.y_lower == reference.surface.y_lower
+    assert cached.surface.y_upper == reference.surface.y_upper
+    assert cached.surface.first_sample_x == reference.surface.first_sample_x
+    assert cached.surface.last_sample_x == reference.surface.last_sample_x
+    assert cached.surface.periodic_x == reference.surface.periodic_x
+
+    sorted_x = grid.sorted_longitudes
+    sorted_y = grid.sorted_latitudes
+    sorted_frame = frame[grid.latitude_order, :][:, grid.longitude_order]
+    extended_x = np.concatenate((sorted_x, [sorted_x[0] + 360.0]))
+    extended_frame = np.concatenate((sorted_frame, sorted_frame[:, :1]), axis=1)
+    scipy_surface = RectBivariateSpline(
+        extended_x, sorted_y, extended_frame.T, kx=3, ky=3, s=0.0
+    )
+    raw_coefficients = np.asarray(scipy_surface.tck[2], dtype=np.float64)
+    expected_coefficients = raw_coefficients.reshape(
+        len(scipy_surface.tck[0]) - 4,
+        len(scipy_surface.tck[1]) - 4,
+    )
+    np.testing.assert_allclose(
+        cached.surface.coeffs,
+        expected_coefficients,
+        rtol=5.0e-14,
+        atol=5.0e-14,
+    )
+
+
+def test_cached_rectangular_system_depends_only_on_grid() -> None:
+    latitudes = np.linspace(-75.0, 75.0, 17, dtype=np.float64)
+    longitudes = np.linspace(0.0, 360.0, 36, endpoint=False, dtype=np.float64)
+    grid = prepare_rectangular_grid(latitudes, longitudes, periodic_x=True)
+    same_grid = prepare_rectangular_grid(latitudes, longitudes, periodic_x=True)
+    frame_a = np.sin(np.deg2rad(latitudes[:, None])) + np.cos(
+        np.deg2rad(longitudes[None, :])
+    )
+    frame_b = 2.0 * frame_a + np.sin(np.deg2rad(3.0 * longitudes))[None, :]
+
+    first = build_bspline_surface(
+        frame_a, latitudes, longitudes, periodic_x=True, grid=grid
+    )
+    second = build_bspline_surface(
+        frame_b, latitudes, longitudes, periodic_x=True, grid=grid
+    )
+
+    assert first.surface is not None
+    assert second.surface is not None
+    np.testing.assert_array_equal(first.surface.x_knots, second.surface.x_knots)
+    np.testing.assert_array_equal(first.surface.y_knots, second.surface.y_knots)
+    for first_factor, second_factor in (
+        (grid.x_factor, same_grid.x_factor),
+        (grid.y_factor, same_grid.y_factor),
+    ):
+        np.testing.assert_array_equal(first_factor.upper, second_factor.upper)
+        np.testing.assert_array_equal(first_factor.cosines, second_factor.cosines)
+        np.testing.assert_array_equal(first_factor.sines, second_factor.sines)
+        np.testing.assert_array_equal(first_factor.active, second_factor.active)
+        np.testing.assert_array_equal(
+            first_factor.row_numbers, second_factor.row_numbers
+        )
+    assert not np.array_equal(first.surface.coeffs, second.surface.coeffs)
+    assert not grid.x_factor.upper.flags.writeable
+    assert not grid.y_factor.upper.flags.writeable
+
+
+def test_cached_and_reference_rectangular_refinement_agree_at_periodic_seam() -> None:
+    latitudes = np.linspace(-60.0, 60.0, 25, dtype=np.float64)
+    longitudes = np.arange(0.0, 360.0, 10.0, dtype=np.float64)
+    lon_mesh, lat_mesh = np.meshgrid(longitudes, latitudes)
+    target_latitude = 11.5
+    target_longitude = 359.0
+    longitude_distance = np.minimum(
+        np.abs(lon_mesh - target_longitude),
+        360.0 - np.abs(lon_mesh - target_longitude),
+    )
+    frame = (lat_mesh - target_latitude) ** 2 + longitude_distance**2
+    grid = prepare_rectangular_grid(latitudes, longitudes, periodic_x=True)
+    reference = build_bspline_surface_reference(
+        frame, latitudes, longitudes, periodic_x=True, grid=grid
+    )
+    cached = build_bspline_surface(
+        frame, latitudes, longitudes, periodic_x=True, grid=grid
+    )
+    assert reference.surface is not None
+    assert cached.surface is not None
+
+    reference_result = refine_bspline_feature_point(
+        reference.surface,
+        target_latitude,
+        0.0,
+        is_minimum=True,
+        initial_value=float(frame[12, 0]),
+        optimization_scale=0.01,
+        max_iterations=100,
+    )
+    cached_result = refine_bspline_feature_point(
+        cached.surface,
+        target_latitude,
+        0.0,
+        is_minimum=True,
+        initial_value=float(frame[12, 0]),
+        optimization_scale=0.01,
+        max_iterations=100,
+    )
+    assert reference_result.status == cached_result.status == "success"
+    assert cached_result.latitude == pytest.approx(
+        reference_result.latitude, abs=1.0e-9
+    )
+    assert cached_result.longitude == pytest.approx(
+        reference_result.longitude, abs=1.0e-9
+    )
+    assert cached_result.value == pytest.approx(reference_result.value, abs=1.0e-8)
+
+
+def test_cached_rectangular_values_derivatives_and_candidates_match_reference() -> None:
+    latitudes = np.linspace(-60.0, 60.0, 25, dtype=np.float64)
+    longitudes = np.arange(0.0, 360.0, 15.0, dtype=np.float64)
+    lon_mesh, lat_mesh = np.meshgrid(longitudes, latitudes)
+    first_distance = np.minimum(
+        np.abs(lon_mesh - 25.0), 360.0 - np.abs(lon_mesh - 25.0)
+    )
+    second_distance = np.minimum(
+        np.abs(lon_mesh - 250.0), 360.0 - np.abs(lon_mesh - 250.0)
+    )
+    frame = -200.0 * np.exp(
+        -(((lat_mesh - 15.0) / 12.0) ** 2) - (first_distance / 25.0) ** 2
+    ) - 150.0 * np.exp(
+        -(((lat_mesh + 25.0) / 16.0) ** 2) - (second_distance / 30.0) ** 2
+    )
+    grid = prepare_rectangular_grid(latitudes, longitudes, periodic_x=True)
+    reference = build_bspline_surface_reference(
+        frame, latitudes, longitudes, periodic_x=True, grid=grid
+    )
+    cached = build_bspline_surface(
+        frame, latitudes, longitudes, periodic_x=True, grid=grid
+    )
+    assert reference.surface is not None
+    assert cached.surface is not None
+
+    points = np.asarray(
+        [
+            [cached.surface.x_lower, cached.surface.y_lower],
+            [cached.surface.x_upper, cached.surface.y_lower],
+            [cached.surface.x_lower, cached.surface.y_upper],
+            [cached.surface.x_upper, cached.surface.y_upper],
+            [25.0, 15.0],
+            [250.0, -25.0],
+        ],
+        dtype=np.float64,
+    )
+    cached_evaluations = np.asarray(
+        [
+            _eval_bspline_2d(
+                cached.surface.x_knots,
+                cached.surface.y_knots,
+                cached.surface.coeffs,
+                float(longitude),
+                float(latitude),
+            )
+            for longitude, latitude in points
+        ]
+    )
+    reference_evaluations = np.asarray(
+        [
+            _eval_bspline_2d(
+                reference.surface.x_knots,
+                reference.surface.y_knots,
+                reference.surface.coeffs,
+                float(longitude),
+                float(latitude),
+            )
+            for longitude, latitude in points
+        ]
+    )
+    np.testing.assert_array_equal(cached_evaluations, reference_evaluations)
+
+    cached_candidates = _detect_track_rectangular_candidates(
+        frame,
+        latitudes,
+        longitudes,
+        intensity_threshold=-1.0,
+        is_min=True,
+        min_grid_points=3,
+        grid=grid,
+    )
+    reference_candidates = _detect_track_rectangular_candidates(
+        frame,
+        latitudes,
+        longitudes,
+        intensity_threshold=-1.0,
+        is_min=True,
+        min_grid_points=3,
+        grid=grid,
+    )
+    for cached_values, reference_values in zip(
+        cached_candidates, reference_candidates, strict=True
+    ):
+        np.testing.assert_array_equal(cached_values, reference_values)
+
+    for latitude, longitude, value in zip(
+        cached_candidates[0],
+        cached_candidates[1],
+        cached_candidates[2],
+        strict=True,
+    ):
+        cached_result = refine_bspline_feature_point(
+            cached.surface,
+            float(latitude),
+            float(longitude),
+            is_minimum=True,
+            initial_value=float(value),
+            optimization_scale=0.01,
+            max_iterations=100,
+        )
+        reference_result = refine_bspline_feature_point(
+            reference.surface,
+            float(latitude),
+            float(longitude),
+            is_minimum=True,
+            initial_value=float(value),
+            optimization_scale=0.01,
+            max_iterations=100,
+        )
+        assert cached_result == reference_result
+
+
+def test_cached_rectangular_signed_and_unsigned_longitudes_are_equivalent() -> None:
+    latitudes = np.linspace(-60.0, 60.0, 17, dtype=np.float64)
+    unsigned = np.linspace(0.0, 360.0, 36, endpoint=False, dtype=np.float64)
+    signed = (unsigned + 180.0) % 360.0 - 180.0
+    signed_order = np.argsort(signed)
+    signed = signed[signed_order]
+
+    def values(longitude: NDArray[np.float64]) -> NDArray[np.float64]:
+        physical_longitude = (longitude + 180.0) % 360.0 - 180.0
+        return (physical_longitude - 17.0) ** 2
+
+    frame_unsigned = (latitudes[:, None] - 8.0) ** 2 + values(unsigned)[None, :]
+    frame_signed = (latitudes[:, None] - 8.0) ** 2 + values(signed)[None, :]
+    unsigned_grid = prepare_rectangular_grid(latitudes, unsigned, periodic_x=True)
+    signed_grid = prepare_rectangular_grid(latitudes, signed, periodic_x=True)
+
+    unsigned_surface = build_bspline_surface(
+        frame_unsigned,
+        latitudes,
+        unsigned,
+        periodic_x=True,
+        grid=unsigned_grid,
+    )
+    signed_surface = build_bspline_surface(
+        frame_signed,
+        latitudes,
+        signed,
+        periodic_x=True,
+        grid=signed_grid,
+    )
+    assert unsigned_surface.surface is not None
+    assert signed_surface.surface is not None
+    np.testing.assert_array_equal(
+        unsigned_surface.surface.x_knots, signed_surface.surface.x_knots
+    )
+    np.testing.assert_allclose(
+        unsigned_surface.surface.coeffs,
+        signed_surface.surface.coeffs,
+        rtol=5.0e-13,
+        atol=5.0e-12,
+    )
 
 
 def test_rectangular_spline_optimization_scale_preserves_field_value_units() -> None:

@@ -131,7 +131,7 @@ explicitly:
 ```text
 feature_refinement = "bspline"  # current name for rectangular SMOOPY
 track_smoopy_optimization_scale = 0.01
-mge_max_iterations = 10
+mge_max_iterations = 3
 min_track_points = 1             # retain raw one- and two-point tracks
 segment_frames = 62
 ```
@@ -140,6 +140,12 @@ The ordinary public defaults remain unchanged (`scale=1.0`, `MGE=3`, and
 `min_track_points=3`). These benchmark values are recorded so raw PST output
 is compared with TRACK's raw `tr_trs_neg` output on the same track-retention
 basis.
+
+The prior corrected campaign used 10 MGE outer iterations. A shared January
+detection experiment found that 3 and 10 produced the same track and point
+counts but different packed membership and coordinate arrays, while TRACK
+1.5.4's `tot_term=3` defines the source-compatible bound. The reproducible
+benchmark therefore uses 3; 10 remains a measured comparison only.
 
 The threshold transcript contains a positive magnitude because the sign is
 handled by the paired minimum/maximum branch. Do **not** edit the transcript to

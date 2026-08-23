@@ -6,6 +6,8 @@ from numpy.typing import NDArray
 
 from ..models.geo import DEG_TO_RAD, geod_dist
 
+_NO_PROFILE_STATS = np.empty(0, dtype=np.int64)
+
 
 @nb.njit(cache=True, nogil=True)
 def geod_dev(
@@ -214,6 +216,7 @@ def _mge_iteration(
     missing_input_counts: NDArray[np.int64],
     zones: NDArray[np.float64],
     adaptive_smoothness: NDArray[np.float64],
+    stats: NDArray[np.int64] = _NO_PROFILE_STATS,
 ) -> tuple[int, int]:
     """Single MGE iteration step at frame k finding the best candidate pair swap."""
     n_tracks = tracks.shape[0]
@@ -232,19 +235,23 @@ def _mge_iteration(
         displacement_parameter_index = dmax_parameters.size - 1
     default_dmax = dmax_parameters[displacement_parameter_index]
 
-    # Cache current costs
+    # Cache current costs and row populations. Trial swaps are reverted before
+    # the next candidate pair, so row populations remain invariant throughout
+    # this candidate scan. Keeping this outside the O(n_tracks^2) pair loop
+    # preserves both the pair order and the source tie behavior.
     costs = np.zeros(n_tracks)
+    row_populations = np.zeros(n_tracks, dtype=np.int64)
     for i in range(n_tracks):
+        row_populations[i] = np.count_nonzero(tracks[i] != -1)
         costs[i] = _compute_track_cost(
             tracks, k, i, features_lat, features_lon, w1, w2, phimax
         )
 
     for i in range(n_tracks):
         for j in range(i + 1, n_tracks):
-            if (
-                np.count_nonzero(tracks[i] != -1) <= 1
-                and np.count_nonzero(tracks[j] != -1) <= 1
-            ):
+            if stats.size:
+                stats[0] += 1
+            if row_populations[i] <= 1 and row_populations[j] <= 1:
                 continue
 
             p_i_orig = tracks[i, target_k]
@@ -393,6 +400,163 @@ def _has_excess_displacement(
 
 
 @nb.njit(cache=True, nogil=True)
+def _filter_feature_points_native(
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    features_values: NDArray[np.float64],
+    step_offsets: NDArray[np.int64],
+    missing_input_counts: NDArray[np.int64],
+    dmax_parameters: NDArray[np.float64],
+    dmax_zones: NDArray[np.float64],
+    duff_feature_cutoff: float,
+) -> NDArray[np.bool_]:
+    """Return TRACK feature-point eligibility in source feature order."""
+    n_frames = step_offsets.size - 1
+    keep = np.zeros(features_values.size, dtype=np.bool_)
+    for frame_index in range(n_frames):
+        current_start = step_offsets[frame_index]
+        current_end = step_offsets[frame_index + 1]
+        for feature_index in range(current_start, current_end):
+            if features_values[feature_index] < duff_feature_cutoff:
+                continue
+
+            connected = False
+            if frame_index + 1 < n_frames:
+                adjacent_start = step_offsets[frame_index + 1]
+                adjacent_end = step_offsets[frame_index + 2]
+                missing_count = missing_input_counts[frame_index]
+                parameter_index = missing_count
+                if parameter_index >= dmax_parameters.size:
+                    parameter_index = dmax_parameters.size - 1
+                default_dmax = dmax_parameters[parameter_index]
+                for adjacent_index in range(adjacent_start, adjacent_end):
+                    dmax = _compute_endpoint_average_dmax(
+                        features_lat[feature_index],
+                        features_lon[feature_index],
+                        features_lat[adjacent_index],
+                        features_lon[adjacent_index],
+                        dmax_zones,
+                        default_dmax,
+                    )
+                    if (
+                        geod_dist(
+                            features_lat[feature_index],
+                            features_lon[feature_index],
+                            features_lat[adjacent_index],
+                            features_lon[adjacent_index],
+                        )
+                        <= dmax * DEG_TO_RAD
+                    ):
+                        connected = True
+                        break
+
+            if not connected and frame_index > 0:
+                adjacent_start = step_offsets[frame_index - 1]
+                adjacent_end = step_offsets[frame_index]
+                missing_count = missing_input_counts[frame_index - 1]
+                parameter_index = missing_count
+                if parameter_index >= dmax_parameters.size:
+                    parameter_index = dmax_parameters.size - 1
+                default_dmax = dmax_parameters[parameter_index]
+                for adjacent_index in range(adjacent_start, adjacent_end):
+                    dmax = _compute_endpoint_average_dmax(
+                        features_lat[feature_index],
+                        features_lon[feature_index],
+                        features_lat[adjacent_index],
+                        features_lon[adjacent_index],
+                        dmax_zones,
+                        default_dmax,
+                    )
+                    if (
+                        geod_dist(
+                            features_lat[feature_index],
+                            features_lon[feature_index],
+                            features_lat[adjacent_index],
+                            features_lon[adjacent_index],
+                        )
+                        <= dmax * DEG_TO_RAD
+                    ):
+                        connected = True
+                        break
+
+            keep[feature_index] = connected
+    return keep
+
+
+@nb.njit(cache=True, nogil=True)
+def _initialize_mge_workspace_native(
+    features_lat: NDArray[np.float64],
+    features_lon: NDArray[np.float64],
+    step_offsets: NDArray[np.int64],
+    missing_input_counts: NDArray[np.int64],
+    dmax_parameters: NDArray[np.float64],
+    dmax_zones: NDArray[np.float64],
+) -> tuple[NDArray[np.int64], int]:
+    """Build the ordered paired real/phantom MGE workspace natively."""
+    n_frames = step_offsets.size - 1
+    capacity = 2 * features_lat.size
+    rows = np.full((capacity, n_frames), -1, dtype=np.int64)
+    feature_rows = np.full(features_lat.size, -1, dtype=np.int64)
+    n_rows = 0
+
+    for feature_index in range(step_offsets[1]):
+        rows[n_rows, 0] = feature_index
+        feature_rows[feature_index] = n_rows
+        n_rows += 2
+
+    for frame_index in range(n_frames - 1):
+        current_start = step_offsets[frame_index]
+        current_end = step_offsets[frame_index + 1]
+        next_start = step_offsets[frame_index + 1]
+        next_end = step_offsets[frame_index + 2]
+
+        parameter_index = missing_input_counts[frame_index]
+        if parameter_index >= dmax_parameters.size:
+            parameter_index = dmax_parameters.size - 1
+        default_dmax = dmax_parameters[parameter_index]
+
+        for feature_index in range(current_start, current_end):
+            row_index = feature_rows[feature_index]
+            if row_index < 0:
+                continue
+            closest_distance = np.inf
+            closest_feature = -1
+            closest_dmax = default_dmax
+            for candidate_index in range(next_start, next_end):
+                if feature_rows[candidate_index] >= 0:
+                    continue
+                distance = geod_dist(
+                    features_lat[feature_index],
+                    features_lon[feature_index],
+                    features_lat[candidate_index],
+                    features_lon[candidate_index],
+                )
+                if distance <= closest_distance:
+                    closest_distance = distance
+                    closest_feature = candidate_index
+                    closest_dmax = _compute_endpoint_average_dmax(
+                        features_lat[feature_index],
+                        features_lon[feature_index],
+                        features_lat[candidate_index],
+                        features_lon[candidate_index],
+                        dmax_zones,
+                        default_dmax,
+                    )
+
+            if closest_feature >= 0 and closest_distance <= closest_dmax * DEG_TO_RAD:
+                rows[row_index, frame_index + 1] = closest_feature
+                feature_rows[closest_feature] = row_index
+
+        for candidate_index in range(next_start, next_end):
+            if feature_rows[candidate_index] < 0:
+                rows[n_rows, frame_index + 1] = candidate_index
+                feature_rows[candidate_index] = n_rows
+                n_rows += 2
+
+    return rows, n_rows
+
+
+@nb.njit(cache=True, nogil=True)
 def _find_first_compatible_empty_row(
     tracks: NDArray[np.int64],
     first_frame: int,
@@ -421,8 +585,11 @@ def _apply_track_fail(
     is_forward: bool,
     dmax_zones: NDArray[np.float64],
     default_dmax: float,
+    stats: NDArray[np.int64] = _NO_PROFILE_STATS,
 ) -> None:
     """Apply TRACK track_fail in native nogil code to move failed track segments."""
+    if stats.size:
+        stats[2] += 1
     n_tracks, n_frames = tracks.shape
     if is_forward:
         first_frame = middle_frame + 2
@@ -496,8 +663,11 @@ def _forward_mge_sweep(
     phimax_parameters: NDArray[np.float64],
     dmax_zones: NDArray[np.float64],
     adaptive_smoothness: NDArray[np.float64],
+    stats: NDArray[np.int64] = _NO_PROFILE_STATS,
 ) -> bool:
     """Execute one forward MGE sweep."""
+    if stats.size:
+        stats[3] += 1
     changed = False
     for k in range(1, n_frames - 1):
         best_i, best_j = _mge_iteration(
@@ -513,6 +683,7 @@ def _forward_mge_sweep(
             missing_input_counts,
             dmax_zones,
             adaptive_smoothness,
+            stats,
         )
         if best_i != -1:
             p_i = tracks[best_i, k + 1]
@@ -532,6 +703,7 @@ def _forward_mge_sweep(
                     True,
                     dmax_zones,
                     default_dmax,
+                    stats,
                 )
                 _apply_track_fail(
                     tracks,
@@ -542,7 +714,10 @@ def _forward_mge_sweep(
                     True,
                     dmax_zones,
                     default_dmax,
+                    stats,
                 )
+            if stats.size:
+                stats[1] += 1
     return changed
 
 
@@ -559,8 +734,11 @@ def _backward_mge_sweep(
     phimax_parameters: NDArray[np.float64],
     dmax_zones: NDArray[np.float64],
     adaptive_smoothness: NDArray[np.float64],
+    stats: NDArray[np.int64] = _NO_PROFILE_STATS,
 ) -> bool:
     """Execute one backward MGE sweep."""
+    if stats.size:
+        stats[4] += 1
     changed = False
     for k in range(n_frames - 2, 0, -1):
         best_i, best_j = _mge_iteration(
@@ -576,6 +754,7 @@ def _backward_mge_sweep(
             missing_input_counts,
             dmax_zones,
             adaptive_smoothness,
+            stats,
         )
         if best_i != -1:
             p_i = tracks[best_i, k - 1]
@@ -595,6 +774,7 @@ def _backward_mge_sweep(
                     False,
                     dmax_zones,
                     default_dmax,
+                    stats,
                 )
                 _apply_track_fail(
                     tracks,
@@ -605,7 +785,10 @@ def _backward_mge_sweep(
                     False,
                     dmax_zones,
                     default_dmax,
+                    stats,
                 )
+            if stats.size:
+                stats[1] += 1
     return changed
 
 
@@ -623,6 +806,7 @@ def _run_directional_mge_loop(
     dmax_zones: NDArray[np.float64],
     adaptive_smoothness: NDArray[np.float64],
     max_iterations: int,
+    stats: NDArray[np.int64] = _NO_PROFILE_STATS,
 ) -> NDArray[np.int64]:
     """Execute complete directional MGE sweep rounds in native nogil Numba code."""
     if n_frames <= 3:
@@ -650,6 +834,7 @@ def _run_directional_mge_loop(
                     phimax_parameters,
                     dmax_zones,
                     adaptive_smoothness,
+                    stats,
                 )
                 if not swapped:
                     break
@@ -677,6 +862,7 @@ def _run_directional_mge_loop(
                     phimax_parameters,
                     dmax_zones,
                     adaptive_smoothness,
+                    stats,
                 )
                 if not swapped:
                     break

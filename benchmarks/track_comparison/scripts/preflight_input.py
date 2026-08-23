@@ -10,12 +10,54 @@ import numpy as np
 import xarray as xr
 
 CASES = {
-    "f320-2024": {"frames": 1464, "nlon": 1280, "nlat": 640, "start": "2024-01-01T00:00:00", "end": "2024-12-31T18:00:00", "regular_spacing": None},
-    "f320-jan2024": {"frames": 124, "nlon": 1280, "nlat": 640, "start": "2024-01-01T00:00:00", "end": "2024-01-31T18:00:00", "regular_spacing": None},
-    "2p5-dec2025": {"frames": 124, "nlon": 144, "nlat": 73, "start": "2025-12-01T00:00:00", "end": "2025-12-31T18:00:00", "regular_spacing": 2.5},
-    "2p5-djf2025-2026": {"frames": 360, "nlon": 144, "nlat": 73, "start": "2025-12-01T00:00:00", "end": "2026-02-28T18:00:00", "regular_spacing": 2.5},
-    "0p25-dec2025": {"frames": 124, "nlon": 1440, "nlat": 721, "start": "2025-12-01T00:00:00", "end": "2025-12-31T18:00:00", "regular_spacing": 0.25},
-    "0p25-djf2025-2026": {"frames": 360, "nlon": 1440, "nlat": 721, "start": "2025-12-01T00:00:00", "end": "2026-02-28T18:00:00", "regular_spacing": 0.25},
+    "f320-2024": {
+        "frames": 1464,
+        "nlon": 1280,
+        "nlat": 640,
+        "start": "2024-01-01T00:00:00",
+        "end": "2024-12-31T18:00:00",
+        "regular_spacing": None,
+    },
+    "f320-jan2024": {
+        "frames": 124,
+        "nlon": 1280,
+        "nlat": 640,
+        "start": "2024-01-01T00:00:00",
+        "end": "2024-01-31T18:00:00",
+        "regular_spacing": None,
+    },
+    "2p5-dec2025": {
+        "frames": 124,
+        "nlon": 144,
+        "nlat": 73,
+        "start": "2025-12-01T00:00:00",
+        "end": "2025-12-31T18:00:00",
+        "regular_spacing": 2.5,
+    },
+    "2p5-djf2025-2026": {
+        "frames": 360,
+        "nlon": 144,
+        "nlat": 73,
+        "start": "2025-12-01T00:00:00",
+        "end": "2026-02-28T18:00:00",
+        "regular_spacing": 2.5,
+    },
+    "0p25-dec2025": {
+        "frames": 124,
+        "nlon": 1440,
+        "nlat": 721,
+        "start": "2025-12-01T00:00:00",
+        "end": "2025-12-31T18:00:00",
+        "regular_spacing": 0.25,
+    },
+    "0p25-djf2025-2026": {
+        "frames": 360,
+        "nlon": 1440,
+        "nlat": 721,
+        "start": "2025-12-01T00:00:00",
+        "end": "2026-02-28T18:00:00",
+        "regular_spacing": 0.25,
+    },
 }
 
 
@@ -42,13 +84,18 @@ def main() -> None:
         actual = (sizes[time], sizes[lon], sizes[lat])
         wanted = (expected["frames"], expected["nlon"], expected["nlat"])
         if actual != wanted:
-            raise SystemExit(f"size mismatch: got time/lon/lat={actual}, expected={wanted}")
+            raise SystemExit(
+                f"size mismatch: got time/lon/lat={actual}, expected={wanted}"
+            )
 
         times = np.asarray(ds[time].values).astype("datetime64[s]")
         start = np.datetime64(expected["start"])
         end = np.datetime64(expected["end"])
         if times[0] != start or times[-1] != end:
-            raise SystemExit(f"time range mismatch: got {times[0]} .. {times[-1]}, expected {start} .. {end}")
+            raise SystemExit(
+                f"time range mismatch: got {times[0]} .. {times[-1]}, "
+                f"expected {start} .. {end}"
+            )
         if len(times) > 1 and not np.all(np.diff(times) == np.timedelta64(6, "h")):
             raise SystemExit("time cadence is not exactly 6 hours")
 

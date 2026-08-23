@@ -40,7 +40,7 @@ from typing import Final, Literal, NamedTuple
 import numba as nb
 import numpy as np
 from numpy.typing import NDArray
-from scipy.interpolate import RectBivariateSpline, RectSphereBivariateSpline
+from scipy.interpolate import BSpline, RectBivariateSpline, RectSphereBivariateSpline
 
 from ..preprocessing.spherical_geometry import (
     SphericalLocalizationRegion,
@@ -57,6 +57,8 @@ _DEFAULT_SMOOTHING: Final[float] = 0.0
 _TRACK_SMOOPY_OPTIMIZATION_SCALE: Final[float] = 1.0
 _DEFAULT_MAX_ITERATIONS: Final[int] = 100
 _DEFAULT_GRADIENT_TOLERANCE: Final[float] = 1.0e-5
+_RECTANGULAR_SPLINE_DEGREE: Final[int] = 3
+_RECTANGULAR_SPLINE_BANDWIDTH: Final[int] = _RECTANGULAR_SPLINE_DEGREE
 
 BsplineRefinementStatus = Literal[
     "success",
@@ -127,6 +129,217 @@ class BsplineSurfaceResult(NamedTuple):
 
     surface: BsplineSurface | None
     status: BsplineRefinementStatus
+
+
+class RectangularGridPreparation(NamedTuple):
+    """Immutable fixed-grid state reused by rectangular frame operations.
+
+    The coordinate order, FITPACK-compatible cubic knot vectors, and their
+    banded collocation factorizations depend only on the grid.  The factors
+    never contain frame values and are read-only after construction.
+    """
+
+    sorted_longitudes: NDArray[np.float64]
+    longitude_order: NDArray[np.int64]
+    sorted_latitudes: NDArray[np.float64]
+    latitude_order: NDArray[np.int64]
+    extended_longitudes: NDArray[np.float64]
+    periodic_x: bool
+    x_knots: NDArray[np.float64]
+    y_knots: NDArray[np.float64]
+    x_factor: _BandedFactorization
+    y_factor: _BandedFactorization
+
+
+class _BandedFactorization(NamedTuple):
+    """Read-only FITPACK QR factorization of a cubic collocation matrix."""
+
+    upper: NDArray[np.float64]
+    cosines: NDArray[np.float64]
+    sines: NDArray[np.float64]
+    active: NDArray[np.bool_]
+    row_numbers: NDArray[np.int64]
+
+
+@nb.njit(cache=True, nogil=True)
+def _apply_cached_qr_rows(
+    values: NDArray[np.float64],
+    upper: NDArray[np.float64],
+    cosines: NDArray[np.float64],
+    sines: NDArray[np.float64],
+    active: NDArray[np.bool_],
+    row_numbers: NDArray[np.int64],
+) -> NDArray[np.float64]:
+    """Apply a cached FITPACK rotation sequence to several right-hand sides."""
+    transformed = np.zeros((upper.shape[0], values.shape[1]), dtype=np.float64)
+    right = np.empty(values.shape[1], dtype=np.float64)
+    for row in range(values.shape[0]):
+        for column in range(values.shape[1]):
+            right[column] = values[row, column]
+        number = row_numbers[row]
+        for offset in range(_RECTANGULAR_SPLINE_DEGREE + 1):
+            if not active[row, offset]:
+                continue
+            target = number + offset
+            cosine = cosines[row, offset]
+            sine = sines[row, offset]
+            for column in range(values.shape[1]):
+                old_right = right[column]
+                old_transformed = transformed[target, column]
+                right[column] = cosine * old_right - sine * old_transformed
+                transformed[target, column] = (
+                    cosine * old_transformed + sine * old_right
+                )
+    return transformed
+
+
+@nb.njit(cache=True, nogil=True)
+def _back_substitute_cached_qr(
+    upper: NDArray[np.float64],
+    rhs: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Solve a cached upper-banded FITPACK factorization."""
+    solution = rhs.copy()
+    size = upper.shape[0]
+    for row in range(size - 1, -1, -1):
+        stop = min(size, row + _RECTANGULAR_SPLINE_BANDWIDTH + 1)
+        for column in range(solution.shape[1]):
+            value = solution[row, column]
+            for trailing in range(row + 1, stop):
+                value -= upper[row, trailing - row] * solution[trailing, column]
+            solution[row, column] = value / upper[row, 0]
+    return solution
+
+
+def _cubic_interpolation_knots(
+    coordinates: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Return the cubic knots used by FITPACK's ``s=0`` rectangular path."""
+    return np.concatenate(
+        (
+            np.full(_RECTANGULAR_SPLINE_DEGREE + 1, coordinates[0]),
+            coordinates[2:-2],
+            np.full(_RECTANGULAR_SPLINE_DEGREE + 1, coordinates[-1]),
+        )
+    )
+
+
+def _factor_cubic_collocation_matrix(
+    coordinates: NDArray[np.float64],
+    knots: NDArray[np.float64],
+) -> _BandedFactorization:
+    """Factor a cubic collocation matrix using FITPACK's Givens rotations."""
+    design = BSpline.design_matrix(
+        coordinates,
+        knots,
+        _RECTANGULAR_SPLINE_DEGREE,
+        extrapolate=False,
+    )
+    size = coordinates.size
+    degree = _RECTANGULAR_SPLINE_DEGREE
+    upper = np.zeros((size, degree + 2), dtype=np.float64)
+    cosines = np.zeros((size, degree + 1), dtype=np.float64)
+    sines = np.zeros((size, degree + 1), dtype=np.float64)
+    active = np.zeros((size, degree + 1), dtype=np.bool_)
+
+    # This is the span scan used by FITPACK's fpgrre.  For the interpolation
+    # knot vector, ``number`` is the first nonzero coefficient for a row.
+    row_numbers = np.empty(size, dtype=np.int64)
+    knot_span = degree + 1
+    next_knot = degree + 2
+    for row, coordinate in enumerate(coordinates):
+        while not (coordinate < knots[next_knot - 1] or knot_span == size):
+            knot_span = next_knot
+            next_knot += 1
+        row_numbers[row] = knot_span - (degree + 1)
+
+    for row, number_value in enumerate(row_numbers):
+        number = int(number_value)
+        start = int(design.indptr[row])
+        stop = int(design.indptr[row + 1])
+        h = np.asarray(design.data[start:stop], dtype=np.float64).copy()
+        for offset in range(degree + 1):
+            target = number + offset
+            pivot = float(h[offset])
+            if pivot == 0.0:
+                continue
+
+            previous_diagonal = upper[target, 0]
+            if abs(pivot) >= previous_diagonal:
+                diagonal = abs(pivot) * np.sqrt(1.0 + (previous_diagonal / pivot) ** 2)
+            else:
+                diagonal = previous_diagonal * np.sqrt(
+                    1.0 + (pivot / previous_diagonal) ** 2
+                )
+            cosine = previous_diagonal / diagonal
+            sine = pivot / diagonal
+            upper[target, 0] = diagonal
+            cosines[row, offset] = cosine
+            sines[row, offset] = sine
+            active[row, offset] = True
+
+            for trailing in range(offset + 1, degree + 1):
+                old_h = h[trailing]
+                old_upper = upper[target, trailing - offset]
+                # FITPACK's fprota: [a', b'] = [c -s; s c] [a, b].
+                h[trailing] = cosine * old_h - sine * old_upper
+                upper[target, trailing - offset] = cosine * old_upper + sine * old_h
+
+    arrays = (upper, cosines, sines, active, row_numbers)
+    for array in arrays:
+        array.setflags(write=False)
+    return _BandedFactorization(*arrays)
+
+
+def prepare_rectangular_grid(
+    latitudes: NDArray[np.float64],
+    longitudes: NDArray[np.float64],
+    *,
+    periodic_x: bool,
+) -> RectangularGridPreparation:
+    """Prepare immutable coordinate orderings for repeated frame builds."""
+    x = (
+        np.mod(longitudes.astype(np.float64, copy=False), 360.0)
+        if periodic_x
+        else longitudes.astype(np.float64, copy=False)
+    )
+    longitude_order = np.argsort(x)
+    sorted_longitudes = np.asarray(x[longitude_order], dtype=np.float64)
+    latitude_order = np.argsort(latitudes)
+    sorted_latitudes = np.asarray(latitudes[latitude_order], dtype=np.float64)
+    extended_longitudes = (
+        np.concatenate((sorted_longitudes, [sorted_longitudes[0] + 360.0]))
+        if periodic_x
+        else sorted_longitudes.copy()
+    )
+    x_knots = _cubic_interpolation_knots(extended_longitudes)
+    y_knots = _cubic_interpolation_knots(sorted_latitudes)
+    x_factor = _factor_cubic_collocation_matrix(extended_longitudes, x_knots)
+    y_factor = _factor_cubic_collocation_matrix(sorted_latitudes, y_knots)
+
+    coordinate_arrays = (
+        sorted_longitudes,
+        longitude_order,
+        sorted_latitudes,
+        latitude_order,
+        extended_longitudes,
+        x_knots,
+        y_knots,
+    )
+    for array in coordinate_arrays:
+        array.setflags(write=False)
+    return RectangularGridPreparation(
+        sorted_longitudes,
+        longitude_order,
+        sorted_latitudes,
+        latitude_order,
+        extended_longitudes,
+        periodic_x,
+        x_knots,
+        y_knots,
+        x_factor,
+        y_factor,
+    )
 
 
 def _spline_scalar(value: NDArray[np.float64]) -> float:
@@ -205,10 +418,7 @@ def build_spherical_bspline_surface(
 
     nx_knots = len(theta_knots) - 4
     ny_knots = len(phi_knots) - 4
-    coeffs_arr = np.zeros((nx_knots, ny_knots), dtype=np.float64)
-    for i in range(nx_knots):
-        for j in range(ny_knots):
-            coeffs_arr[i, j] = coeffs_raw[i * ny_knots + j]
+    coeffs_arr = coeffs_raw.reshape(nx_knots, ny_knots).copy()
 
     return SphericalBsplineSurfaceResult(
         SphericalBsplineSurface(
@@ -229,20 +439,23 @@ def build_spherical_bspline_surface(
     )
 
 
-def build_bspline_surface(
+def _ordered_rectangular_frame(
     frame: NDArray[np.float64],
     latitudes: NDArray[np.float64],
     longitudes: NDArray[np.float64],
     *,
     periodic_x: bool,
-    smoothing: float = _DEFAULT_SMOOTHING,
-) -> BsplineSurfaceResult:
-    """Construct a rectangular bicubic spline for one frame.
-
-    SciPy/FITPACK performs the spline construction.  Rectangular TRACK
-    compatibility is supplied by the PST wrapper and downstream SMOOPY/GDFP
-    integration.
-    """
+    grid: RectangularGridPreparation | None = None,
+) -> (
+    tuple[
+        RectangularGridPreparation,
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+    ]
+    | None
+):
+    """Validate and order one rectangular frame in the cached grid space."""
     if (
         frame.ndim != 2
         or frame.shape != (latitudes.size, longitudes.size)
@@ -251,37 +464,115 @@ def build_bspline_surface(
         or not np.isfinite(frame).all()
         or not np.isfinite(latitudes).all()
         or not np.isfinite(longitudes).all()
-        or not np.isfinite(smoothing)
-        or smoothing < 0.0
     ):
-        return BsplineSurfaceResult(None, "spline_construction_failure")
+        return None
 
     # Rectangular TRACK compatibility is evaluated in one internal global
     # coordinate system.  Signed input is equivalent to unsigned input only
     # after its data columns are cyclically reordered with these coordinates.
-    x = (
-        np.mod(longitudes.astype(np.float64, copy=False), 360.0)
-        if periodic_x
-        else longitudes.astype(np.float64, copy=False)
+    prepared_grid = (
+        grid
+        if grid is not None
+        else prepare_rectangular_grid(latitudes, longitudes, periodic_x=periodic_x)
     )
-    x_order = np.argsort(x)
-    x = x[x_order]
-    if np.any(np.diff(x) <= 0.0) or x.size < 4:
-        return BsplineSurfaceResult(None, "spline_construction_failure")
+    if prepared_grid.periodic_x != periodic_x:
+        return None
 
-    y = latitudes.astype(np.float64, copy=False)
-    y_order = np.argsort(y)
-    y = y[y_order]
+    x = prepared_grid.sorted_longitudes
+    x_order = prepared_grid.longitude_order
+    if np.any(np.diff(x) <= 0.0) or x.size < 4:
+        return None
+
+    y = prepared_grid.sorted_latitudes
+    y_order = prepared_grid.latitude_order
     if np.any(np.diff(y) <= 0.0) or y.size < 4:
-        return BsplineSurfaceResult(None, "spline_construction_failure")
+        return None
 
     z = frame[y_order, :][:, x_order]
-    if periodic_x:
-        extended_x = np.concatenate((x, [x[0] + 360.0]))
-        extended_z = np.concatenate((z, z[:, :1]), axis=1)
-    else:
-        extended_x = x
-        extended_z = z
+    extended_z = np.concatenate((z, z[:, :1]), axis=1) if periodic_x else z
+    return prepared_grid, x, y, extended_z
+
+
+def _rectangular_surface(
+    grid: RectangularGridPreparation,
+    coeffs: NDArray[np.float64],
+    periodic_x: bool,
+) -> BsplineSurface:
+    """Build the evaluator state shared by cached and FITPACK paths."""
+    return BsplineSurface(
+        x_knots=grid.x_knots,
+        y_knots=grid.y_knots,
+        coeffs=coeffs,
+        x_lower=float(grid.x_knots[3]),
+        x_upper=float(grid.x_knots[-4]),
+        y_lower=float(grid.y_knots[3]),
+        y_upper=float(grid.y_knots[-4]),
+        first_sample_x=float(grid.sorted_longitudes[0]),
+        last_sample_x=float(grid.sorted_longitudes[-1]),
+        periodic_x=periodic_x,
+    )
+
+
+def _solve_cached_rectangular_coefficients(
+    grid: RectangularGridPreparation,
+    extended_values: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Solve the fixed tensor-product interpolation system for one frame."""
+    # FITPACK applies the x rotations, then the y rotations, and solves y
+    # before x.  The intermediate arrays retain FITPACK's x-major layout.
+    x_transformed = _apply_cached_qr_rows(
+        np.ascontiguousarray(extended_values.T, dtype=np.float64),
+        grid.x_factor.upper,
+        grid.x_factor.cosines,
+        grid.x_factor.sines,
+        grid.x_factor.active,
+        grid.x_factor.row_numbers,
+    )
+    y_transformed = _apply_cached_qr_rows(
+        x_transformed.T,
+        grid.y_factor.upper,
+        grid.y_factor.cosines,
+        grid.y_factor.sines,
+        grid.y_factor.active,
+        grid.y_factor.row_numbers,
+    ).T
+    y_solved = _back_substitute_cached_qr(grid.y_factor.upper, y_transformed.T).T
+    coefficients = _back_substitute_cached_qr(grid.x_factor.upper, y_solved)
+    return np.ascontiguousarray(coefficients, dtype=np.float64)
+
+
+def build_bspline_surface_reference(
+    frame: NDArray[np.float64],
+    latitudes: NDArray[np.float64],
+    longitudes: NDArray[np.float64],
+    *,
+    periodic_x: bool,
+    smoothing: float = _DEFAULT_SMOOTHING,
+    grid: RectangularGridPreparation | None = None,
+) -> BsplineSurfaceResult:
+    """Construct the rectangular surface through SciPy/FITPACK directly.
+
+    This is retained as the numerical reference path for equivalence tests
+    and validation.  Production uses :func:`build_bspline_surface` with the
+    fixed-grid solve when ``smoothing == 0``.
+    """
+    if not np.isfinite(smoothing) or smoothing < 0.0:
+        return BsplineSurfaceResult(None, "spline_construction_failure")
+    ordered = _ordered_rectangular_frame(
+        frame,
+        latitudes,
+        longitudes,
+        periodic_x=periodic_x,
+        grid=grid,
+    )
+    if ordered is None:
+        return BsplineSurfaceResult(None, "spline_construction_failure")
+    prepared_grid, x, y, extended_z = ordered
+    extended_x = (
+        prepared_grid.extended_longitudes
+        if periodic_x
+        else prepared_grid.sorted_longitudes
+    )
 
     try:
         spline = RectBivariateSpline(
@@ -302,10 +593,7 @@ def build_bspline_surface(
 
     nx_knots = len(x_knots) - 4
     ny_knots = len(y_knots) - 4
-    coeffs_arr = np.zeros((nx_knots, ny_knots), dtype=np.float64)
-    for i in range(nx_knots):
-        for j in range(ny_knots):
-            coeffs_arr[i, j] = coeffs_raw[i * ny_knots + j]
+    coeffs_arr = coeffs_raw.reshape(nx_knots, ny_knots).copy()
 
     return BsplineSurfaceResult(
         BsplineSurface(
@@ -320,6 +608,58 @@ def build_bspline_surface(
             last_sample_x=float(x[-1]),
             periodic_x=periodic_x,
         ),
+        "success",
+    )
+
+
+def build_bspline_surface(
+    frame: NDArray[np.float64],
+    latitudes: NDArray[np.float64],
+    longitudes: NDArray[np.float64],
+    *,
+    periodic_x: bool,
+    smoothing: float = _DEFAULT_SMOOTHING,
+    grid: RectangularGridPreparation | None = None,
+) -> BsplineSurfaceResult:
+    """Construct a rectangular bicubic spline for one frame.
+
+    For the TRACK-compatible interpolation case (cubic degree and ``s=0``),
+    the fixed-grid tensor-product system is solved using the immutable
+    preparation.  Other smoothing values retain the FITPACK construction.
+    The compiled evaluator and SMOOPY/GDFP layer are unchanged.
+    """
+    if not np.isfinite(smoothing) or smoothing < 0.0:
+        return BsplineSurfaceResult(None, "spline_construction_failure")
+    ordered = _ordered_rectangular_frame(
+        frame,
+        latitudes,
+        longitudes,
+        periodic_x=periodic_x,
+        grid=grid,
+    )
+    if ordered is None:
+        return BsplineSurfaceResult(None, "spline_construction_failure")
+    prepared_grid, _x, _y, extended_z = ordered
+
+    if smoothing != _DEFAULT_SMOOTHING:
+        return build_bspline_surface_reference(
+            frame,
+            latitudes,
+            longitudes,
+            periodic_x=periodic_x,
+            smoothing=smoothing,
+            grid=prepared_grid,
+        )
+
+    try:
+        coeffs_arr = _solve_cached_rectangular_coefficients(
+            prepared_grid,
+            extended_z,
+        )
+    except Exception:  # noqa: BLE001
+        return BsplineSurfaceResult(None, "spline_construction_failure")
+    return BsplineSurfaceResult(
+        _rectangular_surface(prepared_grid, coeffs_arr, periodic_x),
         "success",
     )
 

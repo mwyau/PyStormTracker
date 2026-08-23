@@ -12,6 +12,8 @@ from pystormtracker.hodges.detector import (
     DUFF_FEATURE_CUTOFF,
     HodgesDetector,
     _compute_object_properties,
+    _detect_track_rectangular_candidates,
+    _detect_track_rectangular_candidates_reference,
     _find_object_extrema,
     _find_object_first_indices,
     _group_object_extrema,
@@ -328,6 +330,43 @@ def test_rectangular_spline_preserves_a_physical_endpoint_extremum() -> None:
     np.testing.assert_allclose(signed_step.longitudes, unsigned_step.longitudes)
     np.testing.assert_allclose(signed_step.values, unsigned_step.values)
     assert signed_diagnostics[0].status == unsigned_diagnostics[0].status
+
+
+@pytest.mark.parametrize("is_min", [True, False])
+def test_packed_rectangular_candidates_match_reference_scan(is_min: bool) -> None:
+    """The packed detector keeps TRACK candidate arrays exactly unchanged."""
+    latitudes = np.linspace(-80.0, 80.0, 17, dtype=np.float64)
+    unsigned_longitudes = np.arange(0.0, 360.0, 10.0, dtype=np.float64)
+    lon_grid, lat_grid = np.meshgrid(unsigned_longitudes, latitudes)
+    frame = (
+        100.0
+        - 30.0 * np.exp(-(((lat_grid - 5.0) / 8.0) ** 2))
+        + 0.01 * np.cos(np.radians(lon_grid * 3.0))
+    )
+    if not is_min:
+        frame = -frame
+    order = np.argsort((unsigned_longitudes + 180.0) % 360.0 - 180.0)
+    signed_longitudes = (unsigned_longitudes[order] + 180.0) % 360.0 - 180.0
+    signed_frame = frame[:, order]
+
+    reference = _detect_track_rectangular_candidates_reference(
+        signed_frame,
+        latitudes,
+        signed_longitudes,
+        intensity_threshold=95.0 if is_min else -95.0,
+        is_min=is_min,
+        min_grid_points=3,
+    )
+    packed = _detect_track_rectangular_candidates(
+        signed_frame,
+        latitudes,
+        signed_longitudes,
+        intensity_threshold=95.0 if is_min else -95.0,
+        is_min=is_min,
+        min_grid_points=3,
+    )
+    for expected, actual in zip(reference, packed, strict=True):
+        np.testing.assert_array_equal(actual, expected)
 
 
 def test_spherical_duplicate_ranking_uses_immutable_initial_coordinates(

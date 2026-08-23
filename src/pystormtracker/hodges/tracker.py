@@ -35,6 +35,7 @@ from ..preprocessing.tracking import (
     preprocess_tracking_data,
     resolve_filter_bounds,
 )
+from ..refinement.bspline import RectangularGridPreparation, prepare_rectangular_grid
 from . import constants
 from .detections import HodgesCenterFrame
 from .detector import (
@@ -81,6 +82,7 @@ def _detect_hodges_frame_task(
     periodic_x: bool,
     projected_xy: bool,
     projection: Projection,
+    rectangular_grid: RectangularGridPreparation | None,
 ) -> HodgesCenterFrame:
     """Worker task: Detect and refine features for a single frame."""
     frame_arr_2d = np.asarray(frame_arr, dtype=np.float64).squeeze()
@@ -103,6 +105,7 @@ def _detect_hodges_frame_task(
         bspline_gradient_tolerance=bspline_gradient_tolerance,
         periodic_x=periodic_x,
         projected_xy=projected_xy,
+        rectangular_grid=rectangular_grid,
     )
 
     if projection in ("nh_stereo", "sh_stereo"):
@@ -853,6 +856,15 @@ class HodgesTracker(Tracker):
                 threshold = constants.DEFAULT_MSL_OBJECT_THRESHOLD
 
         projection_attr: Projection = data_xr.attrs.get("projection", self.projection)
+        rectangular_grid = (
+            prepare_rectangular_grid(
+                frames.lat_arr,
+                frames.lon_arr,
+                periodic_x=frames.periodic_x,
+            )
+            if self.feature_refinement == "bspline"
+            else None
+        )
 
         frame_tasks = [
             dask.delayed(_detect_hodges_frame_task)(
@@ -877,6 +889,7 @@ class HodgesTracker(Tracker):
                 periodic_x=frames.periodic_x,
                 projected_xy=frames.projected_xy,
                 projection=projection_attr,
+                rectangular_grid=rectangular_grid,
                 dask_key_name=f"hodges-frame-{i:06d}",
             )
             for i in range(frames.n_steps)

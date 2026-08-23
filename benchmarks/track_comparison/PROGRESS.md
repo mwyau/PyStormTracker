@@ -25,7 +25,7 @@ detection_mode = "min"
 object_threshold = -100 Pa
 feature_refinement = "bspline"  # rectangular SMOOPY path in the current API
 track_smoopy_optimization_scale = 0.01
-mge_max_iterations = 10
+mge_max_iterations = 3
 min_object_grid_points = 3
 min_track_points = 1
 w1 = 0.2, w2 = 0.8
@@ -40,6 +40,14 @@ taper_points = 0
 The ordinary public defaults remain unchanged (`scale=1.0`, `MGE=3`, and
 `min_track_points=3`). The historical values above are explicit benchmark
 parameters, not hidden attribute mutations.
+
+The earlier corrected campaign forced `mge_max_iterations=10`. A controlled
+shared-detection experiment on the January T42 case measured 58.52 s of serial
+linking at 3 iterations and 205.28 s at 10. Both settings produced 718 tracks
+and 5,145 points, but their packed track membership and coordinate arrays were
+not exactly equal. TRACK 1.5.4 sets `tot_term=3`, so the benchmark now uses 3;
+the 10-iteration run is retained as an optimization comparison, not as the
+source-compatible setting.
 
 ## Completed corrected measurements
 

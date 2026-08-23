@@ -501,7 +501,7 @@ def _tracker(
         w2=0.8,
         dmax=6.5,
         phimax=1.0,
-        mge_max_iterations=10,
+        mge_max_iterations=3,
         min_track_points=1,
         dmax_zones=constants.DEFAULT_DMAX_ZONES.copy(),
         adaptive_smoothness=constants.DEFAULT_ADAPTIVE_SMOOTHNESS.copy(),

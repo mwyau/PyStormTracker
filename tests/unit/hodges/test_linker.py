@@ -109,6 +109,20 @@ def test_hodges_linker_feature_filter_and_workspace_match_source_order() -> None
         np.array([[0, 2, -1], [-1, -1, -1], [-1, 1, -1], [-1, -1, -1]]),
     )
 
+    native_filtered = linker._filter_feature_points_numba(detections)
+    for source_step, native_step in zip(filtered, native_filtered, strict=True):
+        np.testing.assert_array_equal(source_step.latitudes, native_step.latitudes)
+        np.testing.assert_array_equal(source_step.longitudes, native_step.longitudes)
+        np.testing.assert_array_equal(source_step.values, native_step.values)
+
+    native_offsets = np.array([0, 1, 3, 3], dtype=np.int64)
+    native_workspace = linker._initialize_mge_workspace_numba(
+        np.array([0.0, 0.0, 0.0]),
+        np.array([0.0, -1.0, 1.0]),
+        native_offsets,
+    )
+    np.testing.assert_array_equal(native_workspace.assignments, workspace.assignments)
+
 
 def test_hodges_linker_filters_every_aligned_diagnostic_column() -> None:
     linker = HodgesLinker(

@@ -21,9 +21,12 @@ from . import constants
 from .detections import HodgesCenterFrame
 from .detector import DUFF_FEATURE_CUTOFF
 from .mge import (
+    _NO_PROFILE_STATS,
     _backward_mge_sweep,
     _compute_adaptive_phimax,
+    _filter_feature_points_native,
     _forward_mge_sweep,
+    _initialize_mge_workspace_native,
     _select_regional_dmax,
     geod_dev,
 )
@@ -187,7 +190,7 @@ class HodgesLinker:
 
         # 1. Apply TRACK's pre-initialization feature-population filter, then
         # flatten retained features for mapping to the MGE workspace.
-        filtered_detections = self._filter_feature_points(
+        filtered_detections = self._filter_feature_points_numba(
             normalized_detections,
             missing_input_counts,
         )
@@ -228,7 +231,7 @@ class HodgesLinker:
 
         # 2. Source-shaped nearest-neighbor initialization, including paired
         # all-phantom rows that MGE may exchange with real rows.
-        workspace = self._initialize_mge_workspace(
+        workspace = self._initialize_mge_workspace_numba(
             features_lat,
             features_lon,
             step_offsets,
@@ -545,6 +548,48 @@ class HodgesLinker:
             retained.append(step.with_feature_mask(keep))
         return retained
 
+    def _filter_feature_points_numba(
+        self,
+        detections: Sequence[HodgesLinkInput],
+        missing_input_counts: NDArray[np.int64] | None = None,
+    ) -> list[HodgesCenterFrame]:
+        """Apply the TRACK feature filter using the native flattened scan."""
+        normalized_detections = self._normalize_detections(detections)
+        if not normalized_detections:
+            return []
+        if missing_input_counts is None:
+            missing_input_counts = np.zeros(
+                len(normalized_detections),
+                dtype=np.int64,
+            )
+
+        step_offsets = np.zeros(len(normalized_detections) + 1, dtype=np.int64)
+        for frame_index, step in enumerate(normalized_detections):
+            step_offsets[frame_index + 1] = step_offsets[frame_index] + step.values.size
+        features_lat = np.concatenate(
+            [step.latitudes for step in normalized_detections]
+        )
+        features_lon = np.concatenate(
+            [step.longitudes for step in normalized_detections]
+        )
+        features_values = np.concatenate(
+            [step.values for step in normalized_detections]
+        )
+        keep = _filter_feature_points_native(
+            features_lat,
+            features_lon,
+            features_values,
+            step_offsets,
+            missing_input_counts,
+            self.dmax_parameters,
+            self.dmax_zones,
+            DUFF_FEATURE_CUTOFF,
+        )
+        return [
+            step.with_feature_mask(keep[step_offsets[index] : step_offsets[index + 1]])
+            for index, step in enumerate(normalized_detections)
+        ]
+
     def _has_adjacent_feature_within_dmax(
         self,
         latitude: float,
@@ -672,6 +717,27 @@ class HodgesLinker:
         if not rows:
             return _MGEInitializationWorkspace(np.empty((0, n_frames), dtype=np.int64))
         return _MGEInitializationWorkspace(np.stack(rows))
+
+    def _initialize_mge_workspace_numba(
+        self,
+        features_lat: NDArray[np.float64],
+        features_lon: NDArray[np.float64],
+        step_offsets: NDArray[np.int64],
+        missing_input_counts: NDArray[np.int64] | None = None,
+    ) -> _MGEInitializationWorkspace:
+        """Build the TRACK workspace using the native ordered candidate scan."""
+        n_frames = step_offsets.size - 1
+        if missing_input_counts is None:
+            missing_input_counts = np.zeros(n_frames, dtype=np.int64)
+        rows, n_rows = _initialize_mge_workspace_native(
+            features_lat,
+            features_lon,
+            step_offsets,
+            missing_input_counts,
+            self.dmax_parameters,
+            self.dmax_zones,
+        )
+        return _MGEInitializationWorkspace(rows[:n_rows, :].copy())
 
     def _has_excess_displacement(
         self,
@@ -955,6 +1021,7 @@ class HodgesLinker:
         features_lon: NDArray[np.float64],
         n_frames: int,
         missing_input_counts: NDArray[np.int64] | None = None,
+        profile_stats: NDArray[np.int64] | None = None,
     ) -> NDArray[np.int64]:
         """Run TRACK-style bounded forward/backward MGE optimization.
 
@@ -976,6 +1043,8 @@ class HodgesLinker:
         backward_active = True
 
         for outer_iteration in range(self.mge_max_iterations):
+            if profile_stats is not None:
+                profile_stats[5] += 1
             if not (forward_active or backward_active):
                 break
 
@@ -995,6 +1064,7 @@ class HodgesLinker:
                     n_frames,
                     missing_input_counts,
                     direction="forward",
+                    profile_stats=profile_stats,
                 )
 
                 # The forward direction has converged for the current state.
@@ -1025,6 +1095,7 @@ class HodgesLinker:
                     n_frames,
                     missing_input_counts,
                     direction="backward",
+                    profile_stats=profile_stats,
                 )
 
                 # The backward direction has converged for the current state.
@@ -1046,6 +1117,7 @@ class HodgesLinker:
         missing_input_counts: NDArray[np.int64] | None = None,
         *,
         direction: MGEDirection,
+        profile_stats: NDArray[np.int64] | None = None,
     ) -> tuple[NDArray[np.int64], bool]:
         """Repeat one directional MGE sweep until it makes no exchange."""
         changed_any = False
@@ -1054,21 +1126,41 @@ class HodgesLinker:
 
         while True:
             if direction == "forward":
-                tracks, sweep_changed = self._run_forward_mge_iteration(
-                    tracks,
-                    features_lat,
-                    features_lon,
-                    n_frames,
-                    missing_input_counts,
-                )
+                if profile_stats is None:
+                    tracks, sweep_changed = self._run_forward_mge_iteration(
+                        tracks,
+                        features_lat,
+                        features_lon,
+                        n_frames,
+                        missing_input_counts,
+                    )
+                else:
+                    tracks, sweep_changed = self._run_forward_mge_iteration(
+                        tracks,
+                        features_lat,
+                        features_lon,
+                        n_frames,
+                        missing_input_counts,
+                        profile_stats=profile_stats,
+                    )
             else:
-                tracks, sweep_changed = self._run_backward_mge_iteration(
-                    tracks,
-                    features_lat,
-                    features_lon,
-                    n_frames,
-                    missing_input_counts,
-                )
+                if profile_stats is None:
+                    tracks, sweep_changed = self._run_backward_mge_iteration(
+                        tracks,
+                        features_lat,
+                        features_lon,
+                        n_frames,
+                        missing_input_counts,
+                    )
+                else:
+                    tracks, sweep_changed = self._run_backward_mge_iteration(
+                        tracks,
+                        features_lat,
+                        features_lon,
+                        n_frames,
+                        missing_input_counts,
+                        profile_stats=profile_stats,
+                    )
 
             if not sweep_changed:
                 return tracks, changed_any
@@ -1082,11 +1174,13 @@ class HodgesLinker:
         features_lon: NDArray[np.float64],
         n_frames: int,
         missing_input_counts: NDArray[np.int64] | None = None,
+        profile_stats: NDArray[np.int64] | None = None,
     ) -> tuple[NDArray[np.int64], bool]:
         """Run a single forward-direction MGE iteration in Numba."""
         if missing_input_counts is None:
             missing_input_counts = np.zeros(n_frames, dtype=np.int64)
 
+        stats = _NO_PROFILE_STATS if profile_stats is None else profile_stats
         changed = _forward_mge_sweep(
             tracks,
             features_lat,
@@ -1099,6 +1193,7 @@ class HodgesLinker:
             self.phimax_parameters,
             self.dmax_zones,
             self.adaptive_smoothness,
+            stats,
         )
         return tracks, changed
 
@@ -1109,11 +1204,13 @@ class HodgesLinker:
         features_lon: NDArray[np.float64],
         n_frames: int,
         missing_input_counts: NDArray[np.int64] | None = None,
+        profile_stats: NDArray[np.int64] | None = None,
     ) -> tuple[NDArray[np.int64], bool]:
         """Run a single backward-direction MGE iteration in Numba."""
         if missing_input_counts is None:
             missing_input_counts = np.zeros(n_frames, dtype=np.int64)
 
+        stats = _NO_PROFILE_STATS if profile_stats is None else profile_stats
         changed = _backward_mge_sweep(
             tracks,
             features_lat,
@@ -1126,5 +1223,6 @@ class HodgesLinker:
             self.phimax_parameters,
             self.dmax_zones,
             self.adaptive_smoothness,
+            stats,
         )
         return tracks, changed

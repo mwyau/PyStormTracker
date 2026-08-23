@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Literal, NamedTuple
@@ -16,8 +17,10 @@ from ..models.time import TimeInput, TimeRange, coerce_time_input, select_time_r
 from ..models.tracks import ResolvedDetectionMode
 from ..refinement.bspline import (
     BsplineRefinementStatus,
+    RectangularGridPreparation,
     build_bspline_surface,
     build_spherical_bspline_surface,
+    prepare_rectangular_grid,
     refine_bspline_feature_point,
     refine_spherical_bspline_feature_point,
 )
@@ -585,13 +588,14 @@ class _TrackExtremaPoint:
     local_y: int
 
 
-def _detect_track_rectangular_candidates(
+def _detect_track_rectangular_candidates_reference(
     frame: NDArray[np.float64],
     lat: NDArray[np.float64],
     lon: NDArray[np.float64],
     intensity_threshold: float,
     is_min: bool,
     min_grid_points: int,
+    profile: dict[str, float | int] | None = None,
 ) -> tuple[
     NDArray[np.float64],
     NDArray[np.float64],
@@ -599,6 +603,7 @@ def _detect_track_rectangular_candidates(
     NDArray[np.int32],
 ]:
     """Reproduce TRACK rectangular CCL, boundary merging, and extrema extraction."""
+    profile_started = time.perf_counter() if profile is not None else 0.0
     # TRACK's rectangular object path is defined on a 0--360 degree cyclic
     # coordinate.  Normalize and reorder the physical field before extending
     # its periodic endpoint so signed and unsigned global inputs follow the
@@ -634,8 +639,15 @@ def _detect_track_rectangular_candidates(
                 label_count += 1
                 labels[i, j] = label_count
 
+    if profile is not None:
+        profile["thresholded_grid_points"] = label_count
+        profile["threshold_seconds"] = time.perf_counter() - profile_started
+
     changed = True
+    propagation_started = time.perf_counter() if profile is not None else 0.0
+    propagation_passes = 0
     while changed:
+        propagation_passes += 1
         changed = False
         for i in range(ny):
             for j in range(nx + 1):
@@ -668,6 +680,11 @@ def _detect_track_rectangular_candidates(
                     labels[i, j] = lowest
                     changed = True
 
+    if profile is not None:
+        profile["propagation_passes"] = propagation_passes
+        profile["propagation_seconds"] = time.perf_counter() - propagation_started
+
+    materialization_started = time.perf_counter() if profile is not None else 0.0
     unique_labs = [int(u) for u in np.unique(labels) if u > 0]
     objects: list[_TrackObject] = []
     for lab in unique_labs:
@@ -684,6 +701,14 @@ def _detect_track_rectangular_candidates(
             )
         objects.append(_TrackObject(id=len(objects) + 1, pts=pts, b_or_i="i"))
 
+    if profile is not None:
+        profile["initial_object_count"] = len(objects)
+        profile["materialized_points"] = sum(len(ob.pts) for ob in objects)
+        profile["materialization_seconds"] = (
+            time.perf_counter() - materialization_started
+        )
+
+    boundary_started = time.perf_counter() if profile is not None else 0.0
     for ob in objects:
         bi = 0
         for pt in ob.pts:
@@ -726,6 +751,7 @@ def _detect_track_rectangular_candidates(
                     elif ilb and ob.b_or_i == "l":
                         ob.b_or_i = "b"
 
+    boundary_merges = 0
     for i in range(ny):
         l1 = int(lb[i])
         r1 = int(rb[i])
@@ -758,9 +784,16 @@ def _detect_track_rectangular_candidates(
             ob.pts.extend(kept_cob_pts)
             cob.pts = []
             cob.b_or_i = "n"
+            boundary_merges += 1
+
+    if profile is not None:
+        profile["boundary_merges"] = boundary_merges
+        profile["boundary_seconds"] = time.perf_counter() - boundary_started
 
     filtered_objects = [ob for ob in objects if len(ob.pts) >= min_grid_points]
 
+    extrema_started = time.perf_counter() if profile is not None else 0.0
+    extrema_count = 0
     cand_lats: list[float] = []
     cand_lons: list[float] = []
     cand_vals: list[float] = []
@@ -809,6 +842,7 @@ def _detect_track_rectangular_candidates(
         if not extrema_pts:
             continue
 
+        extrema_count += len(extrema_pts)
         if len(extrema_pts) == 1:
             fpt = extrema_pts[0]
             sx = obj_xreal(fpt.ixy - 1)
@@ -860,11 +894,463 @@ def _detect_track_rectangular_candidates(
                 cand_vals.append(first_val * (-100.0 if is_min else 100.0))
                 cand_obj_ids.append(ob_idx + 1)
 
+    if profile is not None:
+        profile["filtered_object_count"] = len(filtered_objects)
+        profile["candidate_extrema_count"] = extrema_count
+        profile["extrema_seconds"] = time.perf_counter() - extrema_started
+
     return (
         np.array(cand_lats, dtype=np.float64),
         np.array(cand_lons, dtype=np.float64),
         np.array(cand_vals, dtype=np.float64),
         np.array(cand_obj_ids, dtype=np.int32),
+    )
+
+
+@nb.njit(cache=True, nogil=True)
+def _rectangular_object_longitude(
+    index: int,
+    longitude_extended: NDArray[np.float64],
+    nx: int,
+) -> float:
+    """Return the TRACK-compatible real longitude for one grid index."""
+    if index < 0:
+        return float(longitude_extended[index + nx] - 360.0)
+    if index >= nx + 1:
+        return float(longitude_extended[index - nx] + 360.0)
+    return float(longitude_extended[index])
+
+
+@nb.njit(cache=True, nogil=True)
+def _detect_rectangular_candidates_numba(
+    frame: NDArray[np.float64],
+    lat: NDArray[np.float64],
+    longitude_extended: NDArray[np.float64],
+    intensity_threshold: float,
+    is_min: bool,
+    min_grid_points: int,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.int32],
+]:
+    """Packed Numba implementation of the rectangular TRACK scan.
+
+    This keeps the reference implementation above available for exact
+    equivalence checks during the reconciliation work.  Labels, object points,
+    boundary merges, local extrema, and adjacent-extrema grouping follow the same
+    source order
+    and tie rules; only transient Python objects are replaced by arrays and
+    linked lists.
+    """
+    ny, nx = frame.shape
+    nxe = nx + 1
+    frame_ext = np.empty((ny, nxe), dtype=np.float64)
+    for row in range(ny):
+        for column in range(nx):
+            frame_ext[row, column] = frame[row, column]
+        frame_ext[row, nx] = frame[row, 0]
+
+    labels = np.zeros((ny, nxe), dtype=np.int32)
+    label_count = 0
+    for row in range(ny):
+        for column in range(nxe):
+            value = frame_ext[row, column]
+            eligible = (
+                value <= intensity_threshold if is_min else value >= intensity_threshold
+            )
+            if eligible:
+                label_count += 1
+                labels[row, column] = label_count
+
+    changed = True
+    while changed:
+        changed = False
+        for row in range(ny):
+            for column in range(nxe):
+                current = labels[row, column]
+                if current == 0:
+                    continue
+                lowest = current
+                for direction in range(4):
+                    if direction == 0:
+                        neighbor_row = row - 1
+                        neighbor_column = column
+                    elif direction == 1:
+                        neighbor_row = row + 1
+                        neighbor_column = column
+                    elif direction == 2:
+                        neighbor_row = row
+                        neighbor_column = column - 1
+                    else:
+                        neighbor_row = row
+                        neighbor_column = column + 1
+                    if 0 <= neighbor_row < ny and 0 <= neighbor_column < nxe:
+                        neighbor = labels[neighbor_row, neighbor_column]
+                        if 0 < neighbor < lowest:
+                            lowest = neighbor
+                if lowest != current:
+                    labels[row, column] = lowest
+                    changed = True
+
+        for row in range(ny - 1, -1, -1):
+            for column in range(nxe - 1, -1, -1):
+                current = labels[row, column]
+                if current == 0:
+                    continue
+                lowest = current
+                for direction in range(4):
+                    if direction == 0:
+                        neighbor_row = row - 1
+                        neighbor_column = column
+                    elif direction == 1:
+                        neighbor_row = row + 1
+                        neighbor_column = column
+                    elif direction == 2:
+                        neighbor_row = row
+                        neighbor_column = column - 1
+                    else:
+                        neighbor_row = row
+                        neighbor_column = column + 1
+                    if 0 <= neighbor_row < ny and 0 <= neighbor_column < nxe:
+                        neighbor = labels[neighbor_row, neighbor_column]
+                        if 0 < neighbor < lowest:
+                            lowest = neighbor
+                if lowest != current:
+                    labels[row, column] = lowest
+                    changed = True
+
+    # np.unique(labels)[np.unique(labels) > 0] is sorted.  A root label is the
+    # first row-major cell of its component, so first-seen compaction is the
+    # same source ordering without constructing a temporary Python list.
+    label_map = np.zeros(label_count + 1, dtype=np.int32)
+    num_objects = 0
+    for row in range(ny):
+        for column in range(nxe):
+            root = labels[row, column]
+            if root > 0 and label_map[root] == 0:
+                num_objects += 1
+                label_map[root] = num_objects
+    for row in range(ny):
+        for column in range(nxe):
+            root = labels[row, column]
+            if root > 0:
+                labels[row, column] = label_map[root]
+
+    point_count = 0
+    for row in range(ny):
+        for column in range(nxe):
+            if labels[row, column] > 0:
+                point_count += 1
+
+    point_y = np.empty(point_count, dtype=np.int32)
+    point_x = np.empty(point_count, dtype=np.int32)
+    point_values = np.empty(point_count, dtype=np.float64)
+    point_next = np.full(point_count, -1, dtype=np.int64)
+    object_head = np.full(num_objects + 1, -1, dtype=np.int64)
+    object_tail = np.full(num_objects + 1, -1, dtype=np.int64)
+    object_sizes = np.zeros(num_objects + 1, dtype=np.int64)
+    point_index = 0
+    value_scale = -0.01 if is_min else 0.01
+    for row in range(ny):
+        for column in range(nxe):
+            object_id = labels[row, column]
+            if object_id == 0:
+                continue
+            point_y[point_index] = row + 1
+            point_x[point_index] = column + 1
+            point_values[point_index] = frame_ext[row, column] * value_scale
+            if object_head[object_id] < 0:
+                object_head[object_id] = point_index
+            else:
+                point_next[object_tail[object_id]] = point_index
+            object_tail[object_id] = point_index
+            object_sizes[object_id] += 1
+            point_index += 1
+
+    # TRACK boundary state codes: i, x, y, b, l, r, n.
+    state_x = 1
+    state_y = 2
+    state_b = 3
+    state_l = 4
+    state_r = 5
+    state_n = 6
+    object_state = np.zeros(num_objects + 1, dtype=np.int8)
+    for object_id in range(1, num_objects + 1):
+        boundary_indicator = 0
+        point = object_head[object_id]
+        while point >= 0:
+            px = point_x[point]
+            py = point_y[point]
+            if px == 1 or px == nxe:
+                if boundary_indicator == 0:
+                    boundary_indicator = 1
+                    object_state[object_id] = state_x
+                elif boundary_indicator == 1 and object_state[object_id] == state_y:
+                    object_state[object_id] = state_b
+            if py == 1 or py == ny:
+                if boundary_indicator == 0:
+                    boundary_indicator = 1
+                    object_state[object_id] = state_y
+                elif boundary_indicator == 1 and object_state[object_id] == state_x:
+                    object_state[object_id] = state_b
+            point = point_next[point]
+
+    left_boundary = np.zeros(ny, dtype=np.int32)
+    right_boundary = np.zeros(ny, dtype=np.int32)
+    for object_id in range(1, num_objects + 1):
+        if object_state[object_id] not in (state_x, state_b):
+            continue
+        boundary_indicator = 0
+        point = object_head[object_id]
+        while point >= 0:
+            px = point_x[point]
+            row = point_y[point] - 1
+            if px == 1:
+                left_boundary[row] = object_id
+                if boundary_indicator == 0:
+                    object_state[object_id] = state_l
+                    boundary_indicator = 1
+                elif object_state[object_id] == state_r:
+                    object_state[object_id] = state_b
+            elif px == nxe:
+                right_boundary[row] = object_id
+                if boundary_indicator == 0:
+                    object_state[object_id] = state_r
+                    boundary_indicator = 1
+                elif object_state[object_id] == state_l:
+                    object_state[object_id] = state_b
+            point = point_next[point]
+
+    for row in range(ny):
+        left_id = int(left_boundary[row])
+        right_id = int(right_boundary[row])
+        if left_id <= 0 or right_id <= 0 or left_id == right_id:
+            continue
+        if object_sizes[left_id] > object_sizes[right_id]:
+            object_id = left_id
+            combined_id = right_id
+            boundary = right_boundary
+            endpoint = nxe
+        else:
+            object_id = right_id
+            combined_id = left_id
+            boundary = left_boundary
+            endpoint = 1
+
+        combined_state = object_state[combined_id]
+        point = object_head[combined_id]
+        while point >= 0:
+            next_point = point_next[point]
+            if point_x[point] == endpoint:
+                boundary[point_y[point] - 1] = object_id
+            else:
+                if combined_state == state_r:
+                    point_x[point] -= nx
+                elif combined_state == state_l:
+                    point_x[point] += nx
+                point_next[point] = -1
+                if object_head[object_id] < 0:
+                    object_head[object_id] = point
+                else:
+                    point_next[object_tail[object_id]] = point
+                object_tail[object_id] = point
+                object_sizes[object_id] += 1
+            point = next_point
+        object_head[combined_id] = -1
+        object_tail[combined_id] = -1
+        object_sizes[combined_id] = 0
+        object_state[combined_id] = state_n
+
+    filtered_ids = np.empty(num_objects, dtype=np.int32)
+    filtered_count = 0
+    for object_id in range(1, num_objects + 1):
+        if object_sizes[object_id] >= min_grid_points:
+            filtered_ids[filtered_count] = object_id
+            filtered_count += 1
+
+    candidate_lats = np.empty(point_count, dtype=np.float64)
+    candidate_lons = np.empty(point_count, dtype=np.float64)
+    candidate_values = np.empty(point_count, dtype=np.float64)
+    candidate_object_ids = np.empty(point_count, dtype=np.int32)
+    candidate_count = 0
+    for filtered_index in range(filtered_count):
+        object_id = filtered_ids[filtered_index]
+        px_min = nx + 1
+        px_max = 0
+        py_min = ny + 1
+        py_max = 0
+        point = object_head[object_id]
+        while point >= 0:
+            px = point_x[point]
+            py = point_y[point]
+            px_min = min(px_min, px)
+            px_max = max(px_max, px)
+            py_min = min(py_min, py)
+            py_max = max(py_max, py)
+            point = point_next[point]
+
+        xdim = px_max - px_min + 3
+        ydim = py_max - py_min + 3
+        values = np.full((ydim, xdim), -np.inf, dtype=np.float64)
+        present = np.zeros((ydim, xdim), dtype=np.bool_)
+        point = object_head[object_id]
+        while point >= 0:
+            local_x = point_x[point] - px_min + 1
+            local_y = point_y[point] - py_min + 1
+            values[local_y, local_x] = point_values[point]
+            present[local_y, local_x] = True
+            point = point_next[point]
+
+        extrema_ix = np.empty(object_sizes[object_id], dtype=np.int32)
+        extrema_iy = np.empty(object_sizes[object_id], dtype=np.int32)
+        extrema_values = np.empty(object_sizes[object_id], dtype=np.float64)
+        extrema_local_x = np.empty(object_sizes[object_id], dtype=np.int32)
+        extrema_local_y = np.empty(object_sizes[object_id], dtype=np.int32)
+        extrema_count = 0
+        for local_y in range(1, ydim - 1):
+            for local_x in range(1, xdim - 1):
+                if not present[local_y, local_x]:
+                    continue
+                value = values[local_y, local_x]
+                is_local_maximum = True
+                for delta_y in range(-1, 2):
+                    for delta_x in range(-1, 2):
+                        if delta_y == 0 and delta_x == 0:
+                            continue
+                        if values[local_y + delta_y, local_x + delta_x] >= value:
+                            is_local_maximum = False
+                            break
+                    if not is_local_maximum:
+                        break
+                if is_local_maximum:
+                    extrema_ix[extrema_count] = local_x + px_min - 1
+                    extrema_iy[extrema_count] = local_y + py_min - 1
+                    extrema_values[extrema_count] = value
+                    extrema_local_x[extrema_count] = local_x
+                    extrema_local_y[extrema_count] = local_y
+                    extrema_count += 1
+
+        if extrema_count == 0:
+            continue
+        if extrema_count == 1:
+            grid_x = extrema_ix[0] - 1
+            longitude = _rectangular_object_longitude(grid_x, longitude_extended, nx)
+            if longitude < longitude_extended[0]:
+                longitude += 360.0
+            elif longitude > longitude_extended[nx]:
+                longitude -= 360.0
+            candidate_lats[candidate_count] = lat[extrema_iy[0] - 1]
+            candidate_lons[candidate_count] = longitude
+            candidate_values[candidate_count] = extrema_values[0] * (
+                -100.0 if is_min else 100.0
+            )
+            candidate_object_ids[candidate_count] = filtered_index + 1
+            candidate_count += 1
+            continue
+
+        extrema_labels = np.arange(extrema_count, dtype=np.int32) + 1
+        for first in range(extrema_count):
+            for second in range(first + 1, extrema_count):
+                if (
+                    max(
+                        abs(extrema_local_x[first] - extrema_local_x[second]),
+                        abs(extrema_local_y[first] - extrema_local_y[second]),
+                    )
+                    <= 1
+                ):
+                    first_label = extrema_labels[first]
+                    second_label = extrema_labels[second]
+                    lowest = min(first_label, second_label)
+                    for index in range(extrema_count):
+                        if (
+                            extrema_labels[index] == first_label
+                            or extrema_labels[index] == second_label
+                        ):
+                            extrema_labels[index] = lowest
+
+        unique_extrema_labels = np.empty(extrema_count, dtype=np.int32)
+        unique_count = 0
+        for index in range(extrema_count):
+            label = extrema_labels[index]
+            already_seen = False
+            for unique_index in range(unique_count):
+                if unique_extrema_labels[unique_index] == label:
+                    already_seen = True
+                    break
+            if not already_seen:
+                unique_extrema_labels[unique_count] = label
+                unique_count += 1
+
+        for unique_index in range(unique_count):
+            group_label = unique_extrema_labels[unique_index]
+            longitude_sum = 0.0
+            latitude_sum = 0.0
+            group_size = 0
+            first_value = 0.0
+            for index in range(extrema_count):
+                if extrema_labels[index] != group_label:
+                    continue
+                if group_size == 0:
+                    first_value = extrema_values[index]
+                grid_x = extrema_ix[index] - 1
+                longitude_sum += _rectangular_object_longitude(
+                    grid_x, longitude_extended, nx
+                )
+                latitude_sum += lat[extrema_iy[index] - 1]
+                group_size += 1
+            longitude = longitude_sum / group_size
+            if longitude < longitude_extended[0]:
+                longitude += 360.0
+            elif longitude > longitude_extended[nx]:
+                longitude -= 360.0
+            candidate_lats[candidate_count] = latitude_sum / group_size
+            candidate_lons[candidate_count] = longitude
+            candidate_values[candidate_count] = first_value * (
+                -100.0 if is_min else 100.0
+            )
+            candidate_object_ids[candidate_count] = filtered_index + 1
+            candidate_count += 1
+
+    return (
+        candidate_lats[:candidate_count],
+        candidate_lons[:candidate_count],
+        candidate_values[:candidate_count],
+        candidate_object_ids[:candidate_count],
+    )
+
+
+def _detect_track_rectangular_candidates(
+    frame: NDArray[np.float64],
+    lat: NDArray[np.float64],
+    lon: NDArray[np.float64],
+    intensity_threshold: float,
+    is_min: bool,
+    min_grid_points: int,
+    grid: RectangularGridPreparation | None = None,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.int32],
+]:
+    """Detect rectangular TRACK candidates with packed native numerics."""
+    prepared_grid = (
+        grid
+        if grid is not None
+        else prepare_rectangular_grid(lat, lon, periodic_x=True)
+    )
+    if not prepared_grid.periodic_x:
+        raise ValueError("rectangular TRACK candidates require periodic longitude")
+    ordered_frame = np.ascontiguousarray(frame[:, prepared_grid.longitude_order])
+    return _detect_rectangular_candidates_numba(
+        ordered_frame,
+        lat.astype(np.float64, copy=False),
+        prepared_grid.extended_longitudes,
+        intensity_threshold,
+        is_min,
+        min_grid_points,
     )
 
 
@@ -892,6 +1378,7 @@ def detect_hodges_frame(
     bspline_gradient_tolerance: float = 1.0e-5,
     periodic_x: bool = True,
     projected_xy: bool = False,
+    rectangular_grid: RectangularGridPreparation | None = None,
 ) -> tuple[HodgesCenterFrame, tuple[HodgesFeaturePointDiagnostic, ...]]:
     """Process a single 2D spatial frame for Hodges feature detection and refinement."""
     point_time = coerce_time_input(time_val)
@@ -926,6 +1413,7 @@ def detect_hodges_frame(
             intensity_threshold=intensity_threshold,
             is_min=is_min,
             min_grid_points=min_grid_points,
+            grid=rectangular_grid,
         )
         r_idx = np.empty(0, dtype=np.int64)
         c_idx = np.empty(0, dtype=np.int64)
@@ -1047,6 +1535,7 @@ def detect_hodges_frame(
             lon,
             periodic_x=periodic_x,
             smoothing=bspline_smoothing,
+            grid=rectangular_grid,
         )
         if use_rectangular_spline and n_feats > 0
         else None
@@ -1540,6 +2029,12 @@ class HodgesDetector:
         projected_xy = lon_name == "x"
         periodic_x = not projected_xy and self._loader.is_global_longitude()
 
+        rectangular_grid = (
+            prepare_rectangular_grid(lat, lon, periodic_x=periodic_x)
+            if feature_refinement == "bspline"
+            else None
+        )
+
         if feature_refinement == "spherical_bspline" and (
             not periodic_x or not self._loader.is_global_longitude()
         ):
@@ -1579,6 +2074,7 @@ class HodgesDetector:
                 bspline_gradient_tolerance=bspline_gradient_tolerance,
                 periodic_x=periodic_x,
                 projected_xy=projected_xy,
+                rectangular_grid=rectangular_grid,
             )
             raw_results.append(step)
             diagnostics.extend(frame_diag)
