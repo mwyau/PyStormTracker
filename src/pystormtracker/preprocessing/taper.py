@@ -5,15 +5,13 @@ import xarray as xr
 from numpy.typing import NDArray
 
 
-class TaperFilter:
+class BoundaryTaper:
     """
-    A filter that applies a cosine taper to the edges of the domain.
+    Apply a raised-cosine boundary taper to reduce discontinuities and
+    associated spectral ringing before spatial transforms or filtering.
 
-    This is often used in TRACK before spherical harmonic filtering to
-    minimize the Gibbs phenomenon (ringing artifacts) at the boundaries.
-    Since spherical harmonic transforms effectively assume periodicity or
-    symmetry, abrupt changes at the boundaries (e.g. between the North
-    Pole and the first latitude row) can introduce high-frequency noise.
+    Spherical harmonic transforms effectively assume periodicity or symmetry,
+    so abrupt changes at the boundaries can introduce high-frequency noise.
     """
 
     def __init__(self, n_points: int = 10) -> None:
@@ -66,13 +64,10 @@ class TaperFilter:
         """Applies tapering to an xarray DataArray."""
         from ..io.data_loader import DataLoader
 
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
         # Identify dimensions
-        lat_dim = next(
-            (c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None
-        )
-        lon_dim = next(
-            (c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None
-        )
+        lat_dim = loader.find_coordinate_dimension(data, "latitude")
+        lon_dim = loader.find_coordinate_dimension(data, "longitude")
 
         if not lat_dim or not lon_dim:
             raise ValueError(

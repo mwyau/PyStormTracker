@@ -7,8 +7,7 @@ from numpy.typing import NDArray
 
 from pystormtracker.preprocessing.kinematics import (
     Kinematics,
-    apply_vort_div,
-    compute_vort_div,
+    compute_vorticity_divergence,
 )
 
 
@@ -18,7 +17,7 @@ def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
     u = rng.random((ny, nx))
     v = rng.random((ny, nx))
 
-    div, vort = compute_vort_div(u, v)
+    div, vort = compute_vorticity_divergence(u, v)
 
     assert div.shape == (ny, nx)
     assert vort.shape == (ny, nx)
@@ -29,7 +28,7 @@ def test_compute_vort_div_shapes(ny: int, nx: int) -> None:
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
-def test_apply_vort_div(ny: int, nx: int) -> None:
+def test_compute_vorticity_divergence_xarray(ny: int, nx: int) -> None:
     rng = np.random.default_rng()
     u = xr.DataArray(
         rng.random((ny, nx)),
@@ -48,7 +47,7 @@ def test_apply_vort_div(ny: int, nx: int) -> None:
         dims=["lat", "lon"],
     )
 
-    div, vort = apply_vort_div(u, v)
+    div, vort = compute_vorticity_divergence(u, v)
 
     assert div.dims == ("lat", "lon")
     assert vort.dims == ("lat", "lon")
@@ -59,7 +58,7 @@ def test_apply_vort_div(ny: int, nx: int) -> None:
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
-def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
+def test_compute_vorticity_divergence_lat_reverse(ny: int, nx: int) -> None:
     # Test latitude South to North (lat_reverse=False)
     data: NDArray[np.float64] = np.random.default_rng().random((1, ny, nx))
     u = xr.DataArray(
@@ -73,9 +72,8 @@ def test_apply_vort_div_lat_reverse(ny: int, nx: int) -> None:
         name="msl",
     )
 
-    # Kinematics detects it or we can pass it if we used the class.
-    # apply_vort_div should handle it automatically.
-    div, vort = apply_vort_div(u, u)
+    # compute_vorticity_divergence should handle it automatically.
+    div, vort = compute_vorticity_divergence(u, u)
 
     assert div.shape == (1, ny, nx)
     assert div.lat[0] == -90
@@ -130,7 +128,7 @@ def test_solid_body_rotation() -> None:
     u = np.cos(lat_grid) * 10.0
     v = np.zeros_like(u)
 
-    div, vort = compute_vort_div(u, v, nthreads=1)
+    div, vort = compute_vorticity_divergence(u, v, nthreads=1)
 
     # Divergence of solid body rotation should be very close to zero
     np.testing.assert_allclose(div, 0, atol=1e-12)

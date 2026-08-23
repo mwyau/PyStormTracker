@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 import xarray as xr
-from utils import fetch_era5_msl, fetch_era5_vo850
 
 from pystormtracker.hodges.tracker import HodgesTracker
 from pystormtracker.io.data_loader import DataLoader
 from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.preprocessing.regrid import SpectralRegridder
-from pystormtracker.preprocessing.spectral import apply_sht_filter
+from pystormtracker.preprocessing.spectral import SHTFilter
+from tests.utils import (
+    DECEMBER_2025_END,
+    DECEMBER_2025_START,
+    fetch_era5_msl,
+    fetch_era5_vo850,
+)
+
+pytestmark = [pytest.mark.integration, pytest.mark.data]
 
 
 @pytest.fixture(scope="module")
@@ -66,9 +71,9 @@ def test_reduced_gaussian_filter_to_cc(n320_msl_path: str) -> None:
     data = ds.msl.isel(time=slice(0, 2))
 
     # Filter and regrid to a 1 degree Lat-Lon grid (181x360)
-    filtered = apply_sht_filter(
-        data, lmin=5, lmax=42, out_geometry="CC", out_ntheta=181, out_nphi=360
-    )
+    filtered = SHTFilter(
+        lmin=5, lmax=42, out_geometry="CC", out_ntheta=181, out_nphi=360
+    ).filter(data)
 
     assert filtered.dims == ("time", "latitude", "longitude")
     assert filtered.shape == (2, 181, 360)
@@ -81,9 +86,9 @@ def test_reduced_gaussian_filter_to_gl(n320_msl_path: str) -> None:
     data = ds.msl.isel(time=0)
 
     # Filter and regrid to a regular N80 Gaussian grid (160x320)
-    filtered = apply_sht_filter(
-        data, lmin=0, lmax=80, out_geometry="GL", out_ntheta=160, out_nphi=320
-    )
+    filtered = SHTFilter(
+        lmin=0, lmax=80, out_geometry="GL", out_ntheta=160, out_nphi=320
+    ).filter(data)
 
     assert filtered.dims == ("latitude", "longitude")
     assert filtered.shape == (160, 320)
@@ -100,39 +105,34 @@ def test_reduced_gaussian_regridder(n320_msl_path: str) -> None:
     hp_data = regridder.to_healpix(
         data,
         nside=32,
-        in_geometry="GL",  # Reduced grids use GL theta values
     )
 
     assert hp_data.dims == ("cell",)
-    assert hp_data.size == 12 * 32**2
+    assert hp_data.shape == (12 * 32**2,)
 
 
 @pytest.mark.integration
-def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) -> None:
-    """End-to-end test tracking on reduced Gaussian input."""
-    tracker = HodgesTracker(min_lifetime_steps=3)
-
-    # We must regrid during tracking for reduced grids.
-    # Currently, tracker.track expects 2D structured data or does its own filtering.
-    # Let's ensure it handles it.
-    # Actually, we need to update tracker.track to handle this.
-    # For now, let's just verify the components.
+def test_reduced_gaussian_tracking_flow(n320_msl_path: str) -> None:
+    tracker = HodgesTracker(
+        min_track_points=3,
+        min_object_grid_points=1,
+    )
 
     ds = xr.open_dataset(n320_msl_path, engine="cfgrib")
     # Take a small slice for speed
     data = ds.msl.isel(time=slice(0, 10))
 
     # 1. Manually filter and regrid to CC
-    data_filtered = apply_sht_filter(
-        data, lmin=5, lmax=42, out_geometry="CC", out_ntheta=181, out_nphi=360
-    )
+    data_filtered = SHTFilter(
+        lmin=5, lmax=42, out_geometry="CC", out_ntheta=181, out_nphi=360
+    ).filter(data)
 
     # 2. Track on the regridded data
     tracks = tracker.track(
         data=data_filtered,
         variable="msl",
         detection_mode="min",
-        intensity_threshold=101000.0,  # Pa
+        object_threshold=101000.0,  # Pa
     )
 
     assert len(tracks) > 0
@@ -140,64 +140,56 @@ def test_reduced_gaussian_tracking_pipeline(n320_msl_path: str, tmp_path: Path) 
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "steps",
-    [
-        pytest.param(60, id="short"),
-        pytest.param(None, id="full", marks=pytest.mark.slow),
-    ],
-)
+@pytest.mark.slow
 def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
-    n320_vo_path: str, regular_vo_path: str, steps: int | None
+    n320_vo_path: str, regular_vo_path: str
 ) -> None:
     """Compare Hodges trajectories on paired ERA5 vorticity fields."""
     pytest.importorskip("cfgrib")
     n320 = xr.open_dataset(n320_vo_path, engine="cfgrib").vo
-    regular = xr.open_dataset(regular_vo_path).vo.squeeze(drop=True)
+    regular = xr.open_dataset(regular_vo_path, engine="h5netcdf").vo.squeeze(drop=True)
     n320_time_dim = DataLoader(n320).get_coords()[0]
     regular_time_dim = DataLoader(regular).get_coords()[0]
     common_times = np.intersect1d(
         n320[n320_time_dim].values, regular[regular_time_dim].values
     )
     assert common_times.size > 0
-    selected_times = common_times[:steps] if steps is not None else common_times
-    assert selected_times.size == (steps if steps is not None else common_times.size)
+    selected_times = common_times[
+        (common_times >= np.datetime64(DECEMBER_2025_START))
+        & (common_times <= np.datetime64(DECEMBER_2025_END))
+    ]
+    assert selected_times.size == 124
+    assert selected_times[0] == np.datetime64(DECEMBER_2025_START)
+    assert selected_times[-1] == np.datetime64(DECEMBER_2025_END)
 
     n320_common = n320.sel({n320_time_dim: selected_times})
     regular_common = regular.sel({regular_time_dim: selected_times})
-    n320_filtered = apply_sht_filter(
-        n320_common,
+    sht_filter = SHTFilter(
         lmin=5,
         lmax=42,
         out_geometry="CC",
         out_ntheta=181,
         out_nphi=360,
     )
-    regular_filtered = apply_sht_filter(
-        regular_common,
-        lmin=5,
-        lmax=42,
-        out_geometry="CC",
-        out_ntheta=181,
-        out_nphi=360,
-    )
+    n320_filtered = sht_filter.filter(n320_common)
+    regular_filtered = sht_filter.filter(regular_common)
     np.testing.assert_array_equal(
         n320_filtered[n320_time_dim].values,
         regular_filtered[regular_time_dim].values,
     )
 
-    tracker = HodgesTracker(min_lifetime_steps=3)
+    tracker = HodgesTracker(min_track_points=3)
     n320_tracks = tracker.track(
         data=n320_filtered,
         variable="vo",
         detection_mode="max",
-        intensity_threshold=1.0e-4,
+        object_threshold=1.0e-4,
     )
     regular_tracks = tracker.track(
         data=regular_filtered,
         variable="vo",
         detection_mode="max",
-        intensity_threshold=1.0e-4,
+        object_threshold=1.0e-4,
     )
     assert len(n320_tracks) > 0
     assert len(regular_tracks) > 0
@@ -205,7 +197,7 @@ def test_hodges_vorticity_tracks_agree_between_n320_and_regular_grid(
     comparison = compare_tracks(
         regular_tracks,
         n320_tracks,
-        config=TrackComparisonConfig(var="vo"),
+        config=TrackComparisonConfig(variable="vo"),
     )
     mean_separations_km = np.asarray(
         [match.mean_separation_km for match in comparison.matches], dtype=np.float64

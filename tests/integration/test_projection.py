@@ -7,10 +7,11 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pystormtracker.models.tracker import Backend
+from pystormtracker.backends import Backend
+from pystormtracker.models.geo import Projection
 from pystormtracker.models.tracks import Tracks
-from pystormtracker.preprocessing.tracking import Projection
 from pystormtracker.simple.tracker import SimpleTracker
+from tests.utils import get_integration_msl_path
 
 
 @pytest.mark.integration
@@ -18,20 +19,13 @@ from pystormtracker.simple.tracker import SimpleTracker
 def test_simple_stereographic_dask_matches_serial(
     projection: Literal["nh_stereo", "sh_stereo"], tmp_path: Path
 ) -> None:
-    source = (
-        Path(__file__).parents[1] / "data" / "era5" / "era5_msl_2025120100_2.5x2.5.nc"
-    )
-    field = xr.open_dataarray(source)
-
-    times = np.array(
-        ["2025-12-01T00", "2025-12-01T06"],
-        dtype="datetime64[h]",
-    )
-
-    data = field.expand_dims(time=times)
+    source = get_integration_msl_path()
+    with xr.open_dataset(source, engine="h5netcdf") as dataset:
+        data = dataset.msl.isel(valid_time=slice(0, 2)).rename({"valid_time": "time"})
+        data = data.load()
 
     input_path = tmp_path / "projection_input.nc"
-    data.to_dataset(name="msl").to_netcdf(input_path)
+    data.to_dataset(name="msl").to_netcdf(input_path, engine="h5netcdf")
 
     def run(
         input_path: Path,
@@ -44,7 +38,8 @@ def test_simple_stereographic_dask_matches_serial(
             projection=projection,
             stereo_grid_spacing_km=300.0,
             extent=(-3000.0, 3000.0, -3000.0, 3000.0),
-            feature_point_method="quadratic",
+            search_window_size=5,
+            feature_refinement="quadratic",
             backend=backend,
             workers=n_workers,
         )
@@ -52,6 +47,7 @@ def test_simple_stereographic_dask_matches_serial(
             data=input_path,
             variable="msl",
             detection_mode="min",
+            feature_threshold=0.0,
         )
 
     serial = run(
@@ -63,7 +59,7 @@ def test_simple_stereographic_dask_matches_serial(
         input_path,
         projection=projection,
         backend="dask",
-        n_workers=2,
+        n_workers=4,
     )
 
     assert serial.metadata == dask.metadata

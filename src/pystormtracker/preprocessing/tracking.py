@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, cast
+import logging
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 import numpy as np
 import xarray as xr
 
+from ..backends import Backend
 from ..io.data_loader import DataLoader
-from ..models.tracks import (
-    REGRID_OPERATION,
-    SPATIAL_TAPER_OPERATION,
-    SPECTRAL_FILTER_OPERATION,
-    ProcessingStep,
-)
+from ..models.tracks import ProcessingStep
 from .regrid import SpectralRegridder
 from .spectral import DCTFilter, SHTFilter
-from .taper import TaperFilter
+from .taper import BoundaryTaper
 
 if TYPE_CHECKING:
     from ..models.geo import MapExtent
@@ -24,31 +21,37 @@ if TYPE_CHECKING:
 Projection = Literal["global", "nh_stereo", "sh_stereo", "healpix"]
 FilterBounds = tuple[int, int]
 
-_HEALPIX_PIXEL_DIAMETER_DEGREES = 58.6
-_DEFAULT_POLAR_EXTENT: tuple[float, float, float, float] = (
+_SPECTRAL_FILTER_OPERATION: Final[str] = "spectral_filter"
+_SPATIAL_TAPER_OPERATION: Final[str] = "spatial_taper"
+_REGRID_OPERATION: Final[str] = "regrid"
+
+_HEALPIX_RESOLUTION_FACTOR: Final[float] = 58.6
+_DEFAULT_POLAR_EXTENT_KM: Final[tuple[float, float, float, float]] = (
     -13000.0,
     13000.0,
     -13000.0,
     13000.0,
 )
 
+LOGGER = logging.getLogger(__name__)
+
 
 def resolve_filter_bounds(
-    filter_lmin: int | None,
-    filter_lmax: int | None,
+    lmin: int | None,
+    lmax: int | None,
 ) -> FilterBounds | None:
     """Validate and normalize the optional user-requested filter band."""
-    if (filter_lmin is None) != (filter_lmax is None):
-        raise ValueError("filter_lmin and filter_lmax must be supplied together")
-    if filter_lmin is None or filter_lmax is None:
+    if (lmin is None) != (lmax is None):
+        raise ValueError("lmin and lmax must be supplied together")
+    if lmin is None or lmax is None:
         return None
-    if isinstance(filter_lmin, bool) or isinstance(filter_lmax, bool):
-        raise TypeError("filter_lmin and filter_lmax must be integers")
-    if filter_lmin < 0 or filter_lmax < 0:
-        raise ValueError("filter_lmin and filter_lmax must be nonnegative")
-    if filter_lmin > filter_lmax:
-        raise ValueError("filter_lmin must be less than or equal to filter_lmax")
-    return int(filter_lmin), int(filter_lmax)
+    if isinstance(lmin, bool) or isinstance(lmax, bool):
+        raise TypeError("lmin and lmax must be integers")
+    if lmin < 0 or lmax < 0:
+        raise ValueError("lmin and lmax must be nonnegative")
+    if lmin > lmax:
+        raise ValueError("lmin must be less than or equal to lmax")
+    return int(lmin), int(lmax)
 
 
 def _validate_taper_points(taper_points: int) -> None:
@@ -100,7 +103,7 @@ def resolve_healpix_nside(
         float(np.median(np.abs(np.diff(lat)))),
         float(np.median(lon_gaps[lon_gaps > 0.0])),
     )
-    estimate = max(1.0, _HEALPIX_PIXEL_DIAMETER_DEGREES / resolution)
+    estimate = max(1.0, _HEALPIX_RESOLUTION_FACTOR / resolution)
     exponent = int(np.ceil(np.log2(estimate)))
     return int(2 ** max(0, exponent))
 
@@ -138,6 +141,17 @@ def _resolve_projection_lmax(
     filter_bounds: FilterBounds | None,
 ) -> int:
     source_lmax = _source_supported_lmax(data)
+    declared_lmax = data.attrs.get("spectral_lmax")
+    if declared_lmax is not None:
+        if (
+            isinstance(declared_lmax, bool)
+            or not isinstance(declared_lmax, (int, np.integer))
+            or int(declared_lmax) < 0
+        ):
+            raise ValueError(
+                "data spectral_lmax metadata must be a nonnegative integer"
+            )
+        source_lmax = min(source_lmax, int(declared_lmax))
     if filter_bounds is None:
         return source_lmax
     requested_lmin, requested_lmax = filter_bounds
@@ -156,12 +170,33 @@ def _apply_optional_filter(
     *,
     filter_bounds: FilterBounds,
     filter_type: Literal["sht", "dct"],
+    spectral_taper: float,
+    backend: Backend = "serial",
+    sht_threads: int | None = None,
 ) -> xr.DataArray:
     requested_lmin, requested_lmax = filter_bounds
     if data.attrs.get("grid_type") == "healpix" or "cell" in data.dims:
         raise ValueError("optional filtering of already-HEALPix data is unsupported")
-    filter_class = SHTFilter if filter_type == "sht" else DCTFilter
-    filtered = filter_class(lmin=requested_lmin, lmax=requested_lmax).filter(data)
+    if filter_type == "sht":
+        if sht_threads is None:
+            filtered = SHTFilter(
+                lmin=requested_lmin,
+                lmax=requested_lmax,
+                taper_val=spectral_taper,
+            ).filter(data, backend=backend)
+        else:
+            filtered = SHTFilter(
+                lmin=requested_lmin,
+                lmax=requested_lmax,
+                taper_val=spectral_taper,
+                sht_threads=sht_threads,
+            ).filter(data, backend=backend)
+    else:
+        filtered = DCTFilter(
+            lmin=requested_lmin,
+            lmax=requested_lmax,
+            taper_val=spectral_taper,
+        ).filter(data, backend=backend)
     filtered.name = data.name
     return filtered
 
@@ -169,18 +204,23 @@ def _apply_optional_filter(
 def preprocess_tracking_data(
     data: xr.DataArray,
     *,
-    filter_lmin: int | None = None,
-    filter_lmax: int | None = None,
+    lmin: int | None = None,
+    lmax: int | None = None,
     taper_points: int = 0,
+    spectral_taper: float = 0.1,
     projection: Projection = "global",
     nside: int | None = None,
     stereo_grid_spacing_km: float | None = 100.0,
     extent: MapExtent | None = None,
     filter_type: Literal["sht", "dct", "auto"] = "auto",
+    backend: Backend = "serial",
+    sht_threads: int | None = None,
 ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
     """Apply one consistent preprocessing policy for all trackers."""
-    filter_bounds = resolve_filter_bounds(filter_lmin, filter_lmax)
+    filter_bounds = resolve_filter_bounds(lmin, lmax)
     _validate_taper_points(taper_points)
+    if not 0.0 < spectral_taper <= 1.0:
+        raise ValueError("spectral_taper must be in the interval (0, 1]")
     if stereo_grid_spacing_km is not None and stereo_grid_spacing_km <= 0.0:
         raise ValueError(
             "stereo_grid_spacing_km must be positive stereographic grid spacing "
@@ -190,44 +230,66 @@ def preprocess_tracking_data(
     loader = DataLoader(data)
     if filter_type == "auto":
         filter_type = "sht" if loader.is_global_longitude() else "dct"
-    if data.chunks:
-        data = data.compute()
+
+    LOGGER.debug(
+        "Preprocessing geometry projection=%s filter_backend=%s bounds=%r "
+        "spectral_taper=%g backend=%s dims=%s",
+        projection,
+        filter_type,
+        filter_bounds,
+        spectral_taper,
+        backend,
+        dict(data.sizes),
+    )
 
     steps: list[ProcessingStep] = []
     if taper_points > 0:
-        data = cast(xr.DataArray, TaperFilter(n_points=taper_points).filter(data))
+        LOGGER.info("Spatial taper enabled with %d points", taper_points)
+        data = cast(xr.DataArray, BoundaryTaper(n_points=taper_points).filter(data))
         steps.append(
-            ProcessingStep(SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
+            ProcessingStep(_SPATIAL_TAPER_OPERATION, True, {"points": taper_points})
         )
 
     if filter_bounds is not None:
+        LOGGER.info(
+            "Spectral filter enabled: %s lmin=%d lmax=%d taper=%g",
+            filter_type,
+            filter_bounds[0],
+            filter_bounds[1],
+            spectral_taper,
+        )
         data = _apply_optional_filter(
             data,
             filter_bounds=filter_bounds,
             filter_type=filter_type,
+            spectral_taper=spectral_taper,
+            backend=backend,
+            sht_threads=sht_threads,
         )
         requested_lmin, requested_lmax = filter_bounds
         parameters: dict[str, str | int | float | bool | None] = {
             "method": filter_type,
             "lmin": requested_lmin,
             "lmax": requested_lmax,
+            "spectral_taper": spectral_taper,
         }
-        steps.append(ProcessingStep(SPECTRAL_FILTER_OPERATION, True, parameters))
+        steps.append(ProcessingStep(_SPECTRAL_FILTER_OPERATION, True, parameters))
 
     if projection == "global":
+        LOGGER.debug(
+            "Preprocessing output geometry remains global dims=%s", dict(data.sizes)
+        )
         return data, tuple(steps)
-    if data.ndim != 3:
-        if projection == "healpix" and (
-            data.attrs.get("grid_type") == "healpix" or "cell" in data.dims
-        ):
-            return data, tuple(steps)
+    if projection == "healpix" and (
+        data.attrs.get("grid_type") == "healpix" or "cell" in data.dims
+    ):
+        return data, tuple(steps)
+    if data.ndim not in (2, 3):
         raise ValueError(
             "projection preprocessing requires time, latitude, and longitude"
         )
 
-    time_dim, _lat_dim, _lon_dim = loader.get_coords()
     lat_reverse = loader.is_lat_reversed()
-    frames: list[xr.DataArray] = []
     if projection == "healpix":
         target_nside = resolve_healpix_nside(data, nside=nside)
         transform_lmax = resolve_healpix_transform_lmax(
@@ -236,15 +298,14 @@ def preprocess_tracking_data(
             filter_bounds=filter_bounds,
         )
         regridder = SpectralRegridder(lmax=transform_lmax)
-        for index in range(data.sizes[time_dim]):
-            frames.append(
-                regridder.to_healpix(
-                    data.isel({time_dim: index}).squeeze(),
-                    nside=target_nside,
-                    transform_lmax=transform_lmax,
-                    lat_reverse=lat_reverse,
-                )
-            )
+        result = regridder.to_healpix(
+            data,
+            nside=target_nside,
+            transform_lmax=transform_lmax,
+            lat_reverse=lat_reverse,
+            sht_threads=sht_threads,
+            backend=backend,
+        )
         parameters = {
             "projection": "healpix",
             "nside": target_nside,
@@ -254,23 +315,22 @@ def preprocess_tracking_data(
         transform_lmax = _resolve_projection_lmax(data, filter_bounds)
         regridder = SpectralRegridder(lmax=transform_lmax)
         hemisphere: Literal["nh", "sh"] = "nh" if projection == "nh_stereo" else "sh"
-        polar_extent = extent if extent is not None else _DEFAULT_POLAR_EXTENT
+        polar_extent = extent if extent is not None else _DEFAULT_POLAR_EXTENT_KM
         if stereo_grid_spacing_km is None:
             raise ValueError(
                 "stereo_grid_spacing_km must be positive stereographic grid spacing "
                 "in kilometres"
             )
-        for index in range(data.sizes[time_dim]):
-            frames.append(
-                regridder.to_polar_stereo(
-                    data.isel({time_dim: index}).squeeze(),
-                    hemisphere=hemisphere,
-                    transform_lmax=transform_lmax,
-                    lat_reverse=lat_reverse,
-                    stereo_grid_spacing_km=stereo_grid_spacing_km,
-                    extent=polar_extent,
-                )
-            )
+        result = regridder.to_polar_stereo(
+            data,
+            hemisphere=hemisphere,
+            transform_lmax=transform_lmax,
+            lat_reverse=lat_reverse,
+            stereo_grid_spacing_km=stereo_grid_spacing_km,
+            extent=polar_extent,
+            backend=backend,
+            sht_threads=sht_threads,
+        )
         parameters = {
             "projection": projection,
             "stereo_grid_spacing_km": stereo_grid_spacing_km,
@@ -279,13 +339,16 @@ def preprocess_tracking_data(
         if extent is not None:
             parameters["extent"] = ",".join(str(value) for value in extent)
 
-    result = xr.concat(frames, dim=data[time_dim])
-    result.name = data.name
-    result.attrs = dict(data.attrs)
     result.attrs["projection"] = projection
     if projection == "healpix":
         result.attrs["grid_type"] = "healpix"
         result.attrs["nside"] = target_nside
 
-    steps.append(ProcessingStep(REGRID_OPERATION, True, parameters))
+    steps.append(ProcessingStep(_REGRID_OPERATION, True, parameters))
+    LOGGER.info("Projection/regrid selected: %s", projection)
+    LOGGER.debug(
+        "Preprocessing output geometry dims=%s parameters=%s",
+        dict(result.sizes),
+        parameters,
+    )
     return result, tuple(steps)

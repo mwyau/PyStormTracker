@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 
 from pystormtracker.preprocessing.regrid import SpectralRegridder
-from pystormtracker.preprocessing.spectral import SHTFilter, apply_sht_filter
+from pystormtracker.preprocessing.spectral import SHTFilter
 
 
 def test_regrid_to_grid() -> None:
@@ -22,15 +22,11 @@ def test_regrid_to_grid() -> None:
     )
 
     regridder = SpectralRegridder()
-    # Regrid to 1.0 degree (181 x 360)
-    out_ny, out_nx = 181, 360
-    regridded = regridder.to_grid(da, nlat=out_ny, nlon=out_nx)
+    regridded = regridder.to_grid(da, 37, 72)
 
-    assert regridded.shape == (out_ny, out_nx)
+    assert regridded.shape == (37, 72)
     assert regridded.dims == ("lat", "lon")
     assert regridded.name == "test_var"
-    assert len(regridded.lat) == out_ny
-    assert len(regridded.lon) == out_nx
 
 
 def test_regrid_to_healpix() -> None:
@@ -61,14 +57,13 @@ def test_regrid_to_healpix() -> None:
 def test_filter_reduced_gaussian_grid(
     reduced_gaussian_data: xr.DataArray,
 ) -> None:
-    filtered = apply_sht_filter(
-        reduced_gaussian_data,
+    filtered = SHTFilter(
         lmin=0,
         lmax=3,
         out_geometry="CC",
         out_ntheta=8,
         out_nphi=16,
-    )
+    ).filter(reduced_gaussian_data)
 
     assert filtered.dims == ("time", "latitude", "longitude")
     assert filtered.shape == (1, 8, 16)
