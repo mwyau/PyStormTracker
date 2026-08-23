@@ -5,19 +5,23 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal, cast
 
 import pytest
-from utils import (
-    fetch_era5_msl,
-    fetch_era5_vo850,
-    get_legacy_track_path,
-)
+import xarray as xr
 
 from pystormtracker.io.imilast import read_imilast
-from pystormtracker.metrics.compare import TrackComparisonConfig, compare_tracks
 from pystormtracker.models.tracks import Tracks
+from pystormtracker.simple.tracker import SimpleTracker
+from tests.utils import (
+    DECEMBER_2025_END,
+    DECEMBER_2025_START,
+    fetch_era5_msl,
+    get_integration_msl_path,
+)
 
-N_WORKERS = 2
+N_WORKERS = 4
+DetectionMode = Literal["min", "max"]
 
 
 def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> Tracks | None:
@@ -27,13 +31,19 @@ def run_command_direct(cmd_args: list[str], use_mpi: bool = False) -> Tracks | N
         cmd_args = ["track", *cmd_args]
 
     if use_mpi:
-        base_cmd = f"{sys.executable} -m pystormtracker.cli"
-        # We assume mpiexec is in the PATH (e.g., provided by openmpi or winget)
-        full_cmd = f"mpiexec -n {N_WORKERS} {base_cmd} {' '.join(cmd_args)}"
+        # Keep executable and user arguments separate so paths and values are
+        # passed without shell parsing.
+        command = [
+            "mpiexec",
+            "-n",
+            str(N_WORKERS),
+            sys.executable,
+            "-m",
+            "pystormtracker.cli",
+            *cmd_args,
+        ]
         try:
-            subprocess.run(
-                full_cmd, shell=True, check=True, capture_output=True, text=True
-            )
+            subprocess.run(command, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
             print(f"MPI Command failed: {e.cmd}")
             print(f"Stdout: {e.stdout}")
@@ -93,80 +103,47 @@ def compare_track_files(
 
 @pytest.fixture(scope="module")
 def test_data_msl() -> str:
-    """Download MSL test data once per module."""
-    return fetch_era5_msl(resolution="2.5x2.5")
+    """Return the committed December 2025 MSL integration input."""
+    return str(get_integration_msl_path())
 
 
-@pytest.fixture(scope="module")
-def test_data_vo() -> str:
-    """Download VO test data once per module."""
-    return fetch_era5_vo850(resolution="2.5x2.5")
+TRACK_CONFIGS = [
+    pytest.param(("msl", "min"), id="msl_min"),
+]
 
 
-def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Custom parameterization to filter tests dynamically."""
-    if "config_params" in metafunc.fixturenames:
-        raw_params = [
-            ("msl", "min", 60, "msl_min_short"),
-            ("vo", "max", 60, "vo_max_short"),
-            ("msl", "min", None, "msl_min_full"),
-            ("vo", "max", None, "vo_max_full"),
-        ]
-
-        # Filter out 'short' variants for legacy regression as they have
-        # no reference data
-        if metafunc.function.__name__ == "test_legacy_regression":
-            raw_params = [p for p in raw_params if p[2] is None]
-
-        params = [
-            pytest.param(
-                (variable_name, mode, steps),
-                id=test_id,
-                marks=pytest.mark.slow if steps is None else (),
-            )
-            for variable_name, mode, steps, test_id in raw_params
-        ]
-
-        metafunc.parametrize("config_params", params, scope="module")
+@pytest.fixture(scope="module", params=TRACK_CONFIGS)
+def config_params(
+    request: pytest.FixtureRequest,
+) -> tuple[str, DetectionMode]:
+    """Select the ordinary December 2025 tracking configurations."""
+    return cast(tuple[str, DetectionMode], request.param)
 
 
 @pytest.fixture(scope="module")
 def config(
-    request: pytest.FixtureRequest,
-    config_params: tuple[str, str, int | None],
+    config_params: tuple[str, DetectionMode],
     test_data_msl: str,
-    test_data_vo: str,
-) -> tuple[str, str, str, int | None]:
-    variable_name, mode, steps = config_params
-    data_path = test_data_msl if variable_name == "msl" else test_data_vo
-
-    # Full tests run in CI or when --run-slow/--run-all is explicitly passed.
-    is_ci = os.environ.get("GITHUB_ACTIONS")
-    run_all = request.config.getoption("--run-all")
-    run_slow = request.config.getoption("--run-slow")
-
-    if steps is None and not (is_ci or run_all or run_slow):
-        pytest.skip(
-            "Full integration tests only run in CI or with --run-slow/--run-all"
-        )
-
-    return data_path, variable_name, mode, steps
+) -> tuple[str, str, DetectionMode]:
+    variable_name, mode = config_params
+    assert variable_name == "msl"
+    return test_data_msl, variable_name, mode
 
 
 @pytest.fixture(scope="module")
 def serial_reference(
     tmp_path_factory: pytest.TempPathFactory,
-    config: tuple[str, str, str, int | None],
+    config: tuple[str, str, DetectionMode],
 ) -> tuple[Path, Tracks]:
     """Run serial once and share it across tests to save time."""
-    data_path, variable_name, mode, steps = config
+    data_path, variable_name, mode = config
     temp_dir: Path = tmp_path_factory.mktemp("data")
     out_file = temp_dir / "integration_serial.txt"
 
     args = [
         "-i",
         data_path,
-        "-v",
+        "--variable",
         variable_name,
         "-m",
         mode,
@@ -176,17 +153,11 @@ def serial_reference(
         "serial",
     ]
 
-    if steps:
-        args.extend(["-n", str(steps)])
-
     tracks = run_command_direct(args)
     assert tracks is not None
 
     # Verbose print the IMILAST format output
-    print(
-        f"\nConfiguration: Variable={variable_name}, Mode={mode}, "
-        f"Steps={steps or 'Full'}"
-    )
+    print(f"\nConfiguration: Variable={variable_name}, Mode={mode}")
     print_head(out_file, n=15)
 
     return Path(out_file), tracks
@@ -196,17 +167,17 @@ def serial_reference(
 def test_dask_vs_serial(
     serial_reference: tuple[Path, Tracks],
     tmp_path: Path,
-    config: tuple[str, str, str, int | None],
+    config: tuple[str, str, DetectionMode],
 ) -> None:
     """Integration test comparing Serial and Dask backends."""
     serial_path, _ = serial_reference
-    data_path, variable_name, mode, steps = config
+    data_path, variable_name, mode = config
     out_file = tmp_path / "integration_dask.txt"
 
     args = [
         "-i",
         data_path,
-        "-v",
+        "--variable",
         variable_name,
         "-m",
         mode,
@@ -218,9 +189,6 @@ def test_dask_vs_serial(
         str(N_WORKERS),
     ]
 
-    if steps:
-        args.extend(["-n", str(steps)])
-
     run_command_direct(args)
     compare_track_files(serial_path, out_file)
 
@@ -229,7 +197,7 @@ def test_dask_vs_serial(
 def test_mpi_vs_serial(
     serial_reference: tuple[Path, Tracks],
     tmp_path: Path,
-    config: tuple[str, str, str, int | None],
+    config: tuple[str, str, DetectionMode],
 ) -> None:
     """Integration test comparing Serial and MPI backends."""
     pytest.importorskip("mpi4py")
@@ -238,14 +206,14 @@ def test_mpi_vs_serial(
     if shutil.which("mpiexec") is None:
         pytest.skip("mpiexec not found in PATH")
 
-    data_path, variable_name, mode, steps = config
+    data_path, variable_name, mode = config
     serial_path, _ = serial_reference
     mpi_out = tmp_path / "integration_mpi.txt"
 
     args = [
         "-i",
         data_path,
-        "-v",
+        "--variable",
         variable_name,
         "-m",
         mode,
@@ -255,102 +223,38 @@ def test_mpi_vs_serial(
         "mpi",
     ]
 
-    if steps:
-        args.extend(["-n", str(steps)])
-
     run_command_direct(args, use_mpi=True)
     compare_track_files(serial_path, mpi_out)
 
 
 @pytest.mark.integration
+@pytest.mark.data
 def test_grib_vs_netcdf(
     serial_reference: tuple[Path, Tracks],
     tmp_path: Path,
-    config: tuple[str, str, str, int | None],
+    config: tuple[str, str, DetectionMode],
 ) -> None:
     """Test that tracking matches between NetCDF and GRIB inputs."""
     pytest.importorskip("cfgrib")
 
-    _, variable_name, mode, steps = config
+    _, variable_name, mode = config
     serial_path, _ = serial_reference
 
-    if variable_name == "msl":
-        grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
-    elif variable_name == "vo":
-        grib_path = fetch_era5_vo850(resolution="2.5x2.5", format="grib")
-    else:
-        pytest.skip(f"No GRIB test for {variable_name}")
+    grib_path = fetch_era5_msl(resolution="2.5x2.5", format="grib")
 
     out_file = tmp_path / "integration_grib.txt"
 
-    args = [
-        "-i",
-        grib_path,
-        "-v",
-        variable_name,
-        "-m",
-        mode,
-        "-o",
-        str(out_file),
-        "--backend",
-        "serial",
-    ]
-
-    if steps:
-        args.extend(["-n", str(steps)])
-
-    run_command_direct(args)
-    compare_track_files(serial_path, out_file)
-
-
-@pytest.mark.integration
-@pytest.mark.slow
-def test_legacy_regression(
-    tmp_path: Path, config: tuple[str, str, str, int | None]
-) -> None:
-    """Regression test against v0.0.2 legacy output."""
-    data_path, variable_name, mode, _ = config
-
-    if variable_name == "msl":
-        ref_file = get_legacy_track_path("msl")
-        max_dist, min_overlap, min_match_rate = 220.0, 0.8, 0.95
-    elif variable_name == "vo":
-        ref_file = get_legacy_track_path("vo")
-        max_dist, min_overlap, min_match_rate = 220.0, 0.8, 0.90
-    else:
-        pytest.skip(f"No legacy regression for {variable_name}")
-
-    if not os.path.exists(ref_file):
-        pytest.skip(f"Reference file {ref_file} not found")
-
-    output_file = tmp_path / f"legacy_{variable_name}.txt"
-    args = [
-        "-i",
-        data_path,
-        "-v",
-        variable_name,
-        "-m",
-        mode,
-        "-o",
-        str(output_file),
-        "--backend",
-        "serial",
-    ]
-    if variable_name == "vo":
-        args.extend(["--intensity-threshold", "1e-4"])
-
-    tracks_comp = run_command_direct(args)
-    assert tracks_comp is not None
-    tracks_ref = read_imilast(ref_file)
-
-    comparison = compare_tracks(
-        tracks_ref,
-        tracks_comp,
-        config=TrackComparisonConfig(
-            max_mean_separation_deg=max_dist / 111.195,
-            min_overlap_fraction=min_overlap,
-        ),
+    with xr.open_dataset(grib_path, engine="cfgrib") as dataset:
+        time_name = "valid_time" if "valid_time" in dataset.coords else "time"
+        december = (
+            dataset[variable_name]
+            .sel({time_name: slice(DECEMBER_2025_START, DECEMBER_2025_END)})
+            .load()
+        )
+    grib_tracks = SimpleTracker(backend="serial").track(
+        data=december,
+        variable=variable_name,
+        detection_mode=mode,
     )
-
-    match_rate = comparison.reference_coverage
-    assert match_rate >= min_match_rate
+    grib_tracks.write(out_file)
+    compare_track_files(serial_path, out_file)

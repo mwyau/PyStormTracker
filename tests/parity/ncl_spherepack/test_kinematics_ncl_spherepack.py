@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import os
-
 import numpy as np
 import pytest
-from utils import get_era5_uv_path, get_era5_vodv_path
 
 from pystormtracker.io.data_loader import DataLoader
 from pystormtracker.preprocessing.kinematics import Kinematics
+from tests.utils import get_era5_uv_path, get_era5_vodv_path
+
+pytestmark = [pytest.mark.parity, pytest.mark.data]
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize(
     ("res", "atol"),
     [
@@ -18,7 +17,7 @@ from pystormtracker.preprocessing.kinematics import Kinematics
         ("0.25x0.25", 5e-11),  # Near machine epsilon for large grid
     ],
 )
-def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:
+def test_vorticity_and_divergence_match_ncl_spherepack(res: str, atol: float) -> None:
     """
     Verifies that the ducc0 backend produces results matching the NCL/Spherepack
     reference data across different resolutions.
@@ -26,8 +25,8 @@ def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:
     wind_file = get_era5_uv_path(res)
     vodiv_file = get_era5_vodv_path(res)
 
-    if not (os.path.exists(wind_file) and os.path.exists(vodiv_file)):
-        pytest.skip(f"Integration test data for {res} not found.")
+    assert wind_file.is_file(), f"NCL/Spherepack input data missing: {wind_file}"
+    assert vodiv_file.is_file(), f"NCL/Spherepack reference data missing: {vodiv_file}"
 
     # 1. Load Data using DataLoader
     loader_uv = DataLoader(wind_file)
@@ -45,5 +44,5 @@ def test_vorticity_divergence_parity_integration(res: str, atol: float) -> None:
     div, vort = calc.compute(u, v)
 
     # 3. Validate against NCL Spherepack reference
-    np.testing.assert_allclose(vort.values, vo_ref.values, rtol=atol, atol=atol)
-    np.testing.assert_allclose(div.values, dv_ref.values, rtol=atol, atol=atol)
+    np.testing.assert_allclose(vort.values, vo_ref.values, rtol=0.0, atol=atol)
+    np.testing.assert_allclose(div.values, dv_ref.values, rtol=0.0, atol=atol)

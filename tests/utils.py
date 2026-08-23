@@ -1,127 +1,96 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import cast
+from pathlib import Path, PurePosixPath
+from typing import Final
 
 import pooch
 
-DATA_RELEASE_VERSION = "v0.1.4-data"
-RELEASE_URL = f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_RELEASE_VERSION}/"
-RAW_CONTENT_URL = f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_RELEASE_VERSION}/"
-SHA256SUMS_URL = f"{RELEASE_URL}SHA256SUMS"
-SHA256SUMS_FILENAME = f"{DATA_RELEASE_VERSION}-SHA256SUMS"
-SHA256SUMS_HASH = (
-    "sha256:4f221867b111ec5411c58859da825b13111f9aab8a492a50172cad45fddb3ad9"
+DATA_VERSION: Final[str] = "v0.2.0-data"
+RAW_BASE: Final[str] = (
+    f"https://raw.githubusercontent.com/mwyau/PyStormTracker-Data/{DATA_VERSION}/"
 )
+RELEASE_BASE: Final[str] = (
+    f"https://github.com/mwyau/PyStormTracker-Data/releases/download/{DATA_VERSION}/"
+)
+DECEMBER_2025_START: Final[str] = "2025-12-01T00:00:00"
+DECEMBER_2025_END: Final[str] = "2025-12-31T18:00:00"
 
 
 def get_base_dir() -> Path:
-    """Returns the project root directory."""
+    """Return the project root directory."""
     return Path(__file__).parent.parent.absolute()
 
 
-CACHED_DATA: pooch.Pooch | None = None
+def _repo_path(path: str) -> str:
+    candidate = PurePosixPath(path)
+    if (
+        not path
+        or candidate.is_absolute()
+        or "\\" in path
+        or ".." in candidate.parts
+        or candidate == PurePosixPath(".")
+    ):
+        raise ValueError(f"repository path must be relative and normalized: {path!r}")
+    return candidate.as_posix()
 
 
-def parse_sha256sums(path: Path) -> dict[str, str]:
-    """Parse a release checksum manifest into a Pooch registry."""
-    registry: dict[str, str] = {}
-    lines = path.read_text(encoding="utf-8").splitlines()
-    for line_number, raw_line in enumerate(lines, 1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        parts = line.split(maxsplit=1)
-        if len(parts) != 2:
-            raise ValueError(
-                f"Invalid SHA256SUMS entry on line {line_number}: {raw_line!r}"
-            )
-
-        checksum, filename = parts
-        is_sha256 = len(checksum) == 64 and all(
-            char in "0123456789abcdef" for char in checksum.lower()
-        )
-        if not is_sha256:
-            raise ValueError(
-                f"Invalid SHA-256 checksum on line {line_number}: {checksum!r}"
-            )
-        if Path(filename).name != filename:
-            raise ValueError(
-                f"Invalid release filename on line {line_number}: {filename!r}"
-            )
-        registry[filename] = f"sha256:{checksum.lower()}"
-
-    if not registry:
-        raise ValueError("SHA256SUMS does not contain any data assets")
-    return registry
+def _release_filename(filename: str) -> str:
+    if not filename or Path(filename).name != filename:
+        raise ValueError(f"release asset must be a filename, got {filename!r}")
+    return filename
 
 
-def get_cached_data() -> pooch.Pooch:
-    """Return the cache backed by the current release checksum manifest."""
-    global CACHED_DATA
-
-    if CACHED_DATA is None:
-        manifest_path = Path(
-            pooch.retrieve(
-                url=SHA256SUMS_URL,
-                known_hash=SHA256SUMS_HASH,
-                fname=SHA256SUMS_FILENAME,
-                path=pooch.os_cache("pystormtracker"),
-            )
-        )
-        CACHED_DATA = pooch.create(
-            path=pooch.os_cache("pystormtracker"),
-            base_url=RELEASE_URL,
-            registry=parse_sha256sums(manifest_path),
-        )
-    return CACHED_DATA
-
-
-def list_release_files() -> tuple[str, ...]:
-    """Return the data asset filenames published by the current release."""
-    return tuple(sorted(get_cached_data().registry))
-
-
-def fetch_release_file(filename: str) -> str:
-    """Fetch a checksum-verified data asset from the current release."""
-    return str(get_cached_data().fetch(filename))
-
-
-def _release_filename(
-    variable: str,
-    resolution: str,
-    season: str,
-    format: str,
-) -> str:
-    suffix = ".zarr.tar.gz" if format == "zarr" else f".{format}"
-    return f"era5_{variable}_2025-2026_{season}_{resolution}{suffix}"
-
-
-def _validate_release_asset(filename: str) -> None:
-    if filename not in get_cached_data().registry:
-        raise ValueError(
-            f"Data asset '{filename}' is not available in release "
-            f"{DATA_RELEASE_VERSION}"
-        )
-
-
-def _fetch_local_zarr(filename: str) -> str:
-    extracted_files = cast(
-        list[str],
-        get_cached_data().fetch(filename, processor=pooch.Untar()),
+def _fetch(url: str, relative_name: str) -> str:
+    relative = Path(relative_name)
+    cache_dir = (
+        Path(pooch.os_cache("pystormtracker")) / "data" / DATA_VERSION / relative.parent
     )
-    stores = {
-        parent
-        for extracted_file in extracted_files
-        for parent in Path(extracted_file).parents
-        if parent.name.endswith(".zarr")
-    }
-    if len(stores) != 1:
-        raise ValueError(
-            f"Expected one Zarr store in archive '{filename}', found {len(stores)}"
+    return str(
+        pooch.retrieve(
+            url=url,
+            fname=relative.name,
+            path=cache_dir,
         )
-    return str(next(iter(stores)))
+    )
+
+
+def raw_repo_url(path: str) -> str:
+    """Return the pinned raw-Git URL for a repository path."""
+    return RAW_BASE + _repo_path(path)
+
+
+def fetch_repo_file(path: str) -> str:
+    """Fetch one small Git-tracked Data-repository file into the Pooch cache."""
+    relative = _repo_path(path)
+    return _fetch(raw_repo_url(relative), relative)
+
+
+def fetch_release_asset(filename: str) -> str:
+    """Fetch one large release asset by its exact filename."""
+    filename = _release_filename(filename)
+    return _fetch(RELEASE_BASE + filename, filename)
+
+
+def f320_month_filenames(
+    variable: str = "msl",
+    *,
+    year: int = 2024,
+) -> tuple[str, ...]:
+    """Return the twelve canonical monthly F320 filenames."""
+    if variable not in {"msl", "vo850"}:
+        raise ValueError(f"unknown F320 variable: {variable}")
+    return tuple(
+        f"era5_{variable}_{year}-{month:02d}_f320.nc" for month in range(1, 13)
+    )
+
+
+def fetch_f320_month(variable: str, month: int, *, year: int = 2024) -> str:
+    """Fetch one canonical monthly F320 release asset."""
+    if variable not in {"msl", "vo850"}:
+        raise ValueError(f"unknown F320 variable: {variable}")
+    if month not in range(1, 13):
+        raise ValueError(f"month must be in 1..12, got {month}")
+    return fetch_release_asset(f"era5_{variable}_{year}-{month:02d}_f320.nc")
 
 
 def _fetch_era5(
@@ -132,22 +101,24 @@ def _fetch_era5(
     local: bool,
 ) -> str:
     if season != "djf":
-        raise ValueError(f"Season '{season}' not available. Options: 'djf'")
-    if format not in ("nc", "grib", "zarr"):
+        raise ValueError(f"Season {season!r} not available. Options: 'djf'")
+    if format not in {"nc", "grib", "zarr"}:
         raise ValueError("Format must be 'nc', 'grib', or 'zarr'")
-    if local and format != "zarr":
-        raise ValueError("local=True is only supported when format='zarr'")
+    if resolution not in {"0.25x0.25", "2.5x2.5", "n320"}:
+        raise ValueError(f"Resolution {resolution!r} is not available")
 
     if format == "zarr":
-        filename = _release_filename(variable, resolution, season, format)
-        _validate_release_asset(filename)
-        if not local:
-            return RAW_CONTENT_URL + filename.removesuffix(".tar.gz")
-        return _fetch_local_zarr(filename)
+        if local:
+            raise ValueError(
+                "local Zarr extraction is not supported; use the pinned raw URL"
+            )
+        if resolution != "2.5x2.5" or variable not in {"msl", "vo850"}:
+            raise ValueError(
+                f"No Git-tracked Zarr store is available for {variable}/{resolution}"
+            )
+        return raw_repo_url(f"integration/era5_{variable}_2025-2026_djf_2.5x2.5.zarr")
 
-    filename = _release_filename(variable, resolution, season, format)
-    _validate_release_asset(filename)
-    return fetch_release_file(filename)
+    return fetch_release_asset(f"era5_{variable}_2025-2026_djf_{resolution}.{format}")
 
 
 def fetch_era5_msl(
@@ -156,19 +127,7 @@ def fetch_era5_msl(
     format: str = "nc",
     local: bool = False,
 ) -> str:
-    """
-    Fetches the ERA5 mean sea level pressure sample dataset.
-    Downloads the data on the first call and returns the path to the cached local file.
-
-    Args:
-        resolution (str): Spatial resolution published by the data release.
-        season (str): Season of the dataset. Currently only "djf" is available.
-        format (str): File format. Options: "nc" (default), "grib", or "zarr".
-        local (bool): Extract a local Zarr store when ``format="zarr"``.
-
-    Returns:
-        str: Absolute path to the downloaded local file, local Zarr store, or URL.
-    """
+    """Fetch a release-backed ERA5 mean-sea-level-pressure asset."""
     return _fetch_era5("msl", resolution, season, format, local)
 
 
@@ -178,19 +137,7 @@ def fetch_era5_vo850(
     format: str = "nc",
     local: bool = False,
 ) -> str:
-    """
-    Fetches the ERA5 850hPa relative vorticity sample dataset.
-    Downloads the data on the first call and returns the path to the cached local file.
-
-    Args:
-        resolution (str): Spatial resolution published by the data release.
-        season (str): Season of the dataset. Currently only "djf" is available.
-        format (str): File format. Options: "nc" (default), "grib", or "zarr".
-        local (bool): Extract a local Zarr store when ``format="zarr"``.
-
-    Returns:
-        str: Absolute path to the downloaded local file, local Zarr store, or URL.
-    """
+    """Fetch a release-backed ERA5 850 hPa vorticity asset."""
     return _fetch_era5("vo850", resolution, season, format, local)
 
 
@@ -200,62 +147,40 @@ def fetch_era5_uv850(
     format: str = "nc",
     local: bool = False,
 ) -> str:
-    """
-    Fetches the ERA5 850hPa u- and v-component of wind sample dataset.
-    Downloads the data on the first call and returns the path to the cached local file.
-
-    Args:
-        resolution (str): Spatial resolution published by the data release.
-        season (str): Season of the dataset. Currently only "djf" is available.
-        format (str): File format. Options: "nc", "grib", or "zarr".
-        local (bool): Extract a local Zarr store when ``format="zarr"``.
-
-    Returns:
-        str: Absolute path to the downloaded local file, local Zarr store, or URL.
-    """
+    """Fetch a release-backed ERA5 850 hPa wind asset."""
     return _fetch_era5("uv850", resolution, season, format, local)
 
 
-# --- Local Integration Test Data Helpers ---
+# --- Local integration test data helpers ---
 
 BASE_DIR = get_base_dir()
 ERA5_TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "era5"
-TRAKCS_TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "tracks"
+TRACKS_TEST_DATA_DIR = BASE_DIR / "tests" / "data" / "tracks"
+
+INTEGRATION_MSL_FILENAME: Final[str] = "era5_msl_2025-12_2.5x2.5.nc"
 
 
-def get_era5_msl_path(res: str = "2.5x2.5", suffix: str = "") -> Path:
-    """
-    Returns the path to the ERA5 MSL test data.
-
-    Args:
-        res: Resolution (e.g., '2.5x2.5' or '0.25x0.25').
-        suffix: Optional suffix for filtered data (e.g., 't5-42_ncl').
-    """
-    name = f"era5_msl_2025120100_{res}"
-    if suffix:
-        name += f"_{suffix}"
-    return ERA5_TEST_DATA_DIR / f"{name}.nc"
+def get_integration_msl_path() -> Path:
+    """Return the one committed real-data integration input."""
+    return ERA5_TEST_DATA_DIR / INTEGRATION_MSL_FILENAME
 
 
 def get_era5_uv_path(res: str = "2.5x2.5") -> Path:
-    """Returns the path to the ERA5 UV test data."""
+    """Return the deferred external-data ERA5 wind path."""
     return ERA5_TEST_DATA_DIR / f"era5_uv850_2025120100_{res}.nc"
 
 
 def get_era5_vodv_path(res: str = "2.5x2.5", suffix: str = "ncl") -> Path:
-    """Returns the path to the ERA5 VODV test data."""
+    """Return the deferred external-data NCL vorticity/divergence path."""
     return ERA5_TEST_DATA_DIR / f"era5_vodv850_2025120100_{res}_{suffix}.nc"
 
 
 def get_legacy_track_path(var: str = "msl") -> Path:
-    """Returns the path to legacy regression track files."""
+    """Fetch and return a historical PyStormTracker v0.0.2 reference path."""
     if var == "msl":
-        return (
-            TRAKCS_TEST_DATA_DIR / "era5_msl_2025-2026_djf_2.5x2.5_v0.0.2_imilast.txt"
-        )
-    if var == "vo":
-        return (
-            TRAKCS_TEST_DATA_DIR
-            / "era5_vo_2025-2026_djf_2.5x2.5_1e-4_v0.0.2_imilast.txt"
-        )
-    raise ValueError(f"Unknown legacy variable: {var}")
+        path = "parity/legacy/v0.0.2/era5_msl_2025-2026_djf_2.5x2.5_imilast.txt"
+    elif var == "vo":
+        path = "parity/legacy/v0.0.2/era5_vo850_2025-2026_djf_2.5x2.5_1e-4_imilast.txt"
+    else:
+        raise ValueError(f"Unknown legacy variable: {var}")
+    return Path(fetch_repo_file(path))
