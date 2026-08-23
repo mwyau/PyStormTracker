@@ -37,7 +37,7 @@ def sample_wind_ds() -> xr.Dataset:
 
 def test_compute_high_wind_index(sample_wind_ds: xr.Dataset) -> None:
     # 95th percentile of constant 10 m/s wind should be 10.0
-    hwi = compute_high_wind_index(sample_wind_ds, "u10", "v10")
+    hwi = compute_high_wind_index(sample_wind_ds, "u10", "v10", percentile=0.95)
     assert hwi.name == "high_wind_index"
     assert np.allclose(hwi.values, 10.0)
     assert "time" in hwi.coords

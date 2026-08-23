@@ -5,15 +5,38 @@ from enum import IntEnum
 import numba as nb
 import numpy as np
 
+from ..models.geo import R_EARTH_KM
 
-class WeightType(IntEnum):
-    """Supported weight types for spherical kernel estimation."""
 
-    CONSTANT = 0  # Threshold method (Yau and Chang 2020)
-    FISHER = 1  # Exponential kernel (Hodges 1999)
-    CRESSMAN = 2  # Rational kernel (Cressman 1959)
-    LINEAR = 3  # Linear decay
-    QUADRATIC = 4  # Quadratic decay
+class _WeightType(IntEnum):
+    """Supported weight types for spherical kernel estimation.
+
+    The constant kernel represents the hard accumulation radius used by Yau
+    and Chang (2020).  ``FISHER`` is Fisher/von Mises--Fisher-style directional
+    weighting; Hodges (1996) is relevant meteorological spherical
+    nonparametric-estimation lineage, but did not invent the Fisher
+    distribution.  ``CRESSMAN`` follows Cressman (1959).  The linear and
+    quadratic compact kernels are PyStormTracker generalizations.
+
+    References:
+        Yau, A. M.-W., and E. K.-M. Chang (2020). Finding Storm Track
+            Activity Metrics That Are Highly Correlated with Weather Impacts.
+            Part I. *Journal of Climate*, 33(23), 10169--10186.
+            https://doi.org/10.1175/JCLI-D-20-0393.1
+        Hodges, K. I. (1996). Spherical Nonparametric Estimators Applied to
+            the UGAMP Model Integration for AMIP. *Monthly Weather Review*,
+            124(12), 2914--2932.
+            https://doi.org/10.1175/1520-0493(1996)124<2914:SNEATT>2.0.CO;2
+        Cressman, G. P. (1959). An Operational Objective Analysis System.
+            *Monthly Weather Review*, 87(10), 367--374.
+            https://doi.org/10.1175/1520-0493(1959)087<0367:AOOAS>2.0.CO;2
+    """
+
+    CONSTANT = 0  # Hard radius corresponding to the Yau--Chang rule.
+    FISHER = 1  # Fisher/von Mises--Fisher-style directional weighting.
+    CRESSMAN = 2  # Cressman (1959) compact rational weighting.
+    LINEAR = 3  # PyStormTracker compact linear generalization.
+    QUADRATIC = 4  # PyStormTracker compact quadratic generalization.
 
 
 @nb.njit(cache=True, nogil=True)
@@ -24,12 +47,15 @@ def calculate_spherical_weight(
     kappa: float,
 ) -> float:
     """
-    Computes weight based on kernel type.
+    Compute a spherical distance weight using the selected kernel.
+
+    The formulas are standard or project-specific kernel choices; this helper
+    is the numerical implementation used by the gridded metrics.
 
     Args:
         dist_km: Geodesic distance in kilometers.
         radius_km: Radius of influence in kilometers.
-        weight_type: Integer ID from WeightType enum.
+        weight_type: Integer ID from _WeightType enum.
         kappa: Smoothing parameter for Fisher kernel.
 
     Returns:
@@ -41,7 +67,7 @@ def calculate_spherical_weight(
     if weight_type == 1:  # FISHER
         # weight = exp(kappa * (cos(theta) - 1))
         # theta = dist / R_earth (6371.22 km)
-        theta = dist_km / 6371.22
+        theta = dist_km / R_EARTH_KM
         return float(np.exp(kappa * (np.cos(theta) - 1.0)))
 
     if weight_type == 2:  # CRESSMAN
