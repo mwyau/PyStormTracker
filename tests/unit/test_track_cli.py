@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -16,7 +15,7 @@ def _empty_tracks() -> Tracks:
 
 
 def test_cli_load_dat_files(tmp_path: Path) -> None:
-    """Test parsing of legacy zone.dat and adapt.dat from CLI."""
+    """Test parsing of zone.dat and adapt.dat from CLI file path options."""
     zone_file = tmp_path / "zone.dat"
     zone_content = (
         "3\n"
@@ -35,15 +34,15 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
         "track",
         "-i",
         "dummy.nc",
-        "-v",
+        "--variable",
         "msl",
         "-o",
         "output.txt",
         "--algorithm",
         "hodges",
-        "--dmax-zone-file",
+        "--dmax-zones",
         str(zone_file),
-        "--adaptive-smoothness-file",
+        "--adaptive-smoothness",
         str(adapt_file),
     ]
 
@@ -66,42 +65,3 @@ def test_cli_load_dat_files(tmp_path: Path) -> None:
     assert adapt_parsed.shape == (2, 4)
     assert np.array_equal(adapt_parsed[0], [1.0, 2.0, 5.0, 8.0])
     assert np.array_equal(adapt_parsed[1], [1.0, 0.3, 0.1, 0.0])
-
-
-def test_cli_load_dat_json(tmp_path: Path) -> None:
-    """Test parsing of zones and adapt-params from JSON strings."""
-    zones_json = "[[0.0, 360.0, -90.0, 90.0, 10.0]]"
-    adapt_json = "[[1.0, 2.0, 3.0, 4.0], [1.0, 0.5, 0.2, 0.1]]"
-
-    test_args = [
-        "stormtracker",
-        "track",
-        "-i",
-        "dummy.nc",
-        "-v",
-        "msl",
-        "-o",
-        "output.txt",
-        "--algorithm",
-        "hodges",
-        "--dmax-zones",
-        zones_json,
-        "--adaptive-smoothness",
-        adapt_json,
-    ]
-
-    with (
-        patch.object(sys, "argv", test_args),
-        patch("pystormtracker.track.HodgesTracker") as mock_tracker_cls,
-    ):
-        mock_instance = mock_tracker_cls.return_value
-        mock_instance.track.return_value = _empty_tracks()
-        main()
-
-    mock_tracker_cls.assert_called_once()
-    kwargs = mock_tracker_cls.call_args.kwargs
-
-    assert np.array_equal(kwargs["dmax_zones"], np.array(json.loads(zones_json)))
-    assert np.array_equal(
-        kwargs["adaptive_smoothness"], np.array(json.loads(adapt_json))
-    )
