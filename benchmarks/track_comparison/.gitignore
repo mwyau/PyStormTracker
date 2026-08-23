@@ -1,0 +1,14 @@
+# Generated TRACK comparison products
+work/
+results/
+output/
+benchmark-results/
+benchmark-output/
+*.time
+*.log
+*.dat
+*.bin
+*.tdump
+tr_trs_*
+ff_trs_*
+objout.*

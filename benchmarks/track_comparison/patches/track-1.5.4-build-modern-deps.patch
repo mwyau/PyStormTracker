@@ -1,0 +1,24 @@
+diff --git a/lib/src/Makefile b/lib/src/Makefile
+index bfc83e3..65e0965 100644
+--- a/lib/src/Makefile
++++ b/lib/src/Makefile
+@@ -92,0 +93 @@
++ifeq ($(TRACK_LEGACY_DEPS),1)
+@@ -234,0 +235 @@
++endif
+diff --git a/lib/src/Makefile.opt b/lib/src/Makefile.opt
+index 058fee1..1bc7d60 100644
+--- a/lib/src/Makefile.opt
++++ b/lib/src/Makefile.opt
+@@ -61,0 +62 @@
++ifeq ($(TRACK_LEGACY_DEPS),1)
+@@ -172,0 +173 @@
++endif
+diff --git a/src/Makefile.linux b/src/Makefile.linux
+index 79dfbb1..9af918b 100644
+--- a/src/Makefile.linux
++++ b/src/Makefile.linux
+@@ -51,0 +52 @@
++ifeq ($(TRACK_LEGACY_DEPS),1)
+@@ -4879,0 +4880 @@
++endif
