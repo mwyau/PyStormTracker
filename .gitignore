@@ -31,9 +31,9 @@ docs/_build/
 
 # Data and Track files
 *.nc
-!tests/data/era5/*.nc
+!tests/data/era5/era5_msl_2025-12_2.5x2.5.nc
+!tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc
 *.txt
-!tests/data/tracks/*.txt
 *.pickle
 
 # IDE and Project Tooling

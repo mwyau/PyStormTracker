@@ -33,7 +33,7 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
    uv run ruff check . --fix
    uv run ruff format .
    uv run mypy
-   uv run pytest --run-all
+   uv run pytest tests/unit tests/integration tests/parity
    ```
 1. **Submit the Pull Request**:
    - Provide a clear description of the changes.
@@ -43,15 +43,20 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
 
 - **Code Style**: We use `ruff` for linting and formatting.
 - **Type Safety**: All new code should be type-hinted and pass `mypy` strict checks.
-- **Testing**: We use `pytest`.
-  - **Unit Tests**: Coverage for individual functions and classes. Fast.
-  - **Integration Tests**: Coverage for the full CLI pipeline against real data. Use `uv run pytest --run-integration`.
-  - **Slow Regressions**: Full historical comparisons. Use `uv run pytest --run-integration --run-slow`.
+- **Testing**: We use `pytest`. Unit tests run with `uv run pytest`; select
+  integration or parity explicitly with their directory and use `-m slow` for
+  expensive cases. See `docs/development/testing.md` for the standard commands.
 - **Documentation**: Update the documentation in `docs/` if you introduce new features or change existing behavior.
 
 ## Governance
 
 This project is currently maintained by [Albert M. W. Yau](https://github.com/mwyau). Decisions regarding pull requests and the project's roadmap are made by the maintainer in consultation with the community.
+
+## Support
+
+For usage questions, configuration help, or unexpected scientific behavior,
+open a GitHub issue with the PyStormTracker version, platform, and a minimal
+example where possible.
 
 ## Conduct
 
