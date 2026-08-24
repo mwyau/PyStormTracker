@@ -1,19 +1,37 @@
 # Changelog
 
-## v0.6.1.dev2
+## v0.7.0.dev0
 
-### Tracking and interfaces
+### Tracking and refinement
 
 - Replaced the procedural tracking API with configured tracker classes and consolidated public models under `pystormtracker.models`.
 - Renamed tracker, preprocessing, and CLI arguments and replaced subgrid-refinement terminology with feature-point location methods.
 - Updated Hodges MGE directional scheduling and iteration-limit handling.
+- Reconciled Hodges tracking with TRACK 1.5.4 across object detection, feature-point refinement, MGE linking, adaptive constraints, missing-frame handling, track failure and splitting, segment handling, and RSPLICE.
+- Added local rectangular and spherical B-spline and quadratic refinement with shared spherical geometry and intrinsic optimization support.
+
+### Parallel execution and performance
+
 - Split Hodges execution into explicit `frame_workers`, `sht_threads`, and
   `mge_workers` controls with staged Dask frame detection and MGE linking;
   the former Hodges `workers` parameter and CLI option are removed.
+- Added frame-level parallel scheduling, MPI execution, progress reporting, and observable logging contracts.
+- Optimized TRACK-compatible rectangular detection, native MGE preprocessing, and FITPACK rectangular spline systems while retaining equivalence coverage.
 
-### Testing and CI
+### Comparison and analysis
 
-- Moved Python package publishing to a standalone workflow that runs after successful CI.
+- Expanded trajectory comparison, matching and assignment, Lagrangian metrics, hourly linear and PCHIP ATA interpolation, weighting kernels, and CCA/CORMAX corrections.
+
+### Testing and data
+
+- Reorganized unit, integration, legacy-parity, TRACK-parity, and NCL/Spherepack coverage with explicit test markers and external-data ownership.
+- Pinned PyStormTracker-Data paths and release assets for deferred integration and parity inputs, while retaining the bounded bundled numerical reference.
+
+### Documentation and infrastructure
+
+- Added the reproducible TRACK 1.5.4 and PyStormTracker comparison suite with F320-to-T42, F320-to-F320, and regular-grid configurations, repeat runners, profilers, and compact results.
+- Updated the scientific-method, architecture, testing, CLI, TrackJSON, and repository guidance documentation.
+- Moved Python package publishing to a standalone workflow that runs after successful CI, and modernized supported Python and build metadata.
 
 ---
 
