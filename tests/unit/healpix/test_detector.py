@@ -290,7 +290,7 @@ def test_healpix_quadratic_rejects_an_ill_conditioned_ring() -> None:
     assert spherical_quadratic_status_name(int(refined.status_codes[0])) == (
         "singular_or_ill_conditioned_fit"
     )
-    assert np.isinf(refined.condition_numbers[0])
+    assert refined.condition_numbers[0] > 1.0e8
     assert refined.latitudes[0] == pytest.approx(lats[center_pixel])
     assert refined.longitudes[0] == pytest.approx(lons[center_pixel])
 

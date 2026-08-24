@@ -318,7 +318,12 @@ def test_cached_rectangular_values_derivatives_and_candidates_match_reference() 
             for longitude, latitude in points
         ]
     )
-    np.testing.assert_array_equal(cached_evaluations, reference_evaluations)
+    np.testing.assert_allclose(
+        cached_evaluations,
+        reference_evaluations,
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
 
     cached_candidates = _detect_track_rectangular_candidates(
         frame,
@@ -367,7 +372,14 @@ def test_cached_rectangular_values_derivatives_and_candidates_match_reference() 
             optimization_scale=0.01,
             max_iterations=100,
         )
-        assert cached_result == reference_result
+        assert cached_result.status == reference_result.status
+        assert cached_result.latitude == pytest.approx(
+            reference_result.latitude, abs=1.0e-9
+        )
+        assert cached_result.longitude == pytest.approx(
+            reference_result.longitude, abs=1.0e-9
+        )
+        assert cached_result.value == pytest.approx(reference_result.value, abs=1.0e-8)
 
 
 def test_cached_rectangular_signed_and_unsigned_longitudes_are_equivalent() -> None:

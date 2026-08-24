@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 import xarray as xr
+
+# Routine MPI integration tests intentionally launch four local ranks. Allow
+# Open MPI / PRRTE to run them on CI hosts that expose fewer processor slots.
+os.environ.setdefault("OMPI_MCA_rmaps_base_oversubscribe", "1")
+os.environ.setdefault("PRTE_MCA_mapby", ":oversubscribe")
 
 
 @pytest.fixture
