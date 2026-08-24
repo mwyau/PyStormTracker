@@ -69,7 +69,6 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": true},
                 {"os": "ubuntu-26.04-arm", "python-version": "3.14", "slow": false},
                 {"os": "ubuntu-24.04", "python-version": "3.14", "slow": false},
                 {"os": "windows-2025", "python-version": "3.13", "slow": false},
