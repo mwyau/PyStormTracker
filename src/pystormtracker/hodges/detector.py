@@ -81,7 +81,6 @@ def _label_connected_components(
     threshold: float,
     is_min: bool,
     periodic_x: bool = True,
-    vertex_connectivity: bool = True,
 ) -> tuple[NDArray[np.int32], int]:
     """Connected Component Labeling (CCL) fused with threshold evaluation.
 
@@ -99,7 +98,6 @@ def _label_connected_components(
         is_min: True for local minima (frame <= threshold),
             False for maxima (frame >= threshold).
         periodic_x: Whether the first and final columns are adjacent.
-        vertex_connectivity: True for 8-neighbor vertex, False for 4-neighbor edge.
 
     Returns:
         (labeled_mask, num_objects)
@@ -141,8 +139,6 @@ def _label_connected_components(
                     if ni < 0 or ni >= ny:
                         continue
                     for dj in range(-1, 2):
-                        if not vertex_connectivity and di != 0 and dj != 0:
-                            continue
                         nj = j + dj
                         if periodic_x:
                             nj %= nx
@@ -165,8 +161,6 @@ def _label_connected_components(
                     if ni < 0 or ni >= ny:
                         continue
                     for dj in range(-1, 2):
-                        if not vertex_connectivity and di != 0 and dj != 0:
-                            continue
                         nj = j + dj
                         if periodic_x:
                             nj %= nx
@@ -1425,8 +1419,22 @@ def detect_hodges_frame(
             threshold=intensity_threshold,
             is_min=is_min,
             periodic_x=periodic_x,
-            # TRACK production detection uses vertex/diagonal connectivity.
-            vertex_connectivity=True,
+        )
+        (
+            raw_areas,
+            fitted_areas,
+            majors,
+            minors,
+            orientations,
+        ) = _compute_object_properties(
+            frame,
+            labeled_mask,
+            num_objects,
+            lat,
+            lon,
+            threshold=intensity_threshold,
+            is_min=is_min,
+            spherical_coords=not projected_xy,
         )
         object_first_rows, object_first_columns = _find_object_first_indices(
             labeled_mask,

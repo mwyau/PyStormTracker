@@ -412,6 +412,104 @@ def test_healpix_dask_matches_serial(workers: int) -> None:
 
 
 @pytest.mark.integration
+def test_healpix_quadratic_tracker_matches_serial_and_dask() -> None:
+    """A smooth spherical minimum follows the default quadratic path."""
+    n_times = 6
+    nside = 8
+    npix = 12 * nside * nside
+    target = (32.3, 179.2)
+    times = np.arange(n_times).astype("timedelta64[h]") + np.datetime64("2024-01-01")
+
+    hp_base = Healpix_Base(nside, "RING")
+    pixels = np.arange(npix, dtype=np.int64)
+    angles = hp_base.pix2ang(pixels)
+    latitudes = np.rad2deg(0.5 * np.pi - angles[:, 0])
+    longitudes = np.rad2deg(angles[:, 1]) % 360.0
+    target_latitude, target_longitude = np.deg2rad(target)
+    target_vector = np.array(
+        [
+            np.cos(target_latitude) * np.cos(target_longitude),
+            np.cos(target_latitude) * np.sin(target_longitude),
+            np.sin(target_latitude),
+        ]
+    )
+    points = np.stack(
+        (
+            np.cos(np.deg2rad(latitudes)) * np.cos(np.deg2rad(longitudes)),
+            np.cos(np.deg2rad(latitudes)) * np.sin(np.deg2rad(longitudes)),
+            np.sin(np.deg2rad(latitudes)),
+        ),
+        axis=-1,
+    )
+    values = np.tile(100000.0 + 10000.0 * (1.0 - points @ target_vector), (n_times, 1))
+    healpix_data = xr.DataArray(
+        values,
+        dims=("time", "cell"),
+        coords={"time": times},
+        name="msl",
+        attrs={"grid_type": "healpix", "nside": nside, "units": "Pa"},
+    )
+
+    tracker_serial = HealpixTracker(
+        nside=nside,
+        min_track_points=2,
+        dmax=10.0,
+        dmax_zones=np.empty((0, 5), dtype=np.float64),
+        segment_frames=4,
+        backend="serial",
+    )
+    tracker_dask = HealpixTracker(
+        nside=nside,
+        min_track_points=2,
+        dmax=10.0,
+        dmax_zones=np.empty((0, 5), dtype=np.float64),
+        segment_frames=4,
+        backend="dask",
+        workers=4,
+    )
+    assert tracker_serial.feature_refinement == "quadratic"
+    assert tracker_dask.feature_refinement == "quadratic"
+
+    serial = tracker_serial.track(
+        healpix_data,
+        "msl",
+        detection_mode="min",
+        object_threshold=102000.0,
+    )
+    dask = tracker_dask.track(
+        healpix_data,
+        "msl",
+        detection_mode="min",
+        object_threshold=102000.0,
+    )
+
+    assert len(serial) == 1
+    assert len(serial[0]) == n_times
+    grid_pixel = int(np.argmin(values[0]))
+    grid_latitude = float(latitudes[grid_pixel])
+    grid_longitude = float(longitudes[grid_pixel])
+
+    def angular_error(latitude: float, longitude: float) -> float:
+        latitude_rad, longitude_rad = np.deg2rad([latitude, longitude])
+        vector = np.array(
+            [
+                np.cos(latitude_rad) * np.cos(longitude_rad),
+                np.cos(latitude_rad) * np.sin(longitude_rad),
+                np.sin(latitude_rad),
+            ]
+        )
+        return float(np.rad2deg(np.arccos(np.clip(vector @ target_vector, -1.0, 1.0))))
+
+    refined_error = angular_error(float(serial[0].lats[0]), float(serial[0].lons[0]))
+    grid_error = angular_error(grid_latitude, grid_longitude)
+    assert refined_error < grid_error
+    assert refined_error < 0.1
+    np.testing.assert_allclose(serial[0].lats, target[0], atol=0.1, rtol=0.0)
+    np.testing.assert_allclose(serial[0].lons, target[1], atol=0.1, rtol=0.0)
+    _assert_tracks_equal(serial, dask)
+
+
+@pytest.mark.integration
 def test_hodges_unique_frame_detection_count(sample_msl_dataset: xr.DataArray) -> None:
     """Verify that both serial and Dask Hodges track invocations detect each
     frame exactly once.

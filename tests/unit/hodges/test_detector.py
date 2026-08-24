@@ -22,6 +22,7 @@ from pystormtracker.hodges.detector import (
 )
 from pystormtracker.hodges.tracker import HodgesFeatureRefinement, HodgesTracker
 from pystormtracker.io.data_loader import DataLoader
+from pystormtracker.models.geo import geod_dist
 from pystormtracker.refinement.bspline import BsplineRefinementResult
 
 
@@ -121,6 +122,7 @@ def test_hodges_detector_detect_mock(mock_open: MagicMock) -> None:
 
 def test_hodges_detector_from_xarray_keeps_generic_detection_values() -> None:
     values = np.ones((1, 5, 5), dtype=np.float64)
+    values[0, 1:4, 1:4] = -0.5
     values[0, 2, 2] = -1.0
     data = xr.DataArray(
         values,
@@ -153,6 +155,107 @@ def test_hodges_detector_from_xarray_keeps_generic_detection_values() -> None:
     np.testing.assert_array_equal(result.diagnostics["raw_value"], np.array([-1.0]))
     assert result.diagnostic_units["raw_value"] is None
     assert result.diagnostic_units["object_gridcell_area_km2"] == "km2"
+    assert result.diagnostics["object_gridcell_area_km2"][0] > 0.0
+    for name in (
+        "object_moment_fitted_area_km2",
+        "object_moment_major_axis_km",
+        "object_moment_minor_axis_km",
+        "object_moment_orientation_degrees",
+    ):
+        assert np.isfinite(result.diagnostics[name]).all()
+
+
+def test_quadratic_detection_refines_a_nonempty_object_and_reports_properties() -> None:
+    latitudes = np.arange(9.0)
+    longitudes = np.arange(9.0)
+    lon_grid, lat_grid = np.meshgrid(longitudes, latitudes)
+    target_latitude = 3.2
+    target_longitude = 4.3
+    frame = (
+        1000.0 - (lat_grid - target_latitude) ** 2 - (lon_grid - target_longitude) ** 2
+    )
+
+    result, diagnostics = detect_hodges_frame(
+        frame,
+        np.datetime64("2025-12-01"),
+        latitudes,
+        longitudes,
+        intensity_threshold=990.0,
+        mode="max",
+        min_grid_points=3,
+        feature_refinement="quadratic",
+        periodic_x=False,
+    )
+
+    assert result.latitudes.size == 1
+    assert diagnostics[0].status == "success"
+    assert result.latitudes[0] == pytest.approx(target_latitude, abs=1.0e-12)
+    assert result.longitudes[0] == pytest.approx(target_longitude, abs=1.0e-12)
+    assert result.values[0] == pytest.approx(1000.0)
+    assert result.diagnostics["raw_value"][0] == pytest.approx(frame[3, 4])
+    for name in (
+        "object_gridcell_area_km2",
+        "object_moment_fitted_area_km2",
+        "object_moment_major_axis_km",
+        "object_moment_minor_axis_km",
+        "object_moment_orientation_degrees",
+    ):
+        value = result.diagnostics[name][0]
+        assert np.isfinite(value)
+        if name != "object_moment_orientation_degrees":
+            assert value > 0.0
+
+
+def test_spherical_quadratic_detector_refines_an_analytic_global_minimum() -> None:
+    latitudes = np.linspace(-90.0, 90.0, 37, dtype=np.float64)
+    longitudes = np.arange(0.0, 360.0, 5.0, dtype=np.float64)
+    target = (32.3, 179.2)
+    lat_grid, lon_grid = np.meshgrid(latitudes, longitudes, indexing="ij")
+    target_latitude, target_longitude = np.deg2rad(target)
+    target_vector = np.array(
+        [
+            np.cos(target_latitude) * np.cos(target_longitude),
+            np.cos(target_latitude) * np.sin(target_longitude),
+            np.sin(target_latitude),
+        ]
+    )
+    points = np.stack(
+        (
+            np.cos(np.deg2rad(lat_grid)) * np.cos(np.deg2rad(lon_grid)),
+            np.cos(np.deg2rad(lat_grid)) * np.sin(np.deg2rad(lon_grid)),
+            np.sin(np.deg2rad(lat_grid)),
+        ),
+        axis=-1,
+    )
+    frame = 1.0 - points @ target_vector
+
+    result, diagnostics = detect_hodges_frame(
+        frame,
+        np.datetime64("2025-12-01"),
+        latitudes,
+        longitudes,
+        intensity_threshold=0.2,
+        mode="min",
+        min_grid_points=3,
+        feature_refinement="spherical_quadratic",
+    )
+
+    assert result.latitudes.size == 1
+    assert diagnostics[0].status == "success"
+    initial_error = geod_dist(
+        diagnostics[0].grid_latitude,
+        diagnostics[0].grid_longitude,
+        *target,
+    )
+    refined_error = geod_dist(
+        float(result.latitudes[0]),
+        float(result.longitudes[0]),
+        *target,
+    )
+    assert refined_error < initial_error
+    assert np.rad2deg(refined_error) < 0.01
+    assert abs(result.latitudes[0] - target[0]) < 5.0
+    assert abs((result.longitudes[0] - target[1] + 180.0) % 360.0 - 180.0) < 5.0
 
 
 def test_spherical_spline_refines_synthetic_gaussian_depression() -> None:
@@ -189,6 +292,17 @@ def test_spherical_spline_refines_synthetic_gaussian_depression() -> None:
     assert result.latitudes.tolist() == pytest.approx([target_latitude], abs=0.1)
     assert result.longitudes.tolist() == pytest.approx([target_longitude], abs=0.1)
     assert detector.last_refinement_diagnostics[0].status == "success"
+    for name in (
+        "object_gridcell_area_km2",
+        "object_moment_fitted_area_km2",
+        "object_moment_major_axis_km",
+        "object_moment_minor_axis_km",
+        "object_moment_orientation_degrees",
+    ):
+        value = result.diagnostics[name][0]
+        assert np.isfinite(value)
+        if name != "object_moment_orientation_degrees":
+            assert value > 0.0
 
 
 def test_track_smoopy_uses_source_surviving_periodic_endpoint(
@@ -489,7 +603,7 @@ def test_ccl_does_not_join_projected_x_boundaries() -> None:
     assert projected_objects == 2
 
 
-def test_ccl_matches_track_vertex_and_edge_connectivity() -> None:
+def test_ccl_uses_track_vertex_connectivity() -> None:
     frame = np.zeros((4, 4), dtype=np.float64)
     frame[0, 0] = 1.0
     frame[1, 1] = 1.0
@@ -497,27 +611,12 @@ def test_ccl_matches_track_vertex_and_edge_connectivity() -> None:
     vertex_labels, vertex_count = _label_connected_components(
         frame, threshold=0.5, is_min=False, periodic_x=False
     )
-    edge_labels, edge_count = _label_connected_components(
-        frame,
-        threshold=0.5,
-        is_min=False,
-        periodic_x=False,
-        vertex_connectivity=False,
-    )
 
     assert vertex_count == 1
     np.testing.assert_array_equal(
         vertex_labels,
         np.array(
             [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-            dtype=np.int32,
-        ),
-    )
-    assert edge_count == 2
-    np.testing.assert_array_equal(
-        edge_labels,
-        np.array(
-            [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
             dtype=np.int32,
         ),
     )

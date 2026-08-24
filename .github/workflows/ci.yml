@@ -49,12 +49,12 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "coverage": true}
               ]
             }'
             PARITY_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "coverage": true}
               ]
             }'
           else
@@ -73,15 +73,15 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04-arm", "python-version": "3.14", "slow": false},
-                {"os": "ubuntu-24.04", "python-version": "3.14", "slow": false},
-                {"os": "windows-2025", "python-version": "3.13", "slow": false},
-                {"os": "macos-26", "python-version": "3.14", "slow": false}
+                {"os": "ubuntu-26.04-arm", "python-version": "3.14", "coverage": false},
+                {"os": "ubuntu-24.04", "python-version": "3.14", "coverage": true},
+                {"os": "windows-2025", "python-version": "3.13", "coverage": false},
+                {"os": "macos-26", "python-version": "3.14", "coverage": false}
               ]
             }'
             PARITY_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "coverage": true}
               ]
             }'
           fi
@@ -199,6 +199,7 @@ jobs:
         if: matrix.mode == 'jit-coverage'
         env:
           NUMBA_JIT_COVERAGE: '1'
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-coverage-cache
         run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
       - name: Run unit tests with JIT disabled coverage
@@ -257,16 +258,19 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --all-extras
 
+      - name: Run integration tests with coverage
+        if: matrix.coverage == true
+        env:
+          NUMBA_JIT_COVERAGE: '1'
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-coverage-cache
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ -m "not slow and not data"
+
       - name: Run integration tests
-        if: matrix.slow == false
+        if: matrix.coverage == false
         run: uv run --no-sync pytest -vv tests/integration/ -m "not slow and not data"
 
-      - name: Run slow integration tests with coverage
-        if: matrix.slow == true
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ -m "slow and not data"
-
       - name: Upload coverage
-        if: matrix.slow == true
+        if: matrix.coverage == true
         uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
@@ -303,16 +307,19 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --all-extras
 
-      - name: Run non-slow parity tests
-        if: matrix.slow == false
+      - name: Run parity tests with coverage
+        if: matrix.coverage == true
+        env:
+          NUMBA_JIT_COVERAGE: '1'
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-coverage-cache
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/parity/ -m "not slow and not data"
+
+      - name: Run parity tests
+        if: matrix.coverage == false
         run: uv run --no-sync pytest -vv tests/parity/ -m "not slow and not data"
 
-      - name: Run slow parity tests with coverage
-        if: matrix.slow == true
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/parity/ -m "slow and not data"
-
       - name: Upload coverage
-        if: matrix.slow == true
+        if: matrix.coverage == true
         uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
