@@ -40,7 +40,9 @@ jobs:
             UNIT_MATRIX='{
               "include": [
                 {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "min-deps"},
-                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage", "coverage_flag": "unit"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "jit-coverage", "coverage_flag": "unit-jit-coverage"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "disabled-jit-coverage", "coverage_flag": "unit-jit-disabled"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
@@ -61,7 +63,9 @@ jobs:
                 {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "normal"},
                 {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "min-deps"},
                 {"os": "ubuntu-26.04", "python-version": "3.13", "mode": "normal"},
-                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage", "coverage_flag": "unit"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "jit-coverage", "coverage_flag": "unit-jit-coverage"},
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "disabled-jit-coverage", "coverage_flag": "unit-jit-disabled"},
                 {"os": "ubuntu-26.04", "python-version": "3.14t", "mode": "free-threaded"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
@@ -141,7 +145,7 @@ jobs:
         run: uv run --no-sync mypy
 
   unit-tests:
-    name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}${{ matrix.mode == 'min-deps' && ', minimum dependencies' || '' }})
+    name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}, ${{ matrix.mode }})
     needs: [select-test-matrix, code-quality]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -166,7 +170,7 @@ jobs:
           'C:\Program Files\Microsoft MPI\Bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install dependencies
-        if: matrix.mode == 'normal' || matrix.mode == 'coverage'
+        if: matrix.mode == 'normal' || matrix.mode == 'coverage' || matrix.mode == 'jit-coverage' || matrix.mode == 'disabled-jit-coverage'
         run: uv sync --frozen --all-extras
 
       - name: Install minimum direct dependencies
@@ -191,6 +195,18 @@ jobs:
         if: matrix.mode == 'coverage'
         run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
 
+      - name: Run unit tests with JIT coverage
+        if: matrix.mode == 'jit-coverage'
+        env:
+          NUMBA_JIT_COVERAGE: '1'
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+
+      - name: Run unit tests with JIT disabled coverage
+        if: matrix.mode == 'disabled-jit-coverage'
+        env:
+          NUMBA_DISABLE_JIT: '1'
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+
       - name: Verify free-threaded Python
         if: matrix.mode == 'free-threaded'
         env:
@@ -204,12 +220,12 @@ jobs:
         run: uv run --no-sync pytest -vv
 
       - name: Upload coverage
-        if: matrix.mode == 'coverage'
+        if: matrix.mode == 'coverage' || matrix.mode == 'jit-coverage' || matrix.mode == 'disabled-jit-coverage'
         uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
           disable_search: true
-          flags: unit
+          flags: ${{ matrix.coverage_flag }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
