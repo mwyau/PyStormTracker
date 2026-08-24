@@ -4,6 +4,7 @@ import numpy as np
 
 from pystormtracker.hodges.mge import (
     _compute_adaptive_phimax,
+    _mge_iteration,
     _select_regional_dmax,
     geod_dev,
 )
@@ -79,3 +80,96 @@ def test_compute_adaptive_phimax() -> None:
     # Interpolated
     # Between 1.0 and 2.0, mean is 1.5 -> (1.0 + 0.3)/2 = 0.65
     assert np.allclose(_compute_adaptive_phimax(1.5, adaptive_smoothness, 0.5), 0.65)
+
+
+def test_mge_iteration_accepts_a_beneficial_swap_and_restores_scan_state() -> None:
+    tracks = np.array([[0, 2, 5], [1, 3, 4]], dtype=np.int64)
+    original = tracks.copy()
+    features_lat = np.zeros(6, dtype=np.float64)
+    features_lon = np.array([0.0, 10.0, 1.0, 9.0, 2.0, 8.0], dtype=np.float64)
+
+    result = _mge_iteration(
+        tracks,
+        features_lat,
+        features_lon,
+        1,
+        True,
+        0.5,
+        0.5,
+        np.array([20.0], dtype=np.float64),
+        np.array([1.0], dtype=np.float64),
+        np.zeros(3, dtype=np.int64),
+        np.empty((0, 5), dtype=np.float64),
+        np.zeros((2, 0), dtype=np.float64),
+    )
+
+    assert result == (0, 1)
+    np.testing.assert_array_equal(tracks, original)
+
+
+def test_mge_iteration_rejects_a_swap_over_the_displacement_limit() -> None:
+    tracks = np.array([[0, 2, 5], [1, 3, 4]], dtype=np.int64)
+    features_lat = np.zeros(6, dtype=np.float64)
+    features_lon = np.array([0.0, 10.0, 1.0, 9.0, 8.0, 2.0], dtype=np.float64)
+
+    result = _mge_iteration(
+        tracks,
+        features_lat,
+        features_lon,
+        1,
+        True,
+        0.5,
+        0.5,
+        np.array([5.0], dtype=np.float64),
+        np.array([1.0], dtype=np.float64),
+        np.zeros(3, dtype=np.int64),
+        np.empty((0, 5), dtype=np.float64),
+        np.zeros((2, 0), dtype=np.float64),
+    )
+
+    assert result == (-1, -1)
+
+
+def test_mge_iteration_rejects_a_swap_over_adaptive_smoothness_limit() -> None:
+    tracks = np.array([[0, 2, 5], [1, 3, 4]], dtype=np.int64)
+    features_lat = np.array([0.0, 0.0, 0.0, 0.0, 2.0, -2.0], dtype=np.float64)
+    features_lon = np.array([0.0, 10.0, 2.0, 8.0, 4.0, 2.0], dtype=np.float64)
+    dmax_parameters = np.array([10.0], dtype=np.float64)
+    phimax_parameters = np.array([1.0], dtype=np.float64)
+    missing_counts = np.zeros(3, dtype=np.int64)
+    zones = np.empty((0, 5), dtype=np.float64)
+
+    beneficial_without_adaptation = _mge_iteration(
+        tracks.copy(),
+        features_lat,
+        features_lon,
+        1,
+        True,
+        0.5,
+        0.5,
+        dmax_parameters,
+        phimax_parameters,
+        missing_counts,
+        zones,
+        np.zeros((2, 0), dtype=np.float64),
+    )
+    rejected_with_adaptation = _mge_iteration(
+        tracks.copy(),
+        features_lat,
+        features_lon,
+        1,
+        True,
+        0.5,
+        0.5,
+        dmax_parameters,
+        phimax_parameters,
+        missing_counts,
+        zones,
+        np.array(
+            [[0.0, 10.0, 20.0, 30.0], [0.05, 0.05, 0.05, 0.05]],
+            dtype=np.float64,
+        ),
+    )
+
+    assert beneficial_without_adaptation == (0, 1)
+    assert rejected_with_adaptation == (-1, -1)
