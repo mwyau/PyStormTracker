@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 import threading
 from importlib.util import find_spec
 from pathlib import Path
-from typing import ClassVar, TypedDict, cast
+from typing import ClassVar, Literal, TypedDict, cast
 
-import ducc0
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
@@ -17,6 +17,35 @@ from ..models.time import (
     infer_calendar,
     select_time_range,
 )
+
+DataLoaderChunks = int | str | tuple[int, ...] | dict[str, int | str | None] | None
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _normalize_chunks_key(
+    chunks: object,
+) -> tuple[tuple[str, int], ...] | tuple[object, ...] | str | None:
+    """Normalize chunk configurations for deterministic cache keys."""
+    if chunks is None:
+        return None
+    if isinstance(chunks, dict):
+        return tuple(
+            sorted(
+                (
+                    str(k),
+                    int(v) if isinstance(v, (int, np.integer)) else str(v),
+                )
+                for k, v in chunks.items()
+            )
+        )
+    if isinstance(chunks, (tuple, list)):
+        return tuple(
+            int(x) if isinstance(x, (int, np.integer)) else str(x) for x in chunks
+        )
+    if isinstance(chunks, (int, str)):
+        return (chunks,)
+    return str(chunks)
 
 
 class GridMetadata(TypedDict):
@@ -30,13 +59,17 @@ class DataLoader:
     """
     Handles optimized xarray loading for local and remote datasets.
     Supports NetCDF, GRIB, and Zarr formats, with thread-safe caching.
+
+    NetCDF uses ``h5netcdf`` by default. Legacy NetCDF3 inputs must be opened
+    with ``engine="netcdf4"`` explicitly because ``h5netcdf`` reads HDF5-based
+    NetCDF4 files only.
     """
 
-    _ds_cache: ClassVar[dict[str, xr.Dataset]] = {}
+    _ds_cache: ClassVar[dict[tuple[str, str | None, object], xr.Dataset]] = {}
     _ds_lock: ClassVar[threading.Lock] = threading.Lock()
 
     # Common variable and coordinate name aliases
-    VAR_MAPPING: ClassVar[dict[str, list[str]]] = {
+    _NAME_ALIASES: ClassVar[dict[str, list[str]]] = {
         "msl": ["msl", "slp"],
         "vo": ["vo"],
         "latitude": ["latitude", "lat", "y"],
@@ -44,12 +77,40 @@ class DataLoader:
         "time": ["time", "valid_time"],
     }
 
+    def find_coordinate_dimension(
+        self,
+        ds: xr.Dataset | xr.DataArray,
+        dim_type: Literal["time", "latitude", "longitude"],
+    ) -> str | None:
+        """Find the coordinate dimension name for a given dimension type."""
+        aliases = self._NAME_ALIASES.get(dim_type, [dim_type])
+        for alias in aliases:
+            if alias in ds.coords or alias in ds.dims:
+                return alias
+        return None
+
+    def find_variable_name(self, ds: xr.Dataset, canonical_name: str) -> str | None:
+        """Find the variable name in a dataset given a canonical name."""
+        aliases = self._NAME_ALIASES.get(canonical_name, [canonical_name])
+        for alias in aliases:
+            if alias in ds.data_vars:
+                return alias
+        return None
+
+    def resolve_variable_name(self, ds: xr.Dataset, requested_name: str) -> str | None:
+        """Resolve a requested name to the actual variable name in a dataset."""
+        if requested_name in ds.data_vars:
+            return requested_name
+        return self.find_variable_name(ds, requested_name)
+
     def __init__(
         self,
         pathname: str | Path | xr.DataArray | xr.Dataset | None = None,
         engine: str | None = None,
+        chunks: DataLoaderChunks = None,
     ) -> None:
         self.engine = engine
+        self.chunks = chunks
         self._ds: xr.Dataset | None = None
         self.pathname: str | Path | None
 
@@ -77,103 +138,124 @@ class DataLoader:
                     "Cannot open dataset without a valid pathname or data object."
                 )
             with self._ds_lock:
-                cache_key = str(self.pathname)
-                if cache_key not in self._ds_cache:
-                    engine = self.engine
-                    storage_options: dict[str, bool] = {}
-                    is_remote = isinstance(self.pathname, str) and (
-                        "://" in self.pathname
+                engine = self.engine
+                if engine == "netcdf4" and find_spec("netCDF4") is None:
+                    raise ValueError(
+                        "netCDF4 is required for engine='netcdf4'. "
+                        "Please install it with: `uv pip install "
+                        "'pystormtracker[netcdf4]'`"
                     )
+                is_remote = isinstance(self.pathname, str) and ("://" in self.pathname)
+                storage_options: dict[str, bool] = {}
+                if is_remote and str(self.pathname).startswith(("s3://", "gs://")):
+                    storage_options = {"anon": True}
 
-                    if is_remote and str(self.pathname).startswith(
-                        ("http://", "https://")
-                    ):
-                        # fsspec handles anon HTTP by default; no special 'anon'
-                        # key needed.
-                        pass
-                    elif is_remote and str(self.pathname).startswith(
-                        ("s3://", "gs://")
-                    ):
-                        storage_options = {"anon": True}
-
-                    if engine is None:
-                        if is_remote:
-                            pathname_str = str(self.pathname)
-                            if pathname_str.endswith(".zarr"):
-                                if find_spec("zarr") is None:
-                                    raise ValueError(
-                                        "zarr is required to open Zarr datasets. "
-                                        "Please install it with: `uv pip install "
-                                        "'pystormtracker[zarr]'`"
-                                    ) from None
-                                engine = "zarr"
-                            elif pathname_str.endswith((".grib", ".grib2", ".grb")):
-                                if find_spec("cfgrib") is None:
-                                    raise ValueError(
-                                        "cfgrib is required to open GRIB files. "
-                                        "Please install it with: `uv pip install "
-                                        "'pystormtracker[grib]'`"
-                                    ) from None
-                                engine = "cfgrib"
-                            else:
-                                # Default for remote that aren't zarr or grib
-                                # (e.g., .nc)
-                                engine = "h5netcdf"
+                if engine is None:
+                    if is_remote:
+                        pathname_str = str(self.pathname)
+                        if pathname_str.endswith(".zarr"):
+                            if find_spec("zarr") is None:
+                                raise ValueError(
+                                    "zarr is required to open Zarr datasets. "
+                                    "Please install it with: `uv pip install "
+                                    "'pystormtracker[zarr]'`"
+                                ) from None
+                            engine = "zarr"
+                        elif pathname_str.endswith((".grib", ".grib2", ".grb")):
+                            if find_spec("cfgrib") is None:
+                                raise ValueError(
+                                    "cfgrib is required to open GRIB files. "
+                                    "Please install it with: `uv pip install "
+                                    "'pystormtracker[grib]'`"
+                                ) from None
+                            engine = "cfgrib"
                         else:
-                            # Handle local paths
-                            local_path = Path(self.pathname)
-                            ext = local_path.suffix.lower()
-                            if ext in [".grib", ".grib2", ".grb"]:
-                                if find_spec("cfgrib") is None:
-                                    raise ValueError(
-                                        "cfgrib is required to open GRIB files. "
-                                        "Please install it with: `uv pip install "
-                                        "'pystormtracker[grib]'`"
-                                    ) from None
-                                engine = "cfgrib"
-                            elif ext == ".zarr" or (
-                                local_path.is_dir()
-                                and (local_path / ".zmetadata").exists()
-                            ):
-                                if find_spec("zarr") is None:
-                                    raise ValueError(
-                                        "zarr is required to open Zarr datasets. "
-                                        "Please install it with: `uv pip install "
-                                        "'pystormtracker[zarr]'`"
-                                    ) from None
-                                engine = "zarr"
-                            else:
-                                # Standard xarray detection for everything else
-                                engine = None
+                            engine = "h5netcdf"
+                    else:
+                        local_path = Path(self.pathname)
+                        ext = local_path.suffix.lower()
+                        if ext in [".grib", ".grib2", ".grb"]:
+                            if find_spec("cfgrib") is None:
+                                raise ValueError(
+                                    "cfgrib is required to open GRIB files. "
+                                    "Please install it with: `uv pip install "
+                                    "'pystormtracker[grib]'`"
+                                ) from None
+                            engine = "cfgrib"
+                        elif ext == ".zarr" or (
+                            local_path.is_dir() and (local_path / ".zmetadata").exists()
+                        ):
+                            if find_spec("zarr") is None:
+                                raise ValueError(
+                                    "zarr is required to open Zarr datasets. "
+                                    "Please install it with: `uv pip install "
+                                    "'pystormtracker[zarr]'`"
+                                ) from None
+                            engine = "zarr"
+                        else:
+                            engine = "h5netcdf"
 
-                    if engine == "zarr" and is_remote and storage_options:
-                        self._ds_cache[cache_key] = xr.open_dataset(
+                cache_key = (
+                    str(self.pathname),
+                    str(engine),
+                    _normalize_chunks_key(self.chunks),
+                )
+                if cache_key not in self._ds_cache:
+                    if engine == "zarr":
+                        if is_remote and storage_options:
+                            ds = xr.open_dataset(
+                                self.pathname,
+                                engine=engine,
+                                decode_times=False,
+                                chunks=self.chunks,
+                                storage_options=storage_options,
+                                backend_kwargs={"consolidated": False},
+                            )
+                        elif self.chunks is not None:
+                            ds = xr.open_dataset(
+                                self.pathname,
+                                engine=engine,
+                                decode_times=False,
+                                chunks=self.chunks,
+                                backend_kwargs={"consolidated": False},
+                            )
+                        else:
+                            ds = xr.open_dataset(
+                                self.pathname,
+                                engine=engine,
+                                decode_times=False,
+                                backend_kwargs={"consolidated": False},
+                            )
+                    elif self.chunks is not None:
+                        ds = xr.open_dataset(
                             self.pathname,
                             engine=engine,
-                            chunks={},
                             decode_times=False,
-                            storage_options=storage_options,
+                            chunks=self.chunks,
                         )
                     else:
-                        self._ds_cache[cache_key] = xr.open_dataset(
+                        ds = xr.open_dataset(
                             self.pathname,
                             engine=engine,
-                            chunks={},
                             decode_times=False,
                         )
-
-                    self._ds_cache[cache_key] = self._normalize_time_coordinate(
-                        self._ds_cache[cache_key]
-                    )
+                    self._ds_cache[cache_key] = self._normalize_time_coordinate(ds)
 
                 self._ds = self._ds_cache[cache_key]
+                LOGGER.debug(
+                    "Opened input %r with engine=%s chunks=%r dims=%s",
+                    self.pathname,
+                    engine,
+                    self.chunks,
+                    dict(self._ds.sizes),
+                )
         return self._ds
 
     @classmethod
     def _normalize_time_coordinate(cls, dataset: xr.Dataset) -> xr.Dataset:
         """Normalize supported source time coordinates to datetime64[ms]."""
         time_name = next(
-            (name for name in cls.VAR_MAPPING["time"] if name in dataset.coords),
+            (name for name in cls._NAME_ALIASES["time"] if name in dataset.coords),
             None,
         )
         if time_name is None:
@@ -215,12 +297,12 @@ class DataLoader:
         ds = self.ensure_open()
         coords = ds.coords
 
-        time_name = next((c for c in self.VAR_MAPPING["time"] if c in coords), "time")
+        time_name = next((c for c in self._NAME_ALIASES["time"] if c in coords), "time")
         lat_name = next(
-            (c for c in self.VAR_MAPPING["latitude"] if c in coords), "latitude"
+            (c for c in self._NAME_ALIASES["latitude"] if c in coords), "latitude"
         )
         lon_name = next(
-            (c for c in self.VAR_MAPPING["longitude"] if c in coords), "longitude"
+            (c for c in self._NAME_ALIASES["longitude"] if c in coords), "longitude"
         )
 
         return time_name, lat_name, lon_name
@@ -296,6 +378,8 @@ class DataLoader:
     def _get_theta(self, ntheta: int, geometry: str) -> NDArray[np.float64]:
         """Calculates colatitudes (theta) for a given geometry and resolution."""
         if geometry == "GL":
+            import ducc0
+
             # ducc0.misc.GL_thetas returns North-to-South (0 to pi)
             return np.asarray(
                 ducc0.misc.GL_thetas(ntheta),
@@ -319,6 +403,8 @@ class DataLoader:
 
         # 1. Check for HEALPix
         if da.attrs.get("grid_type") == "healpix" or "cell" in da.dims:
+            import ducc0
+
             npix = da.sizes.get("cell", da.sizes.get("values", 0))
             nside = int(np.sqrt(npix / 12))
             hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
@@ -376,12 +462,20 @@ def normalize_tracking_data(
     start_time: TimeInput | None = None,
     end_time: TimeInput | None = None,
     engine: str | None = None,
+    chunks: DataLoaderChunks = None,
+    backend: Literal["serial", "mpi", "dask"] = "serial",
 ) -> xr.DataArray:
     """Normalize one public tracking input to one selected DataArray."""
-    loader = DataLoader(source, engine=engine)
+    effective_chunks = chunks
+    if (
+        backend == "dask"
+        and effective_chunks is None
+        and not isinstance(source, (xr.DataArray, xr.Dataset))
+    ):
+        effective_chunks = "auto"
+    loader = DataLoader(source, engine=engine, chunks=effective_chunks)
     dataset = loader.ensure_open()
-    candidates = DataLoader.VAR_MAPPING.get(variable_name, [variable_name])
-    actual_name = next((name for name in candidates if name in dataset.data_vars), None)
+    actual_name = loader.resolve_variable_name(dataset, variable_name)
     if (
         actual_name is None
         and isinstance(source, xr.DataArray)
@@ -400,4 +494,19 @@ def normalize_tracking_data(
     )
     if not isinstance(selected, xr.DataArray):
         raise TypeError("normalized tracking input must be a DataArray")
+    if backend == "dask":
+        coords = DataLoader(selected).get_coords()
+        time_dim = coords[0]
+        if time_dim in selected.dims:
+            spatial_chunks = {d: -1 for d in selected.dims if d != time_dim}
+            selected = selected.chunk({time_dim: 1, **spatial_chunks})
+    selected_time_dim = DataLoader(selected).get_coords()[0]
+    LOGGER.debug(
+        "Selected input variable=%s requested=%s frames=%d dims=%s chunks=%r",
+        actual_name,
+        variable_name,
+        selected.sizes.get(selected_time_dim, 0),
+        dict(selected.sizes),
+        selected.chunks,
+    )
     return selected

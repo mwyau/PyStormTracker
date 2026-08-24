@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import xarray as xr
-from utils import RAW_CONTENT_URL, fetch_era5_msl
 
 from pystormtracker.io.data_loader import DataLoader
+from tests.utils import RAW_BASE, get_integration_msl_path
 
 
 @pytest.fixture(autouse=True)
@@ -14,10 +16,14 @@ def clear_cache() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.data
 @pytest.mark.parametrize(
     ("url", "expected_engine"),
     [
-        (f"{RAW_CONTENT_URL}era5_msl_2025-2026_djf_2.5x2.5.zarr", "zarr"),
+        (
+            f"{RAW_BASE}integration/era5_msl_2025-2026_djf_2.5x2.5.zarr",
+            "zarr",
+        ),
     ],
 )
 def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None:
@@ -29,16 +35,19 @@ def test_dataloader_remote_autodetection(url: str, expected_engine: str) -> None
     assert isinstance(ds, xr.Dataset)
     assert loader.engine is None  # Auto-detection was used
     # Check that it was cached
-    assert url in DataLoader._ds_cache
+    assert any(k[0] == url for k in DataLoader._ds_cache)
 
 
 @pytest.mark.integration
-def test_dataloader_local_zarr_archive() -> None:
-    """Open the release Zarr archive after local extraction."""
+def test_dataloader_local_zarr_roundtrip(tmp_path: Path) -> None:
+    """Write the committed MSL input to temporary Zarr and load it back."""
     pytest.importorskip("zarr")
 
-    zarr_path = fetch_era5_msl(format="zarr", local=True)
-    loader = DataLoader(zarr_path)
+    zarr_path = tmp_path / "era5_msl.zarr"
+    with xr.open_dataset(get_integration_msl_path(), engine="h5netcdf") as dataset:
+        dataset.to_zarr(zarr_path, consolidated=False)
+
+    loader = DataLoader(str(zarr_path))
     ds = loader.ensure_open()
 
     assert isinstance(ds, xr.Dataset)

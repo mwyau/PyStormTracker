@@ -15,7 +15,9 @@ from pystormtracker.models.tracks import (
     TracksMetadata,
     _TracksBuilder,
 )
-from pystormtracker.models.units import ResolvedDetectionMode as Mode
+from pystormtracker.models.tracks import (
+    ResolvedDetectionMode as Mode,
+)
 
 
 def _metadata(
@@ -177,7 +179,7 @@ def test_canonical_empty_msl_and_metadata_alignment() -> None:
     tracks = Tracks(metadata=_metadata())
     assert set(tracks.variables) == {"msl"}
     assert set(tracks.variables) == set(tracks.units)
-    assert tracks.primary_var in tracks.variables
+    assert tracks.primary_variable in tracks.variables
 
     with pytest.raises(ValueError, match="identical keys"):
         Tracks(

@@ -28,6 +28,7 @@ jobs:
     outputs:
       unit_matrix: ${{ steps.select.outputs.unit_matrix }}
       integration_matrix: ${{ steps.select.outputs.integration_matrix }}
+      parity_matrix: ${{ steps.select.outputs.parity_matrix }}
       uv_version: ${{ env.UV_VERSION }}
     steps:
       - name: Select representative or full matrix
@@ -38,7 +39,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             UNIT_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.11", "mode": "min-deps"},
+                {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "min-deps"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
@@ -49,12 +50,16 @@ jobs:
                 {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
               ]
             }'
+            PARITY_MATRIX='{
+              "include": [
+                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
+              ]
+            }'
           else
             UNIT_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.11", "mode": "normal"},
-                {"os": "ubuntu-26.04", "python-version": "3.11", "mode": "min-deps"},
                 {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.12", "mode": "min-deps"},
                 {"os": "ubuntu-26.04", "python-version": "3.13", "mode": "normal"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage"},
                 {"os": "ubuntu-26.04", "python-version": "3.14t", "mode": "free-threaded"},
@@ -71,6 +76,11 @@ jobs:
                 {"os": "macos-26", "python-version": "3.14", "slow": false}
               ]
             }'
+            PARITY_MATRIX='{
+              "include": [
+                {"os": "ubuntu-26.04", "python-version": "3.14", "slow": false}
+              ]
+            }'
           fi
 
           {
@@ -79,6 +89,9 @@ jobs:
             echo "EOF"
             echo "integration_matrix<<EOF"
             echo "$INTEGRATION_MATRIX"
+            echo "EOF"
+            echo "parity_matrix<<EOF"
+            echo "$PARITY_MATRIX"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -231,11 +244,11 @@ jobs:
 
       - name: Run integration tests
         if: matrix.slow == false
-        run: uv run --no-sync pytest -vv tests/integration/ --run-integration
+        run: uv run --no-sync pytest -vv tests/integration/ -m "not slow and not data"
 
       - name: Run slow integration tests with coverage
         if: matrix.slow == true
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ --run-integration --run-slow
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ -m "slow and not data"
 
       - name: Upload coverage
         if: matrix.slow == true
@@ -244,6 +257,52 @@ jobs:
           files: ./coverage.xml
           disable_search: true
           flags: integration
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  parity-tests:
+    name: Parity tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: [select-test-matrix, code-quality]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-test-matrix.outputs.parity_matrix) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install MPI on Windows
+        if: runner.os == 'Windows'
+        run: |
+          winget install -e --id Microsoft.msmpi --accept-source-agreements --accept-package-agreements
+          'C:\Program Files\Microsoft MPI\Bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Run non-slow parity tests
+        if: matrix.slow == false
+        run: uv run --no-sync pytest -vv tests/parity/ -m "not slow and not data"
+
+      - name: Run slow parity tests with coverage
+        if: matrix.slow == true
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/parity/ -m "slow and not data"
+
+      - name: Upload coverage
+        if: matrix.slow == true
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: ./coverage.xml
+          disable_search: true
+          flags: parity
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -327,7 +386,7 @@ jobs:
     name: Build and test Docker images
     if: github.event_name != 'workflow_dispatch'
     needs:
-      [select-test-matrix, code-quality, unit-tests, integration-tests, package-tests, docs]
+      [select-test-matrix, code-quality, unit-tests, integration-tests, parity-tests, package-tests, docs]
     uses: ./.github/workflows/docker-build.yml
     with:
       push_images: ${{ github.event_name != 'pull_request' }}
@@ -339,7 +398,7 @@ jobs:
   release_tag:
     name: Validate release tag
     if: github.ref_type == 'tag'
-    needs: [code-quality, unit-tests, integration-tests, package-tests, docs]
+    needs: [code-quality, unit-tests, integration-tests, parity-tests, package-tests, docs]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:

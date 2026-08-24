@@ -1,14 +1,35 @@
+"""Spectral filtering for global spherical and regional grids.
+
+The global spherical-harmonic taper follows the published spherical
+methodology of Sardeshmukh and Hoskins (1984), “Spatial Smoothing on the
+Sphere,” *Monthly Weather Review*, 112(12), 2524--2529:
+https://doi.org/10.1175/1520-0493(1984)112<2524:SSOTS>2.0.CO;2
+
+The coefficient transforms and DCT/SHT numerical machinery are supplied by
+``ducc0``.  Relevant numerical lineage includes Reinecke and Seljebotn
+(2013), *Libsharp -- spherical harmonic transforms revisited*,
+https://doi.org/10.1051/0004-6361/201321494, and Ishioka (2018), “A New
+Recurrence Formula for Efficient Computation of Spherical Harmonic
+Transform,” https://doi.org/10.2151/jmsj.2018-019.
+
+The regional effective-total-wavenumber filter is a PyStormTracker regional
+adaptation using standard DCT machinery.  It is not presented as an exact
+implementation of the global spherical derivation.
+"""
+
 from __future__ import annotations
 
-import os
 import warnings
 from collections.abc import Callable
 from typing import Literal, TypedDict, cast, overload
 
-import ducc0
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
+
+from ..backends import Backend, configure_sht_threads, resolve_sht_threads
+
+type SHTGeometry = Literal["CC", "GL", "DH", "auto"]
 
 
 class FilterKwargs(TypedDict, total=False):
@@ -45,10 +66,10 @@ def _get_filter_config(
         "geometry": geometry,
     }
 
-    return _filter_ducc0_frame, kwargs
+    return _filter_sht_frame, kwargs
 
 
-def apply_bandpass_mask_to_alm(
+def _apply_bandpass_mask_to_alm(
     alm: NDArray[np.complex128],
     lmin: int,
     lmax: int,
@@ -57,7 +78,9 @@ def apply_bandpass_mask_to_alm(
 ) -> None:
     """
     Applies a tapered bandpass mask in-place to spherical harmonic coefficients.
-    Uses the form from Hoskins and Sardeshmukh (1984), acting like a ∇⁴ smoother.
+    Uses the global spherical taper form of Sardeshmukh and Hoskins (1984),
+    acting like a ∇⁴ smoother.  ``ducc0`` supplies the numerical SHT; this
+    helper applies the PST coefficient mask around that library operation.
 
     Args:
         alm: Spherical harmonic coefficients.
@@ -92,7 +115,7 @@ def apply_bandpass_mask_to_alm(
         alm[:] *= weights
 
 
-def _filter_ducc0_frame(
+def _filter_sht_frame(
     frame: NDArray[np.float64],
     lmin: int,
     lmax: int,
@@ -135,6 +158,7 @@ def _filter_ducc0_frame(
         )
 
     mmax = min(lmax, nlon // 2 - 1)
+    import ducc0
 
     try:
         # 1. Analysis: Map -> Spherical Harmonics (ALM)
@@ -165,7 +189,7 @@ def _filter_ducc0_frame(
             )
 
         # 2. Filter: Apply tapered mask to ALMs
-        apply_bandpass_mask_to_alm(alm, lmin, lmax, mmax, taper_val=taper_val)
+        _apply_bandpass_mask_to_alm(alm, lmin, lmax, mmax, taper_val=taper_val)
 
         # 3. Synthesis: ALM -> Map
         synth_geometry = out_geometry or geometry
@@ -215,7 +239,63 @@ def _filter_ducc0_frame(
         raise ValueError(msg) from e
 
 
-def apply_dct_filter(
+def _filter_dct_frame(
+    frame: NDArray[np.float64],
+    lmin: int,
+    lmax: int,
+    taper_val: float,
+    lat: NDArray[np.float64],
+    lon: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Filter a regional frame using a 2D DCT adaptation.
+
+    The effective-total-wavenumber construction is a PyStormTracker regional
+    adaptation using standard DCT machinery from ``ducc0``; it is not the
+    global spherical-harmonic algorithm of Sardeshmukh and Hoskins (1984).
+    """
+    ny, nx = frame.shape
+    import ducc0
+
+    # 1. Forward 2D DCT (Type 2)
+    # We use inorm=2 (divide by N) to match standard definitions
+    coeffs = ducc0.fft.dct(frame, axes=(0, 1), type=2, inorm=2)
+
+    # 2. Compute radial wavenumbers
+    # Physical dimensions in degrees. We assume a regular lat-lon grid.
+    # in the wavenumber mapping.
+    dlat = abs(lat[1] - lat[0]) if ny > 1 else 1.0
+    dlon = abs(lon[1] - lon[0]) if nx > 1 else 1.0
+    width_lat = ny * dlat
+    width_lon = nx * dlon
+
+    # Wavenumbers in "total wavenumber l" units.
+    # Mirroring the spherical harmonic total wavenumber l ~ sqrt(kx^2 + ky^2).
+    # k_x = n_x * (180 / width_lon), k_y = n_y * (180 / width_lat)
+    ky = np.arange(ny)[:, None] * (180.0 / width_lat)
+    kx = np.arange(nx)[None, :] * (180.0 / width_lon)
+    l_eff = np.sqrt(kx**2 + ky**2)
+
+    # 3. Apply Tapered Mask.
+    # We use the l_eff(l_eff+1) form to match the SHT Laplacian smoother behavior.
+    weights = np.zeros_like(l_eff)
+    if lmax > 0:
+        k_val = -np.log(taper_val) / (lmax * (lmax + 1)) ** 2
+        mask_band = (l_eff >= lmin) & (l_eff <= lmax)
+        weights[mask_band] = np.exp(
+            -k_val * (l_eff[mask_band] * (l_eff[mask_band] + 1)) ** 2
+        )
+
+    coeffs *= weights
+
+    # 4. Inverse 2D DCT (Type 3)
+    # Type 3 is the inverse of Type 2. inorm=0 because forward was inorm=2.
+    return cast(
+        NDArray[np.float64], ducc0.fft.dct(coeffs, axes=(0, 1), type=3, inorm=0)
+    )
+
+
+def _filter_dct_xarray(
     data: xr.DataArray,
     lmin: int,
     lmax: int,
@@ -223,8 +303,8 @@ def apply_dct_filter(
     taper_val: float = 0.1,
 ) -> xr.DataArray:
     """
-    Applies a DCT-based spectral bandpass filter to a regional DataArray.
-    Uses ducc0.fft.dct for high-performance 2D DCT.
+    Private Xarray adapter for DCT-based spectral bandpass filter on regional
+    DataArrays.
 
     Args:
         data: Input DataArray (regional).
@@ -238,64 +318,13 @@ def apply_dct_filter(
     """
     from ..io.data_loader import DataLoader
 
+    loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
     # Identify spatial dimensions
-    lat_dim = next(
-        (c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None
-    )
-    lon_dim = next(
-        (c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None
-    )
+    lat_dim = loader.find_coordinate_dimension(data, "latitude")
+    lon_dim = loader.find_coordinate_dimension(data, "longitude")
 
     if not lat_dim or not lon_dim:
         raise ValueError("Input DataArray must have latitude and longitude dimensions.")
-
-    # DCT filter function for xr.apply_ufunc
-    def _dct_filter_2d(
-        frame: NDArray[np.float64],
-        lmin: int,
-        lmax: int,
-        taper_val: float,
-        lat: NDArray[np.float64],
-        lon: NDArray[np.float64],
-    ) -> NDArray[np.float64]:
-        ny, nx = frame.shape
-
-        # 1. Forward 2D DCT (Type 2)
-        # We use inorm=2 (divide by N) to match standard definitions
-        coeffs = ducc0.fft.dct(frame, axes=(0, 1), type=2, inorm=2)
-
-        # 2. Compute radial wavenumbers
-        # Physical dimensions in degrees. We assume a regular lat-lon grid.
-        # in the wavenumber mapping.
-        dlat = abs(lat[1] - lat[0]) if ny > 1 else 1.0
-        dlon = abs(lon[1] - lon[0]) if nx > 1 else 1.0
-        width_lat = ny * dlat
-        width_lon = nx * dlon
-
-        # Wavenumbers in "total wavenumber l" units.
-        # Mirroring the spherical harmonic total wavenumber l ~ sqrt(kx^2 + ky^2).
-        # k_x = n_x * (180 / width_lon), k_y = n_y * (180 / width_lat)
-        ky = np.arange(ny)[:, None] * (180.0 / width_lat)
-        kx = np.arange(nx)[None, :] * (180.0 / width_lon)
-        l_eff = np.sqrt(kx**2 + ky**2)
-
-        # 3. Apply Tapered Mask.
-        # We use the l_eff(l_eff+1) form to match the SHT Laplacian smoother behavior.
-        weights = np.zeros_like(l_eff)
-        if lmax > 0:
-            k_val = -np.log(taper_val) / (lmax * (lmax + 1)) ** 2
-            mask_band = (l_eff >= lmin) & (l_eff <= lmax)
-            weights[mask_band] = np.exp(
-                -k_val * (l_eff[mask_band] * (l_eff[mask_band] + 1)) ** 2
-            )
-
-        coeffs *= weights
-
-        # 4. Inverse 2D DCT (Type 3)
-        # Type 3 is the inverse of Type 2. inorm=0 because forward was inorm=2.
-        return cast(
-            NDArray[np.float64], ducc0.fft.dct(coeffs, axes=(0, 1), type=3, inorm=0)
-        )
 
     # Prepare for xarray
     lat = data[lat_dim].values
@@ -308,7 +337,7 @@ def apply_dct_filter(
     filtered = cast(
         xr.DataArray,
         xr.apply_ufunc(
-            _dct_filter_2d,
+            _filter_dct_frame,
             data,
             input_core_dims=[[lat_dim, lon_dim]],
             output_core_dims=[[lat_dim, lon_dim]],
@@ -331,8 +360,12 @@ def apply_dct_filter(
 
 
 class DCTFilter:
-    """
-    Spectral bandpass filter for regional grids using Discrete Cosine Transform.
+    """Regional DCT bandpass filter.
+
+    This is the PyStormTracker regional adaptation of a spectral cutoff.  It
+    uses standard DCT machinery supplied by ``ducc0`` and should not be read
+    as an exact implementation of the global spherical derivation of
+    Sardeshmukh and Hoskins (1984).
     """
 
     def __init__(
@@ -369,7 +402,7 @@ class DCTFilter:
             # In PyStormTracker, we prefer DataArrays for regional metadata.
             raise NotImplementedError("DCTFilter currently requires xarray.DataArray")
 
-        return apply_dct_filter(
+        return _filter_dct_xarray(
             data,
             self.lmin,
             self.lmax,
@@ -379,8 +412,11 @@ class DCTFilter:
 
 
 class SHTFilter:
-    """
-    Spectral bandpass filter (truncation) for lat-lon grid data using ducc0.
+    """Global spherical-harmonic bandpass filter using ``ducc0``.
+
+    The published spherical smoothing lineage is Sardeshmukh and Hoskins
+    (1984); ``ducc0`` supplies the numerical SHT implementation and PST owns
+    the filter wrapper and coefficient-mask integration.
     """
 
     def __init__(
@@ -390,6 +426,10 @@ class SHTFilter:
         lat_reverse: bool = False,
         taper_val: float = 0.1,
         geometry: Literal["CC", "GL", "DH", "auto"] = "auto",
+        out_geometry: str | None = None,
+        out_ntheta: int | None = None,
+        out_nphi: int | None = None,
+        sht_threads: int | None = None,
     ) -> None:
         """
         Initialize the filter with wave number bounds.
@@ -400,12 +440,23 @@ class SHTFilter:
             lat_reverse (bool): If True, assume latitude is North to South (reversed).
             taper_val (float): Value of the taper at lmax.
             geometry (str): Grid geometry ('CC', 'GL', 'DH', or 'auto').
+            out_geometry (str | None): Target geometry for regridding.
+            out_ntheta (int | None): Number of latitudes in output grid.
+            out_nphi (int | None): Number of longitudes in output grid.
+            sht_threads: DUCC0 threads per SHT call. None resolves from the
+                execution backend.
         """
         self.lmin = lmin
         self.lmax = lmax
         self.lat_reverse = lat_reverse
         self.taper_val = taper_val
         self.geometry = geometry
+        self.out_geometry = out_geometry
+        self.out_ntheta = out_ntheta
+        self.out_nphi = out_nphi
+        if sht_threads is not None:
+            resolve_sht_threads(sht_threads, "serial")
+        self.sht_threads = sht_threads
 
     @overload
     def filter(
@@ -437,7 +488,8 @@ class SHTFilter:
             xr.DataArray | np.ndarray: The filtered data.
         """
         if isinstance(data, np.ndarray):
-            nthreads = 1 if backend in ("mpi", "dask") else 0
+            nthreads = resolve_sht_threads(self.sht_threads, backend)
+            configure_sht_threads(nthreads)
             # For numpy arrays, we can't auto-detect geometry easily without lat array.
             # Default to CC or use provided geometry if not auto.
             geom = "CC" if self.geometry == "auto" else str(self.geometry)
@@ -449,6 +501,13 @@ class SHTFilter:
                 self.taper_val,
                 geometry=geom,
             )
+            if self.out_geometry:
+                kwargs["out_geometry"] = self.out_geometry
+            if self.out_ntheta:
+                kwargs["out_ntheta"] = self.out_ntheta
+            if self.out_nphi:
+                kwargs["out_nphi"] = self.out_nphi
+
             if data.ndim == 2:
                 return filter_func(data, **kwargs)
             if data.ndim == 3:
@@ -458,7 +517,7 @@ class SHTFilter:
                 return out
             raise ValueError("numpy array must be 2D or 3D")
 
-        return apply_sht_filter(
+        return _filter_sht_xarray(
             data,
             self.lmin,
             self.lmax,
@@ -466,6 +525,10 @@ class SHTFilter:
             backend=backend,
             taper_val=self.taper_val,
             geometry=self.geometry,
+            out_geometry=self.out_geometry,
+            out_ntheta=self.out_ntheta,
+            out_nphi=self.out_nphi,
+            sht_threads=self.sht_threads,
         )
 
 
@@ -498,17 +561,18 @@ def is_global_grid(data: xr.DataArray) -> bool:
         return False
 
 
-def apply_sht_filter(
+def _filter_sht_xarray(
     data: xr.DataArray,
     lmin: int,
     lmax: int,
     lat_reverse: bool = False,
-    backend: Literal["serial", "mpi", "dask"] = "serial",
+    backend: Backend = "serial",
     taper_val: float = 0.1,
-    geometry: Literal["CC", "GL", "DH", "auto"] = "auto",
+    geometry: SHTGeometry = "auto",
     out_geometry: str | None = None,
     out_ntheta: int | None = None,
     out_nphi: int | None = None,
+    sht_threads: int | None = None,
 ) -> xr.DataArray:
     """
     Applies a spectral bandpass filter to the input DataArray.
@@ -540,7 +604,8 @@ def apply_sht_filter(
     lon_dim: str | None = None
     spatial_dim: str | None = None
 
-    nthreads = 1 if backend in ("mpi", "dask") else 0
+    nthreads = resolve_sht_threads(sht_threads, backend)
+    configure_sht_threads(nthreads)
 
     # Grid geometry detection
     detected_geometry = str(geometry)
@@ -550,9 +615,8 @@ def apply_sht_filter(
             n_gauss = data.attrs.get("GRIB_N")
             detected_geometry = "GL" if n_gauss else "CC"
         else:
-            lat_search_dim = next(
-                (c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims),
-                "latitude",
+            lat_search_dim = (
+                loader.find_coordinate_dimension(data, "latitude") or "latitude"
             )
             lat_vals = data[lat_search_dim].values
             if len(lat_vals) > 1:
@@ -587,12 +651,8 @@ def apply_sht_filter(
         kwargs["phi0"] = grid_meta["phi0"]
         kwargs["ringstart"] = grid_meta["ringstart"]
     else:
-        lat_dim = next(
-            (c for c in DataLoader.VAR_MAPPING["latitude"] if c in data.dims), None
-        )
-        lon_dim = next(
-            (c for c in DataLoader.VAR_MAPPING["longitude"] if c in data.dims), None
-        )
+        lat_dim = loader.find_coordinate_dimension(data, "latitude")
+        lon_dim = loader.find_coordinate_dimension(data, "longitude")
 
         if not lat_dim or not lon_dim:
             raise ValueError(
@@ -610,20 +670,12 @@ def apply_sht_filter(
 
     if data.chunks:
         # If data is chunked, we must allow or parallelize dask handling
-        if backend == "dask":
-            # Prevent OpenMP oversubscription when Dask is handling parallelism
-            os.environ.setdefault("OMP_NUM_THREADS", "1")
-            dask_mode = "parallelized"
-        else:
-            # For serial or MPI with chunked data, use 'allowed' to run on chunks
-            dask_mode = "allowed"
+        # Serial and MPI use "allowed" to run on chunks.
+        dask_mode = "parallelized" if backend == "dask" else "allowed"
 
     if backend == "mpi":
         try:
             from mpi4py import MPI
-
-            # Prevent OpenMP oversubscription when MPI is handling parallelism
-            os.environ.setdefault("OMP_NUM_THREADS", "1")
 
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
@@ -656,10 +708,17 @@ def apply_sht_filter(
     # Determine output core dims and coords
     output_core_dims = [["lat_out", "lon_out"]] if out_geometry else input_core_dims
 
+    if out_geometry:
+        assert out_ntheta is not None
+        assert out_nphi is not None
+        output_sizes = {"lat_out": out_ntheta, "lon_out": out_nphi}
+    else:
+        output_sizes = None
+
     filtered = cast(
         xr.DataArray,
         xr.apply_ufunc(
-            _filter_ducc0_frame,
+            _filter_sht_frame,
             data,
             input_core_dims=input_core_dims,
             output_core_dims=output_core_dims,
@@ -667,6 +726,11 @@ def apply_sht_filter(
             kwargs=kwargs,
             dask=dask_mode,
             output_dtypes=[data.dtype],
+            dask_gufunc_kwargs=(
+                {"output_sizes": output_sizes}
+                if dask_mode == "parallelized" and output_sizes is not None
+                else None
+            ),
         ),
     )
 
@@ -680,6 +744,8 @@ def apply_sht_filter(
             lats_out = np.linspace(-90, 90, ntheta_out)
             lons_out = np.linspace(0, 360, nphi_out, endpoint=False)
         elif out_geometry == "GL":
+            import ducc0
+
             lats_out = 90.0 - np.degrees(ducc0.misc.GL_thetas(ntheta_out))
             lons_out = np.linspace(0, 360, nphi_out, endpoint=False)
         else:
@@ -693,7 +759,12 @@ def apply_sht_filter(
     filtered.attrs.update(data.attrs)
     filtered.name = data.name
 
-    if not is_reduced and is_ascending and not out_geometry:
-        filtered = filtered.sortby(lat_dim, ascending=True)
+    if not is_reduced and is_ascending:
+        # SHT synthesis emits north-to-south latitude rows.  Restore the
+        # orientation of an ascending structured input even when synthesis
+        # created new latitude coordinates for a regridded output.
+        output_latitude = "latitude" if out_geometry else lat_dim
+        assert output_latitude is not None
+        filtered = filtered.sortby(output_latitude, ascending=True)
 
     return filtered

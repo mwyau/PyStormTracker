@@ -8,8 +8,15 @@ import pytest
 import xarray as xr
 
 from pystormtracker.hodges.tracker import HodgesTracker
-from pystormtracker.preprocessing.tracking import resolve_filter_bounds
+from pystormtracker.preprocessing.tracking import (
+    preprocess_tracking_data,
+    resolve_filter_bounds,
+)
 from pystormtracker.simple.tracker import SimpleTracker
+
+
+def _coefficient_taper(tracker: SimpleTracker | HodgesTracker) -> float:
+    return 1.0 if isinstance(tracker, HodgesTracker) else 0.1
 
 
 @pytest.fixture
@@ -35,10 +42,30 @@ def test_global_auto_filter_uses_longitude_for_sht_selection(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         sht_filter.return_value.filter.return_value = global_data
-        tracker._preprocess_standard_track(global_data, filter_lmin=0, filter_lmax=7)
+        tracker._preprocess_standard_track(global_data, lmin=0, lmax=7)
 
-    sht_filter.assert_called_once_with(lmin=0, lmax=7)
+    sht_filter.assert_called_once_with(
+        lmin=0,
+        lmax=7,
+        taper_val=_coefficient_taper(tracker),
+    )
     dct_filter.assert_not_called()
+
+
+def test_hodges_sht_threads_reach_sht_filter(
+    global_data: xr.DataArray,
+) -> None:
+    tracker = HodgesTracker(sht_threads=7)
+    with patch("pystormtracker.preprocessing.tracking.SHTFilter") as sht_filter:
+        sht_filter.return_value.filter.return_value = global_data
+        tracker._preprocess_standard_track(global_data, lmin=0, lmax=7)
+
+    sht_filter.assert_called_once_with(
+        lmin=0,
+        lmax=7,
+        taper_val=1.0,
+        sht_threads=7,
+    )
 
 
 @pytest.mark.parametrize("tracker", [SimpleTracker(), HodgesTracker()])
@@ -89,9 +116,13 @@ def test_coarse_global_auto_filter_uses_sht(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         sht_filter.return_value.filter.return_value = coarse_global
-        tracker._preprocess_standard_track(coarse_global, filter_lmin=0, filter_lmax=2)
+        tracker._preprocess_standard_track(coarse_global, lmin=0, lmax=2)
 
-    sht_filter.assert_called_once_with(lmin=0, lmax=2)
+    sht_filter.assert_called_once_with(
+        lmin=0,
+        lmax=2,
+        taper_val=_coefficient_taper(tracker),
+    )
     dct_filter.assert_not_called()
 
 
@@ -105,9 +136,13 @@ def test_regional_auto_filter_uses_dct(
         patch("pystormtracker.preprocessing.tracking.DCTFilter") as dct_filter,
     ):
         dct_filter.return_value.filter.return_value = regional
-        tracker._preprocess_standard_track(regional, filter_lmin=0, filter_lmax=7)
+        tracker._preprocess_standard_track(regional, lmin=0, lmax=7)
 
-    dct_filter.assert_called_once_with(lmin=0, lmax=7)
+    dct_filter.assert_called_once_with(
+        lmin=0,
+        lmax=7,
+        taper_val=_coefficient_taper(tracker),
+    )
     sht_filter.assert_not_called()
 
 
@@ -120,8 +155,8 @@ def test_polar_preprocessing_uses_requested_lmax(
 ) -> None:
     processed, _steps = tracker._preprocess_standard_track(
         global_data,
-        filter_lmin=0,
-        filter_lmax=7,
+        lmin=0,
+        lmax=7,
         projection=projection,
         extent=(-100.0, 100.0, -100.0, 100.0),
         stereo_grid_spacing_km=100.0,
@@ -130,6 +165,23 @@ def test_polar_preprocessing_uses_requested_lmax(
     assert processed.dims == ("time", "y", "x")
     assert processed.attrs["projection"] == projection
     assert _steps[-1].parameters["transform_lmax"] == 7
+
+
+def test_polar_preprocessing_honors_declared_input_spectral_lmax(
+    global_data: xr.DataArray,
+) -> None:
+    data = global_data.copy()
+    data.attrs["spectral_lmax"] = 3
+
+    processed, steps = HodgesTracker()._preprocess_standard_track(
+        data,
+        projection="nh_stereo",
+        extent=(-100.0, 100.0, -100.0, 100.0),
+        stereo_grid_spacing_km=100.0,
+    )
+
+    assert processed.dims == ("time", "y", "x")
+    assert steps[-1].parameters["transform_lmax"] == 3
 
 
 def test_healpix_regrid_without_filter_records_transform_only() -> None:
@@ -144,9 +196,7 @@ def test_healpix_regrid_without_filter_records_transform_only() -> None:
         name="msl",
     )
 
-    processed, steps = SimpleTracker()._preprocess_standard_track(
-        data, projection="healpix", nside=4
-    )
+    processed, steps = preprocess_tracking_data(data, projection="healpix", nside=4)
 
     assert processed.dims == ("time", "cell")
     assert [step.operation for step in steps] == ["regrid"]

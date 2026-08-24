@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
+import logging
 
 import numpy as np
 
 from .io.format import load_tracks
 from .io.trackjson import write_trackjson
-from .metrics.compare import TrackComparison, TrackComparisonConfig, compare_tracks
+from .metrics.compare import (
+    MatchingMethod,
+    TrackComparison,
+    TrackComparisonConfig,
+    compare_tracks,
+)
 from .models.tracks import Tracks
-from .utils.cli import fraction, positive_float
+from .utils.cli import add_cli_observability_options, fraction, positive_float
+
+LOGGER = logging.getLogger(__name__)
 
 
 def setup_parser(
@@ -22,24 +29,35 @@ def setup_parser(
     parser = subparsers.add_parser(
         "compare",
         description=(
-            "Compare reference tracks with their closest eligible candidates "
-            "using temporal overlap and mean geodesic separation."
+            "Compare reference and candidate tracks using nearest, "
+            "mutual-nearest, or global-assignment matching."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    add_cli_observability_options(parser)
     parser.add_argument(
         "-r",
         "--reference",
         dest="reference",
         required=True,
-        help="Reference track file (JSON or IMILAST).",
+        help="Reference track file (TrackJSON, IMILAST, or Hodges/tdump).",
     )
     parser.add_argument(
         "-c",
         "--candidate",
         dest="candidate",
         required=True,
-        help="Candidate track file (JSON or IMILAST).",
+        help="Candidate track file (TrackJSON, IMILAST, or Hodges/tdump).",
+    )
+    parser.add_argument(
+        "--matching",
+        dest="matching",
+        choices=["nearest", "mutual_nearest", "global_assignment"],
+        default="nearest",
+        help=(
+            "Trajectory matching method ('nearest', 'mutual_nearest', "
+            "'global_assignment')."
+        ),
     )
     parser.add_argument(
         "-s",
@@ -57,7 +75,6 @@ def setup_parser(
         help="Minimum overlap fraction: 2 * overlap / (n_ref + n_candidate).",
     )
     parser.add_argument(
-        "-v",
         "--variable",
         dest="variable",
         help="Common trajectory variable used for vorticity/intensity statistics.",
@@ -111,32 +128,56 @@ def _matched_candidate_tracks(tracks: Tracks, candidate_ids: set[int]) -> Tracks
 
 def _print_summary(result: TrackComparison) -> None:
     """Print the concise human-readable comparison summary."""
-    print(
-        "Matched "
-        f"{result.match_count} of {result.reference_count} reference and "
-        f"{result.candidate_count} candidate tracks."
-    )
-    print(
-        f"Reference coverage: {result.reference_coverage:.1%}; candidate coverage: "
-        f"{result.candidate_coverage:.1%}."
-    )
+    if result.matching == "nearest":
+        print(
+            f"Matched {result.match_count} of {result.reference_count} "
+            f"reference tracks against {result.candidate_count} candidate tracks."
+        )
+        print(f"Reference coverage: {result.reference_coverage:.1%}")
+        print(f"Candidate coverage: {result.candidate_coverage:.1%}")
+        print(
+            f"Unique candidates: {result.unique_candidate_count}; "
+            f"Reused candidates: {result.reused_candidate_count} "
+            f"({result.reused_candidate_assignments} duplicate assignments)"
+        )
+    elif result.matching == "mutual_nearest":
+        print(
+            f"Mutual matches: {result.match_count} "
+            f"(Ref: {result.reference_count}, Cand: {result.candidate_count})"
+        )
+        print(f"Agreement: {result.agreement:.1%}")
+        print(
+            f"Unmatched reference: {result.unmatched_reference_count}; "
+            f"Unmatched candidate: {result.unmatched_candidate_count}"
+        )
+    elif result.matching == "global_assignment":
+        print(
+            f"Assigned pairs: {result.match_count} "
+            f"(Ref: {result.reference_count}, Cand: {result.candidate_count})"
+        )
+        print(f"Precision: {result.precision:.1%}")
+        print(f"Recall: {result.recall:.1%}")
+        print(f"F1: {result.f1:.1%}")
+        print(
+            f"TP: {result.tp}, FP: {result.fp}, FN: {result.fn}; "
+            f"Topology-identical pairs: {result.topology_identical_count}"
+        )
 
 
 def main(args: argparse.Namespace) -> None:
     """Run the trajectory comparison command."""
 
-    def log(message: str) -> None:
-        print(message, file=sys.stderr if args.json else sys.stdout)
-
-    log(f"Loading reference tracks from {args.reference}...")
+    LOGGER.info("Loading reference tracks from %s", args.reference)
     reference = _load_tracks(args.reference)
-    log(f"Loading candidate tracks from {args.candidate}...")
+    LOGGER.info("Loading candidate tracks from %s", args.candidate)
     candidate = _load_tracks(args.candidate)
 
+    matching_method: MatchingMethod = getattr(args, "matching", "nearest")
     config = TrackComparisonConfig(
+        matching=matching_method,
         max_mean_separation_deg=args.max_mean_separation,
         min_overlap_fraction=args.min_overlap,
-        var=args.variable,
+        variable=args.variable,
         mode=args.detection_mode,
     )
     result = compare_tracks(reference, candidate, config=config)
@@ -148,12 +189,14 @@ def main(args: argparse.Namespace) -> None:
         _print_summary(result)
 
     if args.report:
-        log(f"Writing comparison report to {args.report}...")
+        LOGGER.info("Writing comparison report to %s", args.report)
         with open(args.report, "w", encoding="utf-8") as report_file:
             json.dump(result_json, report_file, indent=2, sort_keys=True)
 
     if args.matched_candidate_output:
-        log(f"Writing matched candidate tracks to {args.matched_candidate_output}...")
+        LOGGER.info(
+            "Writing matched candidate tracks to %s", args.matched_candidate_output
+        )
         candidate_ids = {match.candidate_id for match in result.matches}
         write_trackjson(
             _matched_candidate_tracks(candidate, candidate_ids),

@@ -12,7 +12,7 @@ import pytest
 
 from pystormtracker.io.format import load_tracks, save_tracks
 from pystormtracker.io.trackjson import (
-    STAT_ARRAY_FIELDS,
+    _STAT_ARRAY_FIELDS,
     TrackJSONDocument,
     TrackJSONStats,
     compute_trackjson_stats,
@@ -134,7 +134,7 @@ def test_stats_are_wire_only_and_align_with_ids() -> None:
     assert stats.path_length_km[1] == 0.0
     assert stats.displacement_km[1] == 0.0
     assert stats.antimeridian_wrap == [True, False]
-    assert all(len(getattr(stats, name)) == 2 for name in STAT_ARRAY_FIELDS)
+    assert all(len(getattr(stats, name)) == 2 for name in _STAT_ARRAY_FIELDS)
 
 
 def test_stats_field_classification_matches_wire_struct() -> None:
@@ -143,8 +143,8 @@ def test_stats_field_classification_matches_wire_struct() -> None:
         for field in msgspec.structs.fields(TrackJSONStats)
         if field.name != "version"
     }
-    assert set(STAT_ARRAY_FIELDS) == wire_fields
-    assert len(STAT_ARRAY_FIELDS) == 19
+    assert set(_STAT_ARRAY_FIELDS) == wire_fields
+    assert len(_STAT_ARRAY_FIELDS) == 19
 
 
 def test_nan_variables_and_missing_peak_are_encoded_as_null() -> None:

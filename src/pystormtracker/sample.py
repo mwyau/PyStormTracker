@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from dataclasses import replace
 from typing import Literal, cast
 
@@ -10,9 +11,11 @@ import xarray as xr
 from .models.geo import cyclic_longitude_delta, geod_dist_km
 from .models.tracks import Tracks
 from .models.units import normalize_variable_units
-from .utils.cli import nonnegative_float
+from .utils.cli import add_cli_observability_options, nonnegative_float
 
-SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
+LOGGER = logging.getLogger(__name__)
+
+type SamplingMethod = Literal["nearest", "bilinear", "mean", "max", "min"]
 
 
 def _prepare_longitude_axis(
@@ -131,13 +134,9 @@ def sample_tracks(
     sampled_values = np.full(len(tracks.times), np.nan, dtype=np.float64)
 
     # Identify and validate the spatial axes once for this sampling call.
-    lat_dim = next(
-        (d for d in DataLoader.VAR_MAPPING["latitude"] if d in da.dims), None
-    )
-    lon_dim = next(
-        (d for d in DataLoader.VAR_MAPPING["longitude"] if d in da.dims), None
-    )
-    time_dim = next((d for d in DataLoader.VAR_MAPPING["time"] if d in da.dims), None)
+    lat_dim = loader.find_coordinate_dimension(da, "latitude")
+    lon_dim = loader.find_coordinate_dimension(da, "longitude")
+    time_dim = loader.find_coordinate_dimension(da, "time")
 
     if not lat_dim or not lon_dim:
         raise ValueError("Could not identify latitude or longitude dimensions.")
@@ -260,12 +259,13 @@ def setup_parser(
         description="Sample variables from a NetCDF dataset along storm tracks.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    add_cli_observability_options(parser)
     parser.add_argument("-i", "--input", required=True, help="Input track file (JSON).")
     parser.add_argument(
         "-d", "--data", required=True, help="Input NetCDF data file to sample from."
     )
     parser.add_argument(
-        "-v", "--variable", required=True, help="Variable name in the NetCDF file."
+        "--variable", required=True, help="Variable name in the NetCDF file."
     )
     parser.add_argument(
         "-o",
@@ -313,19 +313,19 @@ def main(args: argparse.Namespace) -> None:
     if args.method in ("mean", "max", "min") and args.radius <= 0.0:
         raise ValueError(f"sampling method '{args.method}' requires a positive radius")
 
-    print(f"Reading tracks from {args.input}...")
+    LOGGER.info("Reading tracks from %s", args.input)
     from .io.format import load_tracks, save_tracks
 
     tracks = load_tracks(args.input)
 
-    print(f"Opening dataset {args.data}...")
+    LOGGER.info("Opening dataset %s", args.data)
     from .io.data_loader import DataLoader
 
     ds = DataLoader(args.data, engine=args.engine).ensure_open()
 
-    print(f"Sampling '{args.variable}' using method '{args.method}'...")
+    LOGGER.info("Sampling %r using method %r", args.variable, args.method)
     if args.radius > 0:
-        print(f"Radius: {args.radius} km")
+        LOGGER.debug("Sampling radius: %g km", args.radius)
 
     tracks = sample_tracks(
         tracks=tracks,
@@ -336,6 +336,6 @@ def main(args: argparse.Namespace) -> None:
         output_variable_name=args.name,
     )
 
-    print(f"Writing updated tracks to {args.output}...")
+    LOGGER.info("Writing updated tracks to %s", args.output)
     save_tracks(tracks, args.output)
-    print("Done!")
+    LOGGER.info("Sampling completed")

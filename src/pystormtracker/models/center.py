@@ -3,8 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .constants import DEGTORAD, R_EARTH_KM
-from .geo import geod_dist_km
+from .geo import DEG_TO_RAD, R_EARTH_KM, geod_dist_km
 from .time import TimePoint
 
 
@@ -30,10 +29,10 @@ class Center:
     def lat_dist(self, center: Center) -> float:
         """Calculates the latitudinal distance in km."""
         dlat = center.lat - self.lat
-        return R_EARTH_KM * dlat * DEGTORAD
+        return R_EARTH_KM * dlat * DEG_TO_RAD
 
     def lon_dist(self, center: Center) -> float:
         """Calculates the longitudinal distance in km, adjusted for latitude."""
         avglat = (self.lat + center.lat) / 2
         dlon = center.lon - self.lon
-        return R_EARTH_KM * dlon * DEGTORAD * math.cos(avglat * DEGTORAD)
+        return R_EARTH_KM * dlon * DEG_TO_RAD * math.cos(avglat * DEG_TO_RAD)

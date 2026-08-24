@@ -1,16 +1,37 @@
 # Changelog
 
-## v0.6.1.dev2
+## v0.7.0.dev0
 
-### Tracking and interfaces
+### Tracking and refinement
 
 - Replaced the procedural tracking API with configured tracker classes and consolidated public models under `pystormtracker.models`.
 - Renamed tracker, preprocessing, and CLI arguments and replaced subgrid-refinement terminology with feature-point location methods.
 - Updated Hodges MGE directional scheduling and iteration-limit handling.
+- Reconciled Hodges tracking with TRACK 1.5.4 across object detection, feature-point refinement, MGE linking, adaptive constraints, missing-frame handling, track failure and splitting, segment handling, and RSPLICE.
+- Added local rectangular and spherical B-spline and quadratic refinement with shared spherical geometry and intrinsic optimization support.
 
-### Testing and CI
+### Parallel execution and performance
 
-- Moved Python package publishing to a standalone workflow that runs after successful CI.
+- Split Hodges execution into explicit `frame_workers`, `sht_threads`, and
+  `mge_workers` controls with staged Dask frame detection and MGE linking;
+  the former Hodges `workers` parameter and CLI option are removed.
+- Added frame-level parallel scheduling, MPI execution, progress reporting, and observable logging contracts.
+- Optimized TRACK-compatible rectangular detection, native MGE preprocessing, and FITPACK rectangular spline systems while retaining equivalence coverage.
+
+### Comparison and analysis
+
+- Expanded trajectory comparison, matching and assignment, Lagrangian metrics, hourly linear and PCHIP ATA interpolation, weighting kernels, and CCA/CORMAX corrections.
+
+### Testing and data
+
+- Reorganized unit, integration, legacy-parity, TRACK-parity, and NCL/Spherepack coverage with explicit test markers and external-data ownership.
+- Pinned PyStormTracker-Data paths and release assets for deferred integration and parity inputs, while retaining the bounded bundled numerical reference.
+
+### Documentation and infrastructure
+
+- Added the reproducible TRACK 1.5.4 and PyStormTracker comparison suite with F320-to-T42, F320-to-F320, and regular-grid configurations, repeat runners, profilers, and compact results.
+- Updated the scientific-method, architecture, testing, CLI, TrackJSON, and repository guidance documentation.
+- Moved Python package publishing to a standalone workflow that runs after successful CI, and modernized supported Python and build metadata.
 
 ---
 
@@ -67,7 +88,7 @@
 - Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure. The tracking command is implemented by `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is exported.
 - Added algorithm-dependent tri-state filtering and subgrid-refinement controls. Omitted values use the direct tracker defaults: disabled for Simple and enabled for Hodges and HEALPix.
 - Added shared local quadratic subgrid refinement for regular and projected grids and local quadratic refinement on the HEALPix neighbor graph.
-- Added one spherical `RectSphereBivariateSpline` fit per periodic global Hodges frame and a `bspline_val` diagnostic in raw detections at each quadratic center. The spline does not currently optimize the center coordinate, and the current linker does not propagate the diagnostic to final tracks.
+- Added `track_bspline` as the default Hodges feature-point method for eligible periodic global latitude-longitude frames. It fits one spherical `RectSphereBivariateSpline` per frame and refines centers with a source-mapped derivative search; quadratic and grid-point methods remain explicit alternatives. The current linker does not propagate refinement diagnostics to final tracks.
 - Added polar stereographic and HEALPix preprocessing with explicit `lmax` propagation, configurable projected extent and resolution, and corrected band-pass handling.
 - Added DCT filtering for regional grids, full-Gaussian geometry handling, and reduced-Gaussian metadata, pseudo-analysis, filtering, and regridding paths.
 - Corrected periodic-global and nonperiodic regional or projected boundary handling.

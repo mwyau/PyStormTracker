@@ -2,6 +2,36 @@ from __future__ import annotations
 
 import argparse
 import math
+from importlib.metadata import PackageNotFoundError, version
+
+
+def package_version() -> str:
+    """Return the installed package version without importing the package root."""
+    try:
+        return version("pystormtracker")
+    except PackageNotFoundError:
+        return "0.6.1.dev2"
+
+
+def add_cli_observability_options(
+    parser: argparse.ArgumentParser,
+    *,
+    version_string: str | None = None,
+) -> None:
+    """Add the shared ``-v``/``-vv`` and ``-V`` CLI options to one parser."""
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {version_string or package_version()}",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=argparse.SUPPRESS,
+        help="Increase operational logging verbosity (-v: INFO, -vv: DEBUG).",
+    )
 
 
 def positive_int(value: str) -> int:

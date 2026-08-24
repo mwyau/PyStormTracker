@@ -4,7 +4,7 @@ import numpy as np
 
 import pystormtracker as pst
 from pystormtracker.models.time import TimePoint
-from pystormtracker.models.tracker import RawDetectionStep
+from pystormtracker.models.tracker import CenterFrame
 
 
 def accepts_tracker(tracker: pst.Tracker) -> pst.Tracker:
@@ -13,12 +13,15 @@ def accepts_tracker(tracker: pst.Tracker) -> pst.Tracker:
 
 def test_public_api_exports() -> None:
     assert sorted(pst.__all__) == [
+        "Center",
         "HealpixTracker",
         "HodgesTracker",
         "SimpleTracker",
         "Track",
         "Tracker",
         "Tracks",
+        "load_tracks",
+        "save_tracks",
     ]
     assert pst.SimpleTracker is not None
     assert pst.HodgesTracker is not None
@@ -26,6 +29,9 @@ def test_public_api_exports() -> None:
     assert pst.Tracker is not None
     assert pst.Track is not None
     assert pst.Tracks is not None
+    assert pst.Center is not None
+    assert pst.load_tracks is not None
+    assert pst.save_tracks is not None
 
 
 def test_protocol_conformance() -> None:
@@ -38,13 +44,13 @@ def test_protocol_conformance() -> None:
     assert accepts_tracker(healpix) is healpix
 
 
-def test_raw_detection_step_named_tuple() -> None:
+def test_center_frame_named_tuple() -> None:
     time_val: TimePoint = 1735689600000
     lats = np.array([10.0, 20.0], dtype=np.float64)
     lons = np.array([30.0, 40.0], dtype=np.float64)
     vals = np.array([100.0, 200.0], dtype=np.float64)
 
-    step = RawDetectionStep(time_val, lats, lons, vals)
+    step = CenterFrame(time_val, lats, lons, vals)
 
     # Test tuple unpacking
     t, la, lo, v = step

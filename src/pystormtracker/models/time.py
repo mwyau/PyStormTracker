@@ -1,34 +1,57 @@
 """Canonical CF time handling for packed tracks.
 
 The packed model uses one representation: signed int64 milliseconds since the
-Unix epoch under the proleptic Gregorian calendar. ``cftime`` performs all
-source CF conversion; this module only applies the project's supported-calendar
-policy and validates the integer representation.
+Unix epoch under the proleptic Gregorian calendar. Core calendar conversion uses
+standard datetime and NumPy operations; optional ``cftime`` inputs are handled
+lazily when available.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
-from typing import Final, Literal, TypeAlias, cast
+from datetime import date, datetime, timedelta
+from typing import Final, Literal, Protocol
 
-import cftime
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-Calendar: TypeAlias = Literal["proleptic_gregorian"]
-PROLEPTIC_GREGORIAN: Final[Calendar] = "proleptic_gregorian"
-GREGORIAN_REFORM_DATE: Final[date] = date(1582, 10, 15)
-CANONICAL_TIME_UNITS: Final[str] = "milliseconds since 1970-01-01 00:00:00"
-CanonicalTimeUnits: TypeAlias = Literal["milliseconds since 1970-01-01 00:00:00"]
-MAX_SAFE_JSON_INTEGER: Final[int] = 2**53 - 1
-INT64_MIN: Final[int] = -(2**63)
-INT64_MAX: Final[int] = 2**63 - 1
+from ._cftime import (
+    encode_cftime_objects,
+    get_cftime_calendar,
+    is_cftime_available,
+    is_cftime_datetime,
+    require_cftime,
+)
 
-TimePoint: TypeAlias = datetime | cftime.datetime | np.datetime64 | int
-TimeInput: TypeAlias = TimePoint | str
+type Calendar = Literal["proleptic_gregorian"]
+PROLEPTIC_GREGORIAN: Final[Calendar] = "proleptic_gregorian"
+_GREGORIAN_REFORM_DATE: Final[date] = date(1582, 10, 15)
+type CanonicalTimeUnits = Literal["milliseconds since 1970-01-01 00:00:00"]
+CANONICAL_TIME_UNITS: Final[CanonicalTimeUnits] = (
+    "milliseconds since 1970-01-01 00:00:00"
+)
+
+_EPOCH: Final[datetime] = datetime(1970, 1, 1, 0, 0, 0)
+
+
+class CftimeDateTime(Protocol):
+    """Structural type for the optional ``cftime.datetime`` family."""
+
+    year: int
+    month: int
+    day: int
+    hour: int
+    minute: int
+    second: int
+    microsecond: int
+    calendar: str
+
+
+type TimePoint = datetime | np.datetime64 | int | CftimeDateTime
+type TimeInput = TimePoint | str
 
 
 @dataclass(slots=True)
@@ -74,10 +97,10 @@ def _check_standard_dates(values: Sequence[object]) -> None:
         day = getattr(value, "day", None)
         if year is None or month is None or day is None:
             raise ValueError("CF time decoding did not produce calendar dates")
-        if date(int(year), int(month), int(day)) < GREGORIAN_REFORM_DATE:
+        if date(int(year), int(month), int(day)) < _GREGORIAN_REFORM_DATE:
             raise ValueError(
                 "explicit standard/gregorian dates before "
-                f"{GREGORIAN_REFORM_DATE.isoformat()} cannot be converted because "
+                f"{_GREGORIAN_REFORM_DATE.isoformat()} cannot be converted because "
                 "mixed Julian/Gregorian calendar conversion is not implemented"
             )
 
@@ -88,7 +111,9 @@ def _validate_int64(values: object, name: str = "times") -> NDArray[np.int64]:
         raise ValueError(f"{name} must contain integer millisecond values")
     if raw.dtype.kind == "f" and np.any(~np.isfinite(raw) | (raw != np.floor(raw))):
         raise ValueError(f"{name} must contain integer millisecond values")
-    if raw.size and (np.any(raw < INT64_MIN) or np.any(raw > INT64_MAX)):
+    if raw.size and (
+        np.any(raw < np.iinfo(np.int64).min) or np.any(raw > np.iinfo(np.int64).max)
+    ):
         raise ValueError(f"{name} must fit signed int64")
     return np.asarray(raw, dtype=np.int64)
 
@@ -102,7 +127,22 @@ def _validate_millisecond_precision(values: Sequence[object]) -> None:
             raise ValueError("calendar datetimes must be timezone-naive")
 
 
-def _encode_cftime_values(
+def _datetime_to_ms(dt: datetime | date) -> int:
+    if isinstance(dt, datetime):
+        if dt.tzinfo is not None:
+            raise ValueError("calendar datetimes must be timezone-naive")
+        if dt.microsecond % 1000 != 0:
+            raise ValueError("datetime has sub-millisecond precision")
+        delta = dt - _EPOCH
+        return (delta.days * 86400 + delta.seconds) * 1000 + dt.microsecond // 1000
+    if isinstance(dt, date):
+        full_dt = datetime(dt.year, dt.month, dt.day, 0, 0, 0)
+        delta = full_dt - _EPOCH
+        return (delta.days * 86400 + delta.seconds) * 1000
+    raise ValueError(f"expected datetime or date, got {type(dt)}")
+
+
+def _encode_datetime_sequence(
     values: Sequence[object],
     *,
     source_calendar: str,
@@ -112,50 +152,32 @@ def _encode_cftime_values(
     _validate_millisecond_precision(values)
     if source_calendar in ("standard", "gregorian"):
         _check_standard_dates(values)
-    numeric = np.asarray(
-        cftime.date2num(
-            list(values),
-            CANONICAL_TIME_UNITS,
-            calendar=PROLEPTIC_GREGORIAN,
-            longdouble=True,
-        ),
-        dtype=np.longdouble,
-    )
-    if np.any(~np.isfinite(numeric)):
-        raise ValueError("CF time values must be finite")
-    rounded = np.rint(numeric)
-    if np.any(np.abs(numeric - rounded) > np.longdouble("1e-6")):
-        raise ValueError("CF time values must resolve to integer milliseconds")
-    result = _validate_int64(rounded)
-    decoded = cftime.num2date(
-        result.tolist(),
-        CANONICAL_TIME_UNITS,
-        calendar=PROLEPTIC_GREGORIAN,
-        only_use_cftime_datetimes=True,
-        only_use_python_datetimes=False,
-    )
-    round_trip = np.asarray(
-        cftime.date2num(
-            decoded,
-            CANONICAL_TIME_UNITS,
-            calendar=PROLEPTIC_GREGORIAN,
-            longdouble=True,
-        ),
-        dtype=np.longdouble,
-    )
-    if np.any(round_trip != result.astype(np.longdouble)):
-        raise ValueError("CF time encoding failed its millisecond round trip")
+
+    has_cftime = any(is_cftime_datetime(v) for v in values)
+    if has_cftime:
+        return encode_cftime_objects(
+            values,
+            canonical_time_units=CANONICAL_TIME_UNITS,
+            proleptic_gregorian=PROLEPTIC_GREGORIAN,
+        )
+
+    result = np.empty(len(values), dtype=np.int64)
+    for i, v in enumerate(values):
+        if isinstance(v, (datetime, date)):
+            result[i] = _datetime_to_ms(v)
+        else:
+            raise TypeError(f"unsupported datetime object at index {i}: {type(v)}")
     return result
 
 
 def encode_cf_datetimes(
-    values: Sequence[datetime | cftime.datetime],
+    values: Sequence[datetime | object],
     *,
     calendar: str,
 ) -> NDArray[np.int64]:
     """Encode supported Python/cftime calendar values to packed milliseconds."""
     declared = _declared_calendar(calendar)
-    return _encode_cftime_values(values, source_calendar=declared)
+    return _encode_datetime_sequence(values, source_calendar=declared)
 
 
 def _numpy_datetime_values(values: NDArray[np.datetime64]) -> NDArray[np.int64]:
@@ -182,18 +204,54 @@ def encode_time_values(values: object) -> NDArray[np.int64]:
     if raw.dtype.kind == "O":
         values_tuple = tuple(raw.tolist())
         if all(
-            isinstance(value, (datetime, cftime.datetime)) for value in values_tuple
+            isinstance(value, (datetime, date)) or is_cftime_datetime(value)
+            for value in values_tuple
         ):
             calendars = {
-                str(getattr(value, "calendar", PROLEPTIC_GREGORIAN)).lower()
+                get_cftime_calendar(value, PROLEPTIC_GREGORIAN)
                 for value in values_tuple
-                if isinstance(value, cftime.datetime)
+                if is_cftime_datetime(value)
             }
             if len(calendars) > 1:
                 raise ValueError("time values must use one calendar")
             calendar = next(iter(calendars), PROLEPTIC_GREGORIAN)
             return encode_cf_datetimes(values_tuple, calendar=calendar)
+        # Check if items look like cftime datetime without cftime being installed
+        for item in values_tuple:
+            if hasattr(item, "calendar") and not is_cftime_available():
+                require_cftime()
     raise ValueError("times must contain integer milliseconds or supported datetimes")
+
+
+_CF_UNITS_REGEX = re.compile(
+    r"^(days|day|d|hours|hour|hr|hrs|h|minutes|minute|min|mins|m|seconds|second|sec|secs|s|milliseconds|millisecond|msec|ms)\s+since\s+(.+)$",
+    re.IGNORECASE,
+)
+
+_UNIT_TO_MS = {
+    "d": 86400000.0,
+    "day": 86400000.0,
+    "days": 86400000.0,
+    "h": 3600000.0,
+    "hr": 3600000.0,
+    "hrs": 3600000.0,
+    "hour": 3600000.0,
+    "hours": 3600000.0,
+    "m": 60000.0,
+    "min": 60000.0,
+    "mins": 60000.0,
+    "minute": 60000.0,
+    "minutes": 60000.0,
+    "s": 1000.0,
+    "sec": 1000.0,
+    "secs": 1000.0,
+    "second": 1000.0,
+    "seconds": 1000.0,
+    "ms": 1.0,
+    "msec": 1.0,
+    "millisecond": 1.0,
+    "milliseconds": 1.0,
+}
 
 
 def encode_numeric_time_values(
@@ -209,30 +267,56 @@ def encode_numeric_time_values(
         raise ValueError("CF time values must be numeric")
     if np.any(~np.isfinite(numeric.astype(np.float64))):
         raise ValueError("CF time values must be finite")
-    decoded = cftime.num2date(
-        numeric,
-        units,
-        calendar=declared,
-        only_use_cftime_datetimes=True,
-        only_use_python_datetimes=False,
-    )
-    decoded_values = tuple(decoded)
-    return _encode_cftime_values(decoded_values, source_calendar=declared)
+
+    match = _CF_UNITS_REGEX.match(units.strip())
+    if match is not None:
+        unit_name = match.group(1).lower()
+        origin_str = match.group(2).strip()
+        scale = _UNIT_TO_MS[unit_name]
+        try:
+            origin_dt = datetime.fromisoformat(origin_str.replace(" ", "T"))
+        except ValueError:
+            # Fall back to np.datetime64 or cftime if available
+            origin_dt = None
+
+        if origin_dt is not None:
+            origin_ms = _datetime_to_ms(origin_dt)
+            numeric_f = np.asarray(numeric, dtype=np.float64)
+            offset_ms = numeric_f * scale
+            rounded_offset = np.rint(offset_ms)
+            if np.any(np.abs(offset_ms - rounded_offset) > 1e-3):
+                raise ValueError("CF time values must resolve to integer milliseconds")
+            result_ms = np.asarray(origin_ms + rounded_offset, dtype=np.int64)
+
+            if declared in ("standard", "gregorian"):
+                decoded_dts = decode_time_values(result_ms)
+                _check_standard_dates(decoded_dts)
+            return _validate_int64(result_ms)
+
+    # If units format was not directly parseable by simple ISO parser, try lazy cftime
+    if is_cftime_available():
+        import cftime
+
+        decoded = cftime.num2date(
+            numeric,
+            units,
+            calendar=declared,
+            only_use_cftime_datetimes=True,
+            only_use_python_datetimes=False,
+        )
+        return _encode_datetime_sequence(tuple(decoded), source_calendar=declared)
+
+    raise ValueError(f"cannot parse CF time units {units!r}")
 
 
 def decode_time_values(
     values: Sequence[int] | NDArray[np.int64],
-) -> tuple[cftime.datetime, ...]:
-    """Decode canonical packed milliseconds with cftime."""
+) -> tuple[datetime, ...]:
+    """Decode canonical packed milliseconds to Python datetime objects."""
     safe_values = _validate_int64(values)
-    decoded = cftime.num2date(
-        safe_values.tolist(),
-        CANONICAL_TIME_UNITS,
-        calendar=PROLEPTIC_GREGORIAN,
-        only_use_cftime_datetimes=True,
-        only_use_python_datetimes=False,
+    return tuple(
+        _EPOCH + timedelta(milliseconds=int(val)) for val in safe_values.tolist()
     )
-    return tuple(cast(cftime.datetime, value) for value in decoded)
 
 
 def format_time(value: int) -> str:
@@ -261,16 +345,21 @@ def infer_calendar(
         raw = np.asarray(values)
         if raw.dtype.kind == "O":
             calendars = {
-                str(getattr(value, "calendar", PROLEPTIC_GREGORIAN)).lower()
+                get_cftime_calendar(value, PROLEPTIC_GREGORIAN)
                 for value in raw.tolist()
-                if isinstance(value, cftime.datetime)
+                if is_cftime_datetime(value)
             }
             if len(calendars) > 1:
                 raise ValueError("time coordinate contains multiple calendars")
             declared = next(iter(calendars), None)
     normalized_name = _declared_calendar(None if declared is None else str(declared))
     if normalized_name in ("standard", "gregorian"):
-        _check_standard_dates(tuple(np.asarray(values).tolist()))
+        raw_arr = np.asarray(values)
+        if raw_arr.dtype.kind == "M":
+            dts = decode_time_values(raw_arr.astype("datetime64[ms]").view(np.int64))
+            _check_standard_dates(dts)
+        elif raw_arr.dtype.kind == "O":
+            _check_standard_dates(tuple(raw_arr.tolist()))
     return PROLEPTIC_GREGORIAN
 
 

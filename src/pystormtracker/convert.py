@@ -1,30 +1,14 @@
-"""Track-format conversion and temporary HTML placeholder output."""
+"""Track-format conversion."""
 
 from __future__ import annotations
 
 import argparse
-import warnings
 from dataclasses import replace
-from pathlib import Path
 
 from .io.format import SUPPORTED_FORMATS, load_tracks
 from .models.tracks import Tracks
 from .models.units import canonical_unit_for, resolve_mode
-
-
-def generate_html(outfile: str | Path) -> None:
-    """Write the temporary static explorer placeholder."""
-    warnings.warn(
-        "HTML explorer output is temporarily a static placeholder; "
-        "track data was not embedded.",
-        stacklevel=2,
-    )
-    template_path = Path(__file__).parent / "templates" / "explorer.html"
-    if not template_path.exists():
-        raise FileNotFoundError(f"HTML template not found at {template_path}")
-    Path(outfile).write_text(
-        template_path.read_text(encoding="utf-8"), encoding="utf-8"
-    )
+from .utils.cli import add_cli_observability_options
 
 
 def _rename_primary_variable(
@@ -59,7 +43,7 @@ def _rename_primary_variable(
             "provide --unit"
         )
     units[target] = unit
-    metadata = replace(tracks.metadata, primary_var=target, units=units)
+    metadata = replace(tracks.metadata, primary_variable=target, units=units)
     return tracks.with_variables(variables, metadata=metadata)
 
 
@@ -69,11 +53,10 @@ def setup_parser(
     """Set up the trajectory conversion command."""
     parser = subparsers.add_parser(
         "convert",
-        description=(
-            "Convert supported trajectory formats or write an HTML placeholder."
-        ),
+        description=("Convert between supported trajectory formats."),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    add_cli_observability_options(parser)
     parser.add_argument("-i", "--input", required=True, help="Input file path")
     parser.add_argument("-o", "--output", required=True, help="Output file path")
     parser.add_argument(
@@ -86,11 +69,11 @@ def setup_parser(
     parser.add_argument(
         "-F",
         "--out-format",
-        choices=["auto", *SUPPORTED_FORMATS, "html"],
+        choices=["auto", *SUPPORTED_FORMATS],
         default="auto",
         help="Output format; inferred from the extension by default.",
     )
-    parser.add_argument("-v", "--variable", help="Override the primary variable name")
+    parser.add_argument("--variable", help="Override the primary variable name")
     parser.add_argument(
         "--unit", help="Unit for a renamed or otherwise ambiguous variable"
     )
@@ -111,20 +94,15 @@ def main(args: argparse.Namespace) -> None:
     tracks = load_tracks(
         args.input,
         format=in_format,
-        primary_var=args.variable,
+        primary_variable=args.variable,
         mode=args.detection_mode,
     )
     if args.variable:
         tracks = _rename_primary_variable(tracks, args.variable, args.unit)
-    final_mode = resolve_mode(tracks.primary_var, args.detection_mode)
+    final_mode = resolve_mode(tracks.primary_variable, args.detection_mode)
     if final_mode != tracks.mode:
         tracks = tracks.with_metadata(replace(tracks.metadata, mode=final_mode))
-    if out_format == "html" or (
-        out_format is None and Path(args.output).suffix.lower() == ".html"
-    ):
-        generate_html(args.output)
-    else:
-        tracks.write(args.output, format=out_format)
+    tracks.write(args.output, format=out_format)
 
 
 if __name__ == "__main__":

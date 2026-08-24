@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from .kinematics import Kinematics, compute_vort_div
+from .kinematics import Kinematics, compute_vorticity_divergence
 from .regrid import SpectralRegridder
-from .spectral import DCTFilter, SHTFilter, apply_dct_filter, apply_sht_filter
-from .taper import TaperFilter
+from .spectral import DCTFilter, SHTFilter
+from .taper import BoundaryTaper
 
 __all__ = [
+    "BoundaryTaper",
     "DCTFilter",
     "Kinematics",
     "SHTFilter",
     "SpectralRegridder",
-    "TaperFilter",
-    "apply_dct_filter",
-    "apply_sht_filter",
-    "compute_vort_div",
+    "compute_vorticity_divergence",
 ]

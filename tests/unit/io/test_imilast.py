@@ -27,7 +27,7 @@ def test_imilast_round_trip_normalizes_longitudes(tmp_path: Path) -> None:
     loaded = read_imilast(output)
     assert loaded.ids.tolist() == [10]
     np.testing.assert_allclose(loaded.lons, [-170.0, 20.0], atol=1e-6)
-    assert loaded.primary_var == "MSL"
+    assert loaded.primary_variable == "MSL"
     np.testing.assert_allclose(loaded.variables["MSL"], original.variables["msl"])
     np.testing.assert_array_equal(loaded.times, original.times)
 

@@ -1,14 +1,15 @@
-"""Canonical units and automatic extrema-mode resolution."""
+from __future__ import annotations
 
-from typing import Literal, TypeAlias
+import logging
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
 import xarray as xr
 
-ResolvedDetectionMode: TypeAlias = Literal["min", "max"]
-DetectionMode: TypeAlias = Literal["auto", "min", "max"]
+if TYPE_CHECKING:
+    from .tracks import DetectionMode, ResolvedDetectionMode
 
-MODE_ALIASES: dict[str, ResolvedDetectionMode] = {
+_MODE_ALIASES: Final[dict[str, ResolvedDetectionMode]] = {
     "msl": "min",
     "slp": "min",
     "pnm": "min",
@@ -20,7 +21,7 @@ MODE_ALIASES: dict[str, ResolvedDetectionMode] = {
     "intensity1": "max",
 }
 
-CANONICAL_UNITS: dict[str, str] = {
+_CANONICAL_UNITS: Final[dict[str, str]] = {
     "msl": "Pa",
     "slp": "Pa",
     "pnm": "Pa",
@@ -30,10 +31,12 @@ CANONICAL_UNITS: dict[str, str] = {
     "vorticity": "s^-1",
 }
 
+LOGGER = logging.getLogger(__name__)
+
 
 def canonical_unit_for(name: str) -> str | None:
     """Return a canonical unit for a recognized variable name, if available."""
-    return CANONICAL_UNITS.get(name.lower())
+    return _CANONICAL_UNITS.get(name.lower())
 
 
 def resolve_mode(
@@ -46,7 +49,7 @@ def resolve_mode(
     if detection_mode not in (None, "auto"):
         raise ValueError("detection_mode must be 'auto', 'min', or 'max'")
     try:
-        return MODE_ALIASES[variable.strip().lower()]
+        return _MODE_ALIASES[variable.strip().lower()]
     except KeyError as exc:
         raise ValueError(
             f"cannot resolve automatic detection_mode for variable {variable!r}; "
@@ -115,4 +118,12 @@ def normalize_variable_units(
     )
     if normalized_threshold is not None and not np.isfinite(normalized_threshold):
         raise ValueError("normalized detection threshold must be finite")
+    LOGGER.debug(
+        "Normalized units variable=%s source=%r normalized=%r factor=%g threshold=%r",
+        variable,
+        source or "1",
+        canonical,
+        factor,
+        normalized_threshold,
+    )
     return normalized, normalized_threshold, canonical

@@ -1,39 +1,44 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import numpy as np
 import xarray as xr
 
-from ..models.constants import EULERIAN_FILTER_HOURS, WIND_PERCENTILE_DEFAULT
+DIFFERENCE_FILTER_HOURS: Final[int] = 24
 
 
 def compute_high_wind_index(
     ds: xr.Dataset,
-    u_var: str,
-    v_var: str,
+    u_variable: str,
+    v_variable: str,
+    *,
+    percentile: float,
     freq: str = "MS",
-    percentile: float = WIND_PERCENTILE_DEFAULT,
     outfile: str | Path | None = None,
 ) -> xr.DataArray:
     """
-    Computes the high-wind index (e.g., 95th percentile of wind speed).
-    Used as a weather impact metric (Yau and Chang 2020).
+    Compute a percentile wind-speed index.
+
+    Yau and Chang (2020) use a 95th-percentile 10-m wind index as a study
+    configuration for weather impacts.  This function accepts an arbitrary
+    percentile and therefore generalizes that configuration; the percentile
+    is not a universal PyStormTracker scientific constant.
 
     Args:
         ds: Dataset containing u and v wind components.
-        u_var: Variable name for zonal wind.
-        v_var: Variable name for meridional wind.
+        u_variable: Variable name for zonal wind.
+        v_variable: Variable name for meridional wind.
+        percentile: Quantile to calculate.
         freq: Resampling frequency (default "MS" for monthly start).
-        percentile: Quantile to calculate (default 0.95).
         outfile: Optional path to save the result directly to disk.
 
     Returns:
         xr.DataArray: The computed high-wind index.
     """
-    u = ds[u_var]
-    v = ds[v_var]
+    u = ds[u_variable]
+    v = ds[v_variable]
 
     # Calculate wind speed
     ws = cast(xr.DataArray, np.sqrt(u**2 + v**2))
@@ -45,8 +50,8 @@ def compute_high_wind_index(
 
     if outfile:
         # Evaluate lazily and stream to disk
-        resampled.to_netcdf(outfile)
-        return xr.open_dataarray(outfile)
+        resampled.to_netcdf(outfile, engine="h5netcdf")
+        return xr.open_dataarray(outfile, engine="h5netcdf")
 
     return resampled.compute()
 
@@ -57,8 +62,18 @@ def compute_variance_metric(
     outfile: str | Path | None = None,
 ) -> xr.DataArray:
     """
-    Computes the Eulerian variance metric using a 24-hour difference filter.
-    e.g., Var(SLP) = [SLP(t + 24h) - SLP(t)]^2 averaged over the period.
+    Compute the Eulerian variance metric using a 24-hour difference filter.
+
+    The simple difference-filter construction is credited to the storm-track
+    analysis lineage of Wallace, Lim, and Blackmon (1988), and is also used as
+    an evaluated Eulerian metric by Yau and Chang (2020).  The implementation
+    accepts the input cadence and derives the shift in samples.
+
+    Reference:
+        Wallace, J. M., G.-H. Lim, and M. L. Blackmon (1988). Relationship
+        between Cyclone Tracks, Anticyclone Tracks and Baroclinic Waveguides.
+        *Journal of the Atmospheric Sciences*, 45(3), 439--462.
+        https://doi.org/10.1175/1520-0469(1988)045<0439:RBCTAT>2.0.CO;2
 
     Args:
         da: Input DataArray (e.g., SLP or z500).
@@ -86,26 +101,26 @@ def compute_variance_metric(
     if dt_hours <= 0:
         raise ValueError("Time step must be > 0 hours.")
 
-    shift_steps = EULERIAN_FILTER_HOURS // dt_hours
+    shift_steps = DIFFERENCE_FILTER_HOURS // dt_hours
 
     if shift_steps <= 0:
-        msg = f"Filter ({EULERIAN_FILTER_HOURS}h) must be >= time step ({dt_hours}h)."
+        msg = f"Filter ({DIFFERENCE_FILTER_HOURS}h) must be >= time step ({dt_hours}h)."
         raise ValueError(msg)
 
     # [X(t + 24h) - X(t)]^2
     diff = da.shift(time=-shift_steps) - da
-    var = diff**2
-    var.name = f"var_{da.name}"
-    var.attrs = {
-        "description": f"{EULERIAN_FILTER_HOURS}-h difference variance ({freq})"
+    variance = diff**2
+    variance.name = f"var_{da.name}"
+    variance.attrs = {
+        "description": f"{DIFFERENCE_FILTER_HOURS}-h difference variance ({freq})"
     }
 
     # Average over the resampling period
-    resampled = var.resample(time=freq).mean(dim="time")
+    resampled = variance.resample(time=freq).mean(dim="time")
 
     if outfile:
-        resampled.to_netcdf(outfile)
-        return xr.open_dataarray(outfile)
+        resampled.to_netcdf(outfile, engine="h5netcdf")
+        return xr.open_dataarray(outfile, engine="h5netcdf")
 
     return resampled.compute()
 
@@ -117,8 +132,11 @@ def compute_eke(
     outfile: str | Path | None = None,
 ) -> xr.DataArray:
     """
-    Computes Eddy Kinetic Energy (EKE) using a 24-hour difference filter.
-    EKE = 1/2 * [Var(u) + Var(v)]
+    Compute standard eddy kinetic energy from 24-hour difference variances.
+
+    EKE is standard mathematics used by Yau and Chang (2020), not a metric
+    invented by that study.  The current PST implementation uses
+    ``1/2 * [Var(u) + Var(v)]`` with the shared simple difference filter.
 
     Args:
         u: Zonal wind DataArray.
@@ -135,11 +153,13 @@ def compute_eke(
     eke = 0.5 * (var_u + var_v)
     eke.name = "eke"
     eke.attrs = {
-        "description": f"Eddy Kinetic Energy ({EULERIAN_FILTER_HOURS}-h filter, {freq})"
+        "description": (
+            f"Eddy Kinetic Energy ({DIFFERENCE_FILTER_HOURS}-h filter, {freq})"
+        )
     }
 
     if outfile:
-        eke.to_netcdf(outfile)
-        return xr.open_dataarray(outfile)
+        eke.to_netcdf(outfile, engine="h5netcdf")
+        return xr.open_dataarray(outfile, engine="h5netcdf")
 
     return eke.compute()

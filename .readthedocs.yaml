@@ -1,12 +1,18 @@
-# Read the Docs configuration file for Sphinx projects
-# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
-
 version: 2
 
 build:
   os: ubuntu-26.04
+  apt_packages:
+    - libasound2t64
   tools:
     python: "3.14"
+    nodejs: "20"
+  jobs:
+    post_install:
+      - >-
+        uv pip install --python "$READTHEDOCS_VIRTUALENV_PATH/bin/python"
+        "sphinxcontrib-mermaid==2.0.2"
+      - npm install -g @mermaid-js/mermaid-cli
 
 python:
   install:

@@ -14,8 +14,6 @@ from numpy.typing import NDArray
 from ..models.geo import SpatialBounds, geod_dist_km, minimal_longitude_interval
 from ..models.time import (
     CANONICAL_TIME_UNITS,
-    INT64_MIN,
-    MAX_SAFE_JSON_INTEGER,
     PROLEPTIC_GREGORIAN,
     Calendar,
     CanonicalTimeUnits,
@@ -24,9 +22,11 @@ from ..models.tracks import ProcessingStep, Tracks, TracksMetadata
 
 TRACKJSON_FORMAT: Final[str] = "TrackJSON/1.0"
 TRACKJSON_STATS_VERSION: Final = 1
-TRACKJSON_SCHEMA_RESOURCE: Final[str] = "trackjson.schema.json"
+_TRACKJSON_SCHEMA_RESOURCE: Final[str] = "trackjson.schema.json"
 
 __all__ = [
+    "TRACKJSON_FORMAT",
+    "TRACKJSON_STATS_VERSION",
     "TrackJSONBounds",
     "TrackJSONData",
     "TrackJSONDocument",
@@ -41,6 +41,7 @@ __all__ = [
     "write_trackjson",
 ]
 
+_MAX_SAFE_JSON_INTEGER: Final[int] = 2**53 - 1
 _INT64_MAX = 2**63 - 1
 _STATS_RTOL = 1.0e-9
 _STATS_ATOL = 1.0e-9
@@ -87,19 +88,19 @@ NonnegativeFloat = Annotated[
 TimeMillisecond = Annotated[
     int,
     msgspec.Meta(
-        ge=-MAX_SAFE_JSON_INTEGER,
-        le=MAX_SAFE_JSON_INTEGER,
+        ge=-_MAX_SAFE_JSON_INTEGER,
+        le=_MAX_SAFE_JSON_INTEGER,
         description="A signed CF millisecond offset in the JSON safe-integer range.",
     ),
 ]
 FiniteNumber = Annotated[float, msgspec.Meta(description="A finite JSON number.")]
 ProcessingScalar = str | int | float | bool | None
 
-STAT_INT_FIELDS: tuple[str, ...] = ("point_count",)
-STAT_REQUIRED_TIME_FIELDS: tuple[str, ...] = ("start_time", "end_time")
-STAT_OPTIONAL_TIME_FIELDS: tuple[str, ...] = ("peak_time",)
-STAT_BOOL_FIELDS: tuple[str, ...] = ("antimeridian_wrap",)
-STAT_REQUIRED_FLOAT_FIELDS: tuple[str, ...] = (
+_STAT_INT_FIELDS: tuple[str, ...] = ("point_count",)
+_STAT_REQUIRED_TIME_FIELDS: tuple[str, ...] = ("start_time", "end_time")
+_STAT_OPTIONAL_TIME_FIELDS: tuple[str, ...] = ("peak_time",)
+_STAT_BOOL_FIELDS: tuple[str, ...] = ("antimeridian_wrap",)
+_STAT_REQUIRED_FLOAT_FIELDS: tuple[str, ...] = (
     "duration_hours",
     "start_lat",
     "start_lon",
@@ -112,18 +113,18 @@ STAT_REQUIRED_FLOAT_FIELDS: tuple[str, ...] = (
     "path_length_km",
     "displacement_km",
 )
-STAT_OPTIONAL_FLOAT_FIELDS: tuple[str, ...] = (
+_STAT_OPTIONAL_FLOAT_FIELDS: tuple[str, ...] = (
     "peak_lat",
     "peak_lon",
     "peak_value",
 )
-STAT_ARRAY_FIELDS: tuple[str, ...] = (
-    STAT_INT_FIELDS
-    + STAT_REQUIRED_TIME_FIELDS
-    + STAT_OPTIONAL_TIME_FIELDS
-    + STAT_BOOL_FIELDS
-    + STAT_REQUIRED_FLOAT_FIELDS
-    + STAT_OPTIONAL_FLOAT_FIELDS
+_STAT_ARRAY_FIELDS: tuple[str, ...] = (
+    _STAT_INT_FIELDS
+    + _STAT_REQUIRED_TIME_FIELDS
+    + _STAT_OPTIONAL_TIME_FIELDS
+    + _STAT_BOOL_FIELDS
+    + _STAT_REQUIRED_FLOAT_FIELDS
+    + _STAT_OPTIONAL_FLOAT_FIELDS
 )
 
 
@@ -288,7 +289,7 @@ def _validate_trackjson_semantics(document: TrackJSONDocument) -> None:
     if any(not np.isfinite(value) for value in lons):
         raise ValueError("$.data.lons: coordinates must be finite")
     if any(
-        value < -MAX_SAFE_JSON_INTEGER or value > MAX_SAFE_JSON_INTEGER
+        value < -_MAX_SAFE_JSON_INTEGER or value > _MAX_SAFE_JSON_INTEGER
         for value in times
     ):
         raise ValueError(
@@ -325,7 +326,7 @@ def _validate_trackjson_semantics(document: TrackJSONDocument) -> None:
 def _validate_stats(stats: TrackJSONStats, document: TrackJSONDocument) -> None:
     """Validate derived-stat alignment and relationships for explicit verification."""
     n_tracks = len(document.index.ids)
-    for name in STAT_ARRAY_FIELDS:
+    for name in _STAT_ARRAY_FIELDS:
         if len(getattr(stats, name)) != n_tracks:
             raise ValueError(f"$.stats.{name}: length must equal T")
     offsets = document.index.offsets
@@ -423,7 +424,7 @@ def _nullable_float_array(values: list[float | None]) -> NDArray[np.float64]:
 
 def _time_view(values: list[int], name: str) -> NDArray[np.int64]:
     raw = np.asarray(values, dtype=np.int64)
-    if np.any((raw < -MAX_SAFE_JSON_INTEGER) | (raw > MAX_SAFE_JSON_INTEGER)):
+    if np.any((raw < -_MAX_SAFE_JSON_INTEGER) | (raw > _MAX_SAFE_JSON_INTEGER)):
         raise ValueError(f"TrackJSON {name} must contain safe millisecond values")
     return raw
 
@@ -432,7 +433,8 @@ def _integer_list(values: object, name: str) -> list[int]:
     raw = np.asarray(values)
     if raw.dtype.kind == "b" or raw.dtype.kind not in ("i", "u"):
         raise ValueError(f"{name} must contain integer values")
-    if raw.size and (np.any(raw < INT64_MIN) or np.any(raw > _INT64_MAX)):
+    i64_info = np.iinfo(np.int64)
+    if raw.size and (np.any(raw < i64_info.min) or np.any(raw > i64_info.max)):
         raise ValueError(f"{name} values must fit signed int64")
     return [int(value) for value in raw.tolist()]
 
@@ -457,9 +459,9 @@ def _nullable_float_list(values: object, name: str) -> list[float | None]:
 def _time_list(values: object, name: str) -> list[int]:
     raw = np.asarray(values, dtype=np.int64)
     if np.any(
-        (raw < -MAX_SAFE_JSON_INTEGER)
-        | (raw > MAX_SAFE_JSON_INTEGER)
-        | (raw == INT64_MIN)
+        (raw < -_MAX_SAFE_JSON_INTEGER)
+        | (raw > _MAX_SAFE_JSON_INTEGER)
+        | (raw == np.iinfo(np.int64).min)
     ):
         raise ValueError(f"{name} values must fit the safe integer range")
     return [int(value) for value in raw.tolist()]
@@ -467,12 +469,13 @@ def _time_list(values: object, name: str) -> list[int]:
 
 def _nullable_time_list(values: object, name: str) -> list[int | None]:
     raw = np.asarray(values, dtype=np.int64)
+    i64_min = np.iinfo(np.int64).min
     if np.any(
-        (raw != INT64_MIN)
-        & ((raw < -MAX_SAFE_JSON_INTEGER) | (raw > MAX_SAFE_JSON_INTEGER))
+        (raw != i64_min)
+        & ((raw < -_MAX_SAFE_JSON_INTEGER) | (raw > _MAX_SAFE_JSON_INTEGER))
     ):
         raise ValueError(f"{name} values must fit the safe integer range")
-    return [None if value == INT64_MIN else int(value) for value in raw.tolist()]
+    return [None if value == i64_min else int(value) for value in raw.tolist()]
 
 
 def _processing_to_wire(
@@ -528,7 +531,7 @@ def compute_trackjson_stats(tracks: Tracks) -> TrackJSONStats:
     peak_value: list[float | None] = []
     path_length_km: list[float] = []
     displacement_km: list[float] = []
-    primary_values = tracks.variables[tracks.primary_var]
+    primary_values = tracks.variables[tracks.primary_variable]
 
     for index in range(len(tracks)):
         start = int(tracks.offsets[index])
@@ -614,16 +617,16 @@ def compute_trackjson_stats(tracks: Tracks) -> TrackJSONStats:
 def _compare_stats(actual: TrackJSONStats, expected: TrackJSONStats) -> None:
     for name in (
         "version",
-        *STAT_INT_FIELDS,
-        *STAT_BOOL_FIELDS,
-        *STAT_REQUIRED_TIME_FIELDS,
+        *_STAT_INT_FIELDS,
+        *_STAT_BOOL_FIELDS,
+        *_STAT_REQUIRED_TIME_FIELDS,
     ):
         if getattr(actual, name) != getattr(expected, name):
             raise ValueError(f"TrackJSON stats {name} failed verification")
-    for name in STAT_OPTIONAL_TIME_FIELDS:
+    for name in _STAT_OPTIONAL_TIME_FIELDS:
         if getattr(actual, name) != getattr(expected, name):
             raise ValueError(f"TrackJSON stats {name} failed verification")
-    for name in STAT_REQUIRED_FLOAT_FIELDS + STAT_OPTIONAL_FLOAT_FIELDS:
+    for name in _STAT_REQUIRED_FLOAT_FIELDS + _STAT_OPTIONAL_FLOAT_FIELDS:
         if not np.allclose(
             np.asarray(getattr(actual, name), dtype=np.float64),
             np.asarray(getattr(expected, name), dtype=np.float64),
@@ -652,7 +655,7 @@ def read_trackjson(
         else None
     )
     metadata = TracksMetadata(
-        primary_var=document.metadata.primary_var,
+        primary_variable=document.metadata.primary_var,
         mode=document.metadata.mode,
         units=document.metadata.units,
         bounds=bounds,
@@ -693,14 +696,11 @@ def encode_trackjson(tracks: Tracks, *, include_stats: bool = False) -> bytes:
     document = TrackJSONDocument(
         format=cast(Literal["TrackJSON/1.0"], TRACKJSON_FORMAT),
         metadata=TrackJSONMetadata(
-            primary_var=tracks.primary_var,
+            primary_var=tracks.primary_variable,
             mode=tracks.mode,
             units=dict(tracks.units),
             time=TrackJSONTime(
-                units=cast(
-                    CanonicalTimeUnits,
-                    CANONICAL_TIME_UNITS,
-                ),
+                units=CANONICAL_TIME_UNITS,
                 calendar=PROLEPTIC_GREGORIAN,
             ),
             bounds=bounds,

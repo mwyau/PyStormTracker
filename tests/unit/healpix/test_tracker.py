@@ -38,9 +38,7 @@ def test_healpix_preprocessing_regrids_regular_data() -> None:
         name="msl",
     )
 
-    processed, steps = HealpixTracker()._preprocess_standard_track(
-        data, filter_lmin=0, filter_lmax=3
-    )
+    processed, steps = HealpixTracker()._preprocess_standard_track(data, lmin=0, lmax=3)
 
     assert processed.dims == ("time", "cell")
     assert processed.shape == (1, 192)

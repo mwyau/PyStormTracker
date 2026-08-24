@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.6.1.dev2"
+version = "0.7.0.dev0"
 description = "A High-Performance Cyclone Tracker in Python"
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = [ "LICENSE" ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [
     { name = "Albert M. W. Yau", email = "albert@mwyau.com" }
 ]
@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -25,12 +24,12 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
-    "cftime>=1.6.5",
     "ducc0>=0.39.0",
-    "h5netcdf[h5py]>=1.8.0",
+    "h5netcdf>=1.8.0",
+    "h5py>=3.11.0",
     "msgspec>=0.20.0",
-    "numba>=0.63.0",
-    "numpy>=2.3.3",
+    "numba>=0.67.0",
+    "numpy>=2.5.0",
     "scipy>=1.16.1",
     "xarray>=2024.9.0",
 ]
@@ -57,6 +56,7 @@ mpi = [
 ]
 netcdf4 = [
     "netCDF4>=1.7.2",
+    "cftime>=1.6.5",
 ]
 zarr = [
     "zarr[remote]>=3.0",
@@ -71,14 +71,12 @@ packages = ["src/pystormtracker"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-    "/benchmark/**",
-    "/tests/data/era5/**",
+    "/benchmarks/**",
 ]
 
 [tool.check-manifest]
 ignore = [
-    "benchmark/**",
-    "tests/data/**",
+    "benchmarks/**",
 ]
 
 [dependency-groups]
@@ -97,7 +95,6 @@ docs = [
     "sphinx-rtd-theme>=3.1.0",
 ]
 test = [
-    "cdsapi>=0.7.7",
     "jsonschema>=4.26.0",
     "openmpi>=5.0.10 ; sys_platform != 'win32'",
     "pooch>=1.9.0",
@@ -133,7 +130,7 @@ allowed-unresolved-imports = [
     ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 files = ["src", "tests"]
 enable_error_code = ["ignore-without-code"]
@@ -141,7 +138,7 @@ enable_error_code = ["ignore-without-code"]
 [[tool.mypy.overrides]]
 module = [
     "cftime",
-    "ducc0",
+    "ducc0", "ducc0.*",
     "matplotlib", "matplotlib.*",
     "mpi4py", "mpi4py.*",
     "pooch",
@@ -163,13 +160,14 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 [tool.pytest]
-addopts = [ "-ra -q" ]
-testpaths = ["tests"]
+addopts = [ "-ra", "-q" ]
+testpaths = ["tests/unit"]
+strict_markers = true
 markers = [
-    "integration: tests requiring test data or optional backends",
-]
-filterwarnings = [
-    "ignore:numpy.ndarray size changed:RuntimeWarning",
+    "integration: integration tests",
+    "parity: implementation/reference parity tests",
+    "data: requires data not bundled with the source distribution",
+    "slow: computationally expensive tests",
 ]
 
 [tool.coverage.run]

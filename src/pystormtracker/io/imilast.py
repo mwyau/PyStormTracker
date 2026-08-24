@@ -9,8 +9,8 @@ from typing import cast
 import numpy as np
 
 from ..models.time import decode_time_values
-from ..models.tracks import Tracks, TracksMetadata, _TracksBuilder
-from ..models.units import DetectionMode, canonical_unit_for, resolve_mode
+from ..models.tracks import DetectionMode, Tracks, TracksMetadata, _TracksBuilder
+from ..models.units import canonical_unit_for, resolve_mode
 
 
 def _parse_time(value: str) -> np.datetime64:
@@ -33,7 +33,7 @@ def _parse_time(value: str) -> np.datetime64:
 def read_imilast(
     filename: Path | str,
     *,
-    primary_var: str | None = None,
+    primary_variable: str | None = None,
     mode: DetectionMode | None = "auto",
 ) -> Tracks:
     """Read the supported IMILAST subset into packed trajectories.
@@ -51,8 +51,8 @@ def read_imilast(
             fields = [field.strip() for field in header.split(",")]
             if len(fields) > 10 and fields[10]:
                 variable_name = fields[10].strip()
-        if primary_var is not None:
-            variable_name = primary_var
+        if primary_variable is not None:
+            variable_name = primary_variable
         for line in source:
             fields = line.split()
             if not fields or fields[0] != "00":
@@ -90,7 +90,7 @@ def write_imilast(
     decimal_places: int = 6,
 ) -> None:
     """Write packed trajectories in the supported IMILAST text subset."""
-    variable_name = tracks.primary_var
+    variable_name = tracks.primary_variable
     if len(tracks) and variable_name not in tracks.variables:
         raise ValueError("IMILAST writing requires the primary variable column")
     values = tracks.variables.get(variable_name, np.empty(0, dtype=np.float64))

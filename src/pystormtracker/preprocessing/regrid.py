@@ -2,19 +2,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, cast
 
-import ducc0
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
+
+from ..backends import Backend, configure_sht_threads, resolve_sht_threads
 
 if TYPE_CHECKING:
     from ..models.geo import MapExtent
 
 
 class SpectralRegridder:
-    """
-    Spectral regridder for transforming data between Clenshaw-Curtis (CC),
-    Gauss-Legendre (GL), and HEALPix grids using ducc0 SHT.
+    """Spectrally regrid among global and regional spherical grids.
+
+    ``ducc0`` supplies the numerical spherical-harmonic transforms and grid
+    geometry operations.  Its numerical lineage includes Reinecke and
+    Seljebotn (2013), https://doi.org/10.1051/0004-6361/201321494, and Ishioka
+    (2018), https://doi.org/10.2151/jmsj.2018-019.  The HEALPix target grid is
+    the grid of Górski et al. (2005), https://doi.org/10.1086/427976; PST's
+    tracking detector adaptation is documented separately.
     """
 
     def __init__(
@@ -57,7 +63,7 @@ class SpectralRegridder:
         in_geometry: Literal["CC", "GL"] = "CC",
         out_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
-        nthreads: int = 1,
+        sht_threads: int | None = None,
         pl: NDArray[np.int32] | None = None,
     ) -> xr.DataArray:
         """
@@ -89,11 +95,14 @@ class SpectralRegridder:
             in_nlon = frame.shape[1]
 
         lmax, mmax = self._get_lmax_mmax(in_nlon)
+        import ducc0
+
+        nthreads = resolve_sht_threads(sht_threads, "serial")
+        configure_sht_threads(nthreads)
 
         # 1. Analyze (Forward SHT)
         alm: NDArray[np.complex128]
         if is_reduced:
-            # For reduced/unstructured grids, use iterative pseudo-analysis
             meta = loader.get_grid_metadata(variable_name)
             alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
                 map=np.expand_dims(frame, axis=0),
@@ -164,81 +173,117 @@ class SpectralRegridder:
         nside: int,
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
-        nthreads: int = 1,
+        sht_threads: int | None = None,
         pl: NDArray[np.int32] | None = None,
         transform_lmax: int | None = None,
+        backend: Backend = "serial",
     ) -> xr.DataArray:
         """
         Spectrally regrid to a 1D HEALPix grid.
-        Supports regular 2D and reduced Gaussian 1D inputs.
+        Supports regular 2D/3D and reduced Gaussian inputs, with lazy Dask execution.
         """
         from ..io.data_loader import DataLoader
 
         variable_name = str(data.name) if data.name is not None else ""
-        frame = data.values
         loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
         is_reduced = loader.is_reduced_gaussian(variable_name) or pl is not None
 
-        if not is_reduced and not lat_reverse:
-            frame = frame[::-1, :]
-
         # Determine input dimensions
-        in_nlon: int
         if is_reduced:
             if pl is None:
                 pl = loader.get_reduced_grid_pl(variable_name)
             if pl is None:
                 raise ValueError("pl array required for reduced grid.")
             in_nlon = int(np.max(pl))
+            spatial_dim = "values" if "values" in data.dims else str(data.dims[-1])
+            input_core_dims = [[spatial_dim]]
+            meta = loader.get_grid_metadata(variable_name)
+            theta_arr = meta["theta"]
+            nphi_arr = meta["nphi"]
+            phi0_arr = meta["phi0"]
+            ringstart_arr = meta["ringstart"]
         else:
-            in_nlon = frame.shape[1]
+            _time_name, lat_dim, lon_dim = loader.get_coords()
+            if lat_dim not in data.dims or lon_dim not in data.dims:
+                raise ValueError(
+                    "Input must have latitude and longitude dimensions or reduced grid."
+                )
+            in_nlon = int(data.sizes[lon_dim])
+            input_core_dims = [[lat_dim, lon_dim]]
 
         lmax, mmax = self._get_lmax_mmax(in_nlon, transform_lmax)
+        import ducc0
 
-        # 1. Analyze
-        alm: NDArray[np.complex128]
-        if is_reduced:
-            meta = loader.get_grid_metadata(variable_name)
-            alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
-                map=np.expand_dims(frame, axis=0),
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                theta=meta["theta"],
-                nphi=meta["nphi"],
-                phi0=meta["phi0"],
-                ringstart=meta["ringstart"],
-                nthreads=nthreads,
-                maxiter=100,
-                epsilon=1e-6,
-            )
-        else:
-            alm = ducc0.sht.analysis_2d(
-                map=np.expand_dims(frame, axis=0),
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                geometry=in_geometry,
-                nthreads=nthreads,
-            )
-
-        # 2. Synthesize to HEALPix
         hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
         sht_kwargs = hp_base.sht_info()
+        eff_nthreads = resolve_sht_threads(sht_threads, backend)
+        configure_sht_threads(eff_nthreads)
 
-        out_map = cast(
-            NDArray[np.float64],
-            ducc0.sht.synthesis(
-                alm=alm, spin=0, lmax=lmax, mmax=mmax, nthreads=nthreads, **sht_kwargs
-            )[0],
+        def _healpix_frame(frame: NDArray[np.float64]) -> NDArray[np.float64]:
+            if not is_reduced and not lat_reverse:
+                frame = frame[::-1, :]
+            if is_reduced:
+                alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
+                    map=np.expand_dims(frame, axis=0),
+                    spin=0,
+                    lmax=lmax,
+                    mmax=mmax,
+                    theta=theta_arr,
+                    nphi=nphi_arr,
+                    phi0=phi0_arr,
+                    ringstart=ringstart_arr,
+                    nthreads=eff_nthreads,
+                    maxiter=100,
+                    epsilon=1e-6,
+                )
+            else:
+                alm = ducc0.sht.analysis_2d(
+                    map=np.expand_dims(frame, axis=0),
+                    spin=0,
+                    lmax=lmax,
+                    mmax=mmax,
+                    geometry=in_geometry,
+                    nthreads=eff_nthreads,
+                )
+            out_map = cast(
+                NDArray[np.float64],
+                ducc0.sht.synthesis(
+                    alm=alm,
+                    spin=0,
+                    lmax=lmax,
+                    mmax=mmax,
+                    nthreads=eff_nthreads,
+                    **sht_kwargs,
+                )[0],
+            )
+            return out_map
+
+        dask_mode: Literal["forbidden", "allowed", "parallelized"] = (
+            "parallelized" if data.chunks and backend == "dask" else "allowed"
         )
 
-        # 3. Reconstruct DataArray
+        res = cast(
+            xr.DataArray,
+            xr.apply_ufunc(
+                _healpix_frame,
+                data,
+                input_core_dims=input_core_dims,
+                output_core_dims=[["cell"]],
+                vectorize=True,
+                dask=dask_mode,
+                output_dtypes=[np.float64],
+                dask_gufunc_kwargs={"output_sizes": {"cell": hp_base.npix()}},
+            ),
+        )
+
         cells = np.arange(hp_base.npix())
-
-        return xr.DataArray(
-            out_map, dims=["cell"], coords={"cell": cells}, name=data.name
-        )
+        res = res.assign_coords(cell=cells)
+        res.name = data.name
+        attrs = dict(data.attrs)
+        attrs["grid_type"] = "healpix"
+        attrs["nside"] = nside
+        res.attrs = attrs
+        return res
 
     def to_polar_stereo(
         self,
@@ -250,54 +295,42 @@ class SpectralRegridder:
         transform_lmax: int | None = None,
         in_geometry: Literal["CC", "GL"] = "CC",
         lat_reverse: bool = False,
-        nthreads: int = 1,
+        sht_threads: int | None = None,
+        backend: Literal["serial", "mpi", "dask"] = "serial",
     ) -> xr.DataArray:
         """
-        Spectrally regrid to a Polar Stereographic grid.
+        Spectrally regrid to a Polar Stereographic grid with lazy Dask support.
 
         Args:
             extent: Bounding box from pole in km (xmin, xmax, ymin, ymax).
-            resolution: Grid spacing in km.
+            stereo_grid_spacing_km: Grid spacing in km.
             transform_lmax: Maximum total wave number for the transform.
         """
-        from ..models.constants import R_EARTH_KM
+        from ..io.data_loader import DataLoader
+        from ..models.geo import R_EARTH_KM
 
-        frame = data.values
-        if data.ndim != 2:
+        loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+        _time_name, lat_dim, lon_dim = loader.get_coords()
+        if lat_dim not in data.dims or lon_dim not in data.dims:
             raise ValueError(
-                "Only 2D (lat, lon) data is currently supported for regridding."
+                "Input must have latitude and longitude dimensions for "
+                "polar stereo regridding."
             )
 
-        if not lat_reverse:
-            frame = frame[::-1, :]
-
-        _, in_nlon = frame.shape
+        in_nlon = int(data.sizes[lon_dim])
         lmax, mmax = self._get_lmax_mmax(in_nlon, transform_lmax)
+        eff_nthreads = resolve_sht_threads(sht_threads, backend)
+        configure_sht_threads(eff_nthreads)
 
-        # 1. Analyze
-        alm = ducc0.sht.analysis_2d(
-            map=np.expand_dims(frame, axis=0),
-            spin=0,
-            lmax=lmax,
-            mmax=mmax,
-            geometry=in_geometry,
-            nthreads=nthreads,
-        )
-
-        # 2. Coordinate Generation
+        # Coordinate generation once
         xmin, xmax, ymin, ymax = extent
-        # We need the number of points. To match extent precisely, use linspace
-        # or calculate n_points based on extent and resolution.
-        # Let's use linspace for robustness if extent does not perfectly divide.
         nx = int(np.round((xmax - xmin) / stereo_grid_spacing_km)) + 1
         ny = int(np.round((ymax - ymin) / stereo_grid_spacing_km)) + 1
 
         x = np.linspace(xmin, xmax, nx)
         y = np.linspace(ymin, ymax, ny)
 
-        # Note: matrix 'ij' indexing vs 'xy'. Usually map is (y, x)
         X, Y = np.meshgrid(x, y)
-
         rho = np.sqrt(X**2 + Y**2)
 
         if hemisphere == "nh":
@@ -307,33 +340,76 @@ class SpectralRegridder:
             theta = np.pi - 2.0 * np.arctan(rho / (2.0 * R_EARTH_KM))
             phi = (np.radians(lon_0) + np.arctan2(X, Y)) % (2 * np.pi)
 
-        # 3. Synthesize directly to these arbitrary points
-        # ducc0 synthesis_general expects loc array of shape (N, 2)
+        valid = rho <= 2.0 * R_EARTH_KM
+        latitude_names = ("lat", "latitude")
+        latitude_coord = next(
+            (data.coords[name] for name in latitude_names if name in data.coords),
+            None,
+        )
+        if latitude_coord is not None and latitude_coord.size:
+            latitude_values = np.asarray(latitude_coord.values, dtype=np.float64)
+            valid &= np.degrees(theta) >= 90.0 - float(np.max(latitude_values))
+            valid &= np.degrees(theta) <= 90.0 - float(np.min(latitude_values))
+
         loc = np.stack([theta.ravel(), phi.ravel()], axis=-1)
-        out_map = cast(
-            NDArray[np.float64],
-            ducc0.sht.synthesis_general(
-                alm=alm,
-                loc=loc,
+
+        def _polar_stereo_frame(frame: NDArray[np.float64]) -> NDArray[np.float64]:
+            import ducc0
+
+            if not lat_reverse:
+                frame = frame[::-1, :]
+            alm = ducc0.sht.analysis_2d(
+                map=np.expand_dims(frame, axis=0),
+                spin=0,
                 lmax=lmax,
                 mmax=mmax,
-                spin=0,
-                epsilon=1e-6,
-                nthreads=nthreads,
-            )[0],
+                geometry=in_geometry,
+                nthreads=eff_nthreads,
+            )
+            out_map = cast(
+                NDArray[np.float64],
+                ducc0.sht.synthesis_general(
+                    alm=alm,
+                    loc=loc,
+                    lmax=lmax,
+                    mmax=mmax,
+                    spin=0,
+                    epsilon=1e-6,
+                    nthreads=eff_nthreads,
+                )[0],
+            )
+            out_map = out_map.reshape(ny, nx)
+            out_map[~valid] = 0.0
+            return out_map
+
+        dask_mode: Literal["forbidden", "allowed", "parallelized"] = (
+            "parallelized" if data.chunks and backend == "dask" else "allowed"
         )
 
-        # Reshape back to 2D
-        out_map = out_map.reshape(ny, nx)
+        res = cast(
+            xr.DataArray,
+            xr.apply_ufunc(
+                _polar_stereo_frame,
+                data,
+                input_core_dims=[[lat_dim, lon_dim]],
+                output_core_dims=[["y", "x"]],
+                vectorize=True,
+                dask=dask_mode,
+                output_dtypes=[np.float64],
+                dask_gufunc_kwargs={"output_sizes": {"y": ny, "x": nx}},
+            ),
+        )
 
-        return xr.DataArray(
-            out_map,
-            dims=["y", "x"],
-            coords={"y": y, "x": x},
-            name=data.name,
-            attrs={
+        res = res.assign_coords(y=y, x=x)
+        res.name = data.name
+        attrs = dict(data.attrs)
+        attrs.update(
+            {
                 "projection": f"{hemisphere}_stereo",
                 "stereo_grid_spacing_km": stereo_grid_spacing_km,
                 "lmax": lmax,
-            },
+                "source_domain_mask": "rho <= 2R and native latitude bounds",
+            }
         )
+        res.attrs = attrs
+        return res

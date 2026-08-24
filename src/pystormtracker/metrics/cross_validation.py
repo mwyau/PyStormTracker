@@ -69,13 +69,31 @@ def find_best_cca_truncation(
     pca: bool = True,
 ) -> xr.Dataset:
     """
-    Evaluates CCA truncation numbers (M) to find the best hyperparameter.
+    Evaluate CCA truncation numbers (M) with leave-n-out cross-validation.
+
+    CCA, EOF/PCA, SVD, ACC, and Pearson correlation are established
+    statistical methods; ``xeofs`` supplies the numerical CCA/EOF
+    implementation.  The evaluation workflow is the framework of Yau and
+    Chang (2020), whose study used 108 winter months, three withheld months
+    per fold, 105 training months, 35 folds, and ``0 < M < 36``.  The PST
+    parameters are configurable: its current defaults (including
+    ``max_modes=15``) are implementation defaults, not paper-defined
+    constants.  The study selected its best model by the domain mean of
+    ``(ACC + FVE) / 2``; this function returns the per-mode scores and leaves
+    any final selection to its caller.
+
+    Reference:
+        Yau, A. M.-W., and E. K.-M. Chang (2020). Finding Storm Track
+        Activity Metrics That Are Highly Correlated with Weather Impacts.
+        Part I. *Journal of Climate*, 33(23), 10169--10186.
+        https://doi.org/10.1175/JCLI-D-20-0393.1
 
     Args:
         X: Predictor field, dimensions (time, lat, lon).
         Y: Predictand field, dimensions (time, lat, lon).
         max_modes: Maximum number of PCA/CCA modes to test.
-        leave_n_out: Samples to hold out (default 3 for seasonal).
+        leave_n_out: Samples to hold out. Three is the study's seasonal
+            configuration, but this parameter is configurable.
         pca: If True, performs PCA pre-filtering before CCA.
 
     Returns:
@@ -145,7 +163,11 @@ def find_best_cca_truncation(
         acc = xr.corr(Y_eval, full_pred, dim="time")
         acc_scores[idx] = float(acc.mean())
 
-        # Calculate FVE (Fraction of Variance Explained)
+        # Calculate FVE (Fraction of Variance Explained).  This retains the
+        # current PST local aggregation, mean(1 - MSE / VAR).  Yau and Chang
+        # define domain FVE as 1 - mean(MSE) / mean(VAR); the two formulas are
+        # not equivalent in general, so this is not an exact reproduction of
+        # the paper's domain-FVE calculation.
         mse = ((Y_eval - full_pred) ** 2).mean(dim="time")
         var = Y_eval.var(dim="time")
         valid_var = var.where(var > 0.0)
@@ -175,12 +197,16 @@ def train_cca_model(
     """
     Trains a CCA model with the given number of modes on the full dataset.
 
+    CCA and the PCA/EOF preprocessing are established statistical methods;
+    ``xeofs`` provides the numerical implementation.  The use of cosine
+    latitude weighting and PCA before CCA follows the Yau and Chang (2020)
+    evaluation framework, while the requested mode count remains a PST API
+    choice.
+
     Args:
         X: Predictor field, dimensions (time, lat, lon).
         Y: Predictand field, dimensions (time, lat, lon).
         n_modes: Number of PCA/CCA modes to use (usually the best M).
-        pca: If True, performs PCA pre-filtering before CCA.
-
     Returns:
         The trained xeofs CCA model.
     """
@@ -193,7 +219,8 @@ def train_cca_model(
     if n_modes > X.sizes["time"]:
         raise ValueError("n_modes exceeds the available sample count")
 
-    # Hardcoded pca=True as per the evaluation framework in Yau and Chang 2020
+    # The full-data model follows the study's PCA-before-CCA configuration;
+    # this is an explicit PST training choice, not a new CCA method.
     model = cca_class(
         n_modes=n_modes,
         use_coslat=True,
@@ -212,9 +239,21 @@ def compute_cormax(
     search_lat: float = 20.0,
 ) -> xr.DataArray:
     """
-    Computes the CORMAX score: maximum one-point correlation within a local region.
-    For each grid point in impact_da, find the max correlation with metric_da
-    within a search_lon x search_lat window (Yau and Chang 2020).
+    Compute the CORMAX evaluation score.
+
+    CORMAX is the Yau and Chang (2020) evaluation construction: for each
+    impact point, their study sought the maximum positive one-point Pearson
+    correlation with a metric within a local search window.  The current PST
+    implementation computes the maximum available correlation in that window;
+    the search arguments generalize the study's 60-degree longitude by
+    20-degree latitude configuration.  Pearson correlation is standard
+    statistics.
+
+    Reference:
+        Yau, A. M.-W., and E. K.-M. Chang (2020). Finding Storm Track
+        Activity Metrics That Are Highly Correlated with Weather Impacts.
+        Part I. *Journal of Climate*, 33(23), 10169--10186.
+        https://doi.org/10.1175/JCLI-D-20-0393.1
 
     Args:
         impact_da: Weather impact anomalies (time, lat, lon).
