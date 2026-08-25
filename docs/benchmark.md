@@ -23,27 +23,32 @@ The completed four-case TRACK 1.5.4 comparison is maintained in the public
 [`PyStormTracker-Validation` report](https://github.com/mwyau/PyStormTracker-Validation/blob/main/results/BENCHMARK_2024.md).
 It uses the fixed 2024 ERA5 F320 MSLP input and the rectangular B-spline
 Hodges configuration at the source revision recorded in that report. TRACK
-and the PST default profile each have five sequential repetitions; the report
-also includes PST frame/SHT/DUCC0 profiles `4/4/4`, `2/8/8`, and `8/2/2`,
+and the selected PST `frame/SHT/DUCC0=4/4/4` profile each have five sequential
+repetitions; the report also includes PST default, `2/8/8`, and `8/2/2`,
 single-run timings, medians, output hashes, raw paths, and trajectory
 comparison diagnostics. TRACK is the implementation reference for this
 comparison, not scientific ground truth.
+
+Here `frame_workers` is Dask concurrency across independent time-frame tasks;
+`sht_threads` is the number of DUCC0 threads per spherical-harmonic transform;
+`DUCC0_NUM_THREADS` is the native DUCC0 thread-pool setting. The three values
+are PST settings only; TRACK has no equivalent worker configuration.
 
 ### Primary medians
 
 The speed label is derived from `TRACK median / PST median` and reports whether
 PST is faster or slower.
 
-| Case                   | Period    | Grid         | TRACK N | TRACK median s | PST N | PST median s | PST vs TRACK | TRACK tracks | PST tracks |
-| ---------------------- | --------- | ------------ | ------: | -------------: | ----: | -----------: | ------------ | -----------: | ---------: |
-| f320-to-t42-january    | January   | F320 -> T42  |       5 |          5.080 |     5 |        7.230 | 1.42x slower |          709 |        718 |
-| f320-to-t42-full-year  | Full year | F320 -> T42  |       5 |         59.430 |     5 |       27.060 | 2.20x faster |         7761 |       7859 |
-| f320-to-f320-january   | January   | F320 -> F320 |       5 |        167.960 |     5 |       43.440 | 3.87x faster |          779 |        789 |
-| f320-to-f320-full-year | Full year | F320 -> F320 |       5 |       1997.160 |     5 |      342.470 | 5.83x faster |         8595 |       8747 |
+| Case                   | Period    | Grid         | TRACK N | TRACK median s | PST N | PST median s | PST vs TRACK  | TRACK tracks | PST tracks |
+| ---------------------- | --------- | ------------ | ------: | -------------: | ----: | -----------: | ------------- | -----------: | ---------: |
+| f320-to-t42-january    | January   | F320 -> T42  |       5 |          5.080 |     5 |        7.230 | 1.42x slower  |          709 |        718 |
+| f320-to-t42-full-year  | Full year | F320 -> T42  |       5 |         59.430 |     5 |       27.480 | 2.16x faster  |         7761 |       7859 |
+| f320-to-f320-january   | January   | F320 -> F320 |       5 |        167.960 |     5 |       11.610 | 14.47x faster |          779 |        789 |
+| f320-to-f320-full-year | Full year | F320 -> F320 |       5 |       1997.160 |     5 |       57.380 | 34.81x faster |         8595 |       8747 |
 
 ### Compact trajectory agreement
 
-These diagnostics compare the retained TRACK and PST default outputs using the
+These diagnostics compare the retained TRACK and PST `4/4/4` outputs using the
 public nearest, mutual-nearest, and global-assignment matchers. They are
 implementation-comparison diagnostics, not scientific ground truth.
 
