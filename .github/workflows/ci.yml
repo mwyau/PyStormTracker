@@ -402,7 +402,6 @@ jobs:
         run: .sdist-venv/bin/python -c 'import pystormtracker; print("sdist import success")'
 
       - name: Upload release distributions
-        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v7
         with:
           name: release-dists
