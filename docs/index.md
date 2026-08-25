@@ -5,6 +5,7 @@
 :caption: Getting Started
 
 PyStormTracker <readme>
+Quickstart <quickstart>
 CLI Reference <cli>
 API Reference <api>
 ```
