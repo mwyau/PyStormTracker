@@ -193,7 +193,7 @@ jobs:
 
       - name: Run unit tests with coverage
         if: matrix.mode == 'coverage'
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy
 
       - name: Run unit tests with JIT coverage
         if: matrix.mode == 'jit-coverage'
@@ -230,6 +230,16 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Upload test results
+        if: ${{ !cancelled() && matrix.mode == 'coverage' }}
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: ./junit.xml
+          disable_search: true
+          report_type: test_results
+          flags: unit
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   integration-tests:
     name: Integration tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
     needs: [select-test-matrix, code-quality]
@@ -262,7 +272,7 @@ jobs:
         env:
           NUMBA_JIT_COVERAGE: '1'
           NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-coverage-cache
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/integration/ -m "not slow and not data"
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy tests/integration/ -m "not slow and not data"
 
       - name: Run integration tests
         if: matrix.coverage == false
@@ -276,6 +286,16 @@ jobs:
           disable_search: true
           flags: integration
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        if: ${{ !cancelled() && matrix.coverage == true }}
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: ./junit.xml
+          disable_search: true
+          report_type: test_results
+          flags: integration
           token: ${{ secrets.CODECOV_TOKEN }}
 
   parity-tests:
@@ -305,7 +325,7 @@ jobs:
         env:
           NUMBA_JIT_COVERAGE: '1'
           NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-coverage-cache
-        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml tests/parity/ -m "not slow and not data"
+        run: uv run --no-sync pytest -vv --cov=pystormtracker --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy tests/parity/ -m "not slow and not data"
 
       - name: Run parity tests
         if: matrix.coverage == false
@@ -319,6 +339,16 @@ jobs:
           disable_search: true
           flags: parity
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        if: ${{ !cancelled() && matrix.coverage == true }}
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: ./junit.xml
+          disable_search: true
+          report_type: test_results
+          flags: parity
           token: ${{ secrets.CODECOV_TOKEN }}
 
   package-tests:
