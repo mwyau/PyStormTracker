@@ -243,8 +243,7 @@ class DataLoader:
 
                 self._ds = self._ds_cache[cache_key]
                 LOGGER.debug(
-                    "Opened input %r with engine=%s chunks=%r dims=%s",
-                    self.pathname,
+                    "Opened input with engine=%s chunks=%r dims=%s",
                     engine,
                     self.chunks,
                     dict(self._ds.sizes),
