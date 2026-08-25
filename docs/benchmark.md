@@ -1,64 +1,97 @@
-# PyStormTracker Benchmark
+# Benchmarks
 
-The `benchmarks/` directory contains generic package-performance tools. The
-benchmark runner measures the current CLI on an explicitly selected input and
-does not download data or compare historical implementations.
+The `benchmarks/` directory contains tools for measuring current PyStormTracker
+performance. The benchmark runner uses a selected input, records the runtime
+configuration, and writes both TrackJSON output and machine-readable metadata.
+It does not download data or compare against another implementation.
 
-Run a local benchmark with:
+For example, to benchmark 124 frames with local Dask execution:
 
 ```bash
 uv run python benchmarks/run_benchmark_detailed.py \
     --input tests/data/era5/era5_msl_2025-12_2.5x2.5.nc \
-    --backends serial dask --workers 4
+    --output /tmp/pystormtracker-benchmark.trackjson \
+    --metadata /tmp/pystormtracker-benchmark.json \
+    --frames 124 \
+    --backend dask \
+    --frame-workers 4 \
+    --sht-threads 4 \
+    --mge-workers 4
 ```
 
-Benchmark results are workload- and machine-specific. Use representative
-inputs, record the command and environment with any published result, and
-keep validation-specific TRACK timing work in
-`PyStormTracker-Validation`.
+Benchmark results depend on the input, hardware, software environment, and
+execution settings. Record these with published results. Detailed benchmark
+outputs, timing results, and reproducibility records are stored in
+[`PyStormTracker-Validation`](https://github.com/mwyau/PyStormTracker-Validation).
 
 ## 2024 TRACK comparison
 
-The completed four-case TRACK 1.5.4 comparison is maintained in the public
-[`PyStormTracker-Validation` report](https://github.com/mwyau/PyStormTracker-Validation/blob/main/results/BENCHMARK_2024.md).
-It uses the fixed 2024 ERA5 F320 MSLP input and the rectangular B-spline
-Hodges configuration at the source revision recorded in that report. TRACK
-and the selected PST `frame/SHT/DUCC0=4/4/4` profile each have five sequential
-repetitions; the report also includes PST default, `2/8/8`, and `8/2/2`,
-single-run timings, medians, output hashes, raw paths, and trajectory
-comparison diagnostics. TRACK is the implementation reference for this
-comparison, not scientific ground truth.
+The 2024 comparison against TRACK 1.5.4 uses the same ERA5 mean sea-level
+pressure record for both implementations: 1,464 six-hourly frames on the F320
+Gaussian grid. PyStormTracker uses the TRACK-compatible rectangular B-spline
+refinement path. TRACK is the implementation reference for this comparison.
 
-Here `frame_workers` is Dask concurrency across independent time-frame tasks;
-`sht_threads` is the number of DUCC0 threads per spherical-harmonic transform;
-`DUCC0_NUM_THREADS` is the native DUCC0 thread-pool setting. The three values
-are PST settings only; TRACK has no equivalent worker configuration.
+The benchmark ran on an AMD Ryzen 9 5950X with 16 physical cores and 32 logical
+CPUs. The configuration, commands, individual timings, output hashes, and
+trajectory diagnostics are stored in
+[`BENCHMARK_2024.md`](https://github.com/mwyau/PyStormTracker-Validation/blob/main/results/BENCHMARK_2024.md).
 
-### Primary medians
+Track counts and trajectory-agreement metrics below use raw trajectories before
+RSPLICE filtering.
 
-The speed label is derived from `TRACK median / PST median` and reports whether
-PST is faster or slower.
+### Full-year results
 
-| Case                   | Period    | Grid         | TRACK N | TRACK median s | PST N | PST median s | PST vs TRACK  | TRACK tracks | PST tracks |
-| ---------------------- | --------- | ------------ | ------: | -------------: | ----: | -----------: | ------------- | -----------: | ---------: |
-| f320-to-t42-january    | January   | F320 -> T42  |       5 |          5.080 |     5 |        7.230 | 1.42x slower  |          709 |        718 |
-| f320-to-t42-full-year  | Full year | F320 -> T42  |       5 |         59.430 |     5 |       27.480 | 2.16x faster  |         7761 |       7859 |
-| f320-to-f320-january   | January   | F320 -> F320 |       5 |        167.960 |     5 |       11.610 | 14.47x faster |          779 |        789 |
-| f320-to-f320-full-year | Full year | F320 -> F320 |       5 |       1997.160 |     5 |       57.380 | 34.81x faster |         8595 |       8747 |
+| Filtered output grid | TRACK 1.5.4 | PyStormTracker | Relative runtime | One-to-one F1 | Median matched-track separation |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| F320 → T42 | 59.43 s | 27.48 s | **2.16× faster** | 0.992 | 6 m |
+| F320 → F320 | 1,997.16 s | 57.38 s | **34.81× faster** | 0.989 | 7 m |
 
-### Compact trajectory agreement
+Both workflows apply T6–42 spectral filtering. `F320 → T42` synthesizes the
+filtered field onto the 64×128 T42 Gaussian grid before feature detection.
+`F320 → F320` synthesizes the filtered field back onto the 640×1280 F320
+Gaussian grid and performs detection and refinement at that resolution.
 
-These diagnostics compare the retained TRACK and PST `4/4/4` outputs using the
-public nearest, mutual-nearest, and global-assignment matchers. They are
-implementation-comparison diagnostics, not scientific ground truth.
+The timing comparison is machine-specific. The trajectory statistics quantify
+agreement between the two implementations under this configuration.
 
-| Case                   | Nearest TRACK coverage | Mutual agreement | Assignment precision | Assignment recall | Assignment F1 | Assignment median km | Assignment p95 km |
-| ---------------------- | ---------------------: | ---------------: | -------------------: | ----------------: | ------------: | -------------------: | ----------------: |
-| f320-to-t42-january    |                  1.000 |            1.000 |                0.987 |             1.000 |         0.994 |                0.006 |             0.048 |
-| f320-to-t42-full-year  |                  0.998 |            0.998 |                0.986 |             0.998 |         0.992 |                0.006 |             0.050 |
-| f320-to-f320-january   |                  0.999 |            0.999 |                0.986 |             0.999 |         0.992 |                0.007 |             0.059 |
-| f320-to-f320-full-year |                  0.998 |            0.997 |                0.980 |             0.997 |         0.989 |                0.007 |             0.061 |
+### Timing results
 
-The full single-run timing table, worker-profile medians, provenance, frame
-mapping, output hashes, and surviving raw-record paths are in the linked
-Validation report and its [`summary.json`](https://github.com/mwyau/PyStormTracker-Validation/blob/main/results/benchmark-2024/summary.json).
+Each TRACK and PyStormTracker value below is the median of five sequential
+end-to-end runs.
+
+| Period | Filtered output grid | TRACK 1.5.4 | PyStormTracker | PyStormTracker vs TRACK | TRACK tracks | PyStormTracker tracks |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| January | F320 → T42 | 5.08 s | 7.23 s | 1.42× slower | 709 | 718 |
+| Full year | F320 → T42 | 59.43 s | 27.48 s | **2.16× faster** | 7,761 | 7,859 |
+| January | F320 → F320 | 167.96 s | 11.61 s | **14.47× faster** | 779 | 789 |
+| Full year | F320 → F320 | 1,997.16 s | 57.38 s | **34.81× faster** | 8,595 | 8,747 |
+
+January F320 → T42 is the only case in this matrix where PyStormTracker is
+slower than TRACK. The benchmark does not isolate the cause of this timing
+difference.
+
+### Trajectory agreement
+
+`TRACK coverage` is the fraction of TRACK trajectories matched by the directed
+nearest-track comparison. `Mutual agreement` requires the two trajectories to
+select each other as nearest matches. `One-to-one F1` comes from the global
+one-to-one assignment. Distances describe the matched trajectories from that
+assignment.
+
+| Period | Filtered output grid | TRACK coverage | Mutual agreement | One-to-one F1 | Median separation | 95th-percentile separation |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| January | F320 → T42 | 100.0% | 100.0% | 0.994 | 6 m | 48 m |
+| Full year | F320 → T42 | 99.8% | 99.8% | 0.992 | 6 m | 50 m |
+| January | F320 → F320 | 99.9% | 99.9% | 0.992 | 7 m | 59 m |
+| Full year | F320 → F320 | 99.8% | 99.7% | 0.989 | 7 m | 61 m |
+
+The Validation report includes bidirectional and unmatched-track diagnostics.
+
+### Parallel settings
+
+The frame/SHT 4/4 configuration had the lowest measured wall time among the
+tested worker profiles. `mge_workers` remained at its default value of 16.
+
+The single-run timings, worker profiles, frame mapping, output hashes, and
+raw-record locations are stored in the Validation report and its
+[`summary.json`](https://github.com/mwyau/PyStormTracker-Validation/blob/main/results/benchmark-2024/summary.json).
