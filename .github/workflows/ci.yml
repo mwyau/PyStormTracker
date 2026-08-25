@@ -49,7 +49,7 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04", "python-version": "3.14", "coverage": true}
+                {"os": "ubuntu-26.04", "python-version": "3.14", "mpi": "mpich", "coverage": true}
               ]
             }'
             PARITY_MATRIX='{
@@ -73,10 +73,10 @@ jobs:
             }'
             INTEGRATION_MATRIX='{
               "include": [
-                {"os": "ubuntu-26.04-arm", "python-version": "3.14", "coverage": false},
-                {"os": "ubuntu-24.04", "python-version": "3.14", "coverage": true},
-                {"os": "windows-2025", "python-version": "3.13", "coverage": false},
-                {"os": "macos-26", "python-version": "3.14", "coverage": false}
+                {"os": "ubuntu-26.04-arm", "python-version": "3.14", "mpi": "mpich", "coverage": false},
+                {"os": "ubuntu-24.04", "python-version": "3.14", "mpi": "mpich", "coverage": true},
+                {"os": "windows-2025", "python-version": "3.13", "mpi": "msmpi", "coverage": false},
+                {"os": "macos-26", "python-version": "3.14", "mpi": "mpich", "coverage": false}
               ]
             }'
             PARITY_MATRIX='{
@@ -249,11 +249,10 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
-      - name: Set up Microsoft MPI on Windows
-        if: runner.os == 'Windows'
+      - name: Set up MPI
         uses: mpi4py/setup-mpi@v1.4.4
         with:
-          mpi: msmpi
+          mpi: ${{ matrix.mpi }}
 
       - name: Install dependencies
         run: uv sync --frozen --all-extras
@@ -297,12 +296,6 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-
-      - name: Set up Microsoft MPI on Windows
-        if: runner.os == 'Windows'
-        uses: mpi4py/setup-mpi@v1.4.4
-        with:
-          mpi: msmpi
 
       - name: Install dependencies
         run: uv sync --frozen --all-extras

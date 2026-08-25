@@ -1,10 +1,12 @@
 # Codecov configuration
-# This config disables status checks so Codecov only reports coverage
-# but never fails the build.
+# This config enforces an overall project coverage floor while leaving patch
+# coverage status disabled.
 
 coverage:
   status:
-    project: off
+    project:
+      default:
+        target: 70%
     patch: off
 
 comment:
