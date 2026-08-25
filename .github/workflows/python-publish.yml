@@ -28,7 +28,41 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate distributions
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Retrieve tested distributions
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-dists
+          path: dist/
+          run-id: >-
+            ${{
+              github.event_name == 'workflow_run'
+              && github.event.workflow_run.id
+              || inputs.run_id
+            }}
+          github-token: ${{ github.token }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: '0.12.1'
+          python-version: '3.14'
+
+      - name: Check distributions
+        run: uvx --from twine==7.0.0 twine check --strict dist/*
+
   publish:
+    needs: validate
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (
