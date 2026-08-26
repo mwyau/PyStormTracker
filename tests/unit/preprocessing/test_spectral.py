@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 from numpy.typing import NDArray
 
-from pystormtracker.preprocessing import SHTFilter
+from pystormtracker.preprocessing import DCTFilter, SHTFilter
 
 
 @pytest.mark.parametrize(("ny", "nx"), [(73, 144), (721, 1440)])
@@ -109,6 +109,34 @@ def test_spectral_filter_numpy_ndarray_3d(ny: int, nx: int) -> None:
 
     assert isinstance(filtered, np.ndarray)
     assert filtered.shape == (3, ny, nx)
+
+
+def test_dct_filter_regional_dataarray() -> None:
+    latitudes = np.linspace(40.0, 50.0, 5)
+    longitudes = np.linspace(-10.0, 10.0, 6)
+    data = xr.DataArray(
+        np.arange(30.0).reshape(5, 6),
+        dims=("latitude", "longitude"),
+        coords={"latitude": latitudes, "longitude": longitudes},
+        name="msl",
+    )
+
+    filtered = DCTFilter(lmin=0, lmax=3, taper_val=1.0).filter(data)
+
+    assert isinstance(filtered, xr.DataArray)
+    assert filtered.dims == data.dims
+    assert filtered.shape == data.shape
+    assert filtered.name == data.name
+    assert np.isfinite(filtered.values).all()
+
+
+def test_dct_filter_rejects_numpy_array() -> None:
+    data = np.ones((5, 6), dtype=np.float64)
+
+    with pytest.raises(TypeError, match="requires xarray.DataArray"):
+        DCTFilter(lmin=0, lmax=3).filter(
+            data  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        )
 
 
 def test_spectral_filter_passes_explicit_sht_threads_to_ducc_wrapper() -> None:

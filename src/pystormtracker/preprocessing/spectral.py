@@ -378,29 +378,13 @@ class DCTFilter:
         self.lmax = lmax
         self.taper_val = taper_val
 
-    @overload
     def filter(
         self,
         data: xr.DataArray,
         backend: Literal["serial", "mpi", "dask"] = "serial",
-    ) -> xr.DataArray: ...
-
-    @overload
-    def filter(
-        self,
-        data: NDArray[np.float64],
-        backend: Literal["serial", "mpi", "dask"] = "serial",
-    ) -> NDArray[np.float64]: ...
-
-    def filter(
-        self,
-        data: xr.DataArray | NDArray[np.float64],
-        backend: Literal["serial", "mpi", "dask"] = "serial",
-    ) -> xr.DataArray | NDArray[np.float64]:
-        if isinstance(data, np.ndarray):
-            # For numpy arrays, we'd need lat/lon or assume a default scaling.
-            # In PyStormTracker, we prefer DataArrays for regional metadata.
-            raise NotImplementedError("DCTFilter currently requires xarray.DataArray")
+    ) -> xr.DataArray:
+        if not isinstance(data, xr.DataArray):
+            raise TypeError("DCTFilter.filter requires xarray.DataArray")
 
         return _filter_dct_xarray(
             data,

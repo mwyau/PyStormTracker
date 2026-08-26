@@ -25,12 +25,12 @@
 
 ### Testing and data
 
-- Reorganized unit, integration, legacy-parity, TRACK-parity, and NCL/Spherepack coverage with explicit test markers and external-data ownership.
+- Reorganized unit, integration, legacy-parity, and NCL/Spherepack parity coverage with explicit test markers and versioned external-data ownership; the current package suite retains the bundled NCL T5-42 spectral reference while broader kinematics parity remains deferred.
 - Pinned PyStormTracker-Data paths and release assets for deferred integration and parity inputs, while retaining the bounded bundled numerical reference.
 
 ### Documentation and infrastructure
 
-- Added the reproducible TRACK 1.5.4 and PyStormTracker comparison suite with F320-to-T42, F320-to-F320, and regular-grid configurations, repeat runners, profilers, and compact results.
+- Documented the reproducible TRACK 1.5.4 comparison results for F320-to-T42 and F320-to-F320 and retained the generic PyStormTracker benchmark runner.
 - Updated the scientific-method, architecture, testing, CLI, TrackJSON, and repository guidance documentation.
 - Moved Python package publishing to a standalone workflow that runs after successful CI, and modernized supported Python and build metadata.
 

@@ -54,14 +54,15 @@ using full-year 2024 ERA5 MSLP. It includes runtime measurements, raw trajectory
 comparison, and RSPLICE-filtered trajectory comparison. The full-year filtered
 one-to-one F1 is 0.997 for both cases.
 
-Broader NCL/Spherepack field comparisons and trajectory comparisons require the
-exact versioned inputs and outputs owned by `PyStormTracker-Data`; they remain
-external-data cases until the pinned Data tag and assets are available. The
-main checkout retains one small, one-frame NCL spectral output for the
-committed December MSL frame:
+The versioned external-data contract now exists: `tests/utils.py` pins
+`PyStormTracker-Data` at `v0.2.0-data`, and release-backed assets are available
+for supported ERA5 inputs, including UV850 at 0.25° and 2.5°. Individual parity
+cases still require their exact versioned input and reference products. The
+NCL/Spherepack kinematics comparison remains deferred because the pinned Data
+release does not yet contain the required NCL-generated VODV reference fields.
+The small bundled NCL T5-42 spectral output for the committed December MSL
+frame remains the ordinary repository-level bounded parity test:
 `tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc`.
-This bounded numerical-parity case does not replace an external trajectory
-comparison.
 
 ### 2.3 Dependency audit
 
@@ -90,7 +91,11 @@ after linking. Broader large-case parallel equality coverage remains planned.
 
 ### 3.3 CLI and tracker protocol — ✅ Implemented
 
-The `stormtracker` command has `track`, `sample`, `compare`, and `convert` subcommands. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` implement the common tracker interface. The high-level CLI implementation is in `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is currently exported.
+`pystormtracker.cli.main()` creates the top-level parser, registers the
+`track`, `sample`, `compare`, and `convert` subcommands, and dispatches through
+`args.func`. `pystormtracker.track.main(args)` owns setup and execution for the
+`track` subcommand. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker`
+implement the common tracker interface.
 
 ### 3.4 Remote data support — ✅ Implemented
 
@@ -244,9 +249,10 @@ longitude-seam extension behavior.
 **Progress:** The tracking CLI accepts existing relative-vorticity fields. `preprocessing.kinematics` computes vorticity and divergence through the Python API. A CLI subcommand that derives these fields from wind has not been implemented.
 
 **Verification:** Python kinematic calculations have constructed-input unit
-coverage. The main repository retains compact, bundled NCL/Spherepack spectral
-parity cases for the committed December frame. Broader field comparisons that
-require external inputs remain deferred with the external data contract.
+coverage. The main repository retains the compact, bundled NCL T5-42 spectral
+parity case for the committed December frame. Broader NCL/Spherepack kinematics
+parity remains deferred until the exact versioned UV850 inputs and
+NCL-generated VODV reference fields are present in `PyStormTracker-Data`.
 
 ### 5.12 Ensemble and dataset utilities — 🚧 In progress
 

@@ -10,7 +10,7 @@ def package_version() -> str:
     try:
         return version("pystormtracker")
     except PackageNotFoundError:
-        return "0.6.1.dev2"
+        return "unknown"
 
 
 def add_cli_observability_options(
