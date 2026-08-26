@@ -243,6 +243,6 @@ uv run pytest tests/integration -m "not slow and not data"
 uv run pytest tests/unit tests/integration tests/parity
 ```
 
-See [CONTRIBUTING.md](https://github.com/mwyau/PyStormTracker/blob/main/CONTRIBUTING.md)
+See [CONTRIBUTING.md](../CONTRIBUTING.md)
 and the [testing guide](development/testing.md) for contributor workflows and
 test taxonomy.

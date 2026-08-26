@@ -83,4 +83,4 @@ Additional method-specific references are given in the relevant documentation.
 
 ## License
 
-PyStormTracker is distributed under the [BSD 3-Clause License](https://github.com/mwyau/PyStormTracker/blob/main/LICENSE).
+PyStormTracker is distributed under the [BSD 3-Clause License](LICENSE).
