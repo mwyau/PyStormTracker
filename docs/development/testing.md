@@ -50,8 +50,8 @@ uv run pytest tests/integration -m "not slow and not data"
 Run bundled numerical parity tests and any future bundled trajectory parity
 with `uv run pytest tests/parity -m "not slow and not data"`. This executes the
 one local NCL spectral case. The broader NCL/Spherepack kinematics comparison
-is deferred until the pinned Data release contains its exact UV850 inputs and
-NCL-generated VODV reference fields.
+remains deferred because the pinned Data release does not yet contain the
+required NCL-generated VODV reference fields.
 
 Tests marked `data` exercise GRIB, reduced-Gaussian, remote-Zarr, or legacy
 reference contracts owned by the sibling `PyStormTracker-Data` repository.

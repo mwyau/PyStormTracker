@@ -146,11 +146,20 @@ Simple Dask path.
 
 ```mermaid
 flowchart TB
-    PRE[Data/read + SHT<br/>each SHT call uses sht_threads]
-    PRE --> FRAME[Frame tasks<br/>frame_workers]
-    FRAME --> DET[HodgesCenterFrame[]]
-    DET --> MGE[MGE segment tasks<br/>mge_workers]
-    MGE --> SPLICE[Ordered merge/splice]
+    SRC["Lazy source time series"]
+
+    SRC --> FRAME["Parallel frame tasks<br/>read + preprocessing/SHT + detection + refinement<br/>frame_workers · sht_threads per task"]
+
+    FRAME --> CENTERS["Ordered HodgesCenterFrame results"]
+
+    CENTERS --> M0["MGE segment k"]
+    CENTERS --> M1["MGE segment k+1"]
+    CENTERS --> MN["..."]
+
+    M0 --> SPLICE["Ordered splice"]
+    M1 --> SPLICE
+    MN --> SPLICE
+
     SPLICE --> T[(Tracks)]
 ```
 

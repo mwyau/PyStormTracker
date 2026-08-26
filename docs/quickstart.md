@@ -200,9 +200,9 @@ The bundled NCL T5-42 spectral numerical-parity reference is:
 tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc
 ```
 
-Broader NCL/Spherepack kinematics parity remains deferred until the pinned
-`PyStormTracker-Data` release contains the exact NCL-generated VODV reference
-fields.
+Broader NCL/Spherepack kinematics parity remains deferred because the pinned
+`PyStormTracker-Data` release does not yet contain the required NCL-generated
+VODV reference fields.
 
 ## Development
 
@@ -247,6 +247,6 @@ uv run pytest tests/integration -m "not slow and not data"
 uv run pytest tests/unit tests/integration tests/parity
 ```
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md)
+See [CONTRIBUTING.md](https://github.com/mwyau/PyStormTracker/blob/main/CONTRIBUTING.md)
 and the [testing guide](development/testing.md) for contributor workflows and
 test taxonomy.
