@@ -50,15 +50,74 @@ def _require_cca() -> CCAConstructor:
     return XeofsCCA
 
 
+_CCA_ALIGNMENT_ERROR = (
+    "PyStormTracker currently requires CCA inputs to use the same spatial "
+    "grid and time coordinates."
+)
+
+
 def _align_cca_inputs(
     X: xr.DataArray, Y: xr.DataArray
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    if "time" not in X.dims or "time" not in Y.dims:
-        raise ValueError("CCA inputs must both contain a 'time' dimension")
-    X, Y = xr.align(X, Y, join="inner")
-    if X.sizes["time"] == 0:
-        raise ValueError("CCA inputs have no overlapping time coordinates")
+    """Validate and normalize the paired fields used by the CCA workflow.
+
+    PyStormTracker currently requires both fields to use the same spatial grid
+    and exactly the same time coordinates. Dimension order may differ, so both
+    fields are normalized to the order of ``X`` after the coordinates are
+    checked.
+    """
+    if (
+        "time" not in X.dims
+        or "time" not in Y.dims
+        or "time" not in X.coords
+        or "time" not in Y.coords
+    ):
+        raise ValueError(_CCA_ALIGNMENT_ERROR)
+
+    x_spatial_dims = [dim for dim in X.dims if dim != "time"]
+    y_spatial_dims = [dim for dim in Y.dims if dim != "time"]
+    if not x_spatial_dims or set(x_spatial_dims) != set(y_spatial_dims):
+        raise ValueError(_CCA_ALIGNMENT_ERROR)
+
+    normalized_dims = ("time", *x_spatial_dims)
+    try:
+        X = X.transpose(*normalized_dims)
+        Y = Y.transpose(*normalized_dims)
+    except ValueError as exc:
+        raise ValueError(_CCA_ALIGNMENT_ERROR) from exc
+
+    for dim in normalized_dims:
+        if dim not in X.coords or dim not in Y.coords:
+            raise ValueError(_CCA_ALIGNMENT_ERROR)
+        x_coord = X.coords[dim]
+        y_coord = Y.coords[dim]
+        if x_coord.dims != (dim,) or y_coord.dims != (dim,):
+            raise ValueError(_CCA_ALIGNMENT_ERROR)
+        if not np.array_equal(x_coord.values, y_coord.values):
+            raise ValueError(_CCA_ALIGNMENT_ERROR)
+
     return X, Y
+
+
+def _domain_fve(observed: xr.DataArray, predicted: xr.DataArray) -> float:
+    """Calculate domain FVE using separately averaged MSE and variance.
+
+    Yau and Chang (2020) define domain FVE as ``1 - mean(MSE) / mean(VAR)``.
+    A grid point contributes when its MSE and observed variance are finite;
+    zero observed variance remains in the domain means.
+    """
+    mse = ((observed - predicted) ** 2).mean(dim="time", skipna=True)
+    variance = observed.var(dim="time", skipna=True)
+    valid = np.isfinite(mse) & np.isfinite(variance)
+    domain_dims = list(mse.dims)
+    if not bool(valid.any()):
+        return float("nan")
+
+    mean_mse = mse.where(valid).mean(dim=domain_dims, skipna=True)
+    mean_variance = variance.where(valid).mean(dim=domain_dims, skipna=True)
+    if not bool(np.isfinite(mean_variance)) or float(mean_variance) <= 0.0:
+        return float("nan")
+    return float(1.0 - mean_mse / mean_variance)
 
 
 def find_best_cca_truncation(
@@ -105,7 +164,7 @@ def find_best_cca_truncation(
     if leave_n_out <= 0:
         raise ValueError("leave_n_out must be greater than zero")
 
-    # Ensure time dimensions are aligned
+    # Check the paired fields before fitting the model.
     X, Y = _align_cca_inputs(X, Y)
     n_samples = X.sizes["time"]
     if leave_n_out >= n_samples:
@@ -163,16 +222,9 @@ def find_best_cca_truncation(
         acc = xr.corr(Y_eval, full_pred, dim="time")
         acc_scores[idx] = float(acc.mean())
 
-        # Calculate FVE (Fraction of Variance Explained).  This retains the
-        # current PST local aggregation, mean(1 - MSE / VAR).  Yau and Chang
-        # define domain FVE as 1 - mean(MSE) / mean(VAR); the two formulas are
-        # not equivalent in general, so this is not an exact reproduction of
-        # the paper's domain-FVE calculation.
-        mse = ((Y_eval - full_pred) ** 2).mean(dim="time")
-        var = Y_eval.var(dim="time")
-        valid_var = var.where(var > 0.0)
-        fve = 1.0 - (mse / valid_var)
-        fve_scores[idx] = float(fve.mean())
+        # Yau and Chang (2020) define domain FVE as 1 - mean(MSE) /
+        # mean(VAR), with the two gridpoint fields averaged separately.
+        fve_scores[idx] = _domain_fve(Y_eval, full_pred)
 
     ds = xr.Dataset(
         {
@@ -214,7 +266,7 @@ def train_cca_model(
     if n_modes <= 0:
         raise ValueError("n_modes must be greater than zero")
 
-    # Ensure time dimensions are aligned
+    # Check the paired fields before fitting the model.
     X, Y = _align_cca_inputs(X, Y)
     if n_modes > X.sizes["time"]:
         raise ValueError("n_modes exceeds the available sample count")
@@ -244,7 +296,7 @@ def compute_cormax(
     CORMAX is the Yau and Chang (2020) evaluation construction: for each
     impact point, their study sought the maximum positive one-point Pearson
     correlation with a metric within a local search window.  The current PST
-    implementation computes the maximum available correlation in that window;
+    implementation computes the maximum positive correlation in that window;
     the search arguments generalize the study's 60-degree longitude by
     20-degree latitude configuration.  Pearson correlation is standard
     statistics.
@@ -272,10 +324,18 @@ def compute_cormax(
     ):
         raise ValueError("CORMAX inputs must have time, lat, and lon dimensions")
 
-    # Ensure time and grid coordinates are aligned
-    impact_da, metric_da = xr.align(impact_da, metric_da, join="inner")
+    if set(impact_da.dims) != required_dims or set(metric_da.dims) != required_dims:
+        raise ValueError(_CCA_ALIGNMENT_ERROR)
+
+    # CORMAX is evaluated on paired fields with the same grid and time
+    # coordinates. The Yau--Chang configuration uses a 60-degree longitude by
+    # 20-degree latitude search window; the parameters remain explicit for
+    # bounded experiments.
+    impact_da, metric_da = _align_cca_inputs(impact_da, metric_da)
+    impact_da = impact_da.transpose("time", "lat", "lon")
+    metric_da = metric_da.transpose("time", "lat", "lon")
     if impact_da.sizes["time"] < 2:
-        raise ValueError("CORMAX requires at least two overlapping time steps")
+        raise ValueError("CORMAX requires at least two time steps")
     if impact_da.sizes["lat"] < 2 or impact_da.sizes["lon"] < 2:
         raise ValueError("CORMAX requires at least two latitude and longitude points")
 
@@ -305,12 +365,18 @@ def compute_cormax(
                 )
                 r = xr.corr(impact_da, shifted, dim="time")
 
-            # Preserve missing correlations while accumulating finite maxima.
-            cormax = r.where(cormax.isnull() | (r > cormax), cormax)
+            # Yau and Chang define CORMAX as the maximum positive
+            # correlation.  Negative and non-finite correlations do not
+            # become a fabricated zero or a negative score.
+            positive_r = r.where(np.isfinite(r) & (r > 0.0))
+            cormax = positive_r.where(
+                cormax.isnull() | (positive_r > cormax),
+                cormax,
+            )
 
     cormax.name = "cormax"
     cormax.attrs = {
-        "description": "Maximum local one-point correlation (CORMAX)",
+        "description": "Maximum positive local one-point correlation (CORMAX)",
         "search_window": f"{search_lon}x{search_lat} deg",
     }
     return cormax

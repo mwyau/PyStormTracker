@@ -15,7 +15,7 @@ from ..models.time import decode_time_values
 from ..models.tracks import Tracks
 from .weighting import _WeightType, calculate_spherical_weight
 
-type Kernel = Literal["constant", "fisher", "cressman", "linear", "quadratic"]
+type Kernel = Literal["constant", "cressman", "linear", "quadratic"]
 type ATAInterpolation = Literal["linear", "linear_pchip"]
 
 _ATA_HOUR_MS: Final[int] = 3_600_000
@@ -234,7 +234,6 @@ def _compute_weighted_stats(
     amps: NDArray[np.float64],
     radius_km: float,
     weight_type: int,
-    kappa: float,
     is_min: bool,
     active_points: NDArray[np.bool_],
     ata_offsets: NDArray[np.int64],
@@ -262,9 +261,7 @@ def _compute_weighted_stats(
     if n_points == 0:
         return cyclone_amplitude, cyclone_frequency, track_frequency, aca, ata
 
-    # For Fisher, we need a larger margin as it doesn't have a hard cutoff
-    # but decays exponentially. Using 2500km for Fisher (~22 degrees).
-    margin_km = radius_km if weight_type != 1 else 2500.0
+    margin_km = radius_km
     lat_margin = (margin_km / 111.0) + 1.0
 
     for track_index in range(len(offsets) - 1):
@@ -299,7 +296,7 @@ def _compute_weighted_stats(
 
                         dist = geod_dist_km(glat, glon, plat, plon)
                         weight = calculate_spherical_weight(
-                            dist, radius_km, weight_type, kappa
+                            dist, radius_km, weight_type
                         )
 
                         if weight > 0:
@@ -312,7 +309,7 @@ def _compute_weighted_stats(
                         glon = grid_lon[j]
                         dist = geod_dist_km(glat, glon, plat, plon)
                         weight = calculate_spherical_weight(
-                            dist, radius_km, weight_type, kappa
+                            dist, radius_km, weight_type
                         )
 
                         if weight > 0:
@@ -356,7 +353,7 @@ def _compute_weighted_stats(
 
                         dist = geod_dist_km(glat, glon, plat, plon)
                         weight = calculate_spherical_weight(
-                            dist, radius_km, weight_type, kappa
+                            dist, radius_km, weight_type
                         )
 
                         if weight > 0:
@@ -370,7 +367,7 @@ def _compute_weighted_stats(
                         glon = grid_lon[j]
                         dist = geod_dist_km(glat, glon, plat, plon)
                         weight = calculate_spherical_weight(
-                            dist, radius_km, weight_type, kappa
+                            dist, radius_km, weight_type
                         )
 
                         if weight > 0:
@@ -399,7 +396,6 @@ def compute_track_metrics(
     grid_lon: NDArray[np.float64],
     radius_km: float = 500.0,
     kernel: Kernel = "constant",
-    kappa: float = 20.0,
     variable_name: str | None = None,
     is_min: bool = False,
     monthly: bool = True,
@@ -431,11 +427,11 @@ def compute_track_metrics(
     :class:`scipy.interpolate.PchipInterpolator`, for amplitude only.  PCHIP
     is not part of the Yau and Chang (2020) definition.
 
-    The weighting choices are layered separately: the 500-km constant-radius
-    rule corresponds directly to the Yau and Chang accumulation window;
-    Fisher/von Mises--Fisher-style and Cressman weights have their own
-    numerical/statistical lineages, while linear and quadratic compact kernels
-    are PyStormTracker generalizations.
+    The weighting choices are layered separately.  The 500-km
+    constant-radius rule corresponds directly to the Yau and Chang
+    accumulation window.  Cressman weighting follows its own published
+    objective-analysis lineage, while linear and quadratic compact kernels are
+    PyStormTracker generalizations.
 
     The five returned metrics are:
     - cyclone_amplitude
@@ -450,8 +446,8 @@ def compute_track_metrics(
         grid_lon: 1D array of longitude coordinates.
         radius_km: Radius of influence in km. The 500-km default corresponds
             to the accumulation window used by Yau and Chang (2020).
-        kernel: Kernel type: 'constant', 'fisher', 'cressman', 'linear', 'quadratic'.
-        kappa: Smoothing parameter for Fisher kernel (default 20.0).
+        kernel: Kernel type: ``"constant"``, ``"cressman"``, ``"linear"``,
+            or ``"quadratic"``.
         variable_name: Variable in tracks.variables to use as amplitude.
         is_min: If True, tracks are defined by minima (e.g., SLP).
         monthly: If True (default), metrics are aggregated into monthly values.
@@ -463,7 +459,6 @@ def compute_track_metrics(
     """
     kernel_map = {
         "constant": _WeightType.CONSTANT,
-        "fisher": _WeightType.FISHER,
         "cressman": _WeightType.CRESSMAN,
         "linear": _WeightType.LINEAR,
         "quadratic": _WeightType.QUADRATIC,
@@ -529,7 +524,6 @@ def compute_track_metrics(
                 tracks.variables[variable_name],
                 float(radius_km),
                 int(wtype),
-                float(kappa),
                 bool(is_min),
                 mask,
                 ata_offsets,
@@ -573,7 +567,6 @@ def compute_track_metrics(
             tracks.variables[variable_name],
             float(radius_km),
             int(wtype),
-            float(kappa),
             bool(is_min),
             np.ones(len(tracks.times), dtype=np.bool_),
             ata_offsets,
@@ -605,7 +598,5 @@ def compute_track_metrics(
             "amplitude_variable": variable_name,
         }
     )
-    if kernel == "fisher":
-        ds.attrs["kappa"] = kappa
 
     return ds

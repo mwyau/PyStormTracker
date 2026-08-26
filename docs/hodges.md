@@ -8,11 +8,9 @@ implementation details reconciled against
 
 The papers are the scientific authority for the method. TRACK 1.5.4 is the
 implementation reference for source-specific behavior that is not fully
-specified in the papers. This page is also the canonical function-level TRACK
-source reference for the supported workflow: source-dependent statements link
+specified in the papers. This page provides function-level TRACK source
+references for the supported workflow: source-dependent statements link
 directly to the tagged TRACK 1.5.4 implementation and relevant line ranges.
-Detailed source-stage reproduction, build instructions, probes, and validation
-outputs belong in `PyStormTracker-Validation`.
 
 ## Scientific and implementation boundary
 
@@ -217,7 +215,7 @@ For three consecutive real feature points, Hodges (1999, Eq. 6) combines
 changes in tangent direction and displacement magnitude. In PyStormTracker's
 notation,
 
-```math
+```{math}
 \psi =
 0.5 w_1 \left(1 - \hat{\mathbf T}_1 \cdot \hat{\mathbf T}_2\right)
 + w_2 \left(1 - \frac{2\sqrt{d_1 d_2}}{d_1 + d_2}\right).
@@ -499,10 +497,6 @@ assignment identifies 1,468 common storms among approximately 1,470 tracks,
 with F1 0.9983. `topology_identical` means only that a matched pair has exactly
 the same complete timestamp sequence; it does not require identical center
 coordinates or intensities.
-
-Detailed source-stage reproduction, discrepancy investigations, alternative
-refinement experiments, polar workflows, and generated validation artifacts
-belong in `PyStormTracker-Validation` rather than this method document.
 
 ## PyStormTracker extensions and known differences
 

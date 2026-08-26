@@ -15,17 +15,15 @@ The test categories have distinct scientific meanings:
   a bounded package numerical component compared with static NCL/Spherepack
   output; it must not be confused with trajectory parity or source-stage
   replay.
-- **VALIDATION REPOSITORY** (`../PyStormTracker-Validation/`): Source-stage
-  reproduction, TRACK internals, NCL/Spherepack reference-generation
-  methodology, reconciliation experiments, and scientific-validation
-  evidence.
 
 The main checkout has one historical v0.0.2 trajectory-parity test, one bundled
 2.5-degree T5-42 NCL spectral numerical-parity case, and broader external-data
-comparisons. No TRACK end-to-end parity test exists until an independently
-generated final TRACK trajectory for the committed December input is available.
-TRACK source-stage probes, MGE replay, manifests, and source-stage outputs are
-Validation-only.
+comparisons. The completed 2024 TRACK 1.5.4 comparison covers F320 → T42 and
+F320 → F320 full-year 2024 ERA5 MSLP, runtime measurements, raw trajectories,
+and RSPLICE-filtered trajectories. The full-year filtered one-to-one F1 is
+0.997 in both cases. It is not a package parity test; TRACK source-stage
+probes, MGE replay, manifests, and source-stage outputs are not part of the
+package test suite.
 
 The orthogonal markers are `integration`, `parity`, `data`, and `slow`.
 `data` means that scientific or reference data are required but not bundled
@@ -60,11 +58,12 @@ reference contracts owned by the sibling `PyStormTracker-Data` repository.
 Run those tests explicitly when the pinned Data tag and its exact release
 assets are available.
 
-Validation is separate from package parity. It owns source-stage reproduction,
-TRACK internals, NCL/Spherepack reference-generation methodology, reconciliation
-experiments, and the scientific-validation evidence. The main package tests
-consume only the one compact static NCL/Spherepack output committed under
-`tests/data/ncl/`; broader reference data are owned by `PyStormTracker-Data`.
+Scientific validation is separate from package parity. Source-stage
+reproduction, TRACK internals, NCL/Spherepack reference-generation methodology,
+reconciliation experiments, and scientific-validation evidence are outside the
+package test suite. The main package tests consume only the one compact static
+NCL/Spherepack output committed under `tests/data/ncl/`; broader reference data
+are owned by `PyStormTracker-Data`.
 
 Use `--durations=30 --durations-min=0.5` when auditing runtime concentration.
 Routine Dask backend-equivalence tests use four workers. Worker-count scaling

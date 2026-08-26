@@ -21,6 +21,7 @@
 ### Comparison and analysis
 
 - Expanded trajectory comparison, matching and assignment, Lagrangian metrics, hourly linear and PCHIP ATA interpolation, weighting kernels, and CCA/CORMAX corrections.
+- Removed the pre-release Fisher spatial weighting option before the v0.7 public API was finalized.
 
 ### Testing and data
 
@@ -98,7 +99,7 @@
 ### Metrics and analysis
 
 - Added gridded cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA).
-- Added constant, Fisher, Cressman, linear, and quadratic spherical distance weights.
+- Added constant, Cressman, linear, and quadratic spherical distance weights.
 - Added 24-hour difference variance, Eddy Kinetic Energy, and high-wind percentile metrics.
 - Added CORMAX, CCA/PCA truncation cross-validation, anomaly correlation coefficient, and fraction-of-variance-explained calculations through the `metrics` optional dependency.
 - Added spatiotemporal track matching and external-variable sampling.

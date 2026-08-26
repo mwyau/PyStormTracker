@@ -112,18 +112,17 @@ def test_weighted_metrics_consistency(equator_crossing_track: Tracks) -> None:
     assert np.allclose(amp, aca / cf)
 
 
-def test_fisher_kernel_weighting(equator_crossing_track: Tracks) -> None:
+def test_unknown_kernel_is_rejected(equator_crossing_track: Tracks) -> None:
     grid_lat = np.array([0.0])
     grid_lon = np.array([0.0])
 
-    ds = compute_track_metrics(
-        equator_crossing_track, grid_lat, grid_lon, kernel="fisher", kappa=50.0
-    )
-
-    # At about 157 km, theta = 157 / 6371 = 0.025 rad, so
-    # exp(50 * (cos(theta) - 1)) is close to 1.
-    assert ds.track_frequency.values[0, 0, 0] > 0.5
-    assert ds.aca.values[0, 0, 0] > 100.0
+    with pytest.raises(ValueError, match="Unknown kernel"):
+        compute_track_metrics(
+            equator_crossing_track,
+            grid_lat,
+            grid_lon,
+            kernel="unsupported",  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        )
 
 
 def test_linear_kernel_weighting(equator_crossing_track: Tracks) -> None:

@@ -49,12 +49,19 @@ measurements, and criteria that account for timing variability.
 
 ### 2.2 External reference-data comparisons
 
+The completed 2024 TRACK 1.5.4 comparison covers F320 → T42 and F320 → F320
+using full-year 2024 ERA5 MSLP. It includes runtime measurements, raw trajectory
+comparison, and RSPLICE-filtered trajectory comparison. The full-year filtered
+one-to-one F1 is 0.997 for both cases.
+
 Broader NCL/Spherepack field comparisons and trajectory comparisons require the
 exact versioned inputs and outputs owned by `PyStormTracker-Data`; they remain
-external-data cases until the pinned Data tag and assets are available. The main checkout does retain four
-small, one-frame NCL spectral outputs for the committed December MSL frame.
-Those bounded numerical-parity cases do not substitute December data for an
-external trajectory contract.
+external-data cases until the pinned Data tag and assets are available. The
+main checkout retains one small, one-frame NCL spectral output for the
+committed December MSL frame:
+`tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc`.
+This bounded numerical-parity case does not replace an external trajectory
+comparison.
 
 ### 2.3 Dependency audit
 
@@ -93,7 +100,11 @@ The `stormtracker` command has `track`, `sample`, `compare`, and `convert` subco
 
 ### 4.1 Modular dependencies — ✅ Implemented
 
-Optional extras cover MPI, GRIB, NetCDF4, Zarr, metrics, documentation, and visualization. The Hodges and HEALPix implementations and `ducc0` are core package components.
+Package extras cover EOF/CCA (`eof`), GRIB (`grib`), MPI (`mpi`), NetCDF4
+(`netcdf4`), and Zarr (`zarr`); the `all` extra combines these groups.
+Documentation, test, and visualization dependencies are development groups,
+not package extras. The Hodges and HEALPix implementations and `ducc0` are core
+package components.
 
 ### 4.2 Conda-forge distribution — ✅ Implemented
 
@@ -159,7 +170,7 @@ external input contract; neither is a field-level spectral-filter comparison.
 
 **Relevant papers:** **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1), for ATA and the evaluation framework; Guo, Shinoda, Lin, and Chang (2017), “Variations of Northern Hemisphere Storm Track and Extratropical Cyclone Activity Associated with the Madden--Julian Oscillation,” *Journal of Climate*, 30(13), 4799--4818, https://doi.org/10.1175/JCLI-D-16-0513.1, for the ACA lineage.
 
-**Progress:** `metrics.lagrangian.compute_track_metrics` supports monthly or aggregate output, constant, Fisher, Cressman, linear, and quadratic spatial weighting, and the two ATA interpolation modes `linear` and `linear_pchip`. The published paper specifies linear temporal interpolation of track positions but does not specify its coordinate geometry; the default is documented as the closest literal/simple implementation rather than as the uniquely implied geometry. PCHIP uses SciPy's `PchipInterpolator` implementation and is not attributed to Yau and Chang.
+**Progress:** `metrics.lagrangian.compute_track_metrics` supports monthly or aggregate output, constant-radius, Cressman, linear, and quadratic spatial weighting, and the two ATA interpolation modes `linear` and `linear_pchip`. The published paper specifies linear temporal interpolation of track positions but does not specify its coordinate geometry; the default is documented as the closest literal/simple implementation rather than as the uniquely implied geometry. PCHIP uses SciPy's `PchipInterpolator` implementation and is not attributed to Yau and Chang.
 
 **Verification:** Lagrangian metric and weighting unit tests cover the implemented estimators and ATA interpolation cadence, knot preservation, fast-track encounter regression, antimeridian invariance, identical position interpolation between modes, and PCHIP shape preservation. A continuous cap/segment ATA formulation remains separate future work and is not part of the current implementation.
 
@@ -175,21 +186,21 @@ external input contract; neither is a field-level spectral-filter comparison.
 
 ### 5.6 CORMAX and CCA/PCA evaluation — ✅ Implemented
 
-**Description:** CORMAX is the maximum one-point correlation between a weather-impact field and a storm-track metric within a local search region, such as a $60^\\circ\\times20^\\circ$ box. Canonical correlation analysis (CCA), optionally preceded by principal component analysis (PCA), is used to evaluate field relationships and truncation sensitivity.
+**Description:** CORMAX is the maximum positive one-point correlation between a weather-impact field and a storm-track metric within a local search region, such as a $60^\\circ\\times20^\\circ$ box. PyStormTracker currently requires the two fields to use the same grid and time coordinates. Canonical correlation analysis (CCA), optionally preceded by principal component analysis (PCA), is used to evaluate field relationships and truncation sensitivity.
 
 **Relevant paper:** [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1), cited in Section 5.4.
 
-**Progress:** `metrics.cross_validation` implements CORMAX, leave-$n$-out CCA truncation testing, anomaly correlation coefficient (ACC), fraction of variance explained (FVE), and full-data CCA model training through the optional `xeofs` dependency.
+**Progress:** `metrics.cross_validation` implements positive-only CORMAX with periodic longitude search and nonperiodic latitude shifts, leave-$n$-out CCA truncation testing, anomaly correlation coefficient (ACC), domain FVE as $1-\\operatorname{mean}(\\mathrm{MSE})/\\operatorname{mean}(\\mathrm{VAR})$, and full-data CCA model training through the optional `xeofs` dependency. Dimension order is normalized, exact coordinate matches are required, and fields on different grids are rejected.
 
-**Verification:** Cross-validation and missing-data tests cover the implemented scope.
+**Verification:** Cross-validation tests cover the domain-FVE aggregation, strict time/grid validation, dimension-order normalization, positive-only CORMAX, longitude wrapping, missing correlations, and all-negative search windows.
 
 ### 5.7 Spherical kernel gridding — ✅ Implemented
 
 **Description:** Apply spherical weighting functions to gridded cyclone and track statistics.
 
-**Relevant papers:** Hodges (1996), “Spherical Nonparametric Estimators Applied to the UGAMP Model Integration for AMIP,” *Monthly Weather Review*, 124(12), 2914--2932, https://doi.org/10.1175/1520-0493(1996)124\<2914:SNEATT>2.0.CO;2, provides relevant meteorological spherical nonparametric-estimation lineage. The Fisher choice is Fisher/von Mises--Fisher-style weighting, not a Hodges invention; Cressman weighting follows Cressman (1959), “An Operational Objective Analysis System,” *Monthly Weather Review*, 87(10), 367--374, https://doi.org/10.1175/1520-0493(1959)087\<0367:AOOAS>2.0.CO;2. Linear and quadratic compact kernels are PyStormTracker generalizations.
+**Relevant papers:** Hodges (1996), “Spherical Nonparametric Estimators Applied to the UGAMP Model Integration for AMIP,” *Monthly Weather Review*, 124(12), 2914--2932, https://doi.org/10.1175/1520-0493(1996)124\<2914:SNEATT>2.0.CO;2, provides relevant meteorological spherical nonparametric-estimation lineage. Cressman weighting follows Cressman (1959), “An Operational Objective Analysis System,” *Monthly Weather Review*, 87(10), 367--374, https://doi.org/10.1175/1520-0493(1959)087\<0367:AOOAS>2.0.CO;2. Linear and quadratic compact kernels are PyStormTracker generalizations.
 
-**Progress:** Numba kernels support constant-radius, Fisher exponential, Cressman rational, linear, and quadratic weights. The current implementation uses isotropic distance-based kernels.
+**Progress:** Numba kernels support constant-radius, Cressman rational, linear, and quadratic weights. The current implementation uses isotropic distance-based kernels.
 
 **Verification:** Weighting and gridded Lagrangian metric unit tests cover the implemented functions. Nonisotropic kernel estimation is not currently implemented.
 
