@@ -117,22 +117,22 @@ Use `stormtracker <command> --help` for the full argument reference. `-v` and `-
 
 Important `track` options include:
 
-| Argument | Short | Description |
-| --- | --- | --- |
-| `--input` | `-i` | Input NetCDF/GRIB file. |
-| `--variable` | | Variable name such as `msl` or `vo`. |
-| `--output` | `-o` | Output trajectory file. |
-| `--algorithm` | `-a` | `simple`, `hodges`, or `healpix`. |
-| `--format` | `-f` | `auto`, `json`, `track`, or `imilast`; recognized extensions are inferred automatically. |
-| `--detection-mode` | `-m` | `auto`, `min`, or `max`. |
-| `--backend` | `-b` | `serial`, `dask`, or `mpi`. |
-| `--workers` | `-w` | Number of parallel workers where applicable. |
-| `--lmin`, `--lmax` | | Optional spectral-filter bounds; supply both to filter. |
-| `--taper-points` | | Independent spatial taper width; zero disables tapering. |
-| `--spectral-taper` | | Hodges/HEALPix high-wavenumber coefficient taper. |
-| `--nside` | | Target HEALPix resolution; omitted values are derived from the source grid. |
-| `--feature-refinement` | | Tracker-dependent feature-point location method. |
-| `--no-progress` | | Disable the interactive Hodges Dask progress display. |
+| Argument               | Short | Description                                                                              |
+| ---------------------- | ----- | ---------------------------------------------------------------------------------------- |
+| `--input`              | `-i`  | Input NetCDF/GRIB file.                                                                  |
+| `--variable`           |       | Variable name such as `msl` or `vo`.                                                     |
+| `--output`             | `-o`  | Output trajectory file.                                                                  |
+| `--algorithm`          | `-a`  | `simple`, `hodges`, or `healpix`.                                                        |
+| `--format`             | `-f`  | `auto`, `json`, `track`, or `imilast`; recognized extensions are inferred automatically. |
+| `--detection-mode`     | `-m`  | `auto`, `min`, or `max`.                                                                 |
+| `--backend`            | `-b`  | `serial`, `dask`, or `mpi`.                                                              |
+| `--workers`            | `-w`  | Number of parallel workers where applicable.                                             |
+| `--lmin`, `--lmax`     |       | Optional spectral-filter bounds; supply both to filter.                                  |
+| `--taper-points`       |       | Independent spatial taper width; zero disables tapering.                                 |
+| `--spectral-taper`     |       | Hodges/HEALPix high-wavenumber coefficient taper.                                        |
+| `--nside`              |       | Target HEALPix resolution; omitted values are derived from the source grid.              |
+| `--feature-refinement` |       | Tracker-dependent feature-point location method.                                         |
+| `--no-progress`        |       | Disable the interactive Hodges Dask progress display.                                    |
 
 See the [CLI reference](cli.md) for all commands and options.
 
@@ -200,8 +200,6 @@ The bundled NCL/Spherepack numerical-parity reference is:
 tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc
 ```
 
-Its generation methodology is maintained in `PyStormTracker-Validation`.
-
 ## Development
 
 Set up the complete development environment with:
@@ -229,7 +227,8 @@ Testing is tiered:
 - **Unit** tests are the default fast offline suite.
 - **Integration** tests exercise current PyStormTracker components together on real data.
 - **Parity** tests compare current package behavior with static external or historical results, including the bundled NCL/Spherepack numerical-parity case.
-- **Scientific validation** and TRACK source-stage reconciliation live in `PyStormTracker-Validation`.
+- **Scientific validation** and TRACK source-stage reconciliation are outside
+  the package test suite.
 
 Examples:
 
@@ -244,4 +243,6 @@ uv run pytest tests/integration -m "not slow and not data"
 uv run pytest tests/unit tests/integration tests/parity
 ```
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) and the [testing guide](development/testing.md) for contributor workflows and test taxonomy.
+See [CONTRIBUTING.md](https://github.com/mwyau/PyStormTracker/blob/main/CONTRIBUTING.md)
+and the [testing guide](development/testing.md) for contributor workflows and
+test taxonomy.

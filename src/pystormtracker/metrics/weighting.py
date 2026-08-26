@@ -3,19 +3,13 @@ from __future__ import annotations
 from enum import IntEnum
 
 import numba as nb
-import numpy as np
-
-from ..models.geo import R_EARTH_KM
 
 
 class _WeightType(IntEnum):
     """Supported weight types for spherical kernel estimation.
 
     The constant kernel represents the hard accumulation radius used by Yau
-    and Chang (2020).  ``FISHER`` is Fisher/von Mises--Fisher-style directional
-    weighting; Hodges (1996) is relevant meteorological spherical
-    nonparametric-estimation lineage, but did not invent the Fisher
-    distribution.  ``CRESSMAN`` follows Cressman (1959).  The linear and
+    and Chang (2020).  ``CRESSMAN`` follows Cressman (1959).  The linear and
     quadratic compact kernels are PyStormTracker generalizations.
 
     References:
@@ -33,10 +27,9 @@ class _WeightType(IntEnum):
     """
 
     CONSTANT = 0  # Hard radius corresponding to the Yau--Chang rule.
-    FISHER = 1  # Fisher/von Mises--Fisher-style directional weighting.
-    CRESSMAN = 2  # Cressman (1959) compact rational weighting.
-    LINEAR = 3  # PyStormTracker compact linear generalization.
-    QUADRATIC = 4  # PyStormTracker compact quadratic generalization.
+    CRESSMAN = 1  # Cressman (1959) compact rational weighting.
+    LINEAR = 2  # PyStormTracker compact linear generalization.
+    QUADRATIC = 3  # PyStormTracker compact quadratic generalization.
 
 
 @nb.njit(cache=True, nogil=True)
@@ -44,7 +37,6 @@ def calculate_spherical_weight(
     dist_km: float,
     radius_km: float,
     weight_type: int,
-    kappa: float,
 ) -> float:
     """
     Compute a spherical distance weight using the selected kernel.
@@ -56,33 +48,26 @@ def calculate_spherical_weight(
         dist_km: Geodesic distance in kilometers.
         radius_km: Radius of influence in kilometers.
         weight_type: Integer ID from _WeightType enum.
-        kappa: Smoothing parameter for Fisher kernel.
 
     Returns:
         float: Computed weight.
     """
-    if weight_type == 0:  # CONSTANT
+    if weight_type == _WeightType.CONSTANT:
         return 1.0 if dist_km <= radius_km else 0.0
 
-    if weight_type == 1:  # FISHER
-        # weight = exp(kappa * (cos(theta) - 1))
-        # theta = dist / R_earth (6371.22 km)
-        theta = dist_km / R_EARTH_KM
-        return float(np.exp(kappa * (np.cos(theta) - 1.0)))
-
-    if weight_type == 2:  # CRESSMAN
+    if weight_type == _WeightType.CRESSMAN:
         if dist_km > radius_km:
             return 0.0
         r2 = radius_km**2
         d2 = dist_km**2
         return (r2 - d2) / (r2 + d2)
 
-    if weight_type == 3:  # LINEAR
+    if weight_type == _WeightType.LINEAR:
         if dist_km > radius_km:
             return 0.0
         return 1.0 - (dist_km / radius_km)
 
-    if weight_type == 4:  # QUADRATIC
+    if weight_type == _WeightType.QUADRATIC:
         if dist_km > radius_km:
             return 0.0
         return 1.0 - (dist_km / radius_km) ** 2

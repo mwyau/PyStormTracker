@@ -1,8 +1,7 @@
 """Run one explicit, reproducible PyStormTracker Hodges benchmark.
 
-The runner accepts a user-supplied input and configuration. It is deliberately
-independent of the Validation repository: campaign-specific case names,
-reference products, and comparison logic belong there.
+The runner accepts a user-supplied input and configuration and writes the
+benchmark output and metadata.
 """
 
 from __future__ import annotations
