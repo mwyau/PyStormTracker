@@ -38,6 +38,7 @@ repos:
     additional_dependencies:
     - mdformat-beautysh
     - mdformat-config
+    - mdformat-frontmatter
     - mdformat-gfm
     - mdformat-gfm-alerts
     - mdformat-simple-breaks
