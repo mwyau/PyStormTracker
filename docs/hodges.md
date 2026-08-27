@@ -165,10 +165,11 @@ coefficients and performs repeated evaluation and optimization in NumPy/Numba.
 The mathematical spline lineage is Dierckx/FITPACK; the numerical interface is
 provided by SciPy.
 
-`track_smoopy_optimization_scale` is a public numerical optimizer parameter. Its
-normal default is `1.0`; the historical TRACK-compatible validation setting is
-`0.01`. It does not rescale stored fields or detection thresholds. TRACK's line
-search is not invariant to this numerical scaling.
+`HodgesTracker(track_smoopy_optimization_scale=...)` controls numerical scaling
+in the rectangular GDFP optimizer. Its normal default is `1.0`; the historical
+TRACK-compatible validation setting is `0.01`. It does not rescale stored fields
+or detection thresholds. TRACK's line search is not invariant to this numerical
+scaling.
 
 The rectangular source-compatible path also preserves several non-obvious
 `non_lin_opt()` semantics: a failed optimization retains the original grid
@@ -310,8 +311,9 @@ The resolution helpers in `pystormtracker.backends` own these defaults.
 Serial and MPI execution do not use Dask frame or MGE worker pools, so explicit
 `frame_workers` and `mge_workers` values are rejected there. Explicit
 `sht_threads` remains meaningful for serial SHT and for rank-local MPI SHT.
-The former Hodges `workers` parameter was removed in this development API;
-SimpleTracker and HealpixTracker retain their generic `workers` controls.
+`HodgesTracker` no longer accepts `workers`; use `frame_workers`, `sht_threads`,
+and `mge_workers`. `SimpleTracker` and `HealpixTracker` continue to accept
+`workers`.
 
 The current SHT implementation uses DUCC0. PyStormTracker passes the resolved
 `sht_threads` as DUCC0's `nthreads` argument to regular, reduced-grid, and
