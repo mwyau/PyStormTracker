@@ -87,7 +87,7 @@ dev = [
     "mypy>=2.3.0",
     "prek>=0.4.12",
     "ruff>=0.16.1",
-    "ty==0.0.73",
+    "ty==0.0.74",
 ]
 docs = [
     "myst-parser>=5.1.0",
@@ -128,7 +128,12 @@ include = ["src", "tests"]
 [tool.ty.analysis]
 allowed-unresolved-imports = [
     "ducc0",
-    ]
+]
+# Numba's JIT Dispatcher ParamSpec currently triggers false-positive call errors in ty.
+replace-imports-with-any = [
+    "numba",
+    "numba.**",
+]
 
 [tool.mypy]
 python_version = "3.12"
