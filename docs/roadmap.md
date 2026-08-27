@@ -11,7 +11,9 @@ Status terms are used as follows:
 
 ### 1.1 Prevent CPU oversubscription
 
-**Current state:** Simple Dask uses threads and Simple MPI uses processes. Distributed preprocessing paths limit some `ducc0` thread counts, but the policy for `ducc0`, Numba, Dask, and MPI is not centralized.
+**Current state:** Simple Dask uses threads and Simple MPI uses processes.
+Distributed preprocessing paths limit some `ducc0` thread counts, but thread
+configuration for `ducc0`, Numba, Dask, and MPI is not centralized.
 
 **Planned work:** Define thread limits for each backend and add tests or benchmarks that record the effective thread configuration.
 
@@ -230,8 +232,8 @@ neither is a field-level spectral-filter comparison.
 
 **Progress:** The Hodges detector accumulates grid-cell area over each CCL-labeled object and computes intensity-weighted second-moment fitted area, major axis, minor axis, and orientation. Longitude is unwrapped within global objects; projected grids use planar kilometre coordinates. The linker propagates these aligned diagnostics to final `Tracks` as `object_gridcell_area_km2` and `object_moment_*` variables.
 
-**Remaining work and verification:** The moment-based values are intentional
-PyStormTracker extensions, not TRACK's optional feature-centred anisotropy and
+**Remaining work and verification:** The moment-based values are PyStormTracker
+extensions, not TRACK's optional feature-centred anisotropy and
 area workflow. Compare object masks and properties directly with a configured
 TRACK anisotropy/area case before making any TRACK-equivalence claim. Existing
 tests cover propagation plus spherical, projected, boundary, and

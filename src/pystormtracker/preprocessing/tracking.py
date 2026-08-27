@@ -216,7 +216,7 @@ def preprocess_tracking_data(
     backend: Backend = "serial",
     sht_threads: int | None = None,
 ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
-    """Apply one consistent preprocessing policy for all trackers."""
+    """Apply one preprocessing configuration to all trackers."""
     filter_bounds = resolve_filter_bounds(lmin, lmax)
     _validate_taper_points(taper_points)
     if not 0.0 < spectral_taper <= 1.0:

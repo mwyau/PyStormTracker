@@ -243,7 +243,7 @@ The writer constructs typed wire objects directly and uses
 ## Integration test data
 
 Integration data are maintained separately from the software checkout. The
-current checkout intentionally retains one December 2025, 2.5-degree ERA5 MSL
+current checkout retains one December 2025, 2.5-degree ERA5 MSL
 input at `tests/data/era5/era5_msl_2025-12_2.5x2.5.nc`; it does not retain a
 trajectory sample. TrackJSON unit tests construct small synthetic `Tracks`
 values and exercise the wire contract without external data.

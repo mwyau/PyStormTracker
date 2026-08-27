@@ -3,16 +3,6 @@ from __future__ import annotations
 import numpy as np
 
 import pystormtracker as pst
-from pystormtracker import (
-    healpix,
-    hodges,
-    io,
-    metrics,
-    models,
-    preprocessing,
-    refinement,
-    simple,
-)
 from pystormtracker.models.time import TimePoint
 from pystormtracker.models.tracker import CenterFrame
 
@@ -44,50 +34,52 @@ def test_public_api_exports() -> None:
     assert pst.save_tracks is not None
 
 
-def test_supported_package_namespaces_are_curated() -> None:
-    assert simple.__all__ == ["SimpleTracker"]
-    assert hodges.__all__ == ["HodgesTracker"]
-    assert healpix.__all__ == ["HealpixTracker"]
+def test_supported_subpackage_entry_points() -> None:
+    from pystormtracker.healpix import HealpixDetector, HealpixTracker
+    from pystormtracker.hodges import HodgesTracker
+    from pystormtracker.io import DataLoader, infer_format
+    from pystormtracker.metrics import compute_track_metrics
+    from pystormtracker.models import Center, Tracks
+    from pystormtracker.preprocessing import SHTFilter
+    from pystormtracker.refinement import (
+        build_bspline_surface,
+        build_spherical_bspline_surface,
+        refine_bspline_feature_point,
+        refine_quadratic_feature_point,
+        refine_quadratic_feature_points,
+        refine_spherical_bspline_feature_point,
+        refine_spherical_quadratic_feature_points,
+    )
+    from pystormtracker.simple import SimpleDetector, SimpleLinker, SimpleTracker
 
-    assert models.__all__ == [
-        "Center",
-        "DetectionMode",
-        "ProcessingStep",
-        "Projection",
-        "ResolvedDetectionMode",
-        "SpatialBounds",
-        "Track",
-        "Tracker",
-        "Tracks",
-        "TracksMetadata",
-    ]
+    assert SimpleTracker is pst.SimpleTracker
+    assert HodgesTracker is pst.HodgesTracker
+    assert HealpixTracker is pst.HealpixTracker
+    assert all(
+        callable(entry_point)
+        for entry_point in (
+            SimpleDetector,
+            SimpleLinker,
+            HealpixDetector,
+            DataLoader,
+            infer_format,
+            compute_track_metrics,
+            SHTFilter,
+            build_bspline_surface,
+            build_spherical_bspline_surface,
+            refine_bspline_feature_point,
+            refine_quadratic_feature_point,
+            refine_quadratic_feature_points,
+            refine_spherical_bspline_feature_point,
+            refine_spherical_quadratic_feature_points,
+        )
+    )
+    assert Center is pst.Center
+    assert Tracks is pst.Tracks
 
-    assert io.__all__ == [
-        "SUPPORTED_FORMATS",
-        "DataLoader",
-        "SupportedFormat",
-        "infer_format",
-        "load_tracks",
-        "save_tracks",
-    ]
-    assert preprocessing.__all__ == [
-        "BoundaryTaper",
-        "DCTFilter",
-        "SHTFilter",
-        "SpectralRegridder",
-        "compute_vorticity_divergence",
-    ]
-    assert refinement.__all__ == []
+    import pystormtracker.models as model_namespace
 
-    assert metrics.__all__ == [
-        "compute_cormax",
-        "compute_eke",
-        "compute_high_wind_index",
-        "compute_track_metrics",
-        "compute_variance_metric",
-        "find_best_cca_truncation",
-        "train_cca_model",
-    ]
+    assert not hasattr(model_namespace, "CenterFrame")
 
 
 def test_protocol_conformance() -> None:

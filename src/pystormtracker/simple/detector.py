@@ -253,7 +253,7 @@ def detect_simple_frame(
 class SimpleDetector:
     """A meteorological feature detector that treats fields as 2D images.
 
-    Uses xarray for robust coordinate handling and lazy-loading.
+    Uses xarray for coordinate handling and lazy-loading.
 
     Yau and Chang (2020) support the Simple Tracker concept at the level of
     linking the closest features within 500 km over consecutive 6-hourly

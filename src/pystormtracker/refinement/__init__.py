@@ -1,8 +1,39 @@
-"""Internal feature-point refinement implementations.
+"""Feature-point refinement operations for regular and spherical grids."""
 
-Select feature-point refinement through a tracker configuration such as
-``feature_refinement="quadratic"`` or ``feature_refinement="bspline"``.
-The implementation modules are intentionally not re-exported here.
-"""
+from __future__ import annotations
 
-__all__: list[str] = []
+from .bspline import (
+    BsplineRefinementResult,
+    BsplineSurface,
+    BsplineSurfaceResult,
+    SphericalBsplineSurface,
+    SphericalBsplineSurfaceResult,
+    build_bspline_surface,
+    build_spherical_bspline_surface,
+    refine_bspline_feature_point,
+    refine_spherical_bspline_feature_point,
+)
+from .quadratic import (
+    SphericalQuadraticRefinementBatch,
+    refine_quadratic_feature_point,
+    refine_quadratic_feature_points,
+    refine_spherical_quadratic_feature_points,
+    spherical_quadratic_status_name,
+)
+
+__all__ = [
+    "BsplineRefinementResult",
+    "BsplineSurface",
+    "BsplineSurfaceResult",
+    "SphericalBsplineSurface",
+    "SphericalBsplineSurfaceResult",
+    "SphericalQuadraticRefinementBatch",
+    "build_bspline_surface",
+    "build_spherical_bspline_surface",
+    "refine_bspline_feature_point",
+    "refine_quadratic_feature_point",
+    "refine_quadratic_feature_points",
+    "refine_spherical_bspline_feature_point",
+    "refine_spherical_quadratic_feature_points",
+    "spherical_quadratic_status_name",
+]

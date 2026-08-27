@@ -77,7 +77,7 @@ def drain_pending_dask_executors() -> None:
 def defer_dask_interrupt_cleanup() -> Iterator[None]:
     """Defer first-Ctrl-C Dask draining to the CLI interruption handler.
 
-    This context is intentionally opt-in. Python-library callers get complete
+    This context is opt-in. Python-library callers get complete
     executor cleanup from :func:`local_dask_executor` for every exception.
     """
     token = _DEFER_DASK_INTERRUPT_CLEANUP.set(True)
