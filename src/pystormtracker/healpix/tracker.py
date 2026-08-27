@@ -188,14 +188,7 @@ class HealpixTracker(Tracker):
         segment_frames: int | None = DEFAULT_SEGMENT_FRAMES,
         backend: Backend = "dask",
         workers: int | None = None,
-        **kwargs: object,
     ) -> None:
-        if kwargs:
-            unexpected = ", ".join(repr(k) for k in kwargs)
-            raise TypeError(
-                f"HealpixTracker() got unexpected keyword argument(s): {unexpected}"
-            )
-
         validate_execution_parameters(backend, workers, segment_frames=segment_frames)
 
         if w1 < 0.0 or w2 < 0.0:

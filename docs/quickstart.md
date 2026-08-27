@@ -221,9 +221,9 @@ uv run pytest
 Run code-quality checks with:
 
 ```bash
-uv run ruff check . --fix
-uv run ruff format .
+uv run prek run --all-files
 uv run mypy
+uv run python scripts/generate_trackjson_schema.py --check
 ```
 
 Testing is tiered:
@@ -243,8 +243,8 @@ uv run pytest
 # Non-slow, bundled integration tests
 uv run pytest tests/integration -m "not slow and not data"
 
-# Explicit package suites
-uv run pytest tests/unit tests/integration tests/parity
+# Non-slow, bundled parity tests
+uv run pytest tests/parity -m "not slow and not data"
 ```
 
 See [CONTRIBUTING.md](https://github.com/mwyau/PyStormTracker/blob/main/CONTRIBUTING.md)

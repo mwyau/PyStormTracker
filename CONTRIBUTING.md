@@ -20,22 +20,36 @@ We welcome ideas for new features or improvements. Please [open an issue](https:
 ### Submitting Pull Requests
 
 1. **Fork the repository** and create your branch from `main`.
+
 1. **Install development dependencies**:
+
    ```bash
    uv sync
    ```
+
 1. **Make your changes**:
+
    - Ensure your code follows the project's style (use `ruff` for formatting and linting).
    - Add or update tests for your changes.
    - Ensure all tests pass.
-1. **Run Quality Control Checks**:
+
+1. **Run the local quality checks**:
+
    ```bash
-   uv run ruff check . --fix
-   uv run ruff format .
+   uv run prek run --all-files
    uv run mypy
-   uv run pytest tests/unit tests/integration tests/parity
+   uv run pytest
+   uv run pytest tests/integration -m "not slow and not data"
+   uv run pytest tests/parity -m "not slow and not data"
+   uv run python scripts/generate_trackjson_schema.py --check
    ```
+
+   `uv run pytest` is the fast unit suite because the default test paths are
+   `tests/unit`. See [the testing guide](docs/development/testing.md) for
+   external-data and expensive validation.
+
 1. **Submit the Pull Request**:
+
    - Provide a clear description of the changes.
    - Reference any related issues.
 

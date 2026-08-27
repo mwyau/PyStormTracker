@@ -3,6 +3,16 @@ from __future__ import annotations
 import numpy as np
 
 import pystormtracker as pst
+from pystormtracker import (
+    healpix,
+    hodges,
+    io,
+    metrics,
+    models,
+    preprocessing,
+    refinement,
+    simple,
+)
 from pystormtracker.models.time import TimePoint
 from pystormtracker.models.tracker import CenterFrame
 
@@ -12,7 +22,7 @@ def accepts_tracker(tracker: pst.Tracker) -> pst.Tracker:
 
 
 def test_public_api_exports() -> None:
-    assert sorted(pst.__all__) == [
+    assert pst.__all__ == [
         "Center",
         "HealpixTracker",
         "HodgesTracker",
@@ -32,6 +42,52 @@ def test_public_api_exports() -> None:
     assert pst.Center is not None
     assert pst.load_tracks is not None
     assert pst.save_tracks is not None
+
+
+def test_supported_package_namespaces_are_curated() -> None:
+    assert simple.__all__ == ["SimpleTracker"]
+    assert hodges.__all__ == ["HodgesTracker"]
+    assert healpix.__all__ == ["HealpixTracker"]
+
+    assert models.__all__ == [
+        "Center",
+        "DetectionMode",
+        "ProcessingStep",
+        "Projection",
+        "ResolvedDetectionMode",
+        "SpatialBounds",
+        "Track",
+        "Tracker",
+        "Tracks",
+        "TracksMetadata",
+    ]
+
+    assert io.__all__ == [
+        "SUPPORTED_FORMATS",
+        "DataLoader",
+        "SupportedFormat",
+        "infer_format",
+        "load_tracks",
+        "save_tracks",
+    ]
+    assert preprocessing.__all__ == [
+        "BoundaryTaper",
+        "DCTFilter",
+        "SHTFilter",
+        "SpectralRegridder",
+        "compute_vorticity_divergence",
+    ]
+    assert refinement.__all__ == []
+
+    assert metrics.__all__ == [
+        "compute_cormax",
+        "compute_eke",
+        "compute_high_wind_index",
+        "compute_track_metrics",
+        "compute_variance_metric",
+        "find_best_cca_truncation",
+        "train_cca_model",
+    ]
 
 
 def test_protocol_conformance() -> None:

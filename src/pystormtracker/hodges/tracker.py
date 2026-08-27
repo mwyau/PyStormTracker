@@ -314,7 +314,6 @@ class HodgesTracker(Tracker):
         frame_workers: int | None = None,
         sht_threads: int | None = None,
         mge_workers: int | None = None,
-        **kwargs: object,
     ) -> None:
         """
         Initialize the Hodges Tracker.
@@ -324,12 +323,6 @@ class HodgesTracker(Tracker):
         ``missing_frame_parameters`` provides TRACK-style ``(dmax, phimax)``
         rows selected by the count of known missing source input frames.
         """
-        if kwargs:
-            unexpected = ", ".join(repr(k) for k in kwargs)
-            raise TypeError(
-                f"HodgesTracker() got unexpected keyword argument(s): {unexpected}"
-            )
-
         validate_execution_parameters(
             backend,
             segment_frames=segment_frames,

@@ -197,14 +197,7 @@ class SimpleTracker(Tracker):
         feature_refinement: SimpleFeatureRefinement = "grid",
         backend: Backend = "dask",
         workers: int | None = None,
-        **kwargs: object,
     ) -> None:
-        if kwargs:
-            unexpected = ", ".join(repr(k) for k in kwargs)
-            raise TypeError(
-                f"SimpleTracker() got unexpected keyword argument(s): {unexpected}"
-            )
-
         validate_execution_parameters(backend, workers)
 
         if search_window_size <= 0 or search_window_size % 2 == 0:
