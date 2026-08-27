@@ -1,0 +1,51 @@
+name: JOSS Paper
+
+on:
+  push:
+    branches:
+      - joss
+    paths:
+      - 'docs/paper/**'
+      - '!docs/paper/paper.pdf'
+      - '.github/workflows/joss-paper.yml'
+
+concurrency:
+  group: joss-paper-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  paper:
+    name: Paper Draft
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: docs/paper/paper.md
+
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: joss-paper
+          path: docs/paper/paper.pdf
+
+      - name: Commit PDF
+        run: |
+          if git diff --quiet -- docs/paper/paper.pdf; then
+            echo "paper.pdf is up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/paper/paper.pdf
+          git commit -m "docs(joss): update paper PDF"
+          git push
