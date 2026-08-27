@@ -17,7 +17,7 @@ repos:
   - id: uv-lock
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.16.1
+  rev: v0.16.4
   hooks:
   - id: ruff-check
     types_or: [ python, pyproject ]
