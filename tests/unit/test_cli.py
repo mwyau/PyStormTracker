@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from pystormtracker import sample as sample_command
 from pystormtracker.cli import main
 from pystormtracker.models.tracks import Tracks, TracksMetadata
 from pystormtracker.track import setup_parser
+from pystormtracker.utils.cli import package_version
 
 
 def _empty_tracks() -> Tracks:
@@ -52,6 +54,14 @@ def test_cli_version(
 
     assert exc_info.value.code == 0
     assert capsys.readouterr().out == f"stormtracker {__version__}\n"
+
+
+def test_package_version_uses_unknown_without_distribution_metadata() -> None:
+    with patch(
+        "pystormtracker.utils.cli.version",
+        side_effect=PackageNotFoundError("pystormtracker"),
+    ):
+        assert package_version() == "unknown"
 
 
 @pytest.mark.parametrize(

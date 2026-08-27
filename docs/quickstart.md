@@ -194,11 +194,15 @@ tests/data/era5/era5_msl_2025-12_2.5x2.5.nc
 
 Specialized GRIB, reduced-Gaussian, and broader reference datasets are owned by the pinned [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) contract. Small references use raw Git paths, large files use Release assets, and Git-tracked Zarr stores use their raw store paths.
 
-The bundled NCL/Spherepack numerical-parity reference is:
+The bundled NCL T5-42 spectral numerical-parity reference is:
 
 ```text
 tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc
 ```
+
+Broader NCL/Spherepack kinematics parity remains deferred because the pinned
+`PyStormTracker-Data` release does not yet contain the required NCL-generated
+VODV reference fields.
 
 ## Development
 
@@ -226,7 +230,7 @@ Testing is tiered:
 
 - **Unit** tests are the default fast offline suite.
 - **Integration** tests exercise current PyStormTracker components together on real data.
-- **Parity** tests compare current package behavior with static external or historical results, including the bundled NCL/Spherepack numerical-parity case.
+- **Parity** tests compare current package behavior with static external or historical results, including the bundled NCL T5-42 spectral numerical-parity case.
 - **Scientific validation** and TRACK source-stage reconciliation are outside
   the package test suite.
 
@@ -243,6 +247,6 @@ uv run pytest tests/integration -m "not slow and not data"
 uv run pytest tests/unit tests/integration tests/parity
 ```
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md)
+See [CONTRIBUTING.md](https://github.com/mwyau/PyStormTracker/blob/main/CONTRIBUTING.md)
 and the [testing guide](development/testing.md) for contributor workflows and
 test taxonomy.

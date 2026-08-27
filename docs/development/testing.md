@@ -48,22 +48,23 @@ uv run pytest tests/integration -m "not slow and not data"
 ```
 
 Run bundled numerical parity tests and any future bundled trajectory parity
-with `uv run pytest tests/parity -m "not slow and not data"`. This currently
-executes the one local NCL spectral case. Run the legacy trajectory and
-external NCL/Spherepack cases when the pinned Data tag and exact external
-assets are available.
+with `uv run pytest tests/parity -m "not slow and not data"`. This executes the
+one local NCL spectral case. The broader NCL/Spherepack kinematics comparison
+remains deferred because the pinned Data release does not yet contain the
+required NCL-generated VODV reference fields.
 
 Tests marked `data` exercise GRIB, reduced-Gaussian, remote-Zarr, or legacy
 reference contracts owned by the sibling `PyStormTracker-Data` repository.
-Run those tests explicitly when the pinned Data tag and its exact release
-assets are available.
+The pinned `v0.2.0-data` release provides supported ERA5 release assets, but
+does not yet provide the NCL-generated VODV fields needed for broader
+kinematics parity.
 
 Scientific validation is separate from package parity. Source-stage
 reproduction, TRACK internals, NCL/Spherepack reference-generation methodology,
 reconciliation experiments, and scientific-validation evidence are outside the
 package test suite. The main package tests consume only the one compact static
-NCL/Spherepack output committed under `tests/data/ncl/`; broader reference data
-are owned by `PyStormTracker-Data`.
+NCL T5-42 spectral output committed under `tests/data/ncl/`; broader reference
+data are owned by `PyStormTracker-Data`.
 
 Use `--durations=30 --durations-min=0.5` when auditing runtime concentration.
 Routine Dask backend-equivalence tests use four workers. Worker-count scaling

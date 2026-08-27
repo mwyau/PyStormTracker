@@ -6,7 +6,7 @@ import pytest
 import xarray as xr
 
 from pystormtracker.io.data_loader import DataLoader
-from tests.utils import RAW_BASE, get_integration_msl_path
+from tests.utils import fetch_era5_msl, get_integration_msl_path
 
 
 @pytest.fixture(autouse=True)
@@ -21,7 +21,7 @@ def clear_cache() -> None:
     ("url", "expected_engine"),
     [
         (
-            f"{RAW_BASE}integration/era5_msl_2025-2026_djf_2.5x2.5.zarr",
+            fetch_era5_msl(format="zarr"),
             "zarr",
         ),
     ],

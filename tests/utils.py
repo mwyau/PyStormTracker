@@ -165,16 +165,6 @@ def get_integration_msl_path() -> Path:
     return ERA5_TEST_DATA_DIR / INTEGRATION_MSL_FILENAME
 
 
-def get_era5_uv_path(res: str = "2.5x2.5") -> Path:
-    """Return the deferred external-data ERA5 wind path."""
-    return ERA5_TEST_DATA_DIR / f"era5_uv850_2025120100_{res}.nc"
-
-
-def get_era5_vodv_path(res: str = "2.5x2.5", suffix: str = "ncl") -> Path:
-    """Return the deferred external-data NCL vorticity/divergence path."""
-    return ERA5_TEST_DATA_DIR / f"era5_vodv850_2025120100_{res}_{suffix}.nc"
-
-
 def get_legacy_track_path(var: str = "msl") -> Path:
     """Fetch and return a historical PyStormTracker v0.0.2 reference path."""
     if var == "msl":

@@ -25,12 +25,12 @@
 
 ### Testing and data
 
-- Reorganized unit, integration, legacy-parity, TRACK-parity, and NCL/Spherepack coverage with explicit test markers and external-data ownership.
-- Pinned PyStormTracker-Data paths and release assets for deferred integration and parity inputs, while retaining the bounded bundled numerical reference.
+- Reorganized unit, integration, legacy-parity, and NCL/Spherepack parity coverage with explicit test markers and versioned external-data ownership; the current package suite retains the bundled NCL T5-42 spectral reference while broader kinematics parity remains deferred.
+- Pinned PyStormTracker-Data paths and release assets for integration and parity coverage; broader kinematics parity remains deferred only because the NCL-generated VODV reference is not yet available.
 
 ### Documentation and infrastructure
 
-- Added the reproducible TRACK 1.5.4 and PyStormTracker comparison suite with F320-to-T42, F320-to-F320, and regular-grid configurations, repeat runners, profilers, and compact results.
+- Documented the reproducible TRACK 1.5.4 comparison results for F320-to-T42 and F320-to-F320 and retained the generic PyStormTracker benchmark runner.
 - Updated the scientific-method, architecture, testing, CLI, TrackJSON, and repository guidance documentation.
 - Moved Python package publishing to a standalone workflow that runs after successful CI, and modernized supported Python and build metadata.
 
@@ -86,7 +86,7 @@
 
 ### Tracking and preprocessing
 
-- Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure. The tracking command is implemented by `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is exported.
+- Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure; no package-level `pystormtracker.track()` function was exported.
 - Added algorithm-dependent tri-state filtering and subgrid-refinement controls. Omitted values use the direct tracker defaults: disabled for Simple and enabled for Hodges and HEALPix.
 - Added shared local quadratic subgrid refinement for regular and projected grids and local quadratic refinement on the HEALPix neighbor graph.
 - Added `track_bspline` as the default Hodges feature-point method for eligible periodic global latitude-longitude frames. It fits one spherical `RectSphereBivariateSpline` per frame and refines centers with a source-mapped derivative search; quadratic and grid-point methods remain explicit alternatives. The current linker does not propagate refinement diagnostics to final tracks.

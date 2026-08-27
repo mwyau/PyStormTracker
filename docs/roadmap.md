@@ -54,14 +54,15 @@ using full-year 2024 ERA5 MSLP. It includes runtime measurements, raw trajectory
 comparison, and RSPLICE-filtered trajectory comparison. The full-year filtered
 one-to-one F1 is 0.997 for both cases.
 
-Broader NCL/Spherepack field comparisons and trajectory comparisons require the
-exact versioned inputs and outputs owned by `PyStormTracker-Data`; they remain
-external-data cases until the pinned Data tag and assets are available. The
-main checkout retains one small, one-frame NCL spectral output for the
-committed December MSL frame:
+The versioned external-data contract now exists: `tests/utils.py` pins
+`PyStormTracker-Data` at `v0.2.0-data`, and release-backed assets are available
+for supported ERA5 inputs, including UV850 at 0.25° and 2.5°. Individual parity
+cases still require their exact versioned input and reference products. The
+NCL/Spherepack kinematics comparison remains deferred because the pinned Data
+release does not yet contain the required NCL-generated VODV reference fields.
+The small bundled NCL T5-42 spectral output for the committed December MSL
+frame remains the ordinary repository-level bounded parity test:
 `tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc`.
-This bounded numerical-parity case does not replace an external trajectory
-comparison.
 
 ### 2.3 Dependency audit
 
@@ -76,21 +77,30 @@ marked `slow` and are not part of the normal development suite.
 
 ## 3. Architecture
 
-### 3.1 Xarray generalized ufunc integration — 🚧 In progress
+### 3.1 Xarray generalized ufunc integration — ✅ Implemented
 
-Spectral filtering and kinematic calculations use `xarray.apply_ufunc` in applicable paths. Detection uses explicit Xarray loading followed by NumPy and Numba kernels. Further use of `apply_ufunc` should not change serial, Dask, or MPI results.
+Spectral filtering, regridding, and kinematic calculations use
+`xarray.apply_ufunc` where appropriate to preserve xarray/Dask execution.
+Detection intentionally operates on complete two-dimensional NumPy frames
+passed to Numba kernels. This is the supported execution boundary rather than
+an incomplete conversion of all kernels to `apply_ufunc`.
 
-### 3.2 Distributed backends — 🚧 In progress
+### 3.2 Distributed backends — ✅ Implemented
 
-Simple, Hodges, and HEALPix support serial, threaded Dask, and MPI execution
-paths. Simple gathers frame detections before one linking pass; Hodges and
-HEALPix distribute frame detection and MGE segment tasks, then splice
-deterministic segment results. Hodges and HEALPix apply `min_track_points`
-after linking. Broader large-case parallel equality coverage remains planned.
+Simple, Hodges, and HEALPix support serial, Dask, and MPI execution. Dask
+parallelizes independent frame work; Hodges and HEALPix additionally
+parallelize MGE segments before deterministic ordered splicing. Integration
+tests verify representative serial/Dask equivalence and MPI execution. Larger
+worker-count and dataset-size scaling belongs to benchmarking rather than the
+implementation status.
 
 ### 3.3 CLI and tracker protocol — ✅ Implemented
 
-The `stormtracker` command has `track`, `sample`, `compare`, and `convert` subcommands. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` implement the common tracker interface. The high-level CLI implementation is in `pystormtracker.track.run_tracker`; no package-level `pystormtracker.track()` function is currently exported.
+`pystormtracker.cli.main()` creates the top-level parser, registers the
+`track`, `sample`, `compare`, and `convert` subcommands, and dispatches through
+`args.func`. `pystormtracker.track.main(args)` owns setup and execution for the
+`track` subcommand. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker`
+implement the common tracker interface.
 
 ### 3.4 Remote data support — ✅ Implemented
 
@@ -137,8 +147,8 @@ final tracks, while string refinement status remains detector-level
 diagnostics rather than a trajectory variable.
 
 **Verification:** The direct source reference case compares optimized coordinates
-and values. Real-frame and trajectory probes are deferred with the exact
-external input contract; neither is a field-level spectral-filter comparison.
+and values. Real-frame and trajectory probes remain additional validation work;
+neither is a field-level spectral-filter comparison.
 
 ### 5.2 Regional model support with the discrete cosine transform — 🚧 In progress
 
@@ -190,7 +200,7 @@ external input contract; neither is a field-level spectral-filter comparison.
 
 **Relevant paper:** [Yau and Chang (2020)](https://doi.org/10.1175/JCLI-D-20-0393.1), cited in Section 5.4.
 
-**Progress:** `metrics.cross_validation` implements positive-only CORMAX with periodic longitude search and nonperiodic latitude shifts, leave-$n$-out CCA truncation testing, anomaly correlation coefficient (ACC), domain FVE as $1-\\operatorname{mean}(\\mathrm{MSE})/\\operatorname{mean}(\\mathrm{VAR})$, and full-data CCA model training through the optional `xeofs` dependency. Dimension order is normalized, exact coordinate matches are required, and fields on different grids are rejected.
+**Progress:** `metrics.cross_validation` implements positive-only CORMAX with periodic longitude search and nonperiodic latitude shifts, leave-$n$-out CCA truncation testing, anomaly correlation coefficient (ACC), domain FVE as `1 - mean(MSE) / mean(VAR)`, and full-data CCA model training through the optional `xeofs` dependency. Dimension order is normalized, exact coordinate matches are required, and fields on different grids are rejected.
 
 **Verification:** Cross-validation tests cover the domain-FVE aggregation, strict time/grid validation, dimension-order normalization, positive-only CORMAX, longitude wrapping, missing correlations, and all-negative search windows.
 
@@ -244,9 +254,10 @@ longitude-seam extension behavior.
 **Progress:** The tracking CLI accepts existing relative-vorticity fields. `preprocessing.kinematics` computes vorticity and divergence through the Python API. A CLI subcommand that derives these fields from wind has not been implemented.
 
 **Verification:** Python kinematic calculations have constructed-input unit
-coverage. The main repository retains compact, bundled NCL/Spherepack spectral
-parity cases for the committed December frame. Broader field comparisons that
-require external inputs remain deferred with the external data contract.
+coverage. The main repository retains the compact, bundled NCL T5-42 spectral
+parity case for the committed December frame. Broader NCL/Spherepack kinematics
+parity remains deferred until the required NCL-generated VODV reference fields
+are added to the pinned external-data contract.
 
 ### 5.12 Ensemble and dataset utilities — 🚧 In progress
 
@@ -263,8 +274,9 @@ candidate, matching the source utility's directed selection. A general
 track-file combination operation has not been implemented.
 
 **Verification:** Unit and CLI tests cover eligibility, selection, and reported
-lifecycle and intensity statistics. Paired N320/regular-grid comparison is
-deferred with the external data contract.
+lifecycle and intensity statistics. A versioned external-data integration test
+additionally compares Hodges VO850 trajectories from ERA5 N320 and 0.25°
+regular-grid inputs. General track-file combination remains future work.
 
 ### 5.13 Storm lifecycle compositing
 
@@ -284,22 +296,27 @@ deferred with the external data contract.
 
 ### 5.15 Full Gaussian grids — 🚧 In progress
 
-**Description:** Process and regrid fields on full Gaussian grids, including N320, using Gauss-Legendre (`GL`) geometry in `ducc0.sht.analysis_2d`.
+**Description:** Process and regrid fields on full Gaussian (Gauss-Legendre)
+latitude-longitude grids using `GL` geometry in `ducc0.sht.analysis_2d`.
 
 **Progress:** `DataLoader` identifies Gaussian latitude spacing, and the SHT and regridding paths support `GL` geometry.
 
 **Verification:** Geometry-detection and `GL` synthesis paths have repository coverage. A versioned full-Gaussian input test dataset remains to be tested end to end.
 
-### 5.16 Reduced Gaussian grids — 🚧 In progress
+### 5.16 Reduced Gaussian grids — ✅ Implemented
 
 **Description:** Process one-dimensional reduced Gaussian fields, such as ERA5 N320 data, using the number of longitude points on each latitude ring.
 
-**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude origin, and ring offsets. Synthetic tests cover metadata, filtering, and regridding paths. Real N320 and paired regular-grid integration remain deferred until the external data contract is repaired.
+**Progress:** `DataLoader` reads `GRIB_pl` ring-size metadata. Filtering and
+regridding use `ducc0.sht.pseudo_analysis` with per-ring `nphi`, longitude
+origin, and ring offsets.
 
-**Verification:** The deferred integration module retains end-to-end loading,
-filtering, regridding, detection, and Hodges tracking assertions for the
-repaired external data contract. It is not a TRACK-parity or external-validation
-claim until those exact inputs are available.
+**Verification:** Synthetic tests cover reduced-Gaussian metadata and numerical
+paths. Versioned `v0.2.0-data` ERA5 N320 integration coverage exercises real
+MSLP and VO850 loading, filtering/regridding, tracking, and the paired
+N320-versus-0.25° Hodges vorticity comparison. The paired trajectory
+comparison remains marked `data`/`slow`; that affects routine CI selection,
+not implementation status.
 
 ### 5.17 Four-dimensional feature tracking (STACKER)
 
