@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from pystormtracker.refinement import (
+from pystormtracker.refinement.quadratic import (
     refine_quadratic_feature_coordinates,
     refine_quadratic_feature_point,
     refine_quadratic_feature_points,

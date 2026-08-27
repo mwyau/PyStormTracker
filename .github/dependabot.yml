@@ -12,6 +12,13 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
 
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: daily
+      time: '04:10'
+      timezone: America/New_York
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -173,7 +173,7 @@ The detection objects are computed before MGE segment tasks are built. Overlap
 lists reference the same detection objects; full filtered frame arrays are not
 passed to MGE and the frame graph is released before segment linking. This
 staged design keeps the filtered time series lazy through frame execution while
-avoiding retention of the full-resolution fields merely to support MGE.
+avoiding retention of the full-resolution fields just to support MGE.
 
 Adjacent production segments overlap by two time steps and are spliced in
 temporal order. The default scientific segment length is 62 frames.

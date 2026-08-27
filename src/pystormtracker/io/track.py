@@ -209,7 +209,7 @@ def write_track(tracks: Tracks, outfile: str | Path) -> None:
 
     TRACK's calendar representation has no sub-hour or sub-second field. Such
     timestamps are rejected instead of being emitted as numeric Unix seconds,
-    which the default strict reader intentionally does not interpret.
+    which the default strict reader does not interpret.
     """
     variable_name = tracks.primary_variable
     if len(tracks) and variable_name not in tracks.variables:

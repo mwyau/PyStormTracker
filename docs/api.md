@@ -1,13 +1,16 @@
 # Python API Reference
 
-PyStormTracker provides an object-oriented Python API. Tracker instances encapsulate algorithm, preprocessing, and execution configuration. The `.track()` method executes tracking on an input file or xarray dataset and returns an immutable `Tracks` container, which provides `.write()` for output serialization.
+PyStormTracker provides tracker classes, packed trajectory models, scientific
+preprocessing, feature-point refinement, track I/O, and analysis functions.
+Tracker instances combine algorithm, preprocessing, and execution settings.
+The `.track()` method accepts a file path or xarray object and returns an
+immutable `Tracks` object. `Tracks.write()` serializes the result.
 
 ## Overview
 
 ```python
 import pystormtracker as pst
 
-# 1. Instantiate a configured tracker
 tracker = pst.HodgesTracker(
     lmin=5,
     lmax=42,
@@ -19,7 +22,6 @@ tracker = pst.HodgesTracker(
     mge_workers=16,
 )
 
-# 2. Run tracking on input data
 tracks = tracker.track(
     "input.nc",
     "vo",
@@ -28,45 +30,39 @@ tracks = tracker.track(
     detection_mode="max",
 )
 
-# 3. Write results
 tracks.write("tracks.trackjson")
 ```
-
-### API Division
-
-- **Constructor**: Specifies algorithm parameters, spatial/spectral preprocessing filters, projections, and backend/concurrency settings.
-- **`track()`**: Specifies input data (`data`, `variable`), time window (`start_time`, `end_time`), extremum mode (`detection_mode`), thresholds (`feature_threshold` for Simple, `object_threshold` for Hodges and HEALPix), and reader engine (`engine`).
-- **`Tracks.write()`**: Handles output serialization to supported formats (`json`, `track`, `imilast`).
 
 For `HodgesTracker`, `frame_workers` controls concurrent frame tasks,
 `sht_threads` controls DUCC0 threads per active spherical-harmonic transform,
 and `mge_workers` controls concurrent MGE segment tasks. `segment_frames`
-remains the scientific temporal segment length and is independent of these
-controls.
+controls the scientific temporal segment length independently of these
+execution controls.
 
-## Core Exports
+## Package API
 
-The package root exports only the public tracker classes, domain entities, and format functions:
+The package root provides the main tracking classes, result models, and track
+I/O functions:
 
-- `pst.Tracker` (Protocol)
-- `pst.SimpleTracker`
-- `pst.HodgesTracker`
-- `pst.HealpixTracker`
-- `pst.Center`
-- `pst.Track`
-- `pst.Tracks`
-- `pst.load_tracks`
-- `pst.save_tracks`
+- `pystormtracker.Center`
+- `pystormtracker.HealpixTracker`
+- `pystormtracker.HodgesTracker`
+- `pystormtracker.SimpleTracker`
+- `pystormtracker.Track`
+- `pystormtracker.Tracker`
+- `pystormtracker.Tracks`
+- `pystormtracker.load_tracks`
+- `pystormtracker.save_tracks`
 
-Domain value types remain available under `pystormtracker.models`:
+Algorithm-specific convenience classes are available from their subpackages:
 
-- `pystormtracker.models.Center`
-- `pystormtracker.models.CenterFrame`
-- `pystormtracker.models.SpatialBounds`
-- `pystormtracker.models.ProcessingStep`
-- `pystormtracker.models.TracksMetadata`
+```python
+from pystormtracker.healpix import HealpixDetector, HealpixTracker
+from pystormtracker.hodges import HodgesTracker
+from pystormtracker.simple import SimpleDetector, SimpleLinker, SimpleTracker
+```
 
-## Trackers
+## Tracker classes
 
 ```{eval-rst}
 .. automodule:: pystormtracker.simple.tracker
@@ -82,17 +78,22 @@ Domain value types remain available under `pystormtracker.models`:
    :show-inheritance:
 ```
 
-## Core Models
+## Models
 
-### Tracks
+The `pystormtracker.models` package contains domain and result types:
+`Center`, `DetectionMode`, `ProcessingStep`, `Projection`,
+`ResolvedDetectionMode`, `SpatialBounds`, `Track`, `Tracker`, `Tracks`, and
+`TracksMetadata`.
+
+### Tracks and metadata
 
 ```{eval-rst}
 .. automodule:: pystormtracker.models.tracks
-   :members: Track, Tracks
+   :members: DetectionMode, ProcessingStep, ResolvedDetectionMode, Track, Tracks, TracksMetadata
    :show-inheritance:
 ```
 
-### Storm Centers
+### Storm centers
 
 ```{eval-rst}
 .. automodule:: pystormtracker.models.center
@@ -100,99 +101,155 @@ Domain value types remain available under `pystormtracker.models`:
    :show-inheritance:
 ```
 
-## Data Loader
+### Geographic domain types
+
+```{eval-rst}
+.. automodule:: pystormtracker.models.geo
+   :members: Projection, SpatialBounds
+   :show-inheritance:
+```
+
+### Tracker protocol
+
+```{eval-rst}
+.. automodule:: pystormtracker.models.tracker
+   :members: Tracker
+```
+
+## I/O
+
+Generic format handling is provided by `DataLoader`, `SUPPORTED_FORMATS`,
+`SupportedFormat`, `infer_format`, `load_tracks`, and `save_tracks`.
 
 ```{eval-rst}
 .. automodule:: pystormtracker.io.data_loader
    :members: DataLoader
+
+.. automodule:: pystormtracker.io.format
+   :members: SUPPORTED_FORMATS, SupportedFormat, infer_format, load_tracks, save_tracks
 ```
+
+TrackJSON-specific functions and wire structures are provided by
+`pystormtracker.io.trackjson`; see the [TrackJSON reference](trackjson.md).
+TRACK text I/O is provided by `pystormtracker.io.track`.
 
 ## Preprocessing
 
-Trackers accept preprocessing options in their constructors: `lmin` and `lmax` request an optional spectral filter when supplied together, while `taper_points` controls spatial tapering independently. `HodgesTracker` accepts `spectral_taper` with source-compatible default `1.0`; `HealpixTracker` owns a separate default of `0.1`. Hodges' default `feature_refinement="bspline"` uses TRACK/SMOOPY-compatible rectangular B-spline refinement with coordinate-space GDFP optimization. The advanced experimental `"spherical_bspline"` option uses a global spherical B-spline with a candidate-local feasible region on eligible periodic latitude-longitude frames. `"quadratic"` and `"spherical_quadratic"` provide local polynomial subgrid refinement, and `"grid"` disables subgrid refinement. `missing_frame_parameters` and `time_step` model known input-time gaps.
+The preprocessing package provides filters, regridding, spatial tapering, and
+spherical wind diagnostics. Tracker constructors use `lmin` and `lmax` for an
+optional spectral filter and `taper_points` for spatial tapering. Projection or
+HEALPix conversion can require a transform bandwidth even when no optional
+filter is requested.
+`HodgesTracker` uses a `spectral_taper` default of `1.0`; `HealpixTracker` uses
+`0.1`. Hodges missing-frame handling uses `missing_frame_parameters` and
+`time_step` when the input cadence contains known gaps.
 
-### Kinematics (vorticity and divergence)
+### Vorticity and divergence
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.kinematics
-   :members:
+   :members: compute_vorticity_divergence
 ```
 
-### Spectral Filtering
+### Spectral filtering
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.spectral
-   :members:
+   :members: DCTFilter, SHTFilter
 ```
 
 ### Regridding
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.regrid
-   :members:
+   :members: SpectralRegridder
 ```
 
-### Feature Refinement
-
-```{eval-rst}
-.. automodule:: pystormtracker.refinement
-   :members:
-```
-
-### Spatial Tapering
+### Spatial tapering
 
 ```{eval-rst}
 .. automodule:: pystormtracker.preprocessing.taper
-   :members:
+   :members: BoundaryTaper
 ```
 
-## Post-processing and Analysis
+## Feature refinement
 
-### Secondary-variable Sampling
+Feature-point refinement is selected with the `feature_refinement` tracker
+option. `SimpleTracker` and `HealpixTracker` support `grid` and `quadratic`.
+`HodgesTracker` also supports `spherical_quadratic`, `bspline`, and
+`spherical_bspline`; its default is `bspline`.
+
+The rectangular `bspline` method uses the TRACK/SMOOPY-compatible surface and
+coordinate-space GDFP optimization. `spherical_bspline` fits a global spline
+on the sphere and constrains optimization to the candidate neighborhood.
+
+The refinement package provides operations for constructing spline surfaces and
+locating feature points:
+
+- `build_bspline_surface` and `build_spherical_bspline_surface` construct
+  frame-level surfaces and return named results containing `surface` and
+  `status`.
+- `refine_bspline_feature_point` and
+  `refine_spherical_bspline_feature_point` return a
+  `BsplineRefinementResult` with latitude, longitude, value, and status.
+- `refine_quadratic_feature_point` and `refine_quadratic_feature_points` return
+  refined coordinates and values for regular-grid candidates.
+- `refine_spherical_quadratic_feature_points` returns a
+  `SphericalQuadraticRefinementBatch` containing refined coordinates, values,
+  status codes, and numerical diagnostics. Use
+  `spherical_quadratic_status_name` to decode a status code.
+
+```{eval-rst}
+.. automodule:: pystormtracker.refinement.bspline
+   :members: BsplineRefinementResult, BsplineSurface, BsplineSurfaceResult, SphericalBsplineSurface, SphericalBsplineSurfaceResult, build_bspline_surface, build_spherical_bspline_surface, refine_bspline_feature_point, refine_spherical_bspline_feature_point
+
+.. automodule:: pystormtracker.refinement.quadratic
+   :members: SphericalQuadraticRefinementBatch, refine_quadratic_feature_point, refine_quadratic_feature_points, refine_spherical_quadratic_feature_points, spherical_quadratic_status_name
+```
+
+## Metrics and post-processing
+
+### Secondary-variable sampling
 
 ```{eval-rst}
 .. automodule:: pystormtracker.sample
    :members: sample_tracks
 ```
 
-### Track Matching
+### Track comparison
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.compare
-   :members: compare_tracks, TrackComparisonConfig, TrackComparison, TrackMatch
+   :members: compare_tracks, TrackComparisonConfig, TrackComparison, TrackMatch, TrackProperties, IntensityDifference
 ```
 
-### Spherical Weighting Kernels
+`compare_tracks` returns lifecycle and intensity summaries together with the
+track matches.
 
-```{eval-rst}
-.. automodule:: pystormtracker.metrics.weighting
-   :members:
-```
-
-### Eulerian Track Metrics
+### Eulerian metrics
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.eulerian
-   :members:
+   :members: compute_eke, compute_high_wind_index, compute_variance_metric
 ```
 
-### Lagrangian Track Metrics
+### Lagrangian metrics
 
 ```{eval-rst}
 .. automodule:: pystormtracker.metrics.lagrangian
    :members: compute_track_metrics
 ```
 
-### Hodges Splice Filtering
+### CORMAX and CCA cross-validation
+
+```{eval-rst}
+.. automodule:: pystormtracker.metrics.cross_validation
+   :members: compute_cormax, find_best_cca_truncation, train_cca_model
+```
+
+### Hodges splice filtering
 
 ```{eval-rst}
 .. automodule:: pystormtracker.hodges.rsplice
    :members: filter_rsplice
-```
-
-### CORMAX and CCA/PCA Cross-validation
-
-```{eval-rst}
-.. automodule:: pystormtracker.metrics.cross_validation
-   :members:
 ```

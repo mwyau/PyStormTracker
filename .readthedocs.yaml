@@ -9,9 +9,6 @@ build:
     nodejs: "20"
   jobs:
     post_install:
-      - >-
-        uv pip install --python "$READTHEDOCS_VIRTUALENV_PATH/bin/python"
-        "sphinxcontrib-mermaid==2.0.2"
       - npm install -g @mermaid-js/mermaid-cli
 
 python:

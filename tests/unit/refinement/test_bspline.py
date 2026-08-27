@@ -5,16 +5,14 @@ import pytest
 from numpy.typing import NDArray
 
 from pystormtracker.hodges.detector import _detect_track_rectangular_candidates
-from pystormtracker.refinement import (
-    build_bspline_surface,
-    build_spherical_bspline_surface,
-    refine_bspline_feature_point,
-    refine_spherical_bspline_feature_point,
-)
 from pystormtracker.refinement.bspline import (
     _eval_bspline_2d,
+    build_bspline_surface,
     build_bspline_surface_reference,
+    build_spherical_bspline_surface,
     prepare_rectangular_grid,
+    refine_bspline_feature_point,
+    refine_spherical_bspline_feature_point,
 )
 
 

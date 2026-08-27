@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import signature
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -94,7 +95,7 @@ def test_hodges_tracker_exposes_independent_execution_controls() -> None:
     with pytest.raises(ValueError, match="mge_workers"):
         HodgesTracker(backend="serial", mge_workers=1)
     with pytest.raises(TypeError, match="unexpected keyword"):
-        HodgesTracker(workers=4)
+        signature(HodgesTracker).bind(workers=4)
 
 
 @patch("pystormtracker.hodges.tracker.merge_segments")

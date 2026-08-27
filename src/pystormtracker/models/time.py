@@ -70,7 +70,7 @@ _SUPPORTED_SOURCE_CALENDARS = {
 }
 _UNSUPPORTED_CALENDAR_MESSAGE = (
     "Unsupported CF calendar {!r}; PyStormTracker currently supports only "
-    "proleptic_gregorian and modern standard/gregorian dates. Broader CF-calendar "
+    "proleptic_gregorian and standard/gregorian dates. Broader CF-calendar "
     "support is deferred."
 )
 
@@ -337,7 +337,7 @@ def infer_calendar(
     attrs: Mapping[str, object] | None = None,
     encoding: Mapping[str, object] | None = None,
 ) -> Calendar:
-    """Infer the canonical policy calendar from source metadata and values."""
+    """Infer the canonical calendar from source metadata and values."""
     metadata = dict(encoding or {})
     metadata.update(attrs or {})
     declared = metadata.get("calendar")

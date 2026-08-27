@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import signature
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,7 +36,7 @@ def test_tracker_init_and_kwargs() -> None:
     assert tracker.feature_refinement == "grid"
 
     with pytest.raises(TypeError, match="unexpected keyword argument"):
-        SimpleTracker(invalid_param=123)
+        signature(SimpleTracker).bind(invalid_param=123)
 
 
 def test_tracker_mpi_backend() -> None:

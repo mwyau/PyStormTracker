@@ -53,6 +53,7 @@ stormtracker -v track -i input.nc --variable vo -o tracks.trackjson -m max -a ho
 | `--feature-refinement`           | `grid` (discrete extrema), `quadratic` (local quadratic), `spherical_quadratic` (spherical quadratic), `bspline` (TRACK/SMOOPY-compatible rectangular B-spline), or `spherical_bspline` (spherical B-spline). Simple defaults to `grid`; Hodges defaults to `bspline`; HEALPix defaults to `quadratic`. |
 | `--dmax-zones`                   | Path to regional DMAX definitions file (rows of `lon_min lon_max lat_min lat_max dmax`).                                                                                                                                                                                                                |
 | `--adaptive-smoothness`          | Path to adaptive smoothness parameters file (2x4 or 4x2 matrix).                                                                                                                                                                                                                                        |
+| `--no-segmentation`              | Disable temporal MGE segmentation and run monolithic linking. It cannot be combined with an explicit `--segment-frames`.                                                                                                                                                                                |
 | `--no-progress`                  | Disable the interactive Hodges Dask progress display. The display is enabled by default when standard error is a terminal.                                                                                                                                                                              |
 
 Supplying both `--lmin` and `--lmax` applies the requested optional spectral
@@ -69,15 +70,15 @@ The production default relative-vorticity threshold is `1e-5 s^-1`. The `1e-4 s^
 
 #### Backends and input processing
 
-| Option                   | Description                                                                                                          |
-| :----------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| `-b`, `--backend`        | `dask`, `serial`, or `mpi`. Default: `dask` (or `mpi` if an active MPI environment is detected).                     |
-| `-w`, `--workers`        | Generic Dask worker count for Simple/HEALPix. Defaults to available process CPU concurrency; not accepted by Hodges. |
-| `--frame-workers`        | Hodges Dask frame-processing tasks, including lazy source reads, preprocessing, detection, and refinement.           |
-| `--sht-threads`          | DUCC0 native threads per active Hodges spherical-harmonic transform.                                                 |
-| `--mge-workers`          | Hodges Dask MGE segment-linking tasks that may run concurrently.                                                     |
-| `-c`, `--segment-frames` | MGE temporal segment length for Hodges/HEALPix; default `62`. Not used by Simple and independent of worker counts.   |
-| `-e`, `--engine`         | Xarray engine: `h5netcdf` by default, or explicitly `netcdf4` for legacy NetCDF3 and `cfgrib` for GRIB.              |
+| Option                   | Description                                                                                                                                                                       |
+| :----------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-b`, `--backend`        | `dask`, `serial`, or `mpi`. Default: `dask` (or `mpi` if an active MPI environment is detected).                                                                                  |
+| `-w`, `--workers`        | Generic Dask worker count for Simple/HEALPix. Defaults to available process CPU concurrency; not accepted by Hodges.                                                              |
+| `--frame-workers`        | Hodges Dask frame-processing tasks, including lazy source reads, preprocessing, detection, and refinement.                                                                        |
+| `--sht-threads`          | DUCC0 native threads per active Hodges spherical-harmonic transform.                                                                                                              |
+| `--mge-workers`          | Hodges Dask MGE segment-linking tasks that may run concurrently.                                                                                                                  |
+| `-c`, `--segment-frames` | MGE temporal segment length for Hodges/HEALPix; default `62`. Not used by Simple and independent of worker counts. An explicit value cannot be combined with `--no-segmentation`. |
+| `-e`, `--engine`         | Xarray engine: `h5netcdf` by default, or explicitly `netcdf4` for legacy NetCDF3 and `cfgrib` for GRIB.                                                                           |
 
 Simple, Hodges, and HEALPix support serial, threaded Dask, and MPI execution.
 Simple gathers detections before linking; Hodges runs frame tasks and then
@@ -92,9 +93,15 @@ generic `--workers` control.
 | `--w1`, `--w2`             | Direction and displacement-magnitude weights in the MGE cost function.                                                                            |
 | `--dmax`                   | Maximum displacement in degrees before regional adjustment.                                                                                       |
 | `--phimax`                 | Smoothness or phantom-point penalty.                                                                                                              |
+| `--min-track-points`       | Minimum number of linked time steps retained as a track.                                                                                          |
+| `--mge-max-iterations`     | Maximum number of MGE iteration rounds.                                                                                                           |
+| `--time-step`              | Expected input cadence for Hodges missing-frame handling.                                                                                         |
 | `--feature-refinement`     | Feature-point location method: `grid`, `quadratic`, `spherical_quadratic`, TRACK/SMOOPY-compatible rectangular `bspline`, or `spherical_bspline`. |
 | `--dmax-zones`             | Path to regional DMAX definitions file.                                                                                                           |
 | `--adaptive-smoothness`    | Path to adaptive smoothness parameters file.                                                                                                      |
+
+`--time-step` expects `<positive integer><s|m|h|D>`; for example, `6h`. It
+provides the expected input cadence used by Hodges missing-frame handling.
 
 ## `stormtracker sample`
 
@@ -110,6 +117,8 @@ stormtracker sample -i tracks.trackjson -d era5_mslp.nc --variable msl -o sample
 | `-d`, `--data`   | Path to meteorological gridded data file to sample from.                                                |
 | `-o`, `--output` | Path to save the sampled trajectory file.                                                               |
 | `--variable`     | Variable name in the source file to sample.                                                             |
+| `-m`, `--method` | Sampling method: `nearest`, `bilinear`, `mean`, `max`, or `min`; default `nearest`.                     |
+| `-r`, `--radius` | Radius in kilometres for the `mean`, `max`, and `min` spatial methods; default `0.0`.                   |
 | `--name`         | Output variable name stored in the track metadata. Defaults to the sampled variable name.               |
 | `-e`, `--engine` | Xarray engine: `h5netcdf` by default, or explicitly `netcdf4` for legacy NetCDF3 and `cfgrib` for GRIB. |
 

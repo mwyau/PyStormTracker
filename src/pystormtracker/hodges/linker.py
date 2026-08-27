@@ -465,7 +465,7 @@ class HodgesLinker:
         """Reject zone configurations that do not cover retained features.
 
         TRACK's ``dmaxx()`` terminates when either endpoint lies outside every
-        configured zone.  Empty zones intentionally select the useful global
+        configured zone.  Empty zones select the global
         ``dmax`` path instead.
         """
         if self.dmax_zones.shape[0] == 0:

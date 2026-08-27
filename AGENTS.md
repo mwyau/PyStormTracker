@@ -40,7 +40,7 @@ algorithm, testing, performance, and CI guidance belongs in `docs/`.
 - Equivalent cyclic longitude representations must describe the same physical
   field. Reorder coordinates and data together and do not introduce
   seam-dependent scientific results except where a documented compatibility
-  path intentionally reproduces source behavior.
+  path reproduces source behavior.
 - Do not name scientific test/reference data an `oracle` or `fixture`; use the
   specific scientific/source term, such as analytic field, analytic solution,
   reference data, reference output, TRACK output, or NCL/Spherepack output.
@@ -48,7 +48,7 @@ algorithm, testing, performance, and CI guidance belongs in `docs/`.
 - Do not claim parity, accuracy, performance, superiority, or external
   validation without identifying the comparison and evidence.
 - Do not weaken scientific assertions, tolerances, or retained reference
-  results merely to make a failing test pass. Investigate the cause first.
+  results to make a failing test pass. Investigate the cause first.
 - Do not duplicate scientific defaults where they can be obtained from their
   authoritative owning constant.
 
@@ -73,7 +73,7 @@ algorithm, testing, performance, and CI guidance belongs in `docs/`.
 - Serial, Dask, and MPI execution must preserve the same scientific semantics
   and deterministic canonical results for the tested scope.
 - Keep Dask execution lazy from supported source I/O through preprocessing into
-  frame-level work. Do not materialize the complete time series merely to
+  frame-level work. Do not materialize the complete time series just to
   construct Dask tasks.
 - Compute each unique source frame once. Overlapping Hodges/HEALPix MGE
   segments must reuse frame results rather than repeat detection/refinement.
@@ -95,7 +95,7 @@ algorithm, testing, performance, and CI guidance belongs in `docs/`.
   I/O, or execution backends. Parity tests compare against TRACK, a historical
   PyStormTracker version, NCL/Spherepack, or another identified implementation.
 - `slow` describes runtime cost and is independent of unit/integration/parity.
-- Do not add tests merely to increase coverage. A regression test should
+- Do not add tests only to increase coverage. A regression test should
   reproduce the numerical, scientific, API, or behavioral failure being
   protected rather than implementation details.
 - Routine parallel-result equivalence tests use exactly 4 workers. Other worker
@@ -120,15 +120,31 @@ algorithm, testing, performance, and CI guidance belongs in `docs/`.
   numerical primitive, and shared algorithm. Avoid generic constants/types/
   kernels dumping grounds when a concept has a clear owner.
 - Provide explicit type annotations; do not introduce `Any`, casts,
-  compatibility aliases, or shims merely to bypass typing or preserve an
+  compatibility aliases, or shims only to bypass typing or preserve an
   unreleased API.
 - Expose scientifically meaningful choices in public APIs. Keep implementation
-  switches private unless intentionally part of the user contract.
+  switches private unless part of the user contract.
 - Library modules use module loggers and do not configure global logging.
   CLI logging/progress must not participate in scientific scheduling or results.
-- Use direct technical and scientific prose. Distinguish implemented behavior,
-  repository-tested behavior, external validation, and planned work.
-- Do not retain agent prompts, temporary plans, progress transcripts, or large
+- Write documentation, comments, and docstrings as direct technical or
+  scientific descriptions of behavior, interfaces, methods, evidence, and
+  limitations. Prefer concrete statements over commentary about author intent
+  or API organization.
+- Avoid filler qualifiers such as `deliberately`, `intentionally`, `merely`, and
+  `simply` when they do not change the technical meaning. Avoid promotional
+  wording such as `robust`, `seamless`, `comprehensive`, `sophisticated`,
+  `high-quality`, `modern`, or `clean` unless a specific property or
+  measurement supports it.
+- Document supported APIs by naming their functions, classes, and modules. Do
+  not explain API boundaries using meta-language such as `importability`,
+  `promotion`, or `compatibility surface`.
+- Write for human scientific and software contributors. Comments should explain
+  non-obvious numerical reasoning, scientific lineage, source parity,
+  constraints, or implementation choices rather than restating the code.
+- Distinguish published methods, TRACK behavior, PyStormTracker behavior,
+  repository-tested behavior, measured validation, external validation, and
+  planned work.
+- Do not retain temporary plans, progress transcripts, or large
   generated validation artifacts as permanent project documentation. Preserve
   reproducibility code, compact evidence, and required reference data instead.
 - Keep changes limited to the requested task and update the relevant `docs/`

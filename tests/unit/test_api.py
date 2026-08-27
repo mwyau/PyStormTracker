@@ -12,7 +12,7 @@ def accepts_tracker(tracker: pst.Tracker) -> pst.Tracker:
 
 
 def test_public_api_exports() -> None:
-    assert sorted(pst.__all__) == [
+    assert pst.__all__ == [
         "Center",
         "HealpixTracker",
         "HodgesTracker",
@@ -32,6 +32,54 @@ def test_public_api_exports() -> None:
     assert pst.Center is not None
     assert pst.load_tracks is not None
     assert pst.save_tracks is not None
+
+
+def test_supported_subpackage_entry_points() -> None:
+    from pystormtracker.healpix import HealpixDetector, HealpixTracker
+    from pystormtracker.hodges import HodgesTracker
+    from pystormtracker.io import DataLoader, infer_format
+    from pystormtracker.metrics import compute_track_metrics
+    from pystormtracker.models import Center, Tracks
+    from pystormtracker.preprocessing import SHTFilter
+    from pystormtracker.refinement import (
+        build_bspline_surface,
+        build_spherical_bspline_surface,
+        refine_bspline_feature_point,
+        refine_quadratic_feature_point,
+        refine_quadratic_feature_points,
+        refine_spherical_bspline_feature_point,
+        refine_spherical_quadratic_feature_points,
+    )
+    from pystormtracker.simple import SimpleDetector, SimpleLinker, SimpleTracker
+
+    assert SimpleTracker is pst.SimpleTracker
+    assert HodgesTracker is pst.HodgesTracker
+    assert HealpixTracker is pst.HealpixTracker
+    assert all(
+        callable(entry_point)
+        for entry_point in (
+            SimpleDetector,
+            SimpleLinker,
+            HealpixDetector,
+            DataLoader,
+            infer_format,
+            compute_track_metrics,
+            SHTFilter,
+            build_bspline_surface,
+            build_spherical_bspline_surface,
+            refine_bspline_feature_point,
+            refine_quadratic_feature_point,
+            refine_quadratic_feature_points,
+            refine_spherical_bspline_feature_point,
+            refine_spherical_quadratic_feature_points,
+        )
+    )
+    assert Center is pst.Center
+    assert Tracks is pst.Tracks
+
+    import pystormtracker.models as model_namespace
+
+    assert not hasattr(model_namespace, "CenterFrame")
 
 
 def test_protocol_conformance() -> None:

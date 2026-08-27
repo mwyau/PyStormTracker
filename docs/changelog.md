@@ -32,7 +32,7 @@
 
 - Documented the reproducible TRACK 1.5.4 comparison results for F320-to-T42 and F320-to-F320 and retained the generic PyStormTracker benchmark runner.
 - Updated the scientific-method, architecture, testing, CLI, TrackJSON, and repository guidance documentation.
-- Moved Python package publishing to a standalone workflow that runs after successful CI, and modernized supported Python and build metadata.
+- Moved Python package publishing to a standalone workflow that runs after successful CI, and updated supported Python versions and build metadata.
 
 ---
 
@@ -136,7 +136,7 @@
 ### Testing
 
 - **NCL Validation**: New integration test suite validated against NCL 6.6.2 reference data.
-- **Format Auto-detection Tests**: Added comprehensive tests for NetCDF, GRIB, and Zarr auto-detection in `DataLoader`.
+- **Format Auto-detection Tests**: Added tests for NetCDF, GRIB, and Zarr auto-detection in `DataLoader`.
 
 ### CI/CD & Testing
 
@@ -287,7 +287,7 @@
 
 ### Architecture
 
-- **Python 3 Migration**: Migration from Python 2.7 to Python 3.10+, including type hints and modern syntax.
+- **Python 3 Migration**: Migration from Python 2.7 to Python 3.10+, including type hints and Python 3 syntax.
 - **NetCDF4 Migration**: Switched from the legacy `Nio` library to `netCDF4` for NetCDF data handling.
 
 ### Refactoring

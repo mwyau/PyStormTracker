@@ -12,7 +12,7 @@ from pystormtracker.healpix.detector import (
     _label_healpix_connected_components,
     _refine_healpix_quadratic_batch,
 )
-from pystormtracker.refinement import spherical_quadratic_status_name
+from pystormtracker.refinement.quadratic import spherical_quadratic_status_name
 
 
 def _unit_vector(latitude: float, longitude: float) -> np.ndarray:
