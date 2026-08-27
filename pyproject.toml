@@ -128,7 +128,12 @@ include = ["src", "tests"]
 [tool.ty.analysis]
 allowed-unresolved-imports = [
     "ducc0",
-    ]
+]
+# Numba's JIT Dispatcher ParamSpec currently triggers false-positive call errors in ty.
+replace-imports-with-any = [
+    "numba",
+    "numba.**",
+]
 
 [tool.mypy]
 python_version = "3.12"
