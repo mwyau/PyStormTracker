@@ -26,7 +26,7 @@ repos:
     types_or: [ python ]
 
 - repo: https://github.com/astral-sh/ty-pre-commit
-  rev: v0.0.74
+  rev: v0.0.75
   hooks:
   - id: ty
     args: [ --all-extras, --isolated ]
