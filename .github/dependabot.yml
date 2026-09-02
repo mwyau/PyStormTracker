@@ -5,8 +5,6 @@ updates:
     directory: /
     schedule:
       interval: daily
-      time: '04:00'
-      timezone: America/New_York
     groups:
       python-minor-and-patch:
         patterns: ['*']
@@ -16,15 +14,14 @@ updates:
     directory: /
     schedule:
       interval: daily
-      time: '04:10'
-      timezone: America/New_York
+    groups:
+      pre-commit:
+        patterns: ['*']
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: daily
-      time: '04:15'
-      timezone: America/New_York
     groups:
       github-actions:
         patterns: ['*']
@@ -33,5 +30,3 @@ updates:
     directory: /
     schedule:
       interval: daily
-      time: '04:30'
-      timezone: America/New_York
