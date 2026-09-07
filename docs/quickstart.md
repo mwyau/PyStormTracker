@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide contains the installation, usage, sample-data, and development material moved out of the repository landing page. For scientific details, see the [architecture](architecture.md), [Hodges/TRACK implementation](hodges.md), [HEALPix support](healpix.md), and [TrackJSON](trackjson.md) documentation.
+This guide covers installation, command-line and Python use, sample data, and development commands. For scientific details, see the [architecture](architecture.md), [Hodges/TRACK implementation](hodges.md), [HEALPix support](healpix.md), and [TrackJSON](trackjson.md) documentation.
 
 ## Installation
 
@@ -172,11 +172,11 @@ PyStormTracker separates preprocessing, feature detection and refinement, and tr
 
 - **Preprocessing** can apply spherical-harmonic filtering on global grids, DCT filtering on regional grids, spectral tapering, and projection/regridding to polar or HEALPix coordinates.
 - **SimpleTracker** uses local-extrema detection and deterministic nearest-neighbor linking.
-- **HodgesTracker** uses thresholded objects, local extrema, optional sub-grid refinement, and Modified Greedy Exchange trajectory linking. The default `bspline` refinement follows the reconciled rectangular TRACK/SMOOPY workflow.
+- **HodgesTracker** uses thresholded objects, local extrema, optional feature-point refinement, and Modified Greedy Exchange trajectory linking. The default `bspline` refinement follows the reconciled rectangular TRACK/SMOOPY workflow.
 - **HealpixTracker** performs object detection on HEALPix topology and uses the Hodges MGE linker.
 - Serial, Dask, and MPI execution are supported by the implemented tracker paths.
 
-The authoritative implementation details are in [Architecture](architecture.md), [TRACK Implementation and Comparison](hodges.md), and [HEALPix Support](healpix.md).
+Implementation details are documented in [Architecture](architecture.md), [TRACK Implementation and Comparison](hodges.md), and [HEALPix Support](healpix.md).
 
 ## Formats and analysis
 
@@ -186,23 +186,21 @@ TrackJSON is the native compact array-oriented format; see [TrackJSON](trackjson
 
 ## Sample and reference data
 
-The checkout retains one ordinary integration input:
+The repository includes one integration input:
 
 ```text
 tests/data/era5/era5_msl_2025-12_2.5x2.5.nc
 ```
 
-Specialized GRIB, reduced-Gaussian, and broader reference datasets are owned by the pinned [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) contract. Small references use raw Git paths, large files use Release assets, and Git-tracked Zarr stores use their raw store paths.
+Specialized GRIB, reduced-Gaussian, and broader reference datasets are stored in [PyStormTracker-Data](https://github.com/mwyau/PyStormTracker-Data) `v0.2.0-data`. Small references use raw Git paths, large files use Release assets, and Git-tracked Zarr stores use their raw store paths.
 
-The bundled NCL T5-42 spectral numerical-parity reference is:
+The bundled NCL T5-42 scalar spectral parity reference is:
 
 ```text
 tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc
 ```
 
-Broader NCL/Spherepack kinematics parity remains deferred because the pinned
-`PyStormTracker-Data` release does not yet contain the required NCL-generated
-VODV reference fields.
+The bundled NCL case tests scalar T5-42 filtering.
 
 ## Development
 
@@ -229,10 +227,8 @@ uv run python scripts/generate_trackjson_schema.py --check
 Testing is tiered:
 
 - **Unit** tests are the default fast offline suite.
-- **Integration** tests exercise current PyStormTracker components together on real data.
-- **Parity** tests compare current package behavior with static external or historical results, including the bundled NCL T5-42 spectral numerical-parity case.
-- **Scientific validation** and TRACK source-stage reconciliation are outside
-  the package test suite.
+- **Integration** tests exercise PyStormTracker components together on real data.
+- **Parity** tests compare package behavior with static external or earlier PyStormTracker results, including the bundled NCL T5-42 scalar spectral case.
 
 Examples:
 

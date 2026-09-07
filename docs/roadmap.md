@@ -52,19 +52,19 @@ measurements, and criteria that account for timing variability.
 ### 2.2 External reference-data comparisons
 
 The completed 2024 TRACK 1.5.4 comparison covers F320 → T42 and F320 → F320
-using full-year 2024 ERA5 MSLP. It includes runtime measurements, raw trajectory
-comparison, and RSPLICE-filtered trajectory comparison. The full-year filtered
-one-to-one F1 is 0.997 for both cases.
+using full-year 2024 ERA5 mean sea-level pressure. It includes runtime
+measurements, raw trajectory comparison, and RSPLICE-filtered trajectory
+comparison. The full-year filtered one-to-one F1 is 0.997 for both cases.
 
-The versioned external-data contract now exists: `tests/utils.py` pins
-`PyStormTracker-Data` at `v0.2.0-data`, and release-backed assets are available
-for supported ERA5 inputs, including UV850 at 0.25° and 2.5°. Individual parity
-cases still require their exact versioned input and reference products. The
-NCL/Spherepack kinematics comparison remains deferred because the pinned Data
-release does not yet contain the required NCL-generated VODV reference fields.
-The small bundled NCL T5-42 spectral output for the committed December MSL
-frame remains the ordinary repository-level bounded parity test:
+PyStormTracker-Data `v0.2.0-data` contains the versioned ERA5 inputs used by
+external-data tests, including UV850 at 0.25° and 2.5°. Each parity case
+identifies its input and reference product. The repository bundles the NCL
+T5-42 scalar spectral output for the committed December mean sea-level pressure
+frame at
 `tests/data/ncl/era5_msl_2025-12-01_0000_2.5x2.5_t5-42.nc`.
+
+**Planned work:** Add field-level NCL/Spherepack parity for relative vorticity
+and divergence in the next development cycle.
 
 ### 2.3 Dependency audit
 
@@ -73,19 +73,19 @@ Add a scheduled CI job using `uv sync --resolution lowest-direct` and the releva
 ### 2.4 Tiered testing — ✅ Implemented
 
 Unit tests run by default from `tests/unit`. Integration and parity tests are
-selected explicitly by directory; `slow` selects runtime cost and
-`data` selects external contracts. Full-duration cases are
-marked `slow` and are not part of the normal development suite.
+selected explicitly by directory; `slow` selects runtime cost and `data`
+selects tests that require data outside the source distribution. Full-duration
+cases are marked `slow` and are not part of the normal development suite.
 
 ## 3. Architecture
 
 ### 3.1 Xarray generalized ufunc integration — ✅ Implemented
 
 Spectral filtering, regridding, and kinematic calculations use
-`xarray.apply_ufunc` where appropriate to preserve xarray/Dask execution.
-Detection intentionally operates on complete two-dimensional NumPy frames
-passed to Numba kernels. This is the supported execution boundary rather than
-an incomplete conversion of all kernels to `apply_ufunc`.
+`xarray.apply_ufunc` where appropriate to preserve Xarray/Dask execution.
+Detection operates on complete two-dimensional NumPy frames passed to Numba
+kernels. This keeps labeled-array and Dask handling in preprocessing while
+frame detection operates on compiled NumPy kernels.
 
 ### 3.2 Distributed backends — ✅ Implemented
 
@@ -100,13 +100,23 @@ implementation status.
 
 `pystormtracker.cli.main()` creates the top-level parser, registers the
 `track`, `sample`, `compare`, and `convert` subcommands, and dispatches through
-`args.func`. `pystormtracker.track.main(args)` owns setup and execution for the
-`track` subcommand. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker`
+`args.func`. `pystormtracker.track.main(args)` handles setup and execution for
+the `track` subcommand. `SimpleTracker`, `HodgesTracker`, and `HealpixTracker`
 implement the common tracker interface.
 
 ### 3.4 Remote data support — ✅ Implemented
 
 `DataLoader` supports remote Zarr datasets over HTTP, S3, and Google Cloud Storage when the Zarr optional dependencies are installed.
+
+### 3.5 Spherical harmonic preprocessing
+
+**Current state:** PyStormTracker uses `ducc0` directly for global spherical
+harmonic filtering and regridding, reduced-Gaussian transforms, HEALPix
+transforms and indexing, and regional DCT filtering.
+
+**Planned work:** Use spharmgrid for overlapping Gauss–Legendre and
+Clenshaw–Curtis filtering, regridding, and vector kinematics. Keep direct
+`ducc0` use for HEALPix, regional DCT, and reduced-Gaussian paths.
 
 ## 4. Distribution and dependencies
 
@@ -256,10 +266,9 @@ longitude-seam extension behavior.
 **Progress:** The tracking CLI accepts existing relative-vorticity fields. `preprocessing.kinematics` computes vorticity and divergence through the Python API. A CLI subcommand that derives these fields from wind has not been implemented.
 
 **Verification:** Python kinematic calculations have constructed-input unit
-coverage. The main repository retains the compact, bundled NCL T5-42 spectral
-parity case for the committed December frame. Broader NCL/Spherepack kinematics
-parity remains deferred until the required NCL-generated VODV reference fields
-are added to the pinned external-data contract.
+coverage, and the bundled NCL T5-42 case covers scalar filtering. The next
+validation step is a field-level NCL/Spherepack kinematics comparison for
+relative vorticity and divergence.
 
 ### 5.12 Ensemble and dataset utilities — 🚧 In progress
 

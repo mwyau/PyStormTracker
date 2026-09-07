@@ -1,120 +1,40 @@
 # Changelog
 
-## v0.7.0.dev0
+## v0.7.0 - 2026-09-07
 
-### Tracking and refinement
+### Tracking and preprocessing
 
-- Replaced the procedural tracking API with configured tracker classes and consolidated public models under `pystormtracker.models`.
-- Renamed tracker, preprocessing, and CLI arguments and replaced subgrid-refinement terminology with feature-point location methods.
-- Updated Hodges MGE directional scheduling and iteration-limit handling.
-- Reconciled Hodges tracking with TRACK 1.5.4 across object detection, feature-point refinement, MGE linking, adaptive constraints, missing-frame handling, track failure and splitting, segment handling, and RSPLICE.
-- Added local rectangular and spherical B-spline and quadratic refinement with shared spherical geometry and intrinsic optimization support.
+- Reconciled `HodgesTracker` with TRACK 1.5.4 across object detection, feature-point refinement, Modified Greedy Exchange (MGE) linking, adaptive constraints, missing-frame handling, track failure and splitting, segment splicing, and RSPLICE filtering.
+- Added rectangular and spherical B-spline and quadratic feature-point refinement, together with storm-object area and intensity-weighted ellipse diagnostics.
+- Unified preprocessing across Simple, Hodges, and HEALPix tracking, including spherical harmonic filtering, spectral and spatial tapering, polar and HEALPix regridding, regional discrete cosine transform filtering, and full and reduced Gaussian grids.
+- Corrected cyclic-longitude sampling and periodic, regional, projected, and HEALPix boundary handling, and derived HEALPix transform bandwidth from source and target resolution.
+
+### Data model, interfaces, and formats
+
+- Replaced the procedural tracking interface with configured `SimpleTracker`, `HodgesTracker`, and `HealpixTracker` classes and the `stormtracker track`, `sample`, `compare`, and `convert` commands.
+- Replaced nested mutable trajectories with packed immutable `Tracks` arrays and per-track views.
+- Added TrackJSON 1.0 with typed `msgspec` models, generated JSON Schema, semantic validation, compact encoding, and preservation of variable, units, bounds, time, extrema mode, and preprocessing metadata.
+- Centralized CF time and calendar handling, normalized recognized pressure and vorticity units, and improved IMILAST, TRACK tdump, format detection, conversion, and empty-track handling.
 
 ### Parallel execution and performance
 
-- Split Hodges execution into explicit `frame_workers`, `sht_threads`, and
-  `mge_workers` controls with staged Dask frame detection and MGE linking;
-  the former Hodges `workers` parameter and CLI option are removed.
-- Added frame-level parallel scheduling, MPI execution, progress reporting, and observable logging contracts.
-- Optimized TRACK-compatible rectangular detection, native MGE preprocessing, and FITPACK rectangular spline systems while retaining equivalence coverage.
+- Added serial, Dask, and MPI execution for Simple, Hodges, and HEALPix tracking. Hodges execution separates `frame_workers`, `sht_threads`, and `mge_workers`, with parallel frame detection and MGE segment linking followed by deterministic splicing.
+- Optimized rectangular detection, MGE preprocessing, and FITPACK rectangular spline systems while preserving the existing TRACK 1.5.4 comparison tests.
+- Added progress reporting and logging for parallel tracking and expanded ARM64, minimum-dependency, and free-threaded Python 3.14 checks.
 
 ### Comparison and analysis
 
-- Expanded trajectory comparison, matching and assignment, Lagrangian metrics, hourly linear and PCHIP ATA interpolation, weighting kernels, and CCA/CORMAX corrections.
-- Removed the pre-release Fisher spatial weighting option before the v0.7 public API was finalized.
+- Expanded trajectory comparison with temporal-overlap eligibility, geodesic separation, matched-candidate output, and assignment diagnostics, and added external-variable sampling along tracks.
+- Added gridded cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA), including hourly linear and PCHIP amplitude interpolation and constant, Cressman, linear, and quadratic spherical distance weights.
+- Added 24-hour difference variance, eddy kinetic energy, high-wind percentile metrics, CORMAX, CCA/PCA truncation cross-validation, anomaly correlation coefficient, and fraction of variance explained calculations.
 
-### Testing and data
+### Validation, testing, and distribution
 
-- Reorganized unit, integration, legacy-parity, and NCL/Spherepack parity coverage with explicit test markers and versioned external-data ownership; the current package suite retains the bundled NCL T5-42 spectral reference while broader kinematics parity remains deferred.
-- Pinned PyStormTracker-Data paths and release assets for integration and parity coverage; broader kinematics parity remains deferred only because the NCL-generated VODV reference is not yet available.
-
-### Documentation and infrastructure
-
-- Documented the reproducible TRACK 1.5.4 comparison results for F320-to-T42 and F320-to-F320 and retained the generic PyStormTracker benchmark runner.
-- Updated the scientific-method, architecture, testing, CLI, TrackJSON, and repository guidance documentation.
-- Moved Python package publishing to a standalone workflow that runs after successful CI, and updated supported Python versions and build metadata.
-
----
-
-## v0.6.1.dev1
-
-### Testing and CI
-
-- Added pre-commit hooks for uv lock validation, Ruff linting and formatting, ty type checking, Markdown formatting, and common file checks.
-- Tightened Ruff, mypy, and ty configuration and resolved the resulting diagnostics across the package and test suite.
-- Improved typing for tracker options, spectral grid metadata, optional xeofs CCA support, xarray operations, and immutable track metadata.
-- Updated development documentation and removed the obsolete interactive tracks notebook.
-
----
-
-## v0.6.1.dev0
-
-### Tracks and formats
-
-- Replaced the mutable nested track representation with packed immutable `Tracks` arrays and lightweight per-track views.
-- Added TrackJSON 1.0 with typed `msgspec` models, generated JSON Schema, semantic validation, compact encoding, and optional derived statistics.
-- Preserved primary variable, extrema mode, units, spatial bounds, time metadata, and preprocessing history across tracking and serialization.
-- Centralized CF time conversion and calendar validation using signed millisecond times and the proleptic Gregorian calendar.
-- Normalized recognized pressure and vorticity units and their detection thresholds.
-- Improved IMILAST, TRACK tdump, GeoJSON, conversion, format detection, and empty-track handling.
-- Temporarily disabled the existing HTML explorer while its replacement is developed.
-
-### Tracking and preprocessing
-
-- Consolidated preprocessing across Simple, Hodges, and HEALPix trackers.
-- Separated optional spectral filtering, spatial tapering, and projection or HEALPix regridding.
-- Derived HEALPix transform bandwidth from source and target grid resolution instead of applying an implicit T42 truncation.
-- Aligned Simple serial, Dask, and MPI preprocessing, units, thresholds, metadata, and output.
-- Fixed cyclic-longitude sampling for signed and unsigned longitude grids, descending axes, duplicate endpoints, and antimeridian crossings.
-
-### Comparison and analysis
-
-- Reworked trajectory comparison using temporal overlap and mean geodesic separation.
-- Added matched-candidate output and corrected pressure-unit handling across TrackJSON and IMILAST inputs.
-
-### Testing and infrastructure
-
-- Added committed TrackJSON reference data and expanded unit and integration coverage.
-- Added automatic verified retrieval of N320 reduced-Gaussian test data and local Zarr extraction.
-- Consolidated CI, package testing, publishing, and multi-architecture Docker workflows.
-- Added minimum-dependency, Python 3.14 free-threaded, ARM64, schema, and dependency-review checks.
-- Corrected Linux ARM64 `ducc0` compilation in the Docker build.
-
----
-
-## v0.6.0.dev0
-
-### Tracking and preprocessing
-
-- Added the modular `stormtracker track`, `sample`, `compare`, and `convert` command structure; no package-level `pystormtracker.track()` function was exported.
-- Added algorithm-dependent tri-state filtering and subgrid-refinement controls. Omitted values use the direct tracker defaults: disabled for Simple and enabled for Hodges and HEALPix.
-- Added shared local quadratic subgrid refinement for regular and projected grids and local quadratic refinement on the HEALPix neighbor graph.
-- Added `track_bspline` as the default Hodges feature-point method for eligible periodic global latitude-longitude frames. It fits one spherical `RectSphereBivariateSpline` per frame and refines centers with a source-mapped derivative search; quadratic and grid-point methods remain explicit alternatives. The current linker does not propagate refinement diagnostics to final tracks.
-- Added polar stereographic and HEALPix preprocessing with explicit `lmax` propagation, configurable projected extent and resolution, and corrected band-pass handling.
-- Added DCT filtering for regional grids, full-Gaussian geometry handling, and reduced-Gaussian metadata, pseudo-analysis, filtering, and regridding paths.
-- Corrected periodic-global and nonperiodic regional or projected boundary handling.
-- Added serial Hodges detection chunking followed by one global linking pass. Hodges and HEALPix remain serial-only; Simple supports serial, Dask, and MPI execution.
-- Added storm-object area and intensity-weighted ellipse diagnostics to raw Hodges detections. The current Hodges linker retains only the primary tracked variable.
-
-### Metrics and analysis
-
-- Added gridded cyclone amplitude, cyclone frequency, track frequency, Accumulated Cyclone Activity (ACA), and Accumulated Track Activity (ATA).
-- Added constant, Cressman, linear, and quadratic spherical distance weights.
-- Added 24-hour difference variance, Eddy Kinetic Energy, and high-wind percentile metrics.
-- Added CORMAX, CCA/PCA truncation cross-validation, anomaly correlation coefficient, and fraction-of-variance-explained calculations through the `metrics` optional dependency.
-- Added spatiotemporal track matching and external-variable sampling.
-
-### Formats and interfaces
-
-- Added the unified CLI subcommands and finite-value validation for numerical arguments.
-- Added JSON-based sampling and comparison workflows and expanded conversion to IMILAST, TRACK tdump, JSON, and HTML outputs.
-- Added the `eof` optional dependency group for `xeofs`.
-
-### Testing and CI
-
-- Added unit and integration tests for refinement, Gaussian and reduced-Gaussian preprocessing, projected filtering, metrics, sampling, comparison, conversion, and modular CLI commands.
-- Added `--run-slow` for slow integration and historical regression cases.
-- Corrected the Docker Trivy image reference and included slow integration cases in the designated Linux CI run.
+- Completed full-year 2024 ERA5 mean sea-level pressure comparisons with TRACK 1.5.4 for F320 → T42 and F320 → F320, including raw and RSPLICE-filtered trajectory comparisons.
+- Reorganized unit, integration, and parity tests with explicit `slow` and `data` markers and retained the bundled NCL/Spherepack T5-42 scalar spectral parity case.
+- Pinned external integration and parity data to PyStormTracker-Data `v0.2.0-data` and added reduced-Gaussian ERA5 coverage.
+- Added pre-commit checks for the uv lockfile, Ruff, ty, Markdown formatting, and common file errors; tightened mypy and CI checks; and moved package publishing to a workflow that runs after successful CI.
+- Updated the scientific-method, architecture, testing, CLI, TrackJSON, benchmark, and contributor documentation.
 
 ---
 
@@ -219,7 +139,7 @@
 
 - Added support for **ARM64** Docker images.
 - Migrated project management to `uv` for deterministic builds and faster dependency resolution.
-- Optimized Docker layer caching for faster image builds.
+- Optimized Docker layer caching for faster verification.
 
 ### Maintenance
 
