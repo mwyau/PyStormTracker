@@ -1,33 +1,17 @@
 # PyStormTracker Documentation
 
-```{toctree}
-:maxdepth: 2
-:caption: Getting Started
-
-PyStormTracker <readme>
-Quickstart <quickstart>
-CLI Reference <cli>
-API Reference <api>
-```
+PyStormTracker provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets.
 
 ```{toctree}
-:maxdepth: 2
-:caption: Technical Reference
-
-Architecture <architecture>
-TrackJSON v1.0 <trackjson>
-Hodges (TRACK) Implementation <hodges>
-HEALPix Support <healpix>
-Benchmark <benchmark>
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Development & History
-
-Changelog <changelog>
-Roadmap <roadmap>
-Testing Guide <development/testing>
+---
+hidden: true
+maxdepth: 2
+---
+guide
+algorithms
+reference
+development
+changelog
 ```
 
 ## Resources
