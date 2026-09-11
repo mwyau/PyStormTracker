@@ -43,9 +43,27 @@ exclude_patterns = [
 ]
 
 # -- Options for HTML output -------------------------------------------------
-html_theme = "sphinx_rtd_theme"
+html_title = project
+html_theme = "pydata_sphinx_theme"
+html_theme_options = {
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/mwyau/PyStormTracker",
+            "icon": "fa-brands fa-github",
+        }
+    ],
+    "use_edit_page_button": True,
+}
 html_static_path = ["_static"]
+html_css_files = ["layout.css"]
 html_extra_path = ["../LICENSE", "../CONTRIBUTING.md"]
+html_context = {
+    "github_user": "mwyau",
+    "github_repo": "PyStormTracker",
+    "github_version": "main",
+    "doc_path": "docs/",
+}
 
 # -- MyST Parser configuration -----------------------------------------------
 myst_heading_anchors = 3
