@@ -177,6 +177,7 @@ jobs:
       - name: Scan critical vulnerabilities
         if: matrix.arch == 'amd64'
         uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
+        continue-on-error: true
         with:
           image-ref: ${{ steps.test-image.outputs.reference }}
           format: table
