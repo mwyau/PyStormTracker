@@ -1,19 +1,19 @@
-# PyStormTracker Documentation
+# PyStormTracker
 
-PyStormTracker provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets.
+```{include} ../README.md
+:start-after: <!-- docs-start -->
+:relative-docs: docs/
+:relative-images: true
+```
 
 ```{toctree}
 ---
 hidden: true
 maxdepth: 2
 ---
-guide
+Quickstart <quickstart>
 algorithms
 reference
 development
 changelog
 ```
-
-## Resources
-
-- <a href="_static/IntercomparisonProtocol.pdf" target="_blank">IMILAST Intercomparison Protocol</a>

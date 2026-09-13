@@ -12,6 +12,8 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-xddd%2Fpystormtracker-blue?logo=github)](https://github.com/orgs/xddd/packages/container/package/pystormtracker)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18764813-blue.svg)](https://doi.org/10.5281/zenodo.18764813)
 
+<!-- docs-start -->
+
 **PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba Simple Tracker implementation with high-level concept lineage from **Yau and Chang (2020)** and TRACK-compatible algorithms with scientific lineage from **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
 
 ## Features
