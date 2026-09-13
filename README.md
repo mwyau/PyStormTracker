@@ -23,7 +23,7 @@
 - Spectral preprocessing, feature refinement, track comparison, variable sampling, and storm-track metrics.
 - Serial, Dask, and MPI execution with Numba-accelerated numerical kernels.
 
-## Quick start
+## Usage
 
 PyStormTracker requires **Python 3.12+**.
 
@@ -53,7 +53,7 @@ See the [Quickstart](docs/quickstart.md) for installation options, CLI and Pytho
 
 [Documentation](https://pystormtracker.readthedocs.io/) · [Quickstart](docs/quickstart.md) · [CLI](docs/cli.md) · [API](docs/api.md) · [Architecture](docs/architecture.md) · [Hodges / TRACK](docs/hodges.md) · [HEALPix](docs/healpix.md) · [TrackJSON](docs/trackjson.md) · [Benchmarks](docs/benchmark.md)
 
-## Citations
+## References
 
 If you use PyStormTracker in research, please cite the software:
 
@@ -63,7 +63,7 @@ PyStormTracker was originally presented as:
 
 - **Yau, A. M. W., K. Paul, and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. Zenodo, [doi:10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
-For methods used by the Simple tracker and storm-track analysis:
+For methods used by the Simple tracker and cyclone track analysis:
 
 - **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
 
