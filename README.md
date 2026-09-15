@@ -4,7 +4,6 @@
 [![Documentation Status](https://readthedocs.org/projects/pystormtracker/badge/?version=latest)](https://pystormtracker.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/github/mwyau/PyStormTracker/graph/badge.svg?token=JmTabGA3cq)](https://codecov.io/github/mwyau/PyStormTracker)
 [![PyPI version](https://img.shields.io/pypi/v/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
-[![TestPyPI Version](https://img.shields.io/pypi/v/PyStormTracker?pypiBaseUrl=https://test.pypi.org&label=testpypi)](https://test.pypi.org/project/PyStormTracker/)
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/pystormtracker)](https://anaconda.org/channels/conda-forge/packages/pystormtracker/overview)
 [![GitHub License](https://img.shields.io/github/license/mwyau/PyStormTracker)](https://github.com/mwyau/PyStormTracker/blob/main/LICENSE)
 [![PyPI Python Version](https://img.shields.io/pypi/pyversions/PyStormTracker)](https://pypi.org/project/PyStormTracker/)
