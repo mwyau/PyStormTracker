@@ -259,6 +259,7 @@ class HealpixTracker(Tracker):
         spectral_taper: float = SPECTRAL_TAPER_DEFAULT,
         nside: int | None = None,
         backend: Backend | None = None,
+        sht_threads: int | None = None,
     ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         return preprocess_tracking_data(
             data,
@@ -269,6 +270,7 @@ class HealpixTracker(Tracker):
             projection="healpix",
             nside=nside,
             backend=backend or self.backend,
+            sht_threads=sht_threads,
         )
 
     def _run_segment_task(
@@ -686,7 +688,8 @@ class HealpixTracker(Tracker):
                 taper_points=self.taper_points,
                 spectral_taper=self.spectral_taper,
                 nside=self.nside,
-                backend="mpi",
+                backend="serial",
+                sht_threads=1,
             )
             stored_processing = seg_proc
             raw_tr = self._run_segment_task(

@@ -10,7 +10,10 @@ This guide covers installation, command-line and Python use, sample data, and de
 - **Message Passing Interface (MPI)**:
   - **Linux/macOS**: OpenMPI is recommended and included as a development dependency.
   - **Windows**: use `winget install -e --id Microsoft.msmpi` or install [MS-MPI](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
-- **Spherical harmonic transforms** are provided by `ducc0`, including scalar and spin-weighted transforms, reduced-grid synthesis, and HEALPix geometry.
+- **Spherical harmonic operations** on rectangular GL/CC grids use
+  `spharmgrid`; PyStormTracker uses direct `ducc0` for reduced-grid transforms, HEALPix
+  geometry, polar projection, regional DCT, and explicit-`lmax` vector
+  kinematics.
 - **Free-threaded Python 3.14** support is experimental. CI currently excludes `eof`, `grib`, and `zarr` in that configuration because of upstream dependency availability.
 
 ### PyPI

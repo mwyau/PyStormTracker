@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "PyStormTracker"
-version = "0.7.0"
+version = "0.7.1.dev0"
 description = "A High-Performance Cyclone Tracker in Python"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -31,6 +31,7 @@ dependencies = [
     "numba>=0.67.0",
     "numpy>=2.5.0",
     "scipy>=1.16.1",
+    "spharmgrid>=0.1.3,<0.2",
     "xarray>=2024.9.0",
 ]
 

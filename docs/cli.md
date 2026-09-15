@@ -75,7 +75,7 @@ The production default relative-vorticity threshold is `1e-5 s^-1`. The `1e-4 s^
 | `-b`, `--backend`        | `dask`, `serial`, or `mpi`. Default: `dask` (or `mpi` if an active MPI environment is detected).                                                                                  |
 | `-w`, `--workers`        | Generic Dask worker count for Simple/HEALPix. Defaults to available process CPU concurrency; not accepted by Hodges.                                                              |
 | `--frame-workers`        | Hodges Dask frame-processing tasks, including lazy source reads, preprocessing, detection, and refinement.                                                                        |
-| `--sht-threads`          | DUCC0 native threads per active Hodges spherical-harmonic transform.                                                                                                              |
+| `--sht-threads`          | Threads per active Hodges spherical-harmonic transform; passed to spharmgrid on supported rectangular paths and to direct DUCC special paths.                                     |
 | `--mge-workers`          | Hodges Dask MGE segment-linking tasks that may run concurrently.                                                                                                                  |
 | `-c`, `--segment-frames` | MGE temporal segment length for Hodges/HEALPix; default `62`. Not used by Simple and independent of worker counts. An explicit value cannot be combined with `--no-segmentation`. |
 | `-e`, `--engine`         | Xarray engine: `h5netcdf` by default, or explicitly `netcdf4` for legacy NetCDF3 and `cfgrib` for GRIB.                                                                           |

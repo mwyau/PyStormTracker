@@ -135,6 +135,7 @@ def _dependency_versions() -> dict[str, str | None]:
         "scipy",
         "numba",
         "ducc0",
+        "spharmgrid",
         "xarray",
         "dask",
     )
@@ -296,7 +297,7 @@ def _filter_input(
         raise TypeError("SHTFilter returned a non-xarray result")
     return filtered, {
         "enabled": True,
-        "method": "SHTFilter/ducc0",
+        "method": "SHTFilter",
         "lmin": args.lmin,
         "lmax": args.lmax,
         "taper_val": spectral_taper,
@@ -455,7 +456,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--mge-workers", type=_positive_int)
     parser.add_argument(
         "--source-geometry",
-        choices=("auto", "CC", "GL", "DH"),
+        choices=("auto", "CC", "GL"),
         default="auto",
     )
     parser.add_argument(

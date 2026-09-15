@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from typing import Literal
+from unittest.mock import patch
+
 import numpy as np
+import pytest
+import spharmgrid as sg
 import xarray as xr
 
 from pystormtracker.preprocessing.regrid import SpectralRegridder
@@ -27,6 +32,188 @@ def test_regrid_to_grid() -> None:
     assert regridded.shape == (37, 72)
     assert regridded.dims == ("lat", "lon")
     assert regridded.name == "test_var"
+
+
+def test_regrid_to_grid_delegates_regular_path_to_spharmgrid() -> None:
+    source = sg.clenshaw_curtis_grid(9, 18, latitude_order="ascending")
+    data = xr.DataArray(
+        np.random.default_rng(5).random((9, 18)),
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+        name="test_var",
+    )
+    target = sg.gaussian_grid(8, 16, latitude_order="ascending")
+    expected = sg.regrid(data, target, truncation="T3", sht_threads=None)
+
+    with patch(
+        "pystormtracker.preprocessing.regrid.sg.regrid",
+        wraps=sg.regrid,
+    ) as regrid_call:
+        actual = SpectralRegridder(lmax=3).to_grid(data, 8, 16, out_geometry="GL")
+
+    np.testing.assert_allclose(actual.values, expected.values)
+    assert regrid_call.call_args is not None
+    assert regrid_call.call_args.args[0] is data
+    assert regrid_call.call_args.kwargs["truncation"] == "T3"
+    assert regrid_call.call_args.kwargs["sht_threads"] is None
+
+
+def test_regrid_to_grid_default_bandwidth_matches_spharmgrid() -> None:
+    source = sg.clenshaw_curtis_grid(17, 36, latitude_order="ascending")
+    target = sg.gaussian_grid(8, 16, latitude_order="ascending")
+    data = xr.DataArray(
+        np.random.default_rng(17).normal(
+            size=(source.latitude.size, source.longitude.size)
+        ),
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+        name="test_var",
+    )
+
+    actual = SpectralRegridder().to_grid(
+        data,
+        nlat=8,
+        nlon=16,
+        in_geometry="CC",
+        out_geometry="GL",
+    )
+    expected = sg.regrid(data, target, sht_threads=None)
+
+    np.testing.assert_allclose(actual.values, expected.values)
+    np.testing.assert_array_equal(actual.lat.values, expected.lat.values)
+    np.testing.assert_array_equal(actual.lon.values, expected.lon.values)
+
+
+@pytest.mark.parametrize("source_order", ["ascending", "descending"])
+def test_regrid_regular_field_coordinates_match_values(
+    source_order: Literal["ascending", "descending"],
+) -> None:
+    source = sg.clenshaw_curtis_grid(17, 36, latitude_order=source_order)
+    data = xr.DataArray(
+        np.sin(np.deg2rad(source.latitude))[:, None] * np.ones(source.longitude.size),
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+        name="test_var",
+    )
+    target = sg.gaussian_grid(8, 16, latitude_order="ascending")
+
+    actual = SpectralRegridder(lmax=3).to_grid(
+        data,
+        nlat=8,
+        nlon=16,
+        in_geometry="CC",
+        out_geometry="GL",
+        lat_reverse=False,
+    )
+    expected = sg.regrid(
+        data,
+        target,
+        truncation="T3",
+        sht_threads=None,
+    )
+
+    np.testing.assert_allclose(actual.values, expected.values)
+    np.testing.assert_array_equal(actual.lat.values, expected.lat.values)
+    np.testing.assert_array_equal(actual.lon.values, expected.lon.values)
+    np.testing.assert_allclose(
+        actual.mean("lon").values,
+        np.sin(np.deg2rad(actual.lat.values)),
+        atol=1.0e-10,
+    )
+
+
+def test_regrid_invalid_rectangular_grid_does_not_fall_back() -> None:
+    data = xr.DataArray(
+        np.zeros((9, 18)),
+        dims=("lat", "lon"),
+        coords={
+            "lat": np.linspace(-80.0, 80.0, 9),
+            "lon": np.linspace(0.0, 360.0, 18, endpoint=False),
+        },
+    )
+
+    with pytest.raises(ValueError, match=r".+"):
+        SpectralRegridder(lmax=3).to_grid(data, nlat=8, nlon=16)
+
+
+def test_regrid_mmax_without_lmax_requires_lmax() -> None:
+    source = sg.clenshaw_curtis_grid(9, 18, latitude_order="ascending")
+    data = xr.DataArray(
+        np.sin(np.deg2rad(source.latitude))[:, None]
+        * np.cos(np.deg2rad(source.longitude))[None, :],
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+    )
+
+    with (
+        patch(
+            "pystormtracker.preprocessing.regrid.sg.regrid",
+            wraps=sg.regrid,
+        ) as regrid_call,
+        pytest.raises(
+            ValueError,
+            match="lmax is required.*mmax.*regular CC/GL regridding",
+        ),
+    ):
+        SpectralRegridder(mmax=3).to_grid(data, nlat=8, nlon=16)
+
+    regrid_call.assert_not_called()
+
+
+def test_regrid_equal_lmax_mmax_matches_spharmgrid() -> None:
+    source = sg.clenshaw_curtis_grid(9, 18, latitude_order="ascending")
+    target = sg.gaussian_grid(8, 16, latitude_order="ascending")
+    data = xr.DataArray(
+        np.sin(np.deg2rad(source.latitude))[:, None]
+        * np.cos(np.deg2rad(source.longitude))[None, :],
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+        name="test_var",
+    )
+
+    expected = sg.regrid(data, target, truncation="T3", sht_threads=None)
+    actual = SpectralRegridder(lmax=3, mmax=3).to_grid(
+        data,
+        nlat=8,
+        nlon=16,
+        out_geometry="GL",
+    )
+
+    np.testing.assert_allclose(actual.values, expected.values)
+    np.testing.assert_array_equal(actual["lat"], expected["lat"])
+    np.testing.assert_array_equal(actual["lon"], expected["lon"])
+
+
+def test_regrid_nontriangular_mmax_is_rejected() -> None:
+    source = sg.clenshaw_curtis_grid(9, 18, latitude_order="ascending")
+    data = xr.DataArray(
+        np.sin(np.deg2rad(source.latitude))[:, None]
+        * np.cos(np.deg2rad(source.longitude))[None, :],
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+    )
+
+    with pytest.raises(ValueError, match="non-triangular"):
+        SpectralRegridder(lmax=5, mmax=2).to_grid(data, 8, 16)
+
+
+def test_regrid_to_grid_regular_dask_path_stays_lazy() -> None:
+    source = sg.clenshaw_curtis_grid(9, 18, latitude_order="ascending")
+    data = xr.DataArray(
+        np.random.default_rng(6).random((9, 18)),
+        dims=("lat", "lon"),
+        coords={"lat": source.latitude, "lon": source.longitude},
+        name="test_var",
+    ).chunk({"lat": -1, "lon": -1})
+
+    actual = SpectralRegridder(lmax=3).to_grid(
+        data,
+        8,
+        16,
+        out_geometry="GL",
+    )
+
+    assert hasattr(actual.data, "dask")
 
 
 def test_regrid_to_healpix() -> None:

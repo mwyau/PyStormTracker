@@ -11,7 +11,6 @@ from numpy.typing import NDArray
 
 from ..backends import (
     Backend,
-    configure_sht_threads,
     extract_dask_frame_delayed_blocks,
     local_dask_executor,
     resolve_frame_workers,
@@ -485,6 +484,7 @@ class HodgesTracker(Tracker):
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
         backend: Backend | None = None,
+        sht_threads: int | None = None,
     ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         return preprocess_tracking_data(
             data,
@@ -500,7 +500,7 @@ class HodgesTracker(Tracker):
             extent=extent,
             filter_type=filter_type,
             backend=backend or self.backend,
-            sht_threads=self.sht_threads,
+            sht_threads=self.sht_threads if sht_threads is None else sht_threads,
         )
 
     def _run_segment_task(
@@ -830,7 +830,6 @@ class HodgesTracker(Tracker):
         frame_workers = resolve_frame_workers(self.frame_workers, "dask")
         sht_threads = resolve_sht_threads(self.sht_threads, "dask")
         mge_workers = resolve_mge_workers(self.mge_workers, "dask")
-        configure_sht_threads(sht_threads)
 
         frames = extract_dask_frame_delayed_blocks(data_xr)
         segments = plan_tracking_segments(
@@ -1072,7 +1071,8 @@ class HodgesTracker(Tracker):
                     projection=self.projection,
                     stereo_grid_spacing_km=self.stereo_grid_spacing_km,
                     extent=self.extent,
-                    backend="mpi",
+                    backend="serial",
+                    sht_threads=resolve_sht_threads(self.sht_threads, "mpi"),
                 )
                 stored_processing = seg_proc
                 raw_tr = self._run_segment_task(

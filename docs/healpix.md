@@ -19,14 +19,20 @@ TRACK compatibility behavior.
 
 ## 2. Spectral Regridding (`SpectralRegridder`)
 
-`SpectralRegridder` uses `ducc0.sht` for spherical harmonic analysis of an input grid and synthesis on a target grid.
+`SpectralRegridder` uses public `spharmgrid` regridding for regular
+rectangular GL/CC to GL/CC operations whose requested spectral band is
+triangular. The HEALPix target path uses direct `ducc0.sht` analysis and
+synthesis; regular non-triangular bands are rejected.
 
 - **Supported Inputs**: Clenshaw-Curtis (CC) and Gauss-Legendre (GL).
 - **Supported Outputs**: CC, GL, and HEALPix.
 - **Spectral Logic**:
-  - **Analysis**: Extracts spherical harmonic coefficients ($a\_{lm}$) from 2D grids using `ducc0.sht.analysis_2d`.
-  - **Synthesis**: Projects coefficients onto the target grid. For HEALPix, it uses `ducc0.sht.synthesis` with `geometry` parameters derived from `ducc0.healpix.Healpix_Base.sht_info()`.
-  - **Spectral Truncation**: Supports explicit $L\_{max}$ and $M\_{max}$ band limits. If omitted, the truncation is inferred from the input longitude count.
+  - **Regular rectangular analysis and synthesis**: Delegated to
+    `spharmgrid.regrid`.
+  - **HEALPix synthesis**: Projects coefficients onto the HEALPix target with
+    `ducc0.sht.synthesis` and geometry parameters derived from
+    `ducc0.healpix.Healpix_Base.sht_info()`.
+  - **Spectral Truncation**: HEALPix and polar paths support explicit $L\_{max}$ and $M\_{max}$ band limits. If omitted, the truncation is inferred from the input longitude count. Regular CC/GL regridding accepts triangular selections only.
 
 ## 3. HEALPix Tracking Algorithm (`HealpixTracker`)
 
