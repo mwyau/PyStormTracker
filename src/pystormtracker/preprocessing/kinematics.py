@@ -161,6 +161,8 @@ def _compute_vorticity_divergence_xarray(
 
     latitude_name = _coordinate_name(u, "latitude")
     longitude_name = _coordinate_name(u, "longitude")
+    latitude_dim = str(u[latitude_name].dims[0])
+    longitude_dim = str(u[longitude_name].dims[0])
     latitude_values = np.asarray(u[latitude_name].values, dtype=np.float64)
     lat_reverse = bool(
         latitude_values.size > 1 and latitude_values[0] > latitude_values[-1]
@@ -184,8 +186,8 @@ def _compute_vorticity_divergence_xarray(
         _compute_vorticity_divergence_lmax_frame,
         u,
         v,
-        input_core_dims=[[latitude_name, longitude_name]] * 2,
-        output_core_dims=[[latitude_name, longitude_name]] * 2,
+        input_core_dims=[[latitude_dim, longitude_dim]] * 2,
+        output_core_dims=[[latitude_dim, longitude_dim]] * 2,
         vectorize=True,
         kwargs=kwargs,
         dask=dask_mode,

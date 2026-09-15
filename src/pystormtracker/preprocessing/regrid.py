@@ -176,10 +176,12 @@ class SpectralRegridder:
 
         if not is_reduced and data.ndim == 2:
             if self.mmax is not None:
-                effective_lmax = (
-                    self.lmax if self.lmax is not None else data.shape[1] // 2 - 1
-                )
-                if self.mmax != effective_lmax:
+                if self.lmax is None:
+                    raise ValueError(
+                        "lmax is required when mmax is specified for "
+                        "regular CC/GL regridding"
+                    )
+                if self.mmax != self.lmax:
                     raise ValueError(
                         "mmax must equal lmax for regular CC/GL regridding; "
                         "non-triangular selections are not supported by the "

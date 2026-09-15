@@ -317,9 +317,9 @@ regular-grid inputs. General track-file combination remains future work.
 path for supported filtering, regular-grid regridding, and xarray kinematics.
 
 **Verification:** Repository tests cover GL detection, filtering, regridding,
-latitude orientation, and kinematics. The 2024 ERA5 F320 TRACK comparison
-exercises full-Gaussian source data for the established F320 → T42 and
-F320 → F320 workflows.
+latitude orientation, and kinematics. The established 2024 ERA5 F320 TRACK
+comparison provides the historical full-Gaussian baseline for the F320 → T42
+and F320 → F320 workflows.
 
 ### 5.16 Reduced Gaussian grids — ✅ Implemented
 

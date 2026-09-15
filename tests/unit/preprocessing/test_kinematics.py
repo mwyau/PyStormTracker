@@ -258,6 +258,67 @@ def test_explicit_lmax_preserves_latitude_orientation(
     xr.testing.assert_allclose(ascending[1], descending[1].sortby("latitude"))
 
 
+@pytest.mark.parametrize("geometry", ["CC", "GL"])
+def test_explicit_lmax_supports_cf_coordinate_names(
+    geometry: Literal["CC", "GL"],
+) -> None:
+    grid = (
+        sg.clenshaw_curtis_grid(9, 18, latitude_order="ascending")
+        if geometry == "CC"
+        else sg.gaussian_grid(8, 16, latitude_order="ascending")
+    )
+    latitude = np.deg2rad(grid.latitude)[:, None]
+    longitude = np.deg2rad(grid.longitude)[None, :]
+    u_values = np.cos(latitude) * np.cos(longitude) + 0.1 * np.sin(2.0 * latitude)
+    v_values = np.sin(latitude) * np.sin(longitude) + 0.2 * np.cos(longitude)
+
+    u_cf = xr.DataArray(
+        u_values,
+        dims=("y", "x"),
+        coords={
+            "nav_lat": ("y", grid.latitude, {"standard_name": "latitude"}),
+            "nav_lon": ("x", grid.longitude, {"standard_name": "longitude"}),
+        },
+    )
+    v_cf = xr.DataArray(
+        v_values,
+        dims=u_cf.dims,
+        coords=u_cf.coords,
+    )
+    u_standard = xr.DataArray(
+        u_values,
+        dims=("lat", "lon"),
+        coords={"lat": grid.latitude, "lon": grid.longitude},
+    )
+    v_standard = xr.DataArray(
+        v_values,
+        dims=u_standard.dims,
+        coords=u_standard.coords,
+    )
+
+    cf_divergence, cf_vorticity = compute_vorticity_divergence(
+        u_cf,
+        v_cf,
+        lmax=3,
+        geometry=geometry,
+    )
+    standard_divergence, standard_vorticity = compute_vorticity_divergence(
+        u_standard,
+        v_standard,
+        lmax=3,
+        geometry=geometry,
+    )
+
+    assert cf_divergence.dims == ("y", "x")
+    assert cf_vorticity.dims == ("y", "x")
+    assert cf_divergence["nav_lat"].dims == ("y",)
+    assert cf_divergence["nav_lon"].dims == ("x",)
+    np.testing.assert_array_equal(cf_divergence["nav_lat"], grid.latitude)
+    np.testing.assert_array_equal(cf_divergence["nav_lon"], grid.longitude)
+    np.testing.assert_allclose(cf_divergence.values, standard_divergence.values)
+    np.testing.assert_allclose(cf_vorticity.values, standard_vorticity.values)
+
+
 def test_xarray_kinematics_dask_path_stays_lazy() -> None:
     grid = sg.clenshaw_curtis_grid(9, 18, latitude_order="descending")
     u = xr.DataArray(
