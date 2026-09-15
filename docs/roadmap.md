@@ -108,15 +108,18 @@ implement the common tracker interface.
 
 `DataLoader` supports remote Zarr datasets over HTTP, S3, and Google Cloud Storage when the Zarr optional dependencies are installed.
 
-### 3.5 Spherical harmonic preprocessing
+### 3.5 Spherical harmonic preprocessing — ✅ Implemented
 
-**Current state:** PyStormTracker uses `ducc0` directly for global spherical
-harmonic filtering and regridding, reduced-Gaussian transforms, HEALPix
-transforms and indexing, and regional DCT filtering.
+**Current state:** PyStormTracker delegates supported rectangular GL/CC
+spherical-harmonic filtering, triangular-band regular-grid regridding, and
+default xarray and NumPy-adapted kinematics to public `spharmgrid` 0.1.3.
+PyStormTracker uses direct `ducc0` for reduced-Gaussian and HEALPix transforms, HEALPix
+indexing, polar stereographic synthesis, regional DCT filtering, and explicit
+`lmax` vector kinematics. Regular non-triangular spectral bands are unsupported.
 
-**Planned work:** Use spharmgrid for overlapping Gauss–Legendre and
-Clenshaw–Curtis filtering, regridding, and vector kinematics. Keep direct
-`ducc0` use for HEALPix, regional DCT, and reduced-Gaussian paths.
+**Verification:** Public wrapper tests cover the rectangular delegation,
+thread mapping, Dask laziness, reduced-Gaussian/HEALPix/polar paths, parallel
+backend equivalence, and the existing NCL/Spherepack comparison.
 
 ## 4. Distribution and dependencies
 
@@ -305,14 +308,18 @@ regular-grid inputs. General track-file combination remains future work.
 
 **Verification:** Compare with a documented tropical-cyclone reference workflow after the configuration is implemented.
 
-### 5.15 Full Gaussian grids — 🚧 In progress
+### 5.15 Full Gaussian grids — ✅ Implemented
 
-**Description:** Process and regrid fields on full Gaussian (Gauss-Legendre)
-latitude-longitude grids using `GL` geometry in `ducc0.sht.analysis_2d`.
+**Description:** Process and regrid fields on full Gaussian
+(Gauss--Legendre) latitude--longitude grids.
 
-**Progress:** `DataLoader` identifies Gaussian latitude spacing, and the SHT and regridding paths support `GL` geometry.
+**Implementation:** Full rectangular GL fields use the public `spharmgrid` GL
+path for supported filtering, regular-grid regridding, and xarray kinematics.
 
-**Verification:** Geometry-detection and `GL` synthesis paths have repository coverage. A versioned full-Gaussian input test dataset remains to be tested end to end.
+**Verification:** Repository tests cover GL detection, filtering, regridding,
+latitude orientation, and kinematics. The 2024 ERA5 F320 TRACK comparison
+exercises full-Gaussian source data for the established F320 → T42 and
+F320 → F320 workflows.
 
 ### 5.16 Reduced Gaussian grids — ✅ Implemented
 

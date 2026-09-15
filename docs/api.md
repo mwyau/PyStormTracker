@@ -34,10 +34,13 @@ tracks.write("tracks.trackjson")
 ```
 
 For `HodgesTracker`, `frame_workers` controls concurrent frame tasks,
-`sht_threads` controls DUCC0 threads per active spherical-harmonic transform,
-and `mge_workers` controls concurrent MGE segment tasks. `segment_frames`
-controls the scientific temporal segment length independently of these
-execution controls.
+`sht_threads` controls threads per active spherical-harmonic transform, and
+`mge_workers` controls concurrent MGE segment tasks. The value is passed to
+spharmgrid on supported rectangular operations and to direct DUCC operations
+for reduced-Gaussian, HEALPix, polar, regional-DCT, and explicit-`lmax`
+vector-kinematics paths.
+`segment_frames` controls the scientific temporal segment length independently
+of these execution controls.
 
 ## Package API
 

@@ -16,14 +16,14 @@ directly to the tagged TRACK 1.5.4 implementation and relevant line ranges.
 
 The implementation combines several layers that should not be conflated:
 
-| Layer                                                                    | Authority                     | PyStormTracker relationship          |
-| ------------------------------------------------------------------------ | ----------------------------- | ------------------------------------ |
-| Feature identification and tracking method                               | Hodges (1994, 1995, 1999)     | Scientific lineage                   |
-| Source-specific tracking semantics                                       | TRACK 1.5.4                   | Implementation/parity reference      |
-| Rectangular and spherical B-spline construction                          | Dierckx/FITPACK through SciPy | Established numerical implementation |
-| Spherical harmonics and HEALPix numerics                                 | `ducc0`                       | Numerical library                    |
-| Spherical quadratic and intrinsic spherical B-spline optimization        | PyStormTracker                | Explicit extensions                  |
-| Global one-to-one track assignment and exact timestamp-sequence identity | PyStormTracker                | Comparison/validation extensions     |
+| Layer                                                                    | Authority                     | PyStormTracker relationship                                                                   |
+| ------------------------------------------------------------------------ | ----------------------------- | --------------------------------------------------------------------------------------------- |
+| Feature identification and tracking method                               | Hodges (1994, 1995, 1999)     | Scientific lineage                                                                            |
+| Source-specific tracking semantics                                       | TRACK 1.5.4                   | Implementation/parity reference                                                               |
+| Rectangular and spherical B-spline construction                          | Dierckx/FITPACK through SciPy | Established numerical implementation                                                          |
+| Spherical harmonics and HEALPix numerics                                 | `spharmgrid`, `ducc0`         | spharmgrid owns supported rectangular GL/CC operations; uses direct DUCC on special SHT paths |
+| Spherical quadratic and intrinsic spherical B-spline optimization        | PyStormTracker                | Explicit extensions                                                                           |
+| Global one-to-one track assignment and exact timestamp-sequence identity | PyStormTracker                | Comparison/validation extensions                                                              |
 
 ## Feature identification
 
@@ -36,10 +36,15 @@ The interactive wrapper is
 while the Hoskins coefficient taper itself is implemented by
 [`hoskins_filt()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/hoskins_filt.c#L4-20).
 
-PyStormTracker uses `ducc0` for spherical-harmonic filtering. Filtering is
-optional: both `lmin` and `lmax` must be supplied. `spectral_taper=1.0` retains
-the requested band without an additional high-wavenumber coefficient taper.
-Spatial boundary tapering through `taper_points` is a separate operation.
+PyStormTracker uses public `spharmgrid` filtering for supported rectangular
+Gauss--Legendre and Clenshaw--Curtis fields. NumPy input reaches that operation
+through a coordinate-aware adapter. Reduced-Gaussian filtering uses direct
+DUCC; a non-triangular regular-grid spectral band is rejected because the
+released public spharmgrid API exposes triangular selections.
+Filtering is optional: both `lmin` and `lmax` must be supplied.
+`spectral_taper=1.0` retains the requested band
+without an additional high-wavenumber coefficient taper. Spatial boundary
+tapering through `taper_points` is a separate operation.
 
 Global spherical-harmonic filtering is a **spatial -> spectral -> spatial**
 operation: spherical-harmonic coefficients are an intermediate representation,
@@ -48,9 +53,12 @@ on spectral coefficients.
 
 TRACK's wind-derived vorticity route is implemented by
 [`compute_vorticity()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/compute_vorticity.c#L51-180).
-PyStormTracker instead uses spin-1 vector spherical harmonics through `ducc0`;
-this is related functionality rather than a claim of source-identical numerical
-implementation.
+PyStormTracker uses the public `spharmgrid` kinematics operation for default
+rectangular xarray fields and for NumPy input through its coordinate-aware
+adapter. Explicit-`lmax` calculations use direct `ducc0` spin-1 vector
+spherical harmonics because the released public same-grid vector composition
+does not reproduce the established PST result; unsupported geometries are
+rejected.
 
 ### Thresholding, objects, and extrema
 
@@ -297,11 +305,11 @@ architecture rather than part of the TRACK MGE algorithm shown above; see
 
 Hodges Dask execution has three independent controls:
 
-| Control         | Unit of concurrency                                                                          | Default when omitted              |
-| --------------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
-| `frame_workers` | concurrent frame tasks, including lazy source read, preprocessing, detection, and refinement | available process CPU concurrency |
-| `sht_threads`   | DUCC0 native threads per active spherical-harmonic transform                                 | one per active Dask/MPI transform |
-| `mge_workers`   | concurrent independent MGE segment-linking tasks                                             | available process CPU concurrency |
+| Control         | Unit of concurrency                                                                                        | Default when omitted              |
+| --------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `frame_workers` | concurrent frame tasks, including lazy source read, preprocessing, detection, and refinement               | available process CPU concurrency |
+| `sht_threads`   | Threads per active spherical-harmonic transform; passed to spharmgrid or direct DUCC according to the path | one per active Dask/MPI transform |
+| `mge_workers`   | concurrent independent MGE segment-linking tasks                                                           | available process CPU concurrency |
 
 `segment_frames=62` and the two-frame overlap remain scientific segmentation
 parameters; they are independent of `mge_workers`. MGE is not internally
@@ -315,14 +323,13 @@ Serial and MPI execution do not use Dask frame or MGE worker pools, so explicit
 and `mge_workers`. `SimpleTracker` and `HealpixTracker` continue to accept
 `workers`.
 
-The current SHT implementation uses DUCC0. PyStormTracker passes the resolved
-`sht_threads` as DUCC0's `nthreads` argument to regular, reduced-grid, and
-regridding transforms. DUCC0 0.41.0 also applies process-level native thread
-limits from `DUCC0_NUM_THREADS` or, when absent, `OMP_NUM_THREADS`. For an
-explicit request, PyStormTracker uses DUCC0's direct thread-pool resize API so
-an inherited OMP limit does not silently cap the requested SHT pool; it does
-not mutate those environment variables. Native environment values are logged
-at DEBUG level with the resolved execution configuration.
+Supported rectangular SHT, triangular-band regridding, and default kinematics
+calls use the public `spharmgrid` per-operation `sht_threads` argument. The
+reduced-grid, HEALPix, polar, regional-DCT, and explicit-`lmax` vector paths
+pass the resolved value to DUCC and use the existing direct pool
+configuration. Native
+environment values are logged at DEBUG level with the resolved execution
+configuration.
 
 ### Physical constraints, failure, and finalization
 
@@ -529,7 +536,7 @@ All links target the immutable `TRACK-1.5.4` tag.
 | Object construction         | [`form_objects()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/form_objects.c)                                                                                                                         | Converts segmentation into object structures             | Source behavior reference                                                                 |
 | Object-size filtering       | [`object_filter()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/object_filter.c#L13-95)                                                                                                                | `point_num <= filt_pt_num` removal                       | Maps to `min_object_grid_points`                                                          |
 | Object-local extrema        | [`object_local_maxs()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/object_local_maxs.c#L29-230)                                                                                                       | 3x3 extrema, boundary option, grouping                   | Detector source reference                                                                 |
-| Spectral filtering          | [`spectral_filter()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/spectral_filter.c#L32-220)                                                                                                           | Spatial spectral-filter workflow                         | `ducc0` implementation differs numerically                                                |
+| Spectral filtering          | [`spectral_filter()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/spectral_filter.c#L32-220)                                                                                                           | Spatial spectral-filter workflow                         | spharmgrid-backed implementation differs numerically                                      |
 | Spectral wrapper            | [`spec_filt()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/spec_filt.c)                                                                                                                               | Interactive filtering orchestration                      | Not copied by PST                                                                         |
 | Hoskins taper               | [`hoskins_filt()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/hoskins_filt.c#L4-20)                                                                                                                   | Exponential coefficient taper                            | Correct source owner                                                                      |
 | Wind-derived vorticity      | [`compute_vorticity()`](https://gitlab.act.reading.ac.uk/track/track/-/blob/TRACK-1.5.4/src/compute_vorticity.c#L51-180)                                                                                                       | TRACK wind-to-vorticity workflow                         | PST uses spin-1 harmonics                                                                 |

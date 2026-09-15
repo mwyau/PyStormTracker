@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import ClassVar, Literal, TypedDict, cast
 
 import numpy as np
+import spharmgrid as sg
 import xarray as xr
 from numpy.typing import NDArray
 
@@ -377,11 +378,10 @@ class DataLoader:
     def _get_theta(self, ntheta: int, geometry: str) -> NDArray[np.float64]:
         """Calculates colatitudes (theta) for a given geometry and resolution."""
         if geometry == "GL":
-            import ducc0
-
-            # ducc0.misc.GL_thetas returns North-to-South (0 to pi)
+            # spharmgrid returns the same North-to-South Gaussian nodes in degrees.
+            grid = sg.gaussian_grid(ntheta, 2, latitude_order="descending")
             return np.asarray(
-                ducc0.misc.GL_thetas(ntheta),
+                np.deg2rad(90.0 - grid.latitude),
                 dtype=np.float64,
             )
         # Default to equidistant if geometry == "CC"

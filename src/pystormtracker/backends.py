@@ -189,12 +189,12 @@ def resolve_sht_threads(
     sht_threads: int | None,
     backend: Backend,
 ) -> int:
-    """Resolve DUCC0 threads per spherical-harmonic transform.
+    """Resolve threads per spherical-harmonic transform.
 
     The serial default is zero, which asks DUCC0 to use its available hardware
-    threads. Parallel backends default to one thread per active frame/rank to
-    preserve the existing oversubscription-safe behavior. Explicit values are
-    always positive and are passed directly to DUCC0.
+    threads on direct paths. Parallel backends default to one thread per active
+    frame/rank. Explicit values are positive and pass to the numerical backend
+    used by the operation.
     """
     if sht_threads is not None:
         _validate_positive_integer("sht_threads", sht_threads)

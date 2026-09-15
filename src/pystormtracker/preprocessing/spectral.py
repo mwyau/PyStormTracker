@@ -5,8 +5,10 @@ methodology of Sardeshmukh and Hoskins (1984), “Spatial Smoothing on the
 Sphere,” *Monthly Weather Review*, 112(12), 2524--2529:
 https://doi.org/10.1175/1520-0493(1984)112<2524:SSOTS>2.0.CO;2
 
-The coefficient transforms and DCT/SHT numerical machinery are supplied by
-``ducc0``.  Relevant numerical lineage includes Reinecke and Seljebotn
+Supported rectangular GL/CC operations use public ``spharmgrid``; NumPy input
+uses a coordinate-aware adapter around the same operations. Reduced-grid SHT
+and regional DCT machinery uses ``ducc0``. Relevant numerical lineage includes
+Reinecke and Seljebotn
 (2013), *Libsharp -- spherical harmonic transforms revisited*,
 https://doi.org/10.1051/0004-6361/201321494, and Ishioka (2018), “A New
 Recurrence Formula for Efficient Computation of Spherical Harmonic
@@ -20,56 +22,19 @@ implementation of the global spherical derivation.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable
-from typing import Literal, TypedDict, cast, overload
+from typing import Literal, cast, overload
 
 import numpy as np
+import spharmgrid as sg
 import xarray as xr
 from numpy.typing import NDArray
 
 from ..backends import Backend, configure_sht_threads, resolve_sht_threads
 
-type SHTGeometry = Literal["CC", "GL", "DH", "auto"]
+type SHTGeometry = Literal["CC", "GL", "auto"]
 
 
-class FilterKwargs(TypedDict, total=False):
-    lmin: int
-    lmax: int
-    lat_reverse: bool
-    nthreads: int
-    taper_val: float
-    geometry: str
-    theta: NDArray[np.float64]
-    nphi: NDArray[np.uint64]
-    phi0: NDArray[np.float64]
-    ringstart: NDArray[np.uint64]
-    out_geometry: str
-    out_ntheta: int
-    out_nphi: int
-
-
-def _get_filter_config(
-    lmin: int,
-    lmax: int,
-    lat_reverse: bool,
-    nthreads: int = 1,
-    taper_val: float = 0.1,
-    geometry: str = "CC",
-) -> tuple[Callable[..., NDArray[np.float64]], FilterKwargs]:
-    """Returns the filter function and kwargs for the requested engine."""
-    kwargs: FilterKwargs = {
-        "lmin": lmin,
-        "lmax": lmax,
-        "lat_reverse": lat_reverse,
-        "nthreads": nthreads,
-        "taper_val": taper_val,
-        "geometry": geometry,
-    }
-
-    return _filter_sht_frame, kwargs
-
-
-def _apply_bandpass_mask_to_alm(
+def _apply_reduced_bandpass_mask(
     alm: NDArray[np.complex128],
     lmin: int,
     lmax: int,
@@ -77,10 +42,7 @@ def _apply_bandpass_mask_to_alm(
     taper_val: float = 0.1,
 ) -> None:
     """
-    Applies a tapered bandpass mask in-place to spherical harmonic coefficients.
-    Uses the global spherical taper form of Sardeshmukh and Hoskins (1984),
-    acting like a ∇⁴ smoother.  ``ducc0`` supplies the numerical SHT; this
-    helper applies the PST coefficient mask around that library operation.
+    Apply the PST tapered bandpass mask to reduced-grid coefficients.
 
     Args:
         alm: Spherical harmonic coefficients.
@@ -115,42 +77,26 @@ def _apply_bandpass_mask_to_alm(
         alm[:] *= weights
 
 
-def _filter_sht_frame(
+def _filter_reduced_gaussian_frame(
     frame: NDArray[np.float64],
     lmin: int,
     lmax: int,
-    lat_reverse: bool = False,
+    theta: NDArray[np.float64],
+    nphi: NDArray[np.uint64],
+    phi0: NDArray[np.float64],
+    ringstart: NDArray[np.uint64],
     nthreads: int = 1,
     taper_val: float = 0.1,
-    geometry: str = "CC",
-    # Grid metadata for 1D maps (Reduced Gaussian / HEALPix)
-    theta: NDArray[np.float64] | None = None,
-    nphi: NDArray[np.uint64] | None = None,
-    phi0: NDArray[np.float64] | None = None,
-    ringstart: NDArray[np.uint64] | None = None,
-    # Regridding options
-    out_geometry: str | None = None,
+    out_geometry: Literal["CC", "GL"] | None = None,
     out_ntheta: int | None = None,
     out_nphi: int | None = None,
 ) -> NDArray[np.float64]:
-    """
-    Filters a single spatial frame using ducc0.
-    Supports both 2D structured grids and 1D unstructured grids.
-    """
-    is_1d = frame.ndim == 1
-    if not is_1d and not lat_reverse:
-        frame = frame[::-1, :]
+    """Filter one reduced-Gaussian frame with DUCC's pseudo-analysis."""
+    if frame.ndim != 1:
+        raise ValueError("reduced-Gaussian frames must be one-dimensional")
 
-    nlat: int
-    nlon: int
-    if is_1d:
-        if theta is None or nphi is None or phi0 is None or ringstart is None:
-            raise ValueError("Grid metadata required for 1D maps.")
-        nlat = len(theta)
-        nlon = int(np.max(nphi))
-    else:
-        nlat, nlon = frame.shape
-
+    nlat = len(theta)
+    nlon = int(np.max(nphi))
     if nlat < lmax + 1:
         raise ValueError(
             f"Unsupported shape for spectral filter: {frame.shape} cannot "
@@ -161,45 +107,24 @@ def _filter_sht_frame(
     import ducc0
 
     try:
-        # 1. Analysis: Map -> Spherical Harmonics (ALM)
-        alm: NDArray[np.complex128]
-        if is_1d:
-            # Use iterative pseudo-analysis for unstructured/reduced grids
-            alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
-                map=np.expand_dims(frame, axis=0),
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                theta=theta,
-                nphi=nphi,
-                phi0=phi0,
-                ringstart=ringstart,
-                nthreads=nthreads,
-                maxiter=100,
-                epsilon=1e-6,
-            )
-        else:
-            alm = ducc0.sht.analysis_2d(
-                map=np.expand_dims(frame, axis=0),
-                spin=0,
-                lmax=lmax,
-                mmax=mmax,
-                geometry=geometry,
-                nthreads=nthreads,
-            )
+        alm, _, _, _, _ = ducc0.sht.pseudo_analysis(
+            map=np.expand_dims(frame, axis=0),
+            spin=0,
+            lmax=lmax,
+            mmax=mmax,
+            theta=theta,
+            nphi=nphi,
+            phi0=phi0,
+            ringstart=ringstart,
+            nthreads=nthreads,
+            maxiter=100,
+            epsilon=1e-6,
+        )
 
-        # 2. Filter: Apply tapered mask to ALMs
-        _apply_bandpass_mask_to_alm(alm, lmin, lmax, mmax, taper_val=taper_val)
+        _apply_reduced_bandpass_mask(alm, lmin, lmax, mmax, taper_val=taper_val)
 
-        # 3. Synthesis: ALM -> Map
-        synth_geometry = out_geometry or geometry
-        synth_ntheta = out_ntheta or nlat
-        synth_nphi = out_nphi or nlon
-
-        out: NDArray[np.float64]
-        if is_1d and out_geometry is None:
-            # Synthesize back to the SAME 1D grid
-            out = cast(
+        if out_geometry is None:
+            return cast(
                 NDArray[np.float64],
                 ducc0.sht.synthesis(
                     alm=alm,
@@ -210,30 +135,28 @@ def _filter_sht_frame(
                     nphi=nphi,
                     phi0=phi0,
                     ringstart=ringstart,
-                    geometry=synth_geometry,
-                    nthreads=nthreads,
-                )[0],
-            )
-        else:
-            # Synthesize to a 2D structured grid
-            out = cast(
-                NDArray[np.float64],
-                ducc0.sht.synthesis_2d(
-                    alm=alm,
-                    spin=0,
-                    lmax=lmax,
-                    mmax=mmax,
-                    ntheta=synth_ntheta,
-                    nphi=synth_nphi,
-                    geometry=synth_geometry,
+                    geometry="GL",
                     nthreads=nthreads,
                 )[0],
             )
 
-        if not is_1d and not lat_reverse:
-            out = out[::-1, :]
-
-        return out
+        if out_ntheta is None or out_nphi is None:
+            raise ValueError(
+                "out_ntheta and out_nphi are required when out_geometry is supplied"
+            )
+        return cast(
+            NDArray[np.float64],
+            ducc0.sht.synthesis_2d(
+                alm=alm,
+                spin=0,
+                lmax=lmax,
+                mmax=mmax,
+                ntheta=out_ntheta,
+                nphi=out_nphi,
+                geometry=out_geometry,
+                nthreads=nthreads,
+            )[0],
+        )
     except Exception as e:
         msg = f"Spectral filter failed for shape {frame.shape}: {e}"
         raise ValueError(msg) from e
@@ -396,11 +319,12 @@ class DCTFilter:
 
 
 class SHTFilter:
-    """Global spherical-harmonic bandpass filter using ``ducc0``.
+    """Global spherical-harmonic bandpass filter.
 
     The published spherical smoothing lineage is Sardeshmukh and Hoskins
-    (1984); ``ducc0`` supplies the numerical SHT implementation and PST owns
-    the filter wrapper and coefficient-mask integration.
+    (1984).  Rectangular Gauss--Legendre and Clenshaw--Curtis inputs use the
+    public :func:`spharmgrid.filter` or :func:`spharmgrid.regrid` operation.
+    Reduced-Gaussian inputs use the specialized DUCC pseudo-analysis path.
     """
 
     def __init__(
@@ -409,8 +333,8 @@ class SHTFilter:
         lmax: int,
         lat_reverse: bool = False,
         taper_val: float = 0.1,
-        geometry: Literal["CC", "GL", "DH", "auto"] = "auto",
-        out_geometry: str | None = None,
+        geometry: SHTGeometry = "auto",
+        out_geometry: Literal["CC", "GL"] | None = None,
         out_ntheta: int | None = None,
         out_nphi: int | None = None,
         sht_threads: int | None = None,
@@ -421,15 +345,33 @@ class SHTFilter:
         Args:
             lmin (int): Minimum total wave number to retain.
             lmax (int): Maximum total wave number to retain.
-            lat_reverse (bool): If True, assume latitude is North to South (reversed).
+            lat_reverse (bool): For NumPy input, select North-to-South
+                coordinates when true. Xarray input uses its latitude
+                coordinate order.
             taper_val (float): Value of the taper at lmax.
-            geometry (str): Grid geometry ('CC', 'GL', 'DH', or 'auto').
+            geometry (str): Grid geometry ('CC', 'GL', or 'auto').
             out_geometry (str | None): Target geometry for regridding.
             out_ntheta (int | None): Number of latitudes in output grid.
             out_nphi (int | None): Number of longitudes in output grid.
-            sht_threads: DUCC0 threads per SHT call. None resolves from the
-                execution backend.
+            sht_threads: Threads per transform. Rectangular operations pass
+                this value to spharmgrid; reduced-Gaussian operations pass it
+                to DUCC.
         """
+        if geometry not in ("CC", "GL", "auto"):
+            raise ValueError("geometry must be 'CC', 'GL', or 'auto'")
+        if out_geometry not in (None, "CC", "GL"):
+            raise ValueError("out_geometry must be 'CC', 'GL', or None")
+        has_output_size = out_ntheta is not None or out_nphi is not None
+        if out_geometry is None and has_output_size:
+            raise ValueError("out_geometry is required with output grid sizes")
+        if out_geometry is not None and (out_ntheta is None or out_nphi is None):
+            raise ValueError(
+                "out_ntheta and out_nphi are required when out_geometry is supplied"
+            )
+        if out_ntheta is not None and out_ntheta <= 0:
+            raise ValueError("out_ntheta must be positive")
+        if out_nphi is not None and out_nphi <= 0:
+            raise ValueError("out_nphi must be positive")
         self.lmin = lmin
         self.lmax = lmax
         self.lat_reverse = lat_reverse
@@ -472,48 +414,360 @@ class SHTFilter:
             xr.DataArray | np.ndarray: The filtered data.
         """
         if isinstance(data, np.ndarray):
-            nthreads = resolve_sht_threads(self.sht_threads, backend)
-            configure_sht_threads(nthreads)
-            # For numpy arrays, we can't auto-detect geometry easily without lat array.
-            # Default to CC or use provided geometry if not auto.
-            geom = "CC" if self.geometry == "auto" else str(self.geometry)
-            filter_func, kwargs = _get_filter_config(
-                self.lmin,
-                self.lmax,
-                self.lat_reverse,
-                nthreads,
-                self.taper_val,
-                geometry=geom,
+            return _filter_numpy_rectangular(
+                data,
+                geometry="CC" if self.geometry == "auto" else self.geometry,
+                lat_reverse=self.lat_reverse,
+                lmin=self.lmin,
+                lmax=self.lmax,
+                taper_val=self.taper_val,
+                out_geometry=self.out_geometry,
+                out_ntheta=self.out_ntheta,
+                out_nphi=self.out_nphi,
+                sht_threads=self.sht_threads,
+                backend=backend,
             )
-            if self.out_geometry:
-                kwargs["out_geometry"] = self.out_geometry
-            if self.out_ntheta:
-                kwargs["out_ntheta"] = self.out_ntheta
-            if self.out_nphi:
-                kwargs["out_nphi"] = self.out_nphi
 
-            if data.ndim == 2:
-                return filter_func(data, **kwargs)
-            if data.ndim == 3:
-                out = np.empty_like(data)
-                for i in range(data.shape[0]):
-                    out[i] = filter_func(data[i], **kwargs)
-                return out
-            raise ValueError("numpy array must be 2D or 3D")
+        if not isinstance(data, xr.DataArray):
+            raise TypeError("SHTFilter.filter requires a NumPy array or DataArray")
 
-        return _filter_sht_xarray(
+        if _is_reduced_gaussian(data):
+            return _filter_reduced_gaussian_xarray(
+                data,
+                lmin=self.lmin,
+                lmax=self.lmax,
+                taper_val=self.taper_val,
+                out_geometry=self.out_geometry,
+                out_ntheta=self.out_ntheta,
+                out_nphi=self.out_nphi,
+                sht_threads=self.sht_threads,
+                backend=backend,
+            )
+
+        detected_grid = sg.detect_grid(data)
+        if self.geometry != "auto" and self.geometry.lower() != detected_grid.kind:
+            raise ValueError(
+                f"geometry={self.geometry!r} does not match the "
+                f"coordinate-defined {detected_grid.kind.upper()} grid"
+            )
+        return _filter_rectangular_xarray(
             data,
-            self.lmin,
-            self.lmax,
-            lat_reverse=self.lat_reverse,
-            backend=backend,
+            grid=detected_grid,
+            lmin=self.lmin,
+            lmax=self.lmax,
             taper_val=self.taper_val,
-            geometry=self.geometry,
             out_geometry=self.out_geometry,
             out_ntheta=self.out_ntheta,
             out_nphi=self.out_nphi,
             sht_threads=self.sht_threads,
+            backend=backend,
         )
+
+
+def _is_reduced_gaussian(data: xr.DataArray) -> bool:
+    """Return whether ``data`` uses the reduced-Gaussian representation."""
+    from ..io.data_loader import DataLoader
+
+    variable_name = str(data.name) if data.name is not None else ""
+    loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+    return loader.is_reduced_gaussian(variable_name)
+
+
+def _spharmgrid_sht_threads(
+    sht_threads: int | None,
+    backend: Backend,
+) -> int | None:
+    """Map PST's serial zero-thread default to spharmgrid's ``None`` default."""
+    resolved = resolve_sht_threads(sht_threads, backend)
+    return None if resolved == 0 else resolved
+
+
+def _rectangular_target_grid(
+    out_geometry: Literal["CC", "GL"],
+    ntheta: int,
+    nphi: int,
+    *,
+    latitude_order: Literal["ascending", "descending"],
+) -> sg.Grid:
+    """Construct a public spharmgrid target descriptor for SHTFilter output."""
+    if out_geometry == "CC":
+        return sg.clenshaw_curtis_grid(
+            ntheta,
+            nphi,
+            latitude_order=latitude_order,
+        )
+    if out_geometry == "GL":
+        return sg.gaussian_grid(
+            ntheta,
+            nphi,
+            latitude_order=latitude_order,
+        )
+    raise ValueError("spharmgrid output geometry must be 'CC' or 'GL'")
+
+
+def _filter_numpy_rectangular(
+    data: NDArray[np.float64],
+    *,
+    geometry: Literal["CC", "GL"],
+    lat_reverse: bool,
+    lmin: int,
+    lmax: int,
+    taper_val: float,
+    out_geometry: Literal["CC", "GL"] | None,
+    out_ntheta: int | None,
+    out_nphi: int | None,
+    sht_threads: int | None,
+    backend: Backend,
+) -> NDArray[np.float64]:
+    """Adapt coordinate-free NumPy input to the rectangular xarray path."""
+    if data.ndim not in (2, 3):
+        raise ValueError("numpy array must be 2D or 3D")
+    nlat, nlon = data.shape[-2:]
+    latitude_order: Literal["ascending", "descending"] = (
+        "descending" if lat_reverse else "ascending"
+    )
+    grid = _rectangular_target_grid(geometry, nlat, nlon, latitude_order=latitude_order)
+    dimensions = (
+        ("latitude", "longitude")
+        if data.ndim == 2
+        else ("time", "latitude", "longitude")
+    )
+    wrapped = xr.DataArray(
+        data,
+        dims=dimensions,
+        coords={
+            "latitude": grid.latitude,
+            "longitude": grid.longitude,
+        },
+    )
+    result = _filter_rectangular_xarray(
+        wrapped,
+        grid=grid,
+        lmin=lmin,
+        lmax=lmax,
+        taper_val=taper_val,
+        out_geometry=out_geometry,
+        out_ntheta=out_ntheta,
+        out_nphi=out_nphi,
+        sht_threads=sht_threads,
+        backend=backend,
+        # Standalone NumPy APIs must not inherit xarray/tracker frame slicing.
+        partition_mpi=False,
+    )
+    return cast(NDArray[np.float64], np.asarray(result.values))
+
+
+def _filter_rectangular_xarray(
+    data: xr.DataArray,
+    *,
+    grid: sg.Grid,
+    lmin: int,
+    lmax: int,
+    taper_val: float,
+    out_geometry: Literal["CC", "GL"] | None,
+    out_ntheta: int | None,
+    out_nphi: int | None,
+    sht_threads: int | None,
+    backend: Backend,
+    partition_mpi: bool = True,
+) -> xr.DataArray:
+    """Adapt the SHTFilter facade to spharmgrid's rectangular operations."""
+    latitude_name = _grid_coordinate_name(data, "latitude")
+    longitude_name = _grid_coordinate_name(data, "longitude")
+    latitude_dim = str(data[latitude_name].dims[0])
+    longitude_dim = str(data[longitude_name].dims[0])
+    if partition_mpi:
+        data = _partition_mpi_xarray(data, latitude_dim, longitude_dim, backend)
+    sg_threads = _spharmgrid_sht_threads(sht_threads, backend)
+    if out_geometry is None:
+        return sg.filter(
+            data,
+            lmin=lmin,
+            lmax=lmax,
+            taper=taper_val,
+            sht_threads=sg_threads,
+        )
+
+    if out_ntheta is None or out_nphi is None:
+        raise ValueError(
+            "out_ntheta and out_nphi are required when out_geometry is supplied"
+        )
+    source_latitude_order: Literal["ascending", "descending"] = (
+        "ascending" if grid.latitude[0] < grid.latitude[-1] else "descending"
+    )
+    # Preserve the established output orientation: CC targets are ascending;
+    # GL targets follow the source representation. spharmgrid keeps values
+    # associated with the coordinates in either orientation.
+    latitude_order: Literal["ascending", "descending"] = (
+        "ascending" if out_geometry == "CC" else source_latitude_order
+    )
+    target = _rectangular_target_grid(
+        out_geometry,
+        out_ntheta,
+        out_nphi,
+        latitude_order=latitude_order,
+    )
+    result = sg.regrid(
+        data,
+        target,
+        lmin=lmin,
+        lmax=lmax,
+        taper=taper_val,
+        sht_threads=sg_threads,
+    )
+
+    # The historical SHTFilter regridding path exposes canonical latitude and
+    # longitude dimension names.  Keep that facade while spharmgrid owns the
+    # target grid and transform.
+    rename_dims: dict[str, str] = {}
+    if latitude_dim != "latitude":
+        rename_dims[latitude_dim] = "latitude"
+    if longitude_dim != "longitude":
+        rename_dims[longitude_dim] = "longitude"
+    if rename_dims:
+        result = result.rename(rename_dims)
+    result.attrs.update(data.attrs)
+    result.name = data.name
+    return result
+
+
+def _filter_reduced_gaussian_xarray(
+    data: xr.DataArray,
+    *,
+    lmin: int,
+    lmax: int,
+    taper_val: float,
+    out_geometry: Literal["CC", "GL"] | None,
+    out_ntheta: int | None,
+    out_nphi: int | None,
+    sht_threads: int | None,
+    backend: Backend,
+) -> xr.DataArray:
+    """Filter/regrid a reduced-Gaussian DataArray with direct DUCC."""
+    from ..io.data_loader import DataLoader
+
+    variable_name = str(data.name) if data.name is not None else ""
+    loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
+    spatial_dim = "values" if "values" in data.dims else str(data.dims[-1])
+    metadata = loader.get_grid_metadata(variable_name)
+    data = _partition_mpi_xarray(data, spatial_dim, spatial_dim, backend)
+
+    nthreads = resolve_sht_threads(sht_threads, backend)
+    configure_sht_threads(nthreads)
+    if out_geometry is None:
+        output_core_dims = [[spatial_dim]]
+        output_sizes = None
+    else:
+        if out_ntheta is None or out_nphi is None:
+            raise ValueError(
+                "out_ntheta and out_nphi are required when out_geometry is supplied"
+            )
+        output_core_dims = [["latitude", "longitude"]]
+        output_sizes = {"latitude": out_ntheta, "longitude": out_nphi}
+
+    dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
+    if data.chunks:
+        dask_mode = "parallelized" if backend == "dask" else "allowed"
+
+    filtered = cast(
+        xr.DataArray,
+        xr.apply_ufunc(
+            _filter_reduced_gaussian_frame,
+            data,
+            input_core_dims=[[spatial_dim]],
+            output_core_dims=output_core_dims,
+            vectorize=True,
+            kwargs={
+                "lmin": lmin,
+                "lmax": lmax,
+                "theta": metadata["theta"],
+                "nphi": metadata["nphi"],
+                "phi0": metadata["phi0"],
+                "ringstart": metadata["ringstart"],
+                "nthreads": nthreads,
+                "taper_val": taper_val,
+                "out_geometry": out_geometry,
+                "out_ntheta": out_ntheta,
+                "out_nphi": out_nphi,
+            },
+            dask=dask_mode,
+            output_dtypes=[np.float64],
+            dask_gufunc_kwargs=(
+                {"output_sizes": output_sizes}
+                if dask_mode == "parallelized" and output_sizes is not None
+                else None
+            ),
+        ),
+    )
+
+    if out_geometry is not None:
+        assert out_ntheta is not None
+        assert out_nphi is not None
+        target = _rectangular_target_grid(
+            out_geometry,
+            out_ntheta,
+            out_nphi,
+            latitude_order="descending",
+        )
+        filtered = filtered.assign_coords(
+            latitude=target.latitude,
+            longitude=target.longitude,
+        )
+    filtered.attrs.update(data.attrs)
+    filtered.name = data.name
+    return filtered
+
+
+def _grid_coordinate_name(
+    data: xr.DataArray, axis: Literal["latitude", "longitude"]
+) -> str:
+    """Return the coordinate name used by a detected rectangular grid."""
+    for name in (axis, "lat" if axis == "latitude" else "lon"):
+        if name in data.coords and data[name].ndim == 1:
+            return name
+    for coordinate_name, coordinate in data.coords.items():
+        if coordinate.ndim == 1 and coordinate.attrs.get("standard_name") == axis:
+            return str(coordinate_name)
+    raise ValueError(f"could not identify {axis} coordinate")
+
+
+def _partition_mpi_xarray(
+    data: xr.DataArray,
+    latitude_dim: str,
+    longitude_dim: str,
+    backend: Backend,
+) -> xr.DataArray:
+    """Keep the existing rank-local SHT preprocessing partition."""
+    if backend != "mpi":
+        return data
+    try:
+        from mpi4py import MPI
+    except ImportError:
+        warnings.warn(
+            "mpi4py not installed. Proceeding serially.",
+            stacklevel=3,
+        )
+        return data
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    time_dims = [
+        dimension
+        for dimension in data.dims
+        if dimension not in (latitude_dim, longitude_dim)
+    ]
+    if not time_dims:
+        return data
+    time_dim = time_dims[0]
+    total_len = int(data.sizes[time_dim])
+    chunk_size = total_len // size
+    remainder = total_len % size
+    start = rank * chunk_size + min(rank, remainder)
+    stop = (rank + 1) * chunk_size + min(rank + 1, remainder)
+    if start < stop:
+        return data.isel({time_dim: slice(start, stop)})
+    return data.isel({time_dim: slice(0, 0)})
 
 
 def is_global_grid(data: xr.DataArray) -> bool:
@@ -543,212 +797,3 @@ def is_global_grid(data: xr.DataArray) -> bool:
         return (lon_max - lon_min + dlon) >= 359.0
     except (ValueError, KeyError):
         return False
-
-
-def _filter_sht_xarray(
-    data: xr.DataArray,
-    lmin: int,
-    lmax: int,
-    lat_reverse: bool = False,
-    backend: Backend = "serial",
-    taper_val: float = 0.1,
-    geometry: SHTGeometry = "auto",
-    out_geometry: str | None = None,
-    out_ntheta: int | None = None,
-    out_nphi: int | None = None,
-    sht_threads: int | None = None,
-) -> xr.DataArray:
-    """
-    Applies a spectral bandpass filter to the input DataArray.
-    Supports regular 2D grids and reduced Gaussian 1D grids.
-
-    Args:
-        data (xr.DataArray): Input data.
-        lmin (int): Minimum total wave number to retain. Defaults to 5.
-        lmax (int): Maximum total wave number to retain. Defaults to 42.
-        lat_reverse (bool): If True, assume latitude is South to North.
-        backend (str): Parallelization backend. Options: 'serial', 'mpi', 'dask'.
-        taper_val (float): Value of the taper at lmax.
-        geometry (str): Grid geometry ('CC', 'GL', 'DH', or 'auto').
-        out_geometry (str): Output geometry (e.g., 'CC', 'GL', 'HEALPix').
-        out_ntheta (int): Number of latitudes in output grid.
-        out_nphi (int): Number of longitudes in output grid.
-
-    Returns:
-        xr.DataArray: The filtered (and possibly regridded) data.
-    """
-    from ..io.data_loader import DataLoader
-
-    variable_name = str(data.name) if data.name is not None else ""
-    loader = DataLoader(data.dataset if hasattr(data, "dataset") else data)
-    is_reduced = loader.is_reduced_gaussian(variable_name)
-
-    # Identify spatial dimensions
-    lat_dim: str | None = None
-    lon_dim: str | None = None
-    spatial_dim: str | None = None
-
-    nthreads = resolve_sht_threads(sht_threads, backend)
-    configure_sht_threads(nthreads)
-
-    # Grid geometry detection
-    detected_geometry = str(geometry)
-    if geometry == "auto":
-        if is_reduced:
-            # cfgrib usually provides N parameter for Gaussian grids
-            n_gauss = data.attrs.get("GRIB_N")
-            detected_geometry = "GL" if n_gauss else "CC"
-        else:
-            lat_search_dim = (
-                loader.find_coordinate_dimension(data, "latitude") or "latitude"
-            )
-            lat_vals = data[lat_search_dim].values
-            if len(lat_vals) > 1:
-                dlat = np.diff(lat_vals)
-                # Gaussian grids have non-uniform latitude spacing
-                detected_geometry = "GL" if np.ptp(dlat) > 1e-4 else "CC"
-            else:
-                detected_geometry = "CC"
-
-    kwargs: FilterKwargs = {
-        "lmin": lmin,
-        "lmax": lmax,
-        "lat_reverse": True,
-        "nthreads": nthreads,
-        "taper_val": taper_val,
-        "geometry": detected_geometry,
-    }
-
-    if out_geometry:
-        kwargs["out_geometry"] = out_geometry
-    if out_ntheta:
-        kwargs["out_ntheta"] = out_ntheta
-    if out_nphi:
-        kwargs["out_nphi"] = out_nphi
-
-    if is_reduced:
-        spatial_dim = "values" if "values" in data.dims else str(data.dims[-1])
-        grid_meta = loader.get_grid_metadata(variable_name)
-        # Extract reduced Gaussian grid colatitudes, azimuth counts, and ring offsets
-        kwargs["theta"] = grid_meta["theta"]
-        kwargs["nphi"] = grid_meta["nphi"]
-        kwargs["phi0"] = grid_meta["phi0"]
-        kwargs["ringstart"] = grid_meta["ringstart"]
-    else:
-        lat_dim = loader.find_coordinate_dimension(data, "latitude")
-        lon_dim = loader.find_coordinate_dimension(data, "longitude")
-
-        if not lat_dim or not lon_dim:
-            raise ValueError(
-                f"Input DataArray must have latitude and longitude dimensions. "
-                f"Found: {list(data.dims)}"
-            )
-
-    # Ensure latitude is North to South for ducc0
-    # Store original order to restore it later if needed
-    is_ascending = not loader.is_lat_reversed()
-    if not is_reduced:
-        data = data.sortby(lat_dim, ascending=False)
-
-    dask_mode: Literal["forbidden", "allowed", "parallelized"] = "forbidden"
-
-    if data.chunks:
-        # If data is chunked, we must allow or parallelize dask handling
-        # Serial and MPI use "allowed" to run on chunks.
-        dask_mode = "parallelized" if backend == "dask" else "allowed"
-
-    if backend == "mpi":
-        try:
-            from mpi4py import MPI
-
-            comm = MPI.COMM_WORLD
-            rank = comm.Get_rank()
-            size = comm.Get_size()
-
-            # Find the time dimension to split across
-            exclude_dims = (spatial_dim,) if is_reduced else (lat_dim, lon_dim)
-            time_dims = [d for d in data.dims if d not in exclude_dims]
-            if time_dims:
-                time_dim = time_dims[0]
-                total_len = len(data[time_dim])
-                chunk_size = total_len // size
-                remainder = total_len % size
-
-                s_idx = rank * chunk_size + min(rank, remainder)
-                e_idx = (rank + 1) * chunk_size + min(rank + 1, remainder)
-
-                if s_idx < e_idx:
-                    data = data.isel({time_dim: slice(s_idx, e_idx)})
-                else:
-                    data = data.isel({time_dim: slice(0, 0)})
-        except ImportError:
-            warnings.warn(
-                "mpi4py not installed. Proceeding serially.",
-                stacklevel=2,
-            )
-
-    input_core_dims = [[spatial_dim]] if is_reduced else [[lat_dim, lon_dim]]
-
-    # Determine output core dims and coords
-    output_core_dims = [["lat_out", "lon_out"]] if out_geometry else input_core_dims
-
-    if out_geometry:
-        assert out_ntheta is not None
-        assert out_nphi is not None
-        output_sizes = {"lat_out": out_ntheta, "lon_out": out_nphi}
-    else:
-        output_sizes = None
-
-    filtered = cast(
-        xr.DataArray,
-        xr.apply_ufunc(
-            _filter_sht_frame,
-            data,
-            input_core_dims=input_core_dims,
-            output_core_dims=output_core_dims,
-            vectorize=True,
-            kwargs=kwargs,
-            dask=dask_mode,
-            output_dtypes=[data.dtype],
-            dask_gufunc_kwargs=(
-                {"output_sizes": output_sizes}
-                if dask_mode == "parallelized" and output_sizes is not None
-                else None
-            ),
-        ),
-    )
-
-    # Handle coordinates for regridded output
-    if out_geometry:
-        # We need to construct actual coordinates for the output
-        ntheta_out = int(out_ntheta) if out_ntheta else 0
-        nphi_out = int(out_nphi) if out_nphi else 0
-
-        if out_geometry == "CC":
-            lats_out = np.linspace(-90, 90, ntheta_out)
-            lons_out = np.linspace(0, 360, nphi_out, endpoint=False)
-        elif out_geometry == "GL":
-            import ducc0
-
-            lats_out = 90.0 - np.degrees(ducc0.misc.GL_thetas(ntheta_out))
-            lons_out = np.linspace(0, 360, nphi_out, endpoint=False)
-        else:
-            # Placeholder for other geometries
-            lats_out = np.arange(ntheta_out, dtype=np.float64)
-            lons_out = np.arange(nphi_out, dtype=np.float64)
-
-        filtered = filtered.rename({"lat_out": "latitude", "lon_out": "longitude"})
-        filtered = filtered.assign_coords(latitude=lats_out, longitude=lons_out)
-
-    filtered.attrs.update(data.attrs)
-    filtered.name = data.name
-
-    if not is_reduced and is_ascending:
-        # SHT synthesis emits north-to-south latitude rows.  Restore the
-        # orientation of an ascending structured input even when synthesis
-        # created new latitude coordinates for a regridded output.
-        output_latitude = "latitude" if out_geometry else lat_dim
-        assert output_latitude is not None
-        filtered = filtered.sortby(output_latitude, ascending=True)
-
-    return filtered

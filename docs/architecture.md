@@ -88,6 +88,13 @@ Optional filtering and transform bandwidth are distinct. Regridding may require
 a finite transform bandwidth even when no scientific spectral filter was
 requested.
 
+Public `spharmgrid` operations provide rectangular Gauss--Legendre and
+Clenshaw--Curtis filtering, triangular-band spherical regridding, and default
+xarray vorticity/divergence calculations. PyStormTracker supplies preprocessing
+policy, provenance, NumPy-to-xarray adapters, and direct implementations for
+reduced-Gaussian, HEALPix, polar, regional-DCT, and explicit-`lmax`
+vector-kinematics paths.
+
 For Dask execution, preprocessing remains in the xarray/Dask graph.
 `extract_dask_frame_delayed_blocks()` produces one complete spatial block per
 time step. Small coordinate and time arrays are materialized eagerly; the full
@@ -166,8 +173,9 @@ flowchart TB
 Each frame task includes its lazy source read, any required preprocessing/SHT,
 object and candidate detection, and feature-point refinement. Frame tasks are
 independent across time steps and produce small immutable
-`HodgesCenterFrame` objects. Each SHT call uses `sht_threads` DUCC0 native
-threads per active task.
+`HodgesCenterFrame` objects. Each spherical-harmonic call uses `sht_threads`
+threads per active task; supported rectangular xarray calls use spharmgrid and
+special-grid calls use direct DUCC.
 
 The detection objects are computed before MGE segment tasks are built. Overlap
 lists reference the same detection objects; full filtered frame arrays are not
@@ -185,11 +193,12 @@ Numba-compiled and `nogil`, but one MGE segment is not internally divided into
 parallel pair-exchange tasks.
 
 When omitted, Dask `frame_workers` and `mge_workers` resolve independently to
-available process CPU concurrency. `sht_threads=None` resolves to one DUCC0
-thread per active transform for Dask and MPI, and to DUCC0's hardware-thread
-default (`nthreads=0`) for serial execution. Explicit frame and MGE worker
-controls apply only to Dask; explicit `sht_threads` is also meaningful for
-serial and MPI rank-local transforms.
+available process CPU concurrency. `sht_threads=None` resolves to one thread
+per active transform for Dask and MPI. Serial operations use the native
+default of their numerical path: spharmgrid receives `None`, while direct DUCC
+paths use the existing zero-thread configuration. Explicit frame and MGE
+worker controls apply only to Dask; explicit `sht_threads` is also meaningful
+for serial and MPI rank-local transforms.
 
 `HealpixTracker` follows the same frame-task and MGE-segment organization. Its
 frame-level detection uses HEALPix pixel topology before passing refined feature

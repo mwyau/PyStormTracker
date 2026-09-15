@@ -241,6 +241,7 @@ class SimpleTracker(Tracker):
         extent: MapExtent | None = None,
         filter_type: Literal["sht", "dct", "auto"] = "auto",
         backend: Backend | None = None,
+        sht_threads: int | None = None,
     ) -> tuple[xr.DataArray, tuple[ProcessingStep, ...]]:
         return preprocess_tracking_data(
             data,
@@ -253,6 +254,7 @@ class SimpleTracker(Tracker):
             extent=extent,
             filter_type=filter_type,
             backend=backend or self.backend,
+            sht_threads=sht_threads,
         )
 
     def _track_serial(
@@ -486,7 +488,8 @@ class SimpleTracker(Tracker):
                 projection=self.projection,
                 stereo_grid_spacing_km=self.stereo_grid_spacing_km,
                 extent=self.extent,
-                backend="mpi",
+                backend="serial",
+                sht_threads=1,
             )
             stored_processing = part_proc
             partition_detector = SimpleDetector.from_xarray(

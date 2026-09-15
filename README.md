@@ -73,7 +73,13 @@ For the feature-identification and trajectory-linking methods implemented by `Ho
 - **Hodges, K. I.**, 1995: Feature Tracking on the Unit Sphere. *Mon. Wea. Rev.*, **123**, 3458–3465, [doi:10.1175/1520-0493(1995)123\<3458:FTOTUS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281995%29123%3C3458%3AFTOTUS%3E2.0.CO%3B2).
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [doi:10.1175/1520-0493(1999)127\<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C1362%3AACFFT%3E2.0.CO%3B2).
 
-PyStormTracker uses `ducc0` for spherical-harmonic transforms and related spherical numerical operations:
+PyStormTracker uses `spharmgrid` for supported rectangular Gauss--Legendre and
+Clenshaw--Curtis spherical-harmonic filtering, triangular-band regridding, and
+CC/GL kinematics. PyStormTracker uses direct `ducc0` for reduced-Gaussian,
+HEALPix, polar, regional-DCT, and explicit-`lmax` vector-kinematics paths:
+
+- **Yau, A. M. W.**, 2026: *spharmgrid*, v0.1.3. Zenodo,
+  [doi:10.5281/zenodo.22559210](https://doi.org/10.5281/zenodo.22559210).
 
 - **Reinecke, M.**, 2020: DUCC: Distinctly Useful Code Collection. *Astrophysics Source Code Library*, record [ascl:2008.023](https://ascl.net/2008.023).
 
