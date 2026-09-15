@@ -5,6 +5,9 @@ updates:
     directory: /
     schedule:
       interval: daily
+    ignore:
+      - dependency-name: "eccodeslib"
+        versions: [">2.48.0.26"]
     groups:
       python-minor-and-patch:
         patterns: ['*']
