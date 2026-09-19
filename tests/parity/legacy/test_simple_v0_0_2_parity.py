@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Legacy parity: current Simple tracker vs v0.0.2 reference output."""
 
 from __future__ import annotations

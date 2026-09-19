@@ -144,6 +144,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: uv run --no-sync mypy
 
+      - name: Check SPDX headers
+        if: ${{ !cancelled() }}
+        run: uvx prek run spdx --all-files
+
   unit-tests:
     name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}${{ matrix.mode != 'normal' && format(', {0}', matrix.mode) || '' }})
     needs: [select-test-matrix, code-quality]

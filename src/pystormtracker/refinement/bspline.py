@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """B-spline surfaces and feature-point refinement.
 
 The implementation has several distinct provenance layers:

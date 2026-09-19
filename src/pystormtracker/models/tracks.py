@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Immutable packed trajectory storage and its mutable construction helper."""
 
 from __future__ import annotations

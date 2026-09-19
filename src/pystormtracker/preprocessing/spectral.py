@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Spectral filtering for global spherical and regional grids.
 
 The global spherical-harmonic taper follows the published spherical

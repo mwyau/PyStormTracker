@@ -42,3 +42,16 @@ repos:
     - mdformat-gfm-alerts
     - mdformat-simple-breaks
     - mdformat-web
+
+- repo: local
+  hooks:
+    - id: spdx
+      name: Add SPDX headers
+      entry: uvx reuse==6.2.0 annotate
+      language: system
+      args:
+        - --copyright=Albert M. W. Yau
+        - --license=BSD-3-Clause
+        - --merge-copyrights
+        - --skip-unrecognised
+      files: '^(pyproject\.toml|(?:src|tests)/.*\.(?:py|pyi))$'
