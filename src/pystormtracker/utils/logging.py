@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """CLI logging and terminal output coordination.
 
 Importing this module has no logging side effects.  The CLI is responsible for

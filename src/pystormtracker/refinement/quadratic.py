@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Local quadratic feature refinement on planar and spherical domains.
 
 The intrinsic spherical quadratic is a PyStormTracker-specific local

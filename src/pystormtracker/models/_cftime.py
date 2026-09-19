@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Optional cftime adapter for PyStormTracker.
 
 Only lazily imported when user inputs or operations explicitly involve cftime objects.

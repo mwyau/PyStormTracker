@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Canonical CF time handling for packed tracks.
 
 The packed model uses one representation: signed int64 milliseconds since the

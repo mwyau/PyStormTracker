@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Scheduler-side semantic progress for local Dask Hodges tracking."""
 
 from __future__ import annotations

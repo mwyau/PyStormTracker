@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2015 University Corporation for Atmospheric Research (UCAR)
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import threading

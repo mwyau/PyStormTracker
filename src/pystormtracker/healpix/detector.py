@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """HEALPix-native detection and local feature refinement.
 
 The underlying spherical grid is HEALPix (Górski et al. (2005), “HEALPix: A

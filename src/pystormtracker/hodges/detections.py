@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Aligned Hodges-only center frame data passed to the MGE linker."""
 
 from __future__ import annotations

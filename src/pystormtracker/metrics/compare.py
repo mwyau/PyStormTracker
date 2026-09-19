@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Albert M. W. Yau
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Trajectory intercomparison using three explicit matching strategies.
 
 Mutual-nearest comparison has lineage from Blender and Schubert (2000) and
