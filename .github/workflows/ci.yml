@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.mode == 'coverage' || matrix.mode == 'jit-coverage' || matrix.mode == 'disabled-jit-coverage'
-        uses: codecov/codecov-action@v7.1.0
+        uses: codecov/codecov-action@v7.1.1
         with:
           files: ./coverage.xml
           disable_search: true
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() && matrix.mode == 'coverage' }}
-        uses: codecov/codecov-action@v7.1.0
+        uses: codecov/codecov-action@v7.1.1
         with:
           files: ./junit.xml
           disable_search: true
@@ -284,7 +284,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.coverage == true
-        uses: codecov/codecov-action@v7.1.0
+        uses: codecov/codecov-action@v7.1.1
         with:
           files: ./coverage.xml
           disable_search: true
@@ -294,7 +294,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() && matrix.coverage == true }}
-        uses: codecov/codecov-action@v7.1.0
+        uses: codecov/codecov-action@v7.1.1
         with:
           files: ./junit.xml
           disable_search: true
@@ -337,7 +337,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.coverage == true
-        uses: codecov/codecov-action@v7.1.0
+        uses: codecov/codecov-action@v7.1.1
         with:
           files: ./coverage.xml
           disable_search: true
@@ -347,7 +347,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() && matrix.coverage == true }}
-        uses: codecov/codecov-action@v7.1.0
+        uses: codecov/codecov-action@v7.1.1
         with:
           files: ./junit.xml
           disable_search: true
