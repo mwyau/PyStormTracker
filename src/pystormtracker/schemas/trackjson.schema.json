@@ -84,6 +84,10 @@
             },
             "type": "array"
           },
+          "propertyNames": {
+            "description": "A non-empty string.",
+            "minLength": 1
+          },
           "type": "object"
         }
       },
@@ -190,6 +194,10 @@
             "minLength": 1,
             "type": "string"
           },
+          "propertyNames": {
+            "description": "A non-empty string.",
+            "minLength": 1
+          },
           "type": "object"
         }
       },
@@ -235,6 +243,10 @@
             ]
           },
           "default": {},
+          "propertyNames": {
+            "description": "A non-empty string.",
+            "minLength": 1
+          },
           "type": "object"
         }
       },
