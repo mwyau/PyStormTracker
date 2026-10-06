@@ -12,12 +12,12 @@ repos:
   - id: trailing-whitespace
 
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.12.21
+  rev: 0.12.22
   hooks:
   - id: uv-lock
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.16.9
+  rev: v0.16.10
   hooks:
   - id: ruff-check
     types_or: [ python, pyproject ]
