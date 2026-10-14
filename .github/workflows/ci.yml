@@ -43,6 +43,8 @@ jobs:
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage", "coverage_flag": "unit"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "jit-coverage", "coverage_flag": "unit-jit-coverage"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "disabled-jit-coverage", "coverage_flag": "unit-jit-disabled"},
+                {"os": "ubuntu-26.04", "python-version": "3.15", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.15t", "mode": "free-threaded"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
@@ -67,6 +69,8 @@ jobs:
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "jit-coverage", "coverage_flag": "unit-jit-coverage"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "disabled-jit-coverage", "coverage_flag": "unit-jit-disabled"},
                 {"os": "ubuntu-26.04", "python-version": "3.14t", "mode": "free-threaded"},
+                {"os": "ubuntu-26.04", "python-version": "3.15", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.15t", "mode": "free-threaded"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
