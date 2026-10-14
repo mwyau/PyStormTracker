@@ -3659,7 +3659,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.0" },
     { name = "pystormtracker", extras = ["eof", "grib", "mpi", "netcdf4", "zarr"], marker = "extra == 'all'" },
     { name = "scipy", specifier = ">=1.16.1" },
-    { name = "spharmgrid", specifier = ">=0.1.3,<0.5" },
+    { name = "spharmgrid", specifier = ">=0.4.1,<0.5" },
     { name = "xarray", specifier = ">=2024.9.0" },
     { name = "xeofs", extras = ["etc"], marker = "extra == 'eof'", specifier = ">=3.0.3" },
     { name = "zarr", extras = ["remote"], marker = "extra == 'zarr'", specifier = ">=3.0" },
