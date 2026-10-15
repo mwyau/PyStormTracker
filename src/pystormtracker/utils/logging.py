@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from threading import RLock
 from typing import Protocol, TextIO
@@ -122,7 +122,7 @@ def configure_cli_logging(verbosity: int) -> None:
 
 
 @contextmanager
-def terminal_output() -> Iterator[None]:
+def terminal_output() -> Generator[None, None, None]:
     """Hold the shared terminal lock for a coordinated output operation."""
     with _TERMINAL_LOCK:
         yield

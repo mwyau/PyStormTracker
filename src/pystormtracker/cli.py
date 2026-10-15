@@ -9,7 +9,7 @@ import logging
 import os
 import signal
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from . import __version__, compare, convert, sample, track
@@ -37,7 +37,7 @@ def _emergency_interrupt(signum: int, frame: object) -> None:
 
 
 @contextmanager
-def _cli_interrupt_handlers() -> Iterator[None]:
+def _cli_interrupt_handlers() -> Generator[None, None, None]:
     """Install first-interrupt cancellation and second-interrupt emergency exit."""
     previous = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, _first_interrupt)

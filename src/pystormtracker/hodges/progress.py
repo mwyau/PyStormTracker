@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 import time
 from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -29,7 +29,7 @@ _SEGMENT_KEY_PREFIX = "hodges-mge-segment-"
 
 
 @contextmanager
-def hodges_dask_progress(enabled: bool | None) -> Iterator[None]:
+def hodges_dask_progress(enabled: bool | None) -> Generator[None, None, None]:
     """Temporarily override interactive Dask progress for Hodges tracking."""
     token = _PROGRESS_OVERRIDE.set(enabled)
     try:
