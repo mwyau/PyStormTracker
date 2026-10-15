@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -37,7 +37,7 @@ _DEFER_DASK_INTERRUPT_CLEANUP: ContextVar[bool] = ContextVar(
 
 
 @contextmanager
-def local_dask_executor(workers: int) -> Iterator[None]:
+def local_dask_executor(workers: int) -> Generator[None, None, None]:
     """Own one Dask thread pool for the duration of a tracking computation.
 
     Dask's public ``pool`` configuration selects this executor without using
@@ -78,7 +78,7 @@ def drain_pending_dask_executors() -> None:
 
 
 @contextmanager
-def defer_dask_interrupt_cleanup() -> Iterator[None]:
+def defer_dask_interrupt_cleanup() -> Generator[None, None, None]:
     """Defer first-Ctrl-C Dask draining to the CLI interruption handler.
 
     This context is opt-in. Python-library callers get complete
