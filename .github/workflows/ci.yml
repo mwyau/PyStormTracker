@@ -177,9 +177,23 @@ jobs:
         with:
           mpi: msmpi
 
+      - name: Install HDF5 build dependencies for Python 3.15
+        if: startsWith(matrix.python-version, '3.15')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
+
       - name: Install dependencies
-        if: matrix.mode == 'normal' || matrix.mode == 'coverage' || matrix.mode == 'jit-coverage' || matrix.mode == 'disabled-jit-coverage'
+        if: >-
+          (matrix.mode == 'normal' && matrix.python-version != '3.15') ||
+          matrix.mode == 'coverage' ||
+          matrix.mode == 'jit-coverage' ||
+          matrix.mode == 'disabled-jit-coverage'
         run: uv sync --frozen --all-extras
+
+      - name: Install Python 3.15 core dependencies
+        if: matrix.python-version == '3.15'
+        run: uv sync --frozen
 
       - name: Install minimum direct dependencies
         if: matrix.mode == 'min-deps'
@@ -190,7 +204,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Smoke-check GRIB and Zarr dependencies
-        if: matrix.mode != 'free-threaded'
+        if: matrix.mode != 'free-threaded' && matrix.python-version != '3.15'
         run: |
           uv run --no-sync python -m cfgrib selfcheck
           uv run --no-sync python -c 'import zarr; print("zarr import success")'
