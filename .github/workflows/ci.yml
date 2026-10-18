@@ -181,9 +181,9 @@ jobs:
         if: matrix.mode == 'min-deps'
         run: uv sync --all-extras --resolution lowest-direct
 
-      - name: Install free-threaded dependencies (without EOF, GRIB, or Zarr)
+      - name: Install free-threaded dependencies
         if: matrix.mode == 'free-threaded'
-        run: uv sync --frozen --extra mpi --extra netcdf4
+        run: uv sync --frozen
 
       - name: Smoke-check GRIB and Zarr dependencies
         if: matrix.mode != 'free-threaded'
