@@ -68,7 +68,7 @@ def compute_variance_metric(
     """
     Compute the Eulerian variance metric using a 24-hour difference filter.
 
-    The simple difference-filter construction is credited to the storm-track
+    The simple difference-filter construction is credited to the storm track
     analysis lineage of Wallace, Lim, and Blackmon (1988), and is also used as
     an evaluated Eulerian metric by Yau and Chang (2020).  The implementation
     accepts the input cadence and derives the shift in samples.

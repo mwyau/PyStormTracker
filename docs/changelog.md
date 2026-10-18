@@ -16,7 +16,6 @@
 - Added BSD-3-Clause SPDX metadata and CI checks.
 - Updated the pinned Trivy action.
 
-
 ---
 
 ## v0.7.0 - 2026-09-07

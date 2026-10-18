@@ -406,7 +406,7 @@ def compute_track_metrics(
     interpolation: ATAInterpolation = "linear",
 ) -> xr.Dataset:
     """
-    Compute established and study-derived storm-track statistics on a grid.
+    Compute established and study-derived storm track statistics on a grid.
 
     Cyclone frequency, cyclone amplitude, and track frequency are established
     track statistics evaluated by Yau and Chang (2020).  ACA combines cyclone
