@@ -13,14 +13,14 @@
 
 <!-- docs-start -->
 
-**PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, and track-based analysis for meteorological and climate datasets. The package includes a Numba Simple Tracker implementation with high-level concept lineage from **Yau and Chang (2020)** and TRACK-compatible algorithms with scientific lineage from **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
+**PyStormTracker** is a Python package for cyclone trajectory analysis. It provides cyclone detection, trajectory construction, track comparison, variable sampling, and storm track statistics for meteorological and climate datasets. The package includes a Numba implementation of the Simple Tracker used in **Yau and Chang (2020)** and tracking methods based on **Hodges (1994, 1995, 1999)**. The project was initially developed at the **National Center for Atmospheric Research (NCAR)** during the **2015 SIParCS** program.
 
 ## Features
 
-- Simple, TRACK-compatible Hodges, and HEALPix tracking.
-- NetCDF, GRIB, Zarr, TrackJSON, TRACK tdump, and IMILAST support across regular, Gaussian, reduced-Gaussian, projected, and HEALPix grids.
-- Spectral preprocessing, feature refinement, track comparison, variable sampling, and storm-track metrics.
-- Serial, Dask, and MPI execution with Numba-accelerated numerical kernels.
+- Simple tracking with nearest-neighbor linking; Hodges and HEALPix tracking with adaptive constraints and Modified Greedy Exchange.
+- NetCDF, GRIB, and Zarr input on regular, Gaussian, reduced-Gaussian, projected, and HEALPix grids; TrackJSON, TRACK tdump, and IMILAST track formats.
+- Spectral preprocessing, feature refinement, track comparison, variable sampling, and storm track metrics.
+- Serial, Dask, and MPI execution with Numba-accelerated numerical kernels and array-backed track storage.
 
 ## Usage
 
@@ -62,27 +62,24 @@ PyStormTracker was originally presented as:
 
 - **Yau, A. M. W., K. Paul, and J. Dennis**, 2016: PyStormTracker: A Parallel Object-Oriented Cyclone Tracker in Python. *96th American Meteorological Society Annual Meeting*, New Orleans, LA. Zenodo, [doi:10.5281/zenodo.18868625](https://doi.org/10.5281/zenodo.18868625).
 
-For methods used by the Simple tracker and cyclone track analysis:
+For `SimpleTracker` and storm track metrics:
 
 - **Yau, A. M. W., and E. K. M. Chang**, 2020: Finding Storm Track Activity Metrics That Are Highly Correlated with Weather Impacts. Part I: Frameworks for Evaluation and Accumulated Track Activity. *J. Climate*, **33**, 10169–10186, [doi:10.1175/JCLI-D-20-0393.1](https://doi.org/10.1175/JCLI-D-20-0393.1).
 
-For the feature-identification and trajectory-linking methods implemented by `HodgesTracker`:
+For the methods implemented by `HodgesTracker`:
 
 - **Hodges, K. I.**, 1994: A General Method for Tracking Analysis and Its Application to Meteorological Data. *Mon. Wea. Rev.*, **122**, 2573–2586, [doi:10.1175/1520-0493(1994)122\<2573:AGMFTA>2.0.CO;2](https://doi.org/10.1175/1520-0493%281994%29122%3C2573%3AAGMFTA%3E2.0.CO%3B2).
 - **Hodges, K. I.**, 1995: Feature Tracking on the Unit Sphere. *Mon. Wea. Rev.*, **123**, 3458–3465, [doi:10.1175/1520-0493(1995)123\<3458:FTOTUS>2.0.CO;2](https://doi.org/10.1175/1520-0493%281995%29123%3C3458%3AFTOTUS%3E2.0.CO%3B2).
 - **Hodges, K. I.**, 1999: Adaptive Constraints for Feature Tracking. *Mon. Wea. Rev.*, **127**, 1362–1373, [doi:10.1175/1520-0493(1999)127\<1362:ACFFT>2.0.CO;2](https://doi.org/10.1175/1520-0493%281999%29127%3C1362%3AACFFT%3E2.0.CO%3B2).
 
-PyStormTracker uses `spharmgrid` for supported rectangular Gauss--Legendre and
-Clenshaw--Curtis spherical-harmonic filtering, triangular-band regridding, and
-CC/GL kinematics. PyStormTracker uses direct `ducc0` for reduced-Gaussian,
-HEALPix, polar, regional-DCT, and explicit-`lmax` vector-kinematics paths:
+PyStormTracker uses `spharmgrid` for spherical harmonic filtering, regridding, and wind kinematics on Gauss–Legendre and Clenshaw–Curtis grids. It uses `ducc0` directly for reduced Gaussian and HEALPix grids, polar regridding, and regional cosine transforms:
 
-- **Yau, A. M. W.**, 2026: *spharmgrid*, v0.1.3. Zenodo,
+- **Yau, A. M. W.**, 2026: *spharmgrid*. Zenodo,
   [doi:10.5281/zenodo.22559210](https://doi.org/10.5281/zenodo.22559210).
 
 - **Reinecke, M.**, 2020: DUCC: Distinctly Useful Code Collection. *Astrophysics Source Code Library*, record [ascl:2008.023](https://ascl.net/2008.023).
 
-For the IMILAST cyclone-tracking intercomparison:
+For the IMILAST intercomparison:
 
 - **Neu, U., et al.**, 2013: IMILAST: A Community Effort to Intercompare Extratropical Cyclone Detection and Tracking Algorithms. *Bull. Amer. Meteor. Soc.*, **94**, 529–547, [doi:10.1175/BAMS-D-11-00154.1](https://doi.org/10.1175/BAMS-D-11-00154.1).
 

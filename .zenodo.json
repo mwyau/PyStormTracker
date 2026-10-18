@@ -1,6 +1,6 @@
 {
   "title": "PyStormTracker: A High-Performance Cyclone Tracker in Python",
-  "description": "PyStormTracker is an open-source Python package for high-performance cyclone detection, trajectory construction, comparison, and storm-track analysis in gridded meteorological data.",
+  "description": "PyStormTracker is an open-source Python package for high-performance cyclone detection, trajectory construction, comparison, and storm track analysis in gridded meteorological data.",
   "creators": [
     {
       "name": "Yau, Albert M. W.",

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.8.0 - 2026-10-17
+
+### Spectral preprocessing
+
+- Moved rectangular Gauss--Legendre and Clenshaw--Curtis filtering, triangular-band regular-grid regridding, and default wind kinematics to `spharmgrid`.
+- Used direct `ducc0` for reduced-Gaussian, HEALPix, polar, regional-DCT, and explicit-`lmax` vector-kinematics paths.
+- Removed the unused `DH` geometry, unified NumPy and Xarray rectangular-grid handling, and rejected unsupported non-triangular regular-grid `mmax` requests.
+- Raised the minimum `spharmgrid` version to 0.5.0.
+
+### Documentation and repository metadata
+
+- Switched the documentation site to the PyData Sphinx Theme and made the README and quickstart the main entry points.
+- Updated the spharmgrid citation and removed the TestPyPI badge.
+- Added BSD-3-Clause SPDX metadata and CI checks.
+- Updated the pinned Trivy action.
+
+---
+
 ## v0.7.0 - 2026-09-07
 
 ### Tracking and preprocessing
