@@ -1,13 +1,13 @@
 # Changelog
 
-## v0.8.0 - 2026-10-14
+## v0.8.0 - 2026-10-17
 
 ### Spectral preprocessing
 
 - Moved rectangular Gauss--Legendre and Clenshaw--Curtis filtering, triangular-band regular-grid regridding, and default wind kinematics to `spharmgrid`.
 - Used direct `ducc0` for reduced-Gaussian, HEALPix, polar, regional-DCT, and explicit-`lmax` vector-kinematics paths.
 - Removed the unused `DH` geometry, unified NumPy and Xarray rectangular-grid handling, and rejected unsupported non-triangular regular-grid `mmax` requests.
-- Raised the minimum `spharmgrid` version to 0.4.1.
+- Raised the minimum `spharmgrid` version to 0.5.0.
 
 ### Documentation and repository metadata
 
