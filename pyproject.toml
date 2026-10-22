@@ -28,15 +28,15 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.1.0",
-    "ducc0>=0.39.0",
-    "h5netcdf>=1.8.0",
+    "ducc0>=0.41.0",
+    "h5netcdf>=1.8.1",
     "h5py>=3.11.0",
     "msgspec>=0.20.0",
     "numba>=0.67.0",
     "numpy>=2.5.0",
     "scipy>=1.16.1",
     "spharmgrid>=0.5.0,<0.6",
-    "xarray>=2024.9.0",
+    "xarray>=2025.1.1",
 ]
 
 [project.scripts]
@@ -54,7 +54,7 @@ eof = [
 grib = [
     "cfgrib>=0.9.15.1",
     "eccodes>=2.46.0",
-    "eccodeslib>=2.46.0,<=2.49.0.30; sys_platform != 'win32'",
+    "eccodeslib>=2.48.0; sys_platform != 'win32'",
 ]
 mpi = [
     "mpi4py>=4.1.0",
@@ -92,7 +92,7 @@ dev = [
     "mypy>=2.3.0",
     "prek>=0.4.12",
     "ruff>=0.16.1",
-    "ty==0.0.86",
+    "ty==0.0.89",
 ]
 docs = [
     "myst-parser>=5.1.0",
