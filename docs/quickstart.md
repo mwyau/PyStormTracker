@@ -14,7 +14,9 @@ This guide covers installation, command-line and Python use, sample data, and de
   `spharmgrid`; PyStormTracker uses direct `ducc0` for reduced-grid transforms, HEALPix
   geometry, polar projection, regional DCT, and explicit-`lmax` vector
   kinematics.
-- **Free-threaded Python 3.14** support is experimental. CI currently excludes `eof`, `grib`, and `zarr` in that configuration because of upstream dependency availability.
+- **Python 3.15 and free-threaded Python 3.14t/3.15t** are experimental.
+  CI tests core dependencies on these interpreters; optional extras are tested
+  on earlier supported Python versions.
 
 ### PyPI
 
