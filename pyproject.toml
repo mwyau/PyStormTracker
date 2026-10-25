@@ -24,11 +24,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 dependencies = [
     "dask>=2024.1.0",
-    "ducc0>=0.41.0",
+    "ducc0>=0.42.0",
     "h5netcdf>=1.8.1",
     "h5py>=3.11.0",
     "msgspec>=0.20.0",
@@ -53,7 +54,7 @@ eof = [
 ]
 grib = [
     "cfgrib>=0.9.15.1",
-    "eccodes>=2.46.0",
+    "eccodes>=2.48.0",
     "eccodeslib>=2.48.0; sys_platform != 'win32'",
 ]
 mpi = [
