@@ -43,6 +43,8 @@ jobs:
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "coverage", "coverage_flag": "unit"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "jit-coverage", "coverage_flag": "unit-jit-coverage"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "disabled-jit-coverage", "coverage_flag": "unit-jit-disabled"},
+                {"os": "ubuntu-26.04", "python-version": "3.15", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.15t", "mode": "free-threaded"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
@@ -67,6 +69,8 @@ jobs:
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "jit-coverage", "coverage_flag": "unit-jit-coverage"},
                 {"os": "ubuntu-26.04", "python-version": "3.14", "mode": "disabled-jit-coverage", "coverage_flag": "unit-jit-disabled"},
                 {"os": "ubuntu-26.04", "python-version": "3.14t", "mode": "free-threaded"},
+                {"os": "ubuntu-26.04", "python-version": "3.15", "mode": "normal"},
+                {"os": "ubuntu-26.04", "python-version": "3.15t", "mode": "free-threaded"},
                 {"os": "windows-2025", "python-version": "3.13", "mode": "normal"},
                 {"os": "macos-26", "python-version": "3.14", "mode": "normal"}
               ]
@@ -173,9 +177,23 @@ jobs:
         with:
           mpi: msmpi
 
+      - name: Install HDF5 build dependencies for Python 3.15
+        if: startsWith(matrix.python-version, '3.15')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
+
       - name: Install dependencies
-        if: matrix.mode == 'normal' || matrix.mode == 'coverage' || matrix.mode == 'jit-coverage' || matrix.mode == 'disabled-jit-coverage'
+        if: >-
+          (matrix.mode == 'normal' && matrix.python-version != '3.15') ||
+          matrix.mode == 'coverage' ||
+          matrix.mode == 'jit-coverage' ||
+          matrix.mode == 'disabled-jit-coverage'
         run: uv sync --frozen --all-extras
+
+      - name: Install Python 3.15 dependencies
+        if: matrix.python-version == '3.15'
+        run: uv sync --frozen --extra netcdf4
 
       - name: Install minimum direct dependencies
         if: matrix.mode == 'min-deps'
@@ -183,10 +201,10 @@ jobs:
 
       - name: Install free-threaded dependencies
         if: matrix.mode == 'free-threaded'
-        run: uv sync --frozen
+        run: uv sync --frozen --extra netcdf4
 
       - name: Smoke-check GRIB and Zarr dependencies
-        if: matrix.mode != 'free-threaded'
+        if: matrix.mode != 'free-threaded' && matrix.python-version != '3.15'
         run: |
           uv run --no-sync python -m cfgrib selfcheck
           uv run --no-sync python -c 'import zarr; print("zarr import success")'
