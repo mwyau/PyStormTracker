@@ -15,8 +15,8 @@ This guide covers installation, command-line and Python use, sample data, and de
   geometry, polar projection, regional DCT, and explicit-`lmax` vector
   kinematics.
 - **Python 3.15 and free-threaded Python 3.14t/3.15t** are experimental.
-  CI tests core dependencies and the `netcdf4` extra on these interpreters;
-  remaining extras are tested on earlier supported Python versions.
+  CI tests core dependencies on free-threaded interpreters and the `netcdf4`
+  extra on regular Python 3.15; remaining extras are tested on earlier versions.
 
 ### PyPI
 

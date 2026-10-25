@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  UV_VERSION: '0.12.1'
+  UV_VERSION: '0.13.5'
   PYTHON_VERSION: '3.14'
 
 jobs:
@@ -126,7 +126,7 @@ jobs:
 
       - name: Set up uv
         if: ${{ !cancelled() }}
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -165,7 +165,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -201,7 +201,7 @@ jobs:
 
       - name: Install free-threaded dependencies
         if: matrix.mode == 'free-threaded'
-        run: uv sync --frozen --extra netcdf4
+        run: uv sync --frozen
 
       - name: Smoke-check GRIB and Zarr dependencies
         if: matrix.mode != 'free-threaded' && matrix.python-version != '3.15'
@@ -275,7 +275,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -333,7 +333,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -383,7 +383,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -439,7 +439,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
