@@ -132,6 +132,18 @@ jobs:
           enable-cache: true
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Run pre-commit hooks
+        if: ${{ !cancelled() }}
+        run: >-
+          uvx prek run --all-files
+          check-json check-merge-conflict check-toml check-yaml
+          end-of-file-fixer fix-byte-order-marker mixed-line-ending
+          trailing-whitespace mdformat
+
+      - name: Check lockfile
+        if: ${{ !cancelled() }}
+        run: uv lock --check
+
       - name: Install type-checking environment
         if: ${{ !cancelled() }}
         run: uv sync --frozen --all-extras
@@ -142,7 +154,9 @@ jobs:
 
       - name: Ty
         if: ${{ !cancelled() }}
-        run: uv run --no-sync ty check
+        run: >-
+          uv check --quiet --preview-features=check-command
+          --ty-version=0.0.91 --all-extras --isolated
 
       - name: Mypy
         if: ${{ !cancelled() }}
@@ -150,7 +164,7 @@ jobs:
 
       - name: Check SPDX headers
         if: ${{ !cancelled() }}
-        run: uvx prek run spdx --all-files
+        uses: mwyau/spdx-header-check@v0.1.0
 
   unit-tests:
     name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }}${{ matrix.mode != 'normal' && format(', {0}', matrix.mode) || '' }})
