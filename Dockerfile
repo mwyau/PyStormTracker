@@ -3,7 +3,7 @@ ARG UV_VERSION=0.13.5
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # --- Build Stage ---
-FROM python:3.14-slim AS builder
+FROM python:3.15-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra grib --extra netcdf4 --no-editable
 
 # --- Runtime Stage ---
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 WORKDIR /app
 
