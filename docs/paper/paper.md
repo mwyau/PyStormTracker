@@ -42,8 +42,6 @@ The package is intended for atmospheric scientists analysing reanalyses, climate
 
 TRACK implements the feature-tracking method of Hodges [@hodges1994; @hodges1995; @hodges1999] and has been used in studies of Northern and Southern Hemisphere storm tracks and comparisons of reanalysis datasets [@hoskinsHodges2002; @hoskinsHodges2005; @hodges2003]. The method identifies feature points in a meteorological field, links them into trajectories, and optimizes the trajectories using displacement and smoothness constraints. PyStormTracker's `HodgesTracker` implements this sequence. TRACK 1.5.4 serves as a reference implementation for numerical comparison.
 
-TempestExtremes is another open-source package for cyclone detection and tracking on structured and unstructured grids [@ullrichZarzycki2017]. PyStormTracker implements Hodges's feature-tracking method and computes cyclone-activity statistics, including those used in Yau and Chang (2020) [@yauChang2020].
-
 PyStormTracker was presented at the 2016 AMS Annual Meeting with cyclone centers identified from sea-level-pressure minima, nearest-neighbor track linking, and MPI-parallel detection across analysis times [@yau2016]. Its simple tracker was subsequently used in a tracking-method sensitivity comparison by Yau and Chang (2020) [@yauChang2020].
 
 # Software design
