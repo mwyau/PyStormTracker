@@ -157,14 +157,12 @@ def _remove_duplicate_extrema(
                         elif cc < 0 or cc >= cols:
                             continue
                         val = abs(laplacian[rr, cc])
-                        if val > abs_center:
+                        if val > abs_center or (
+                            # Tie-breaking: lower row-major index wins
+                            val == abs_center and (rr < r or (rr == r and cc < c))
+                        ):
                             is_most_intense = False
                             break
-                        elif val == abs_center:
-                            # Tie-breaking: lower row-major index wins
-                            if rr < r or (rr == r and cc < c):
-                                is_most_intense = False
-                                break
                     if not is_most_intense:
                         break
                 if is_most_intense:

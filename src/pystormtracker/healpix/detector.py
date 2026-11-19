@@ -43,7 +43,7 @@ type HealpixFeatureRefinement = Literal["grid", "quadratic"]
 
 def _build_healpix_neighbor_table(nside: int) -> NDArray[np.int64]:
     """Build an (8, npix) array of neighbor pixel indices for a RING HEALPix grid."""
-    import ducc0.healpix  # ty: ignore[unresolved-import]
+    import ducc0.healpix  # ty: ignore[import-not-found]
 
     hp_base = ducc0.healpix.Healpix_Base(nside, "RING")
     npix = 12 * nside * nside
@@ -407,7 +407,7 @@ class HealpixDetector:
     def _init_healpix_geometry(self) -> None:
         """Precompute HEALPix pixel coordinates and neighbor table."""
         assert self.nside is not None
-        import ducc0.healpix  # ty: ignore[unresolved-import]
+        import ducc0.healpix  # ty: ignore[import-not-found]
 
         hp_base = ducc0.healpix.Healpix_Base(self.nside, "RING")
         npix = 12 * self.nside * self.nside

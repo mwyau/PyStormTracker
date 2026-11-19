@@ -1,5 +1,5 @@
 # Use the same pinned uv version in local and CI builds.
-ARG UV_VERSION=0.13.5
+ARG UV_VERSION=0.13.9
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # --- Build Stage ---

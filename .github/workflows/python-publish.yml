@@ -55,7 +55,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           python-version: '3.14'
 
       - name: Check distributions
