@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  UV_VERSION: '0.13.5'
+  UV_VERSION: '0.13.9'
   PYTHON_VERSION: '3.14'
 
 jobs:
@@ -156,7 +156,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           uv check --quiet --preview-features=check-command
-          --ty-version=0.0.91 --all-extras --isolated
+          --ty-version=0.0.107 --all-extras --isolated
 
       - name: Mypy
         if: ${{ !cancelled() }}

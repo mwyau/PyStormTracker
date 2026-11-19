@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from ducc0.healpix import Healpix_Base  # ty: ignore[unresolved-import]
+from ducc0.healpix import Healpix_Base  # ty: ignore[import-not-found]
 
 from pystormtracker.healpix.tracker import HealpixTracker
 from pystormtracker.hodges.tracker import HodgesTracker
