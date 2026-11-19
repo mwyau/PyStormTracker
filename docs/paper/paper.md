@@ -26,9 +26,9 @@ bibliography: paper.bib
 
 # Summary
 
-Storm-track activity can be described using Eulerian statistics of atmospheric variability or Lagrangian statistics derived from individual cyclone trajectories. For both tropical and extratropical cyclones, the latter requires identifying cyclone centers in gridded meteorological fields and linking them across successive analysis times [@yauChang2020; @hodgesCobbVidale2017].
+Storm-track activity can be described using Eulerian statistics of atmospheric variability or Lagrangian statistics derived from individual cyclone trajectories. Tracking tropical and extratropical cyclones involves identifying cyclone centers in gridded meteorological fields and linking them between successive analysis times.
 
-PyStormTracker is a Python package for cyclone tracking and storm-track analysis. It includes a local-extrema tracker with nearest-neighbor linking, a tracker based on Hodges's feature-tracking method [@hodges1994; @hodges1995; @hodges1999], and a version adapted to the equal-area HEALPix grid [@gorski2005]. The package reads meteorological files and xarray data, stores trajectories in a common array-backed format, and calculates Eulerian and Lagrangian storm-track statistics. Serial, Dask, and MPI execution support analyses of long time series and high-resolution fields.
+PyStormTracker is a Python package for cyclone tracking and storm-track analysis. It includes a local-extrema tracker with nearest-neighbor linking, an implementation of Hodges's feature-tracking method [@hodges1994; @hodges1995; @hodges1999], and a tracker adapted to the HEALPix grid [@gorski2005]. The package reads meteorological files and xarray data, stores cyclone tracks in a common array-backed format, and computes storm-track statistics. It supports serial, Dask, and MPI execution.
 
 # Statement of need
 
@@ -41,8 +41,6 @@ The package is intended for atmospheric scientists analysing reanalyses, climate
 # State of the field
 
 TRACK implements the feature-tracking method of Hodges [@hodges1994; @hodges1995; @hodges1999] and has been used in studies of Northern and Southern Hemisphere storm tracks and comparisons of reanalysis datasets [@hoskinsHodges2002; @hoskinsHodges2005; @hodges2003]. The method identifies feature points in a meteorological field, links them into trajectories, and optimizes the trajectories using displacement and smoothness constraints. PyStormTracker's `HodgesTracker` implements this sequence. TRACK 1.5.4 serves as a reference implementation for numerical comparison.
-
-TRACK has also been used to study tropical cyclones. In these studies, relative-vorticity maxima are tracked, then additional intensity and warm-core criteria are applied to identify tropical cyclones [@hodgesCobbVidale2017].
 
 Other open-source tools address related problems. TempestExtremes detects and tracks features on structured and unstructured climate-model grids [@ullrichZarzycki2017], while tobac was developed to identify and follow clouds and other atmospheric objects [@heikenfeld2019]. PyStormTracker focuses on cyclone tracks and their climatological statistics. Neither of these packages implements the TRACK 1.5.4 Modified Greedy Exchange procedure and the set of cyclone-activity diagnostics used here. Incorporating both would require substantial new tracking and analysis code.
 
