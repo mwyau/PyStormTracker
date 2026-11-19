@@ -26,6 +26,9 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
+# JOSS Build
+docs/paper/jats/
+
 # IPython intermediate checkpoints
 .ipynb_checkpoints
 
