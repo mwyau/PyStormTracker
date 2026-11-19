@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.1 - 2026-11-18
+
+### Maintenance
+
+- Aligned dependencies with spharmgrid.
+- Added Python 3.15 support.
+- Added Python 3.15 and free-threaded CI coverage.
+- Updated SPDX-header checks to validate without rewriting files.
+
+---
+
 ## v0.8.0 - 2026-10-17
 
 ### Spectral preprocessing
