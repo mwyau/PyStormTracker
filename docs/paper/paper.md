@@ -26,7 +26,7 @@ bibliography: paper.bib
 
 # Summary
 
-Extratropical cyclones are responsible for much of the precipitation and strong winds in the midlatitudes. Their activity can be measured from variations in atmospheric fields or from the tracks and intensities of individual cyclones. The latter requires identifying cyclone centers in gridded data and linking them between successive analysis times [@yauChang2020].
+Cyclone tracking identifies features in gridded meteorological fields at successive analysis times and links them into trajectories. The resulting tracks are used to measure cyclone frequency, intensity, and movement, complementing Eulerian statistics of atmospheric variability [@yauChang2020].
 
 PyStormTracker is a Python package for cyclone tracking and storm-track analysis. It includes a local-extrema tracker with nearest-neighbor linking, a tracker based on Hodges's feature-tracking method [@hodges1994; @hodges1995; @hodges1999], and a version adapted to the equal-area HEALPix grid [@gorski2005]. The package reads meteorological files and xarray data, stores trajectories in a common array-backed format, and calculates Eulerian and Lagrangian storm-track statistics. Serial, Dask, and MPI execution support analyses of long time series and high-resolution fields.
 
@@ -44,7 +44,7 @@ TRACK implements the feature-tracking method of Hodges [@hodges1994; @hodges1995
 
 Other open-source tools address related problems. TempestExtremes detects and tracks features on structured and unstructured climate-model grids [@ullrichZarzycki2017], while tobac was developed to identify and follow clouds and other atmospheric objects [@heikenfeld2019]. PyStormTracker focuses on cyclone tracks and their climatological statistics. Neither of these packages implements the TRACK 1.5.4 Modified Greedy Exchange procedure and the set of cyclone-activity diagnostics used here. Incorporating both would require substantial new tracking and analysis code.
 
-PyStormTracker began as a local-extrema and nearest-neighbor tracker developed through the 2015 NCAR SIParCS program and presented at the 2016 AMS Annual Meeting [@yau2016]. That tracking approach was later used for a sensitivity comparison in the storm-track impact analysis of Yau and Chang (2020) [@yauChang2020].
+PyStormTracker was presented at the 2016 AMS Annual Meeting with cyclone centers identified from sea-level-pressure minima, nearest-neighbor track linking, and MPI-parallel detection across analysis times [@yau2016]. Its simple tracker was subsequently used in a tracking-method sensitivity comparison by Yau and Chang (2020) [@yauChang2020].
 
 # Software design
 
