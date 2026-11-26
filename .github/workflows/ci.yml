@@ -126,7 +126,7 @@ jobs:
 
       - name: Set up uv
         if: ${{ !cancelled() }}
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -179,7 +179,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -187,7 +187,7 @@ jobs:
 
       - name: Set up Microsoft MPI on Windows
         if: runner.os == 'Windows'
-        uses: mpi4py/setup-mpi@v1.4.4
+        uses: mpi4py/setup-mpi@v1.4.5
         with:
           mpi: msmpi
 
@@ -289,14 +289,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
       - name: Set up MPI
-        uses: mpi4py/setup-mpi@v1.4.4
+        uses: mpi4py/setup-mpi@v1.4.5
         with:
           mpi: ${{ matrix.mpi }}
 
@@ -347,7 +347,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -397,7 +397,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -453,7 +453,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
